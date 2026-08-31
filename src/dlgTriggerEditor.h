@@ -93,6 +93,9 @@ class dlgKeysMainArea;
 class dlgTriggerPatternEdit;
 class QLabel;
 class QFrame;
+class QListWidget;
+class QRadioButton;
+class QSpinBox;
 class QToolButton;
 class TAction;
 class TKey;
@@ -100,6 +103,11 @@ class TVar;
 class TConsole;
 class dlgVarsMainArea;
 class QShortcut;
+
+namespace uiDesign {
+class EditorTreeDelegate;
+class SearchResultDelegate;
+}
 
 
 class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
@@ -191,6 +199,66 @@ public:
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* e) override;
     void updateExtraControlsToggleIcon();
+    // The editor's own look, derived from the application palette rather than
+    // written out, so that it follows a theme change
+    void applyEditorShellStyle();
+    void restyleEditorIcons();
+    void applyEditorToolbarButtonStyles();
+    // The panel down the left: what its trees draw a row as, and where the
+    // search field sits over them
+    void setupEditorPanel();
+    // The heading the Lua editor is under, which is also the handle the code
+    // pane is resized by
+    void setupEditorCodeHeader();
+    void updateEditorCompileChip();
+    // The chip speaks for the item in the editor, so switching items puts it
+    // back to saying nothing
+    void clearCompileState();
+    // Bracket a save so that showError() is heard by the chip for as long as it
+    // runs, and by nothing else the rest of the time
+    void beginSaveErrorCapture();
+    void endSaveErrorCapture();
+    // The trigger form's options, moved out of the .ui column of group boxes
+    // and into a column of cards, with a strip that says what they hold while
+    // they are put away
+    void buildTriggerOptionsPanel();
+    // The one way the panel is opened or closed on purpose, so that both the
+    // Options button and the summary strip persist the preference
+    void setTriggerOptionsShown(const bool shown);
+    // spinBox_lineMargin stays what the save and load paths read; the radio
+    // pair is a view of it
+    void reflectTriggerMatchMode();
+    void restyleTriggerMatchModeChips();
+    void updateTriggerOptionsSummary();
+    // Opening the panel where the form has no room for it borrows the height
+    // from the code pane, and closing it hands that height back
+    void refitSplitterForTriggerOptions(const bool shown);
+    // Every view puts the right hand splitter back to the sizes it was last left
+    // at, which is also the one thing that can take the geometry the trigger
+    // options panel borrowed against out from under it
+    void restoreRightSplitterState(QByteArray& savedState);
+    void updateEditorItemCounts();
+    void scheduleEditorItemCountUpdate();
+    // The list down the left that switches between what the editor is showing
+    void buildEditorSidebar();
+    void addEditorSidebarRow(QAction* pAction, const EditorViewType view, const QString& iconFile);
+    void addEditorSidebarSeparator();
+    void restyleEditorSidebarIcons(const QColor& normal, const QColor& selected);
+    void syncEditorSidebarSelection();
+    struct EditorSidebarWidths
+    {
+        int expanded = 0;
+        int collapseBelow = 0;
+    };
+    [[nodiscard]] EditorSidebarWidths editorSidebarWidths() const;
+    // Called wherever the rows, the font or the style they are measured against
+    // change, since none of those reach a resize
+    void invalidateEditorSidebarWidths();
+    void updateEditorSidebarMode();
+    // Gives the panel's focus to one of the item trees, or to the search
+    // results while those are what the panel is showing instead
+    void focusPanelTree(QWidget* pTreeWidget);
+    void setEditorSidebarCollapsed(const bool collapsed, const int expandedWidth);
     void fillout_form();
     void showError(const QString&);
     void showWarning(const QString&, bool announce = true);
@@ -318,6 +386,8 @@ public slots:
     void slot_updateUndoRedoButtonStates();
 
 private slots:
+    void slot_editorSidebarRowChanged(const int row);
+    void slot_editorSidebarItemActivated(QListWidgetItem* pItem);
     void slot_changeEditorTextOptions(QTextOption::Flags);
     void slot_toggleIsPushDownButton(int);
     void slot_toggleSearchCaseSensitivity(bool);
@@ -330,15 +400,12 @@ private slots:
     void slot_clearSoundFile();
     void slot_editorContextMenu();
     void slot_visibilityChangedEditorActionsToolbar();
-    void slot_visibilityChangedEditorItemsToolbar();
     void slot_floatingChangedEditorActionsToolbar();
-    void slot_floatingChangedEditorItemsToolbar();
     void slot_restoreEditorActionsToolbar();
-    void slot_restoreEditorItemsToolbar();
     void slot_itemEdited();
-    void slot_searchSplitterMoved(const int pos, const int index);
     void slot_clickedMessageBox(const QString&);
     void slot_addPattern();
+    void slot_deletePatternRow();
     void slot_bannerDismissClicked();
     void slot_refreshBannerLinkColors();
     void slot_itemsChanged(EditorViewTypes::EditorViewType viewType, QList<int> affectedItemIDs);
@@ -391,6 +458,40 @@ public:
     bool mNeedUpdateData = false;
 
 private:
+    // One place a search matched: which item it is in and where it leads, plus
+    // the line the reader is shown with the query marked inside it. The first
+    // half is what setAllSearchData() has always written and what
+    // slot_itemSelectedInSearchResults() navigates by; the second half is only
+    // ever read by SearchResultDelegate.
+    struct SearchResultRow
+    {
+        EditorViewType view = EditorViewType::cmUnknownView;
+        // The kind of thing, already translated: "Trigger", "Alias"...
+        QString typeLabel;
+        // What the heading row shows - the item's name, or for a variable the
+        // Lua expression that reaches it
+        QString title;
+        QString name;
+        int id = 0;
+        // Variables are identified by a path rather than by a number
+        QStringList variableId;
+        QString where;
+        // The line the match is on, as it is in the item - the whitespace in it
+        // is taken out where the row is put together
+        QString snippet;
+        // Where the match is in that line, which is what the cursor is put at
+        int matchStart = 0;
+        SearchDataResultType what = SearchResultIsUnknown;
+        int instance = 0;
+        int subInstance = 0;
+    };
+    // Adds the match to the results, opening a heading row for its item if this
+    // is the first match found in it
+    void addSearchResult(QTreeWidgetItem*& pParent, const SearchResultRow& row);
+    // Whether the panel is showing what a search found or the profile's own
+    // items; the two take turns rather than sharing the height
+    void setSearchResultsShown(const bool shown);
+
     void populateTriggers();
     void populateTimers();
     void populateScripts();
@@ -562,12 +663,55 @@ private:
     void handlePatternChange(dlgTriggerPatternEdit* patternItem, bool hasContentHint);
     void applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWidget);
 
+    // Everything one pattern row holds, so that a row can be taken away or moved
+    // without the row widgets themselves being reordered: they are a pool of up
+    // to fifty reused rows, and which widget is at which place never changes.
+    // The two colour buttons carry their own text and fill, which are read off
+    // the pattern text when it is loaded rather than every time it is shown.
+    struct PatternRowContent
+    {
+        int type = 0;
+        QString pattern;
+        int lineSpacerValue = 0;
+        QString foregroundText;
+        QString foregroundStyleSheet;
+        QString backgroundText;
+        QString backgroundStyleSheet;
+        bool markSpaces = false;
+    };
+    [[nodiscard]] PatternRowContent patternRowContent(const dlgTriggerPatternEdit* patternItem) const;
+    void setPatternRowContent(dlgTriggerPatternEdit* patternItem, const PatternRowContent& content);
+    // Rotates the rows between the two places, so that the one at `from` ends up
+    // at `to` and everything it passed over shifts one place the other way
+    void movePatternRowContent(const int from, const int to);
+    void deletePatternRow(const int row);
+    // The last row on show, which is as far as a move or a delete may reach
+    [[nodiscard]] int lastVisiblePatternRow() const;
+    // Which pattern row the keyboard is in, or -1 when it is somewhere else
+    [[nodiscard]] int focusedPatternRow() const;
+    // Ctrl+Alt+Up / Ctrl+Alt+Down, the keyboard's answer to dragging a row's grip
+    void movePatternRowByKeyboard(const int offset);
+    void setupAddPatternButton();
+    void updateAddPatternButton();
+    void restyleAddPatternIcon();
+    // Which row on show a point in mpWidget_triggerItems is over. A point below
+    // them all clamps to the last one - a drag let go past the end drops on the
+    // final row rather than nowhere - and -1 comes back only when no row is on
+    // show at all.
+    [[nodiscard]] int patternRowAt(const QPoint& itemsPos) const;
+    void showPatternDropIndicator(const int targetRow);
+    void endPatternRowDrag(const bool dropped);
+    bool handlePatternHandleEvent(QObject* watched, QEvent* event);
+    [[nodiscard]] QString patternRowStyleSheet() const;
+    [[nodiscard]] QIcon patternDeleteIcon() const;
+    [[nodiscard]] QColor patternHoverTint() const;
+    [[nodiscard]] int patternTypeColumnWidth(const QFont& typeFont) const;
+
     void keyGrabCallback(const Qt::Key, const Qt::KeyboardModifiers);
     void setShortcuts(const bool active = true);
     void setShortcuts(QList<QAction*> actionList, const bool active = true);
 
     void showOrHideRestoreEditorActionsToolbarAction();
-    void showOrHideRestoreEditorItemsToolbarAction();
     void checkForMoreThanOneTriggerItem();
     TTrigger* getTriggerFromTreeItem(QTreeWidgetItem* item);
     TAlias* getAliasFromTreeItem(QTreeWidgetItem* item);
@@ -610,7 +754,91 @@ private:
     std::unordered_map<SingleLineTextEdit*, bool> lineEditShouldMarkSpaces;
 
     QToolBar* toolBar = nullptr;
-    QToolBar* toolBar2 = nullptr;
+
+    // Every toolbar picture is a monochrome glyph tinted from the palette, so
+    // each action is kept beside the resource its picture is drawn from
+    QList<QPair<QAction*, QString>> mEditorToolbarGlyphs;
+
+    // One per item tree, kept so that a theme change can be handed on to the
+    // state dots they draw
+    QList<uiDesign::EditorTreeDelegate*> mEditorTreeDelegates;
+
+    // The strip the splitter handle over the Lua editor carries. Guarded because
+    // the handle owns them: on teardown the splitter can take the strip with it
+    // while this window is still around to be asked about the chip.
+    QPointer<QWidget> mpWidget_editorCodeHeader;
+    QPointer<QLabel> mpLabel_editorCodeHeaderIcon;
+    QPointer<QWidget> mpWidget_editorCompileChip;
+    QPointer<QLabel> mpLabel_editorCompileDot;
+    QPointer<QLabel> mpLabel_editorCompileState;
+    // What the chip says about the item the editor is holding: empty is the
+    // reading that it compiled, and anything else is what its last save failed
+    // with. Only a save of *this* item writes it - showError() is also how a
+    // profile load reports every broken item it comes across, and how an
+    // activation the engine refuses is announced, neither of which is this.
+    QString mEditorCompileMessage;
+    // Open only for the length of one save, so that the showError() belonging
+    // to that save can be told from the ones raised around it
+    bool mEditorSaveErrorCaptureOpen = false;
+    QString mEditorSaveErrorCaptured;
+
+    // The trigger form's options panel. The radio pair and the spin box beside
+    // it are a view of spinBox_lineMargin, which stays where the trigger is
+    // saved from and loaded into.
+    QRadioButton* mpRadioButton_matchAny = nullptr;
+    QRadioButton* mpRadioButton_matchAll = nullptr;
+    QLabel* mpLabel_matchAnyChip = nullptr;
+    QLabel* mpLabel_matchAllChip = nullptr;
+    QSpinBox* mpSpinBox_matchWithinLines = nullptr;
+    QWidget* mpWidget_matchWithinRow = nullptr;
+    // Enabled only once the trigger has more than one pattern to combine
+    QWidget* mpWidget_matchModeRows = nullptr;
+    // Shown in the panel's place, saying what it holds
+    QToolButton* mpButton_triggerOptionsSummary = nullptr;
+    // Height the panel borrowed from the code pane when it was opened, so that
+    // closing it can hand back that much and no more
+    int mTriggerOptionsBorrowedHeight = 0;
+    // The last sizes the user dragged the right hand splitter to while a
+    // trigger was on show, restored when the panel is opened again
+    QList<int> mTriggerRightSplitterSizes;
+
+    QWidget* mpWidget_editorSidebarPane = nullptr;
+    QListWidget* mpListWidget_editorSidebar = nullptr;
+    // ...and the same for the sidebar's rows
+    QList<QPair<QListWidgetItem*, QString>> mEditorSidebarGlyphs;
+    // The actions the sidebar rows stand for, which is also what the Ctrl+1 to
+    // Ctrl+0 shortcuts are put on and taken off
+    QList<QAction*> mEditorViewActions;
+    bool mEditorSidebarCollapsed = false;
+    // Held for the rest of the pass through the event loop that a sidebar row's
+    // one-off action was asked for in, so that the click and the activation one
+    // click can arrive as run it once
+    bool mEditorSidebarActionInFlight = false;
+    // Measuring the rows costs a pass over every one of them, and a resize asks
+    // for the answer on every frame of a drag
+    mutable EditorSidebarWidths mEditorSidebarWidths;
+    mutable bool mEditorSidebarWidthsKnown = false;
+    // A splitter that has never been shown reports the minimum size hint of a
+    // layout that has never been run, and the breakpoint is measured off that -
+    // so the answer taken before the first show is one to throw away
+    bool mEditorFirstShown = false;
+
+    // The three palette colours every rule and every tinted glyph in the
+    // editor's own look is mixed from
+    struct EditorShellStyleInputs
+    {
+        QRgb card = 0;
+        QRgb text = 0;
+        QRgb accent = 0;
+        bool operator==(const EditorShellStyleInputs&) const = default;
+    };
+    EditorShellStyleInputs mEditorShellStyleInputs;
+    bool mEditorShellStyleApplied = false;
+    QLabel* mpLabel_statusCounts = nullptr;
+    QLabel* mpLabel_statusAutosave = nullptr;
+    // Counting walks the whole tree, which a fillout would otherwise do once
+    // per item added
+    QTimer* mpTimer_statusCounts = nullptr;
     bool showHiddenVars = false;
 
     QTreeWidgetItem* mpActionBaseItem = nullptr;
@@ -655,7 +883,25 @@ private:
     bool mIsGrabKey = false;
     QPointer<Host> mpHost;
     QList<dlgTriggerPatternEdit*> mTriggerPatternEdit;
+    // A trigger can hold fifty rows, and these are the same on all of them: the
+    // picture on the delete button, the wash the row is hovered with, and how
+    // wide the type column is. Thrown away by the theme or the font moving.
+    QIcon mPatternDeleteIcon;
+    QColor mPatternHoverTint;
+    mutable int mPatternTypeColumnWidth = 0;
     int mVisiblePatternCount = 0;
+    // Sits in the same column the rows are in, under the last one on show
+    QToolButton* mpButton_addPattern = nullptr;
+    // The line drawn where a dragged row would land. A tracked grab rather than
+    // QDrag: the rows are a pool, so what moves is the contents, not a widget.
+    QFrame* mpFrame_patternDropIndicator = nullptr;
+    int mPatternDragSourceRow = -1;
+    int mPatternDragTargetRow = -1;
+    QPoint mPatternDragPressPos;
+    bool mPatternDragActive = false;
+    // Set while a move or a delete is shifting one row's contents into the next,
+    // so the chrome that reads every row is left until the shift has finished
+    bool mPatternBulkEdit = false;
     QStringList mPatternList;
     QVector<QIcon> mPatternIcons;
 
@@ -678,6 +924,14 @@ private:
 
     SearchOptions mSearchOptions = SearchOptionNone;
     QSplitter* searchSplitter;
+    // The two halves the splitter holds, so that running a search can put one in
+    // front of the other
+    QWidget* mpWidget_searchResultsPane = nullptr;
+    QWidget* mpWidget_itemTreesPane = nullptr;
+    uiDesign::SearchResultDelegate* mpSearchResultDelegate = nullptr;
+    // What the results on screen were found by - the length of it is how much of
+    // each snippet the marker pen covers
+    QString mSearchTerm;
 
     // This has a menu which the following QActions are inserted into:
     QAction* mpAction_searchOptions = nullptr;
@@ -692,9 +946,8 @@ private:
     QAction* mProfileSaveAction = nullptr;
     QAction* mProfileSaveAsAction = nullptr;
 
-    // Enables the toolbars to be unhidden if they get hid:
+    // Enables the toolbar to be unhidden if it gets hid:
     QAction* mpAction_restoreEditorActionsToolbar = nullptr;
-    QAction* mpAction_restoreEditorItemsToolbar = nullptr;
 
     // We need to keep a record of these buttons as we have to disable them
     // for the "Variables" view:
@@ -750,7 +1003,6 @@ private:
     QByteArray mKeyEditorSplitterState;
     QByteArray mTimerEditorSplitterState;
     QByteArray mVarEditorSplitterState;
-    QByteArray mSearchSplitterState;
 
     struct EditorState
     {

@@ -86,6 +86,7 @@ set(mudlet_SRCS
     EditorModifyPropertyCommand.cpp
     EditorMoveItemCommand.cpp
     EditorToggleActiveCommand.cpp
+    EditorTreeDelegate.cpp
     EditorUndoStack.cpp
     EventLoopPump.cpp
     exitstreewidget.cpp
@@ -93,6 +94,7 @@ set(mudlet_SRCS
     FontManager.cpp
     GifTracker.cpp
     GMCPAuthenticator.cpp
+    GripSplitter.cpp
     Host.cpp
     HostManager.cpp
     ircmessageformatter.cpp
@@ -115,10 +117,12 @@ set(mudlet_SRCS
     RoomMoveActivationHandler.cpp
     RoomMoveDragHandler.cpp
     ScriptUnit.cpp
+    SearchResultDelegate.cpp
     SecureStringUtils.cpp
     SelectionRectangleHandler.cpp
     SentryWrapper.cpp
     ShortcutsManager.cpp
+    SidebarItemDelegate.cpp
     SingleLineTextEdit.cpp
     T2DMap.cpp
     TAccessibleTextEdit.cpp
@@ -216,6 +220,7 @@ set(mudlet_SRCS
     TTrigger.cpp
     TUiTour.cpp
     TVar.cpp
+    uiDesign.cpp
     UntrustedText.cpp
     VarUnit.cpp
     WideComboBox.cpp
@@ -319,6 +324,7 @@ set(mudlet_HDRS
     EditorModifyPropertyCommand.h
     EditorMoveItemCommand.h
     EditorToggleActiveCommand.h
+    EditorTreeDelegate.h
     EditorUndoStack.h
     enums.h
     EventLoopPump.h
@@ -327,6 +333,7 @@ set(mudlet_HDRS
     FontManager.h
     GifTracker.h
     GMCPAuthenticator.h
+    GripSplitter.h
     Host.h
     HostManager.h
     ircmessageformatter.h
@@ -349,10 +356,12 @@ set(mudlet_HDRS
     RoomMoveActivationHandler.h
     RoomMoveDragHandler.h
     ScriptUnit.h
+    SearchResultDelegate.h
     SecureStringUtils.h
     SelectionRectangleHandler.h
     SentryWrapper.h
     ShortcutsManager.h
+    SidebarItemDelegate.h
     SingleLineTextEdit.h
     T2DMap.h
     TAccessibleConsole.h
@@ -455,6 +464,7 @@ set(mudlet_HDRS
     TTrigger.h
     TUiTour.h
     TVar.h
+    uiDesign.h
     UntrustedText.h
     utils.h
     VarUnit.h

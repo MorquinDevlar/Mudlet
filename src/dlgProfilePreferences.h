@@ -27,11 +27,11 @@
 #include "mudlet.h"
 
 #include "ui_profile_preferences.h"
+#include "uiDesign.h"
 #include <QDialog>
 #include <QHash>
 #include <QList>
 #include <QMap>
-#include <QVariant>
 
 class Host;
 class QCloseEvent;
@@ -53,48 +53,6 @@ class TScript;
 class TTimer;
 class TTrigger;
 
-
-// What every apply-relevant control held the last time the dialog read the
-// settings, so that an apply writes back only what the user changed since
-// rather than the whole page (#10165).
-//
-// Both references are to members of the dialog that owns this, so both outlive
-// it. Snapshot keys may dangle if a control is destroyed: they are only ever
-// compared, never dereferenced, and a control coming into being after the last
-// snapshot reads as dirty, which is the safe way round.
-class SettingsSnapshot
-{
-public:
-    Q_DISABLE_COPY(SettingsSnapshot)
-    SettingsSnapshot(const QWidget& owner, const QMap<QString, QKeySequence>& shortcuts);
-    // Whether a widget holds a value a setting is written from at all
-    static bool carriesValue(const QObject* pControl);
-    // Called once the controls hold what the settings say, so that anything
-    // differing from this afterwards is the user's own edit
-    void take();
-    // ...and for one control whose list was rebuilt under a dialog already
-    // showing it
-    void take(const QObject* pControl);
-    bool dirty(const QObject* pControl) const;
-    bool anyDirty(const QList<const QObject*>& controls) const;
-    bool shortcutsDirty() const;
-    bool shortcutDirty(const QString& key) const;
-    // Anything the user has changed that the settings do not know about yet: a
-    // control differing from its snapshot, an uncommitted shortcut, a part-typed
-    // line edit, or an apply still waiting out its debounce
-    bool pendingEdits(const QTimer* pApplyTimer, const QLineEdit* pSearchField) const;
-    // A second profile re-reads the editors the first left behind rather than
-    // adding a second row of them
-    TKeySequenceEdit* editorFor(const QString& key) const;
-    void addEditor(const QString& key, TKeySequenceEdit* pEditor);
-
-private:
-    const QWidget& mOwner;
-    const QMap<QString, QKeySequence>& mCurrentShortcuts;
-    QHash<const QObject*, QVariant> mValues;
-    QMap<QString, QKeySequence> mShortcuts;
-    QMap<QString, QPointer<TKeySequenceEdit>> mEditors;
-};
 
 class dlgProfilePreferences : public QDialog, public Ui::profile_preferences
 {
@@ -435,7 +393,7 @@ private:
     QMap<QString, QKeySequence> currentShortcuts;
     // ...and what those looked like the last time the settings were read.
     // Declared after currentShortcuts, which it holds a reference to.
-    SettingsSnapshot mSnapshot{*this, currentShortcuts};
+    uiDesign::SettingsSnapshot mSnapshot{*this, currentShortcuts};
     // The ten telnet protocols, on the Connection page's protocols subpage
     QPointer<QCheckBox> mEnableGMCP;
     QPointer<QCheckBox> mEnableMSDP;

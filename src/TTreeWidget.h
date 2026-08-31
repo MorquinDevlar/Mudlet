@@ -24,6 +24,7 @@
 
 
 #include <QPointer>
+#include <QStyleOptionViewItem>
 #include <QTreeWidget>
 
 class Host;
@@ -57,6 +58,11 @@ public:
     void rowsInserted(const QModelIndex& parent, int start, int end) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    // The option the view lays a row out from. QAbstractItemView keeps
+    // initViewItemOption() to itself, and a delegate measuring a row against the
+    // style needs the same starting point the view uses.
+    [[nodiscard]] QStyleOptionViewItem viewItemOption() const;
     void setHost(Host* pH);
     void setTreeType(TreeType type);
     void beginInsertRows(const QModelIndex& parent, int first, int last);
@@ -72,6 +78,11 @@ signals:
     void batchMoveEnded();
 
 private:
+    // Whether this press is one the row's own state dot answers rather than the
+    // view - asked of both the press and the double click that may follow it, so
+    // that the two cannot disagree
+    [[nodiscard]] bool pressTogglesStateDot(const QMouseEvent* event) const;
+
     // Structure to hold information about items being moved
     struct MoveInfo {
         int childID;
@@ -80,6 +91,9 @@ private:
     };
 
     bool mIsDropAction;
+    // Set by a press the state dot answered, so that the release it belongs to
+    // is not matched against a press the view heard some clicks ago
+    bool mDotPressed = false;
     QPointer<Host> mpHost;
     QList<MoveInfo> mPendingMoves;  // Stores info for all items being moved
     int mOldParentID;  // Deprecated: kept for compatibility, will be removed

@@ -28,6 +28,7 @@
 #include "CredentialManager.h"
 #include "GMCPAuthenticator.h"
 #include "Host.h"
+#include "SidebarItemDelegate.h"
 #include "TAction.h"
 #include "TAlias.h"
 #include "TConsole.h"
@@ -47,6 +48,7 @@
 #include "dlgTriggerEditor.h"
 #include "edbee/views/texteditorscrollarea.h"
 #include "MMCP.h"
+#include "uiDesign.h"
 #include "utils.h"
 
 #include <chrono>
@@ -56,7 +58,6 @@
 #include <QAbstractSpinBox>
 #include <QAccessible>
 #include <QApplication>
-#include <QBuffer>
 #include <QCloseEvent>
 #include <QColorDialog>
 #include <QDesktopServices>
@@ -95,12 +96,39 @@
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStyle>
-#include <QStyledItemDelegate>
 #include <QToolButton>
 #include <QVariantAnimation>
 #include "../3rdparty/kdtoolbox/singleshot_connect/singleshot_connect.h"
 
 using namespace std::chrono_literals;
+
+using uiDesign::alignInLayoutTree;
+using uiDesign::blend;
+using uiDesign::collectFocusableInLayoutOrder;
+using uiDesign::collectSearchText;
+using uiDesign::detachFromLayout;
+using uiDesign::foldForSearch;
+using uiDesign::highlightTextOf;
+using uiDesign::inlineGlyph;
+using uiDesign::insertGridRowAtTop;
+using uiDesign::invalidateLayoutsUpTo;
+using uiDesign::makeChevronRow;
+using uiDesign::markAsShellSurface;
+using uiDesign::measuredCardTitleInset;
+using uiDesign::repolish;
+using uiDesign::rgba;
+using uiDesign::scmProp_focused;
+using uiDesign::scmProp_rail;
+using uiDesign::scmProp_searchKeywords;
+using uiDesign::scrollBarStyleSheet;
+using uiDesign::setSearchMatch;
+using uiDesign::SettingsSnapshot;
+using uiDesign::SidebarItemDelegate;
+using uiDesign::spotlightStyleSheet;
+using uiDesign::themeTokens;
+using uiDesign::ThemeTokens;
+using uiDesign::tintedGlyph;
+using uiDesign::wordEnoughToSearch;
 
 // A reading width: whitespace absorbs a wide window rather than the controls
 // stretching across it
@@ -139,11 +167,6 @@ static constexpr int scmRole_externalUrl = Qt::UserRole + 1;
 // burst of keystrokes costs one search rather than one each, short enough that
 // the pause at the end of a word is not a wait.
 static constexpr auto scmSearchDebounce = 150ms;
-
-// Synonyms a control is searchable by that it does not show anywhere. The
-// property names the shell stylesheet selects on stay literals beside it: a
-// constant cannot be interpolated into a QStringLiteral.
-static constexpr char scmProp_searchKeywords[] = "searchKeywords";
 
 // A QDoubleSpinBox rounds whatever it is given to the number of decimals it
 // displays, so it holds no more precision than that - but TMap and the Lua API
@@ -471,59 +494,6 @@ dlgProfilePreferences::~dlgProfilePreferences()
     utils::disconnectChildSignals(this);
 }
 
-// QLayout::setAlignment() is documented not to look in child layouts, and a
-// card's controls are nested in them
-static bool alignInLayoutTree(QLayout* pLayout, const QWidget* pWidget, const Qt::Alignment alignment)
-{
-    for (int i = 0, total = pLayout->count(); i < total; ++i) {
-        QLayoutItem* pItem = pLayout->itemAt(i);
-        if (pItem->widget() == pWidget) {
-            pItem->setAlignment(alignment);
-            return true;
-        }
-        if (QLayout* pChildLayout = pItem->layout(); pChildLayout && alignInLayoutTree(pChildLayout, pWidget, alignment)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// QLayout::removeWidget() only looks at its own items, and the .ui file nests
-// controls several layouts deep. Qt would find it from QLayout::addWidget()
-// instead, but warns once per widget - which for a dialog's worth of moves
-// buries anything else on the console.
-static bool removeFromLayoutTree(QLayout* pLayout, QWidget* pWidget)
-{
-    for (int i = 0, total = pLayout->count(); i < total; ++i) {
-        QLayoutItem* pItem = pLayout->itemAt(i);
-        if (pItem->widget() == pWidget) {
-            delete pLayout->takeAt(i);
-            pLayout->invalidate();
-            return true;
-        }
-        if (QLayout* pChildLayout = pItem->layout(); pChildLayout && removeFromLayoutTree(pChildLayout, pWidget)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static void detachFromLayout(QWidget* pWidget)
-{
-    QWidget* pParent = pWidget->parentWidget();
-    if (QLayout* pLayout = pParent ? pParent->layout() : nullptr; pLayout) {
-        removeFromLayoutTree(pLayout, pWidget);
-    }
-}
-
-// A profile's Lua stylesheet is applied to the whole dialog and reaches every
-// widget it does not name, so the shell's own scaffolding carries a property
-// the shell stylesheet keeps it transparent by.
-static void markAsShellSurface(QWidget* pWidget)
-{
-    pWidget->setProperty("settingsSurface", true);
-}
-
 static QLabel* wrapLabelOf(const QCheckBox* pCheckBox)
 {
     QWidget* pContainer = pCheckBox->parentWidget();
@@ -549,25 +519,6 @@ void dlgProfilePreferences::capColumnWidth(QScrollArea* pScrollArea)
     const int cap = std::max(scmContentColumnWidth, pColumn->minimumSizeHint().width());
     pColumn->setMaximumWidth(cap);
     pScrollArea->setMaximumWidth(cap + pScrollArea->verticalScrollBar()->sizeHint().width());
-}
-
-// A layout tells the layouts above it that it has changed by *posting* a layout
-// request, and nothing between a wrap and the measurement that judges it runs an
-// event loop to deliver one. Both halves below are needed: invalidate() drops
-// what a layout worked out about its items, while what it caches about a
-// *widget* - the size hints, in the layout item it made for it - goes only with
-// updateGeometry() on that widget.
-static void invalidateLayoutsUpTo(QWidget* pWidget, const QWidget* pColumn)
-{
-    for (QWidget* pAncestor = pWidget; pAncestor; pAncestor = pAncestor->parentWidget()) {
-        if (QLayout* pLayout = pAncestor->layout(); pLayout) {
-            pLayout->invalidate();
-        }
-        pAncestor->updateGeometry();
-        if (pAncestor == pColumn) {
-            return;
-        }
-    }
 }
 
 // The pass starts by giving every text back to the checkbox it came from, so
@@ -959,35 +910,6 @@ void dlgProfilePreferences::buildSearchResultsPage()
     mpLayout_searchResults->addStretch(1);
     mSearchResultsPageIndex = mpStackedWidget_categories->addWidget(mpScrollArea_searchResults);
 }
-
-// Collapsed, the sidebar shows a category as its icon alone. Emptying the item's
-// text would do that too, but the text is what a screen reader announces the row
-// as - so it is the drawing that leaves it out rather than the data.
-namespace {
-class SidebarItemDelegate : public QStyledItemDelegate
-{
-public:
-    explicit SidebarItemDelegate(QListWidget* pList)
-    : QStyledItemDelegate(pList)
-    , mpList(pList)
-    {
-    }
-
-    void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override
-    {
-        QStyledItemDelegate::initStyleOption(pOption, index);
-        if (!mpList->property("settingsRail").toBool()) {
-            return;
-        }
-        pOption->text.clear();
-        pOption->features &= ~QStyleOptionViewItem::HasDisplay;
-        pOption->decorationAlignment = Qt::AlignCenter;
-    }
-
-private:
-    QListWidget* mpList = nullptr;
-};
-} // namespace
 
 QList<dlgProfilePreferences::CategoryDefinition> dlgProfilePreferences::categoryDefinitions() const
 {
@@ -1490,51 +1412,6 @@ void dlgProfilePreferences::addCardRow(QGroupBox* pCard, QWidget* pLabel, QWidge
         return;
     }
     pCardLayout->addLayout(pRowLayout);
-}
-
-// A grid has no notion of inserting a row, so every item is taken out and put
-// back one row lower, carrying its row properties. The columns are untouched,
-// which keeps a .ui file's column stretches meaning what they said.
-static void insertGridRowAtTop(QGridLayout* pGrid, QWidget* pWidget)
-{
-    const int rows = pGrid->rowCount();
-    const int columns = std::max(1, pGrid->columnCount());
-    QList<std::pair<int, int>> rowProperties;
-    rowProperties.reserve(rows);
-    for (int row = 0; row < rows; ++row) {
-        rowProperties.append({pGrid->rowStretch(row), pGrid->rowMinimumHeight(row)});
-    }
-
-    QList<std::tuple<QLayoutItem*, int, int, int, int>> items;
-    items.reserve(pGrid->count());
-    while (pGrid->count()) {
-        int row = 0;
-        int column = 0;
-        int rowSpan = 1;
-        int columnSpan = 1;
-        pGrid->getItemPosition(0, &row, &column, &rowSpan, &columnSpan);
-        items.append({pGrid->takeAt(0), row, column, rowSpan, columnSpan});
-    }
-
-    pGrid->addWidget(pWidget, 0, 0, 1, columns);
-    for (const auto& [pItem, row, column, rowSpan, columnSpan] : items) {
-        pGrid->addItem(pItem, row + 1, column, rowSpan, columnSpan, pItem->alignment());
-    }
-    pGrid->setRowStretch(0, 0);
-    pGrid->setRowMinimumHeight(0, 0);
-    for (int row = 0; row < rows; ++row) {
-        pGrid->setRowStretch(row + 1, rowProperties.at(row).first);
-        pGrid->setRowMinimumHeight(row + 1, rowProperties.at(row).second);
-    }
-}
-
-// A row that leads somewhere rather than setting something; the chevron at its
-// right edge is drawn by the shell stylesheet from the property this puts on.
-static void makeChevronRow(QAbstractButton* pButton)
-{
-    pButton->setProperty("settingsChevronRow", true);
-    pButton->setCursor(Qt::PointingHandCursor);
-    pButton->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
 }
 
 // Created on the first call and only re-worded afterwards, so that a language
@@ -2158,13 +2035,11 @@ void dlgProfilePreferences::setSidebarCollapsed(const bool collapsed)
     mpLabel_wordmark->setVisible(!collapsed);
     // What the delegate leaves the names out by, and the stylesheet draws the
     // narrower selection pill from
-    mpListWidget_categories->setProperty("settingsRail", collapsed);
-    mpListWidget_categories->style()->unpolish(mpListWidget_categories);
-    mpListWidget_categories->style()->polish(mpListWidget_categories);
+    mpListWidget_categories->setProperty(scmProp_rail, collapsed);
+    repolish(mpListWidget_categories);
     for (auto* pSeparator : mpListWidget_categories->findChildren<QFrame*>(qsl("settingsSidebarSeparator"))) {
-        pSeparator->setProperty("settingsRail", collapsed);
-        pSeparator->style()->unpolish(pSeparator);
-        pSeparator->style()->polish(pSeparator);
+        pSeparator->setProperty(scmProp_rail, collapsed);
+        repolish(pSeparator);
     }
     // A name no longer drawn is still what the row is: the item keeps its text -
     // its accessible name - and offers it as a tooltip while nothing shows it
@@ -2173,23 +2048,6 @@ void dlgProfilePreferences::setSidebarCollapsed(const bool collapsed)
         pItem->setToolTip(collapsed ? pItem->text() : QString());
     }
     mpListWidget_categories->doItemsLayout();
-}
-
-static void collectFocusableInLayoutOrder(const QLayout* pLayout, QList<QWidget*>& chain)
-{
-    for (int i = 0, total = pLayout->count(); i < total; ++i) {
-        QLayoutItem* pItem = pLayout->itemAt(i);
-        if (QWidget* pWidget = pItem->widget(); pWidget) {
-            if ((pWidget->focusPolicy() & Qt::TabFocus) == Qt::TabFocus) {
-                chain.append(pWidget);
-            }
-            if (const QLayout* pChildLayout = pWidget->layout(); pChildLayout) {
-                collectFocusableInLayoutOrder(pChildLayout, chain);
-            }
-        } else if (const QLayout* pChildLayout = pItem->layout(); pChildLayout) {
-            collectFocusableInLayoutOrder(pChildLayout, chain);
-        }
-    }
 }
 
 // Qt appends a reparented widget to the end of the dialog's focus chain, so
@@ -2297,7 +2155,7 @@ bool dlgProfilePreferences::eventFilter(QObject* pObject, QEvent* pEvent)
     // them; a property puts it back, since a QSS rule cannot ask whether the
     // widget a subcontrol belongs to has the focus
     if (pObject == mpListWidget_categories && (pEvent->type() == QEvent::FocusIn || pEvent->type() == QEvent::FocusOut)) {
-        mpListWidget_categories->setProperty("settingsFocused", pEvent->type() == QEvent::FocusIn);
+        mpListWidget_categories->setProperty(scmProp_focused, pEvent->type() == QEvent::FocusIn);
         mpListWidget_categories->style()->polish(mpListWidget_categories);
     }
     return QDialog::eventFilter(pObject, pEvent);
@@ -2319,12 +2177,6 @@ void dlgProfilePreferences::showCategory(const QString& key, QWidget* pSpotlight
     }
     mpListWidget_categories->setCurrentRow(categoryRow(category));
     spotlight(pSpotlightTarget);
-}
-
-static QString spotlightStyleSheet(const QColor& accent, const qreal strength)
-{
-    return qsl("#settingsSpotlight { border: 2px solid rgba(%1, %2, %3, %4); border-radius: 8px; background-color: rgba(%1, %2, %3, %5); }")
-            .arg(QString::number(accent.red()), QString::number(accent.green()), QString::number(accent.blue()), QString::number(strength, 'f', 3), QString::number(strength * 0.08, 'f', 3));
 }
 
 // Deferred because setTab() runs before the dialog is shown, when nothing has
@@ -2376,80 +2228,6 @@ void dlgProfilePreferences::spotlight(QWidget* pTarget)
         connect(pAnimation, &QVariantAnimation::finished, pPulse, &QWidget::deleteLater);
         pAnimation->start(QAbstractAnimation::DeleteWhenStopped);
     });
-}
-
-// Rich text, the & of keyboard accelerators, accents and case are all folded
-// away, so that "fonte" finds "Fonté" and "save" finds "&Save"
-static QString foldForSearch(const QString& text)
-{
-    QString plain;
-    plain.reserve(text.size());
-    bool inTag = false;
-    for (const QChar character : text) {
-        if (character == QLatin1Char('<')) {
-            inTag = true;
-        } else if (character == QLatin1Char('>')) {
-            inTag = false;
-        } else if (!inTag && character != QLatin1Char('&')) {
-            plain.append(character);
-        }
-    }
-
-    const QString decomposed = plain.normalized(QString::NormalizationForm_KD);
-    QString folded;
-    folded.reserve(decomposed.size());
-    for (const QChar character : decomposed) {
-        if (character.category() != QChar::Mark_NonSpacing) {
-            folded.append(character);
-        }
-    }
-    return folded.simplified().toCaseFolded();
-}
-
-// A combo box is not here: what it shows is one of its items, and the two
-// callers want its whole list or nothing at all
-static QString visibleTextOf(const QWidget* pWidget)
-{
-    if (const auto* pLabel = qobject_cast<const QLabel*>(pWidget); pLabel) {
-        return pLabel->text();
-    }
-    if (const auto* pGroupBox = qobject_cast<const QGroupBox*>(pWidget); pGroupBox) {
-        return pGroupBox->title();
-    }
-    if (const auto* pButton = qobject_cast<const QAbstractButton*>(pWidget); pButton) {
-        return pButton->text();
-    }
-    return QString();
-}
-
-// What it shows, what its tooltip says, and any synonyms it was given
-static void collectSearchText(const QWidget* pWidget, QStringList& parts)
-{
-    parts << pWidget->property(scmProp_searchKeywords).toString() << pWidget->toolTip();
-    const auto* pComboBox = qobject_cast<const QComboBox*>(pWidget);
-    if (!pComboBox) {
-        parts << visibleTextOf(pWidget);
-        return;
-    }
-    // ...but not what a font picker lists: those are the fonts installed on this
-    // machine, and they make any card holding one a result for "color" or "mono"
-    if (qobject_cast<const QFontComboBox*>(pWidget)) {
-        return;
-    }
-    for (int i = 0, total = pComboBox->count(); i < total; ++i) {
-        parts << pComboBox->itemText(i);
-    }
-}
-
-// Synonyms count too: a card found by a keyword still shows which control carries it
-static QString highlightTextOf(const QWidget* pWidget)
-{
-    const QString text = visibleTextOf(pWidget);
-    if (text.isEmpty()) {
-        return QString();
-    }
-    const QString keywords = pWidget->property(scmProp_searchKeywords).toString();
-    return keywords.isEmpty() ? text : qsl("%1 %2").arg(text, keywords);
 }
 
 // Walked off the real widget tree rather than kept as a hand-written list, so
@@ -2519,27 +2297,6 @@ void dlgProfilePreferences::queueSearch(const QString& query)
         return;
     }
     mpTimer_search->start();
-}
-
-// One ideograph is a word where one Latin letter is not, so it is a query worth
-// running; a lone letter matches most of the dialog and answers nothing.
-static bool wordEnoughToSearch(const QStringList& needles)
-{
-    for (const QString& needle : needles) {
-        if (needle.size() >= 2) {
-            return true;
-        }
-        switch (needle.at(0).script()) {
-        case QChar::Script_Han:
-        case QChar::Script_Hiragana:
-        case QChar::Script_Katakana:
-        case QChar::Script_Hangul:
-            return true;
-        default:
-            break;
-        }
-    }
-    return false;
 }
 
 void dlgProfilePreferences::runSearch(const QString& query)
@@ -2729,15 +2486,6 @@ void dlgProfilePreferences::exitSearchMode()
     setUpdatesEnabled(true);
 }
 
-// A stylesheet rule selecting on a property only takes effect on a re-polish
-static void setSearchMatch(QWidget* pWidget, const QVariant& matched)
-{
-    pWidget->setProperty("searchMatch", matched);
-    pWidget->style()->unpolish(pWidget);
-    pWidget->style()->polish(pWidget);
-    pWidget->update();
-}
-
 void dlgProfilePreferences::clearSearchHighlights()
 {
     for (const auto& pWidget : std::as_const(mHighlightedWidgets)) {
@@ -2885,70 +2633,6 @@ void dlgProfilePreferences::slot_sidebarItemClicked(QListWidgetItem* pItem)
     }
 }
 
-// Every surface is blended from the palette rather than written out as hex, so
-// the shell follows whichever theme it is handed
-static QColor blend(const QColor& from, const QColor& to, const qreal amount)
-{
-    return QColor::fromRgbF(from.redF() + (to.redF() - from.redF()) * amount, from.greenF() + (to.greenF() - from.greenF()) * amount, from.blueF() + (to.blueF() - from.blueF()) * amount);
-}
-
-static QString rgba(const QColor& color, const qreal alpha)
-{
-    return qsl("rgba(%1, %2, %3, %4)").arg(QString::number(color.red()), QString::number(color.green()), QString::number(color.blue()), QString::number(alpha, 'f', 3));
-}
-
-// The shape lives in the alpha channel: filling through it keeps the
-// antialiased edges that recolouring the pixels would harden into a staircase
-static QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
-{
-    QPixmap glyph = source;
-    QPainter painter(&glyph);
-    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    painter.fillRect(glyph.rect(), color);
-    painter.end();
-    return glyph;
-}
-
-// Measured off a throwaway pair rather than added up from the indicator's
-// width, because what a style leaves after an indicator is the style's business:
-// Fusion allows 6px and the macOS style 8.
-static int measuredCardTitleInset(QWidget* pParent, const QString& indicatorRules)
-{
-    const auto titleLeft = [&](const bool checkable) {
-        QGroupBox box(pParent);
-        box.setProperty("settingsCard", true);
-        box.setCheckable(checkable);
-        // Never shown or read, but a box with no title has no label to place
-        box.setTitle(qsl("Aa"));
-        // Its own rather than the shell's, which is the string being built
-        box.setStyleSheet(indicatorRules);
-        QStyleOptionGroupBox option;
-        option.initFrom(&box);
-        option.subControls = QStyle::SC_GroupBoxFrame | QStyle::SC_GroupBoxLabel;
-        if (checkable) {
-            option.subControls |= QStyle::SC_GroupBoxCheckBox;
-            option.state |= QStyle::State_On;
-        }
-        option.text = box.title();
-        option.textAlignment = Qt::AlignLeft;
-        option.lineWidth = 0;
-        option.midLineWidth = 0;
-        return box.style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxLabel, &box).left();
-    };
-    return qMax(0, titleLeft(true) - titleLeft(false));
-}
-
-// A QLabel's rich text reaches a picture only through a URL, and a glyph tinted
-// at runtime has no path - so it travels inline
-static QString inlineGlyph(const QPixmap& glyph)
-{
-    QByteArray png;
-    QBuffer buffer(&png);
-    buffer.open(QIODevice::WriteOnly);
-    glyph.save(&buffer, "PNG");
-    return qsl(R"(<img src="data:image/png;base64,%1" width="18" height="18">)").arg(QString::fromLatin1(png.toBase64()));
-}
-
 // Called from applyShellStyle() alone, which is both where the colours come
 // from and the one thing an appearance change runs again
 void dlgProfilePreferences::restyleSidebarIcons(const QColor& normal, const QColor& selected)
@@ -2998,36 +2682,22 @@ void dlgProfilePreferences::applyShellStyle()
     if (!mpWidget_shell) {
         return;
     }
-    // The application's palette rather than this dialog's own: a stylesheet
-    // freezes the palette of the widget it is assigned to, so the profile's Lua
-    // stylesheet leaves the dialog holding the theme it was shown in - and even
-    // without one, the palette change is an event still undelivered when
-    // signal_appearanceChanged() arrives. qApp's palette is swapped
-    // synchronously by mudlet::setAppearance(), so it is already the new one.
-    const QPalette themePalette = QApplication::palette();
-    const QColor cardColor = themePalette.color(QPalette::Base);
-    const QColor textColor = themePalette.color(QPalette::WindowText);
-    const QColor accentColor = themePalette.color(QPalette::Highlight);
-    // Off the palette rather than mudlet::inDarkMode(), so a dark system theme
-    // under "follow the system" gets the dark treatment too
-    const bool darkPage = cardColor.lightness() < 128;
-
-    // Measured from the card and text colours, the one pair a palette must keep
-    // apart to be usable at all: Mudlet's light appearance has window, base and
-    // mid within three levels, so a border mixed from those is invisible
-    const QColor pageColor = blend(cardColor, QColor(Qt::black), darkPage ? 0.35 : 0.04);
-    const QColor borderColor = blend(cardColor, textColor, darkPage ? 0.28 : 0.16);
-    const QString hoverSoft = rgba(textColor, 0.07);
-    const QString accentSoft = rgba(accentColor, 0.14);
-    // A saturated highlight colour rarely holds its own against both pages
-    const QColor accentText = darkPage ? blend(accentColor, QColor(Qt::white), 0.45) : blend(accentColor, QColor(Qt::black), 0.2);
-    const QColor mutedText = blend(cardColor, textColor, 0.7);
-    // A marker pen whose lightness is chosen for the page it lies on: an opaque
-    // pale wash under dark text, a darker one light text still shows through
-    const QColor markerColor = QColor::fromHslF(0.13, 0.9, darkPage ? 0.34 : 0.72);
-    const QString markerSoft = rgba(markerColor, darkPage ? 0.75 : 0.95);
-    const QColor scrollHandle = blend(pageColor, textColor, 0.22);
-    const QColor scrollHandleHover = blend(pageColor, textColor, 0.40);
+    // The shared recipes, mixed from the application palette - see themeTokens()
+    // for why it is that one and not this dialog's own
+    const ThemeTokens tokens = themeTokens();
+    const QColor cardColor = tokens.card;
+    const QColor textColor = tokens.text;
+    const QColor accentColor = tokens.accent;
+    const bool darkPage = tokens.darkPage;
+    const QColor pageColor = tokens.page;
+    const QColor borderColor = tokens.border;
+    const QString hoverSoft = tokens.hoverSoft;
+    const QString accentSoft = tokens.accentSoft;
+    const QColor accentText = tokens.accentText;
+    const QColor mutedText = tokens.mutedText;
+    // How far the pen is taken over what it is drawn on is this dialog's own:
+    // the search wants a wash the words still read through, not a block of ink
+    const QString markerSoft = rgba(tokens.marker, darkPage ? 0.75 : 0.95);
 
     if (mpAction_searchIcon) {
         mpAction_searchIcon->setIcon(QIcon(tintedGlyph(QPixmap(qsl(":/icons/settings-search.png")), mutedText)));
@@ -3078,7 +2748,7 @@ void dlgProfilePreferences::applyShellStyle()
                                       // padding goes and the bar is a different fraction
                                       "#settingsCategoryList[settingsRail=\"true\"]::item { padding-left: 0px; }"
                                       "#settingsCategoryList[settingsRail=\"true\"]::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-                                      " stop:0 %5, stop:%15 %5, stop:%16 %4, stop:1 %4); }"
+                                      " stop:0 %5, stop:%13 %5, stop:%14 %4, stop:1 %4); }"
                                       "#settingsSidebarSeparator { border: none; background-color: %7; margin: 8px 16px; }"
                                       "#settingsSidebarSeparator[settingsRail=\"true\"] { margin: 8px 2px; }"
                                       "#settingsStack { background: transparent; }"
@@ -3087,23 +2757,6 @@ void dlgProfilePreferences::applyShellStyle()
                                       // Painted rather than left transparent, as a transparent
                                       // surface falls back to the palette that stylesheet changed.
                                       "QWidget[settingsSurface=\"true\"] { background-color: %1; border: none; }"
-                                      // A scroll area's bars answer only to a descendant selector
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar:vertical, #settingsCategoryList QScrollBar:vertical"
-                                      " { background-color: %1; width: 12px; margin: 0px; border: none; }"
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar:horizontal"
-                                      " { background-color: %1; height: 12px; margin: 0px; border: none; }"
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar::handle:vertical, #settingsCategoryList QScrollBar::handle:vertical"
-                                      " { background-color: %13; border-radius: 5px; min-height: 32px; margin: 1px; }"
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar::handle:horizontal"
-                                      " { background-color: %13; border-radius: 5px; min-width: 32px; margin: 1px; }"
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar::handle:hover, #settingsCategoryList QScrollBar::handle:hover"
-                                      " { background-color: %14; }"
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar::add-line, QScrollArea[settingsSurface=\"true\"] QScrollBar::sub-line,"
-                                      "#settingsCategoryList QScrollBar::add-line, #settingsCategoryList QScrollBar::sub-line"
-                                      " { width: 0px; height: 0px; }"
-                                      "QScrollArea[settingsSurface=\"true\"] QScrollBar::add-page, QScrollArea[settingsSurface=\"true\"] QScrollBar::sub-page,"
-                                      "#settingsCategoryList QScrollBar::add-page, #settingsCategoryList QScrollBar::sub-page"
-                                      " { background-color: %1; }"
                                       "#settingsWordmark { font-weight: bold; font-size: 125%; }"
                                       "#settingsPageTitle { font-weight: bold; font-size: 145%; }"
                                       "#settingsSearchField { border: 1px solid %7; border-radius: 8px; padding-left: 6px; background-color: %8; }"
@@ -3151,9 +2804,12 @@ void dlgProfilePreferences::applyShellStyle()
                                       "#settingsHeroHeadline { font-weight: bold; font-size: 115%; }"
                                       "#settingsHeroDetail { color: %9; }")
                                           .arg(pageColor.name(), textColor.name(), hoverSoft, accentSoft, accentColor.name(), accentText.name(), borderColor.name(), cardColor.name(), mutedText.name())
-                                          .arg(markerSoft, QString::number(accentBarStop, 'f', 5), QString::number(accentBarStop + 0.0001, 'f', 5), scrollHandle.name(), scrollHandleHover.name())
+                                          .arg(markerSoft, QString::number(accentBarStop, 'f', 5), QString::number(accentBarStop + 0.0001, 'f', 5))
                                           .arg(QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5))
-                                  + cardIndicatorRules + cardTitleRule);
+                                  + cardIndicatorRules
+                                  + cardTitleRule
+                                  // A scroll area's bars answer only to a descendant selector
+                                  + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens) + scrollBarStyleSheet(qsl("#settingsCategoryList"), tokens));
 
     // Fusion draws every control outline - checkbox and radio indicators
     // included - as palette(window) darkened by 40%, within 1.1:1 of a dark
@@ -3161,7 +2817,7 @@ void dlgProfilePreferences::applyShellStyle()
     // nothing. Per control, because a stylesheet freezes the palette of every
     // widget it polishes - and after the stylesheet, because assigning one
     // re-polishes the subtree back to the palette it was first polished with.
-    const QColor controlOutlineSource = darkPage ? blend(cardColor, textColor, 0.55) : themePalette.color(QPalette::Window);
+    const QColor controlOutlineSource = darkPage ? blend(cardColor, textColor, 0.55) : QApplication::palette().color(QPalette::Window);
     const QColor placeholderText = blend(cardColor, textColor, 0.45);
     for (auto* pControl : mpWidget_shell->findChildren<QWidget*>()) {
         if (!qobject_cast<QAbstractButton*>(pControl) && !qobject_cast<QLineEdit*>(pControl) && !qobject_cast<QAbstractSpinBox*>(pControl) && !qobject_cast<QComboBox*>(pControl)) {
@@ -3234,44 +2890,6 @@ void dlgProfilePreferences::connectApplyTriggers()
     }
 }
 
-// The types are the ones connectApplyTriggers() listens to, so everything able
-// to schedule an apply can also be told apart from how it was populated
-static QVariant controlValue(const QObject* pControl)
-{
-    if (const auto* pGroupBox = qobject_cast<const QGroupBox*>(pControl)) {
-        return pGroupBox->isCheckable() ? QVariant(pGroupBox->isChecked()) : QVariant();
-    }
-    if (const auto* pCheckBox = qobject_cast<const QCheckBox*>(pControl)) {
-        // The check state rather than isChecked(), for the tri-state boxes
-        return QVariant::fromValue(pCheckBox->checkState());
-    }
-    if (const auto* pButton = qobject_cast<const QAbstractButton*>(pControl)) {
-        if (qobject_cast<const QPushButton*>(pControl) || qobject_cast<const QToolButton*>(pControl)) {
-            return {};
-        }
-        return pButton->isChecked();
-    }
-    if (const auto* pFontComboBox = qobject_cast<const QFontComboBox*>(pControl)) {
-        return pFontComboBox->currentFont();
-    }
-    if (const auto* pComboBox = qobject_cast<const QComboBox*>(pControl)) {
-        return pComboBox->currentIndex();
-    }
-    if (const auto* pSpinBox = qobject_cast<const QSpinBox*>(pControl)) {
-        return pSpinBox->value();
-    }
-    if (const auto* pDoubleSpinBox = qobject_cast<const QDoubleSpinBox*>(pControl)) {
-        return pDoubleSpinBox->value();
-    }
-    if (const auto* pDateTimeEdit = qobject_cast<const QDateTimeEdit*>(pControl)) {
-        return pDateTimeEdit->dateTime();
-    }
-    if (const auto* pLineEdit = qobject_cast<const QLineEdit*>(pControl)) {
-        return pLineEdit->text();
-    }
-    return {};
-}
-
 // In the order the .ui file lists them
 static enums::controlsVisibility visibilityFromComboIndex(const int index)
 {
@@ -3283,131 +2901,6 @@ static enums::controlsVisibility visibilityFromComboIndex(const int index)
     default:
         return enums::visibleAlways;
     }
-}
-
-// Qt sets the modified flag on the first keystroke and slot_lineEditFinished()
-// clears it again, so until then the field holds half a word rather than a
-// setting - which neither the apply nor the snapshot below takes it for.
-static bool beingTypedInto(const QObject* pControl)
-{
-    const auto* pLineEdit = qobject_cast<const QLineEdit*>(pControl);
-    return pLineEdit && pLineEdit->hasFocus() && pLineEdit->isModified();
-}
-
-SettingsSnapshot::SettingsSnapshot(const QWidget& owner, const QMap<QString, QKeySequence>& shortcuts)
-: mOwner(owner)
-, mCurrentShortcuts(shortcuts)
-{
-}
-
-bool SettingsSnapshot::carriesValue(const QObject* pControl)
-{
-    return controlValue(pControl).isValid();
-}
-
-void SettingsSnapshot::take()
-{
-    const QHash<const QObject*, QVariant> previous = mValues;
-    mValues.clear();
-    for (const auto* pWidget : mOwner.findChildren<QWidget*>()) {
-        const QVariant value = controlValue(pWidget);
-        if (!value.isValid()) {
-            continue;
-        }
-        // The apply this snapshot follows left a half-typed field alone, so what
-        // it was last populated with has to stand until that edit finishes
-        if (const auto it = previous.constFind(pWidget); beingTypedInto(pWidget) && it != previous.constEnd()) {
-            mValues.insert(pWidget, *it);
-            continue;
-        }
-        mValues.insert(pWidget, value);
-    }
-    mShortcuts = mCurrentShortcuts;
-}
-
-void SettingsSnapshot::take(const QObject* pControl)
-{
-    mValues.insert(pControl, controlValue(pControl));
-}
-
-bool SettingsSnapshot::dirty(const QObject* pControl) const
-{
-    // The debounce is shared, so the apply about to read this was very likely
-    // started by another control's edit
-    if (beingTypedInto(pControl)) {
-        return false;
-    }
-    const auto it = mValues.constFind(pControl);
-    if (it == mValues.constEnd()) {
-        // A control that came into being after the last snapshot:
-        return true;
-    }
-    return *it != controlValue(pControl);
-}
-
-// For a setting spread over several controls - the borders, the Discord privacy
-// flags - one of them changing means the write happens. What is written is
-// still composed control by control: an undirty control contributes the value
-// the Host holds now rather than what it shows, which a script may have moved
-// on from (#10165). Members that are separate settings take their own guard.
-bool SettingsSnapshot::anyDirty(const QList<const QObject*>& controls) const
-{
-    for (const auto* pControl : controls) {
-        if (dirty(pControl)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool SettingsSnapshot::shortcutsDirty() const
-{
-    return mCurrentShortcuts != mShortcuts;
-}
-
-bool SettingsSnapshot::shortcutDirty(const QString& key) const
-{
-    return mCurrentShortcuts.value(key) != mShortcuts.value(key);
-}
-
-bool SettingsSnapshot::pendingEdits(const QTimer* pApplyTimer, const QLineEdit* pSearchField) const
-{
-    // Whatever the settings say, what the controls hold is the user's until the
-    // apply has run - and the refresh at the end of it re-reads them anyway
-    if (pApplyTimer && pApplyTimer->isActive()) {
-        return true;
-    }
-    for (const auto* pWidget : mOwner.findChildren<QWidget*>()) {
-        if (pWidget == pSearchField || !carriesValue(pWidget)) {
-            continue;
-        }
-        // dirty() answers false for a field being typed into, which is exactly
-        // the edit that must not be written over here - so it is asked separately
-        if (beingTypedInto(pWidget) || dirty(pWidget)) {
-            return true;
-        }
-    }
-    if (shortcutsDirty()) {
-        return true;
-    }
-    // A shortcut editor holds a capture until editingFinished, so one showing
-    // anything other than what it last committed is an edit in progress
-    for (auto it = mEditors.cbegin(), end = mEditors.cend(); it != end; ++it) {
-        if (it.value() && it.value()->keySequence() != mCurrentShortcuts.value(it.key())) {
-            return true;
-        }
-    }
-    return false;
-}
-
-TKeySequenceEdit* SettingsSnapshot::editorFor(const QString& key) const
-{
-    return mEditors.value(key).data();
-}
-
-void SettingsSnapshot::addEditor(const QString& key, TKeySequenceEdit* pEditor)
-{
-    mEditors.insert(key, pEditor);
 }
 
 // The dialog stays open for hours while scripts and other dialogs move the

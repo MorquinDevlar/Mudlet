@@ -246,10 +246,12 @@ private slots:
     }
 
     // One click on a tree entry emits itemSelectionChanged and then itemClicked, so
-    // slot_scriptsSelected() runs twice and the second run, on the already-current item,
-    // is an easy-to-miss second teardown. The replacement item can land on the freed one,
-    // in which case "+" silently renames it instead of crashing.
-    void testReselectingTheSameScriptDropsTheNotedHandler()
+    // slot_scriptsSelected() used to run twice and the second run, on the already-current
+    // item, was an easy-to-miss second teardown: the replacement item could land on the
+    // freed one, in which case "+" silently renamed it instead of crashing. The itemClicked
+    // wiring now drops same-row emissions, so there is no second teardown to survive and
+    // the noted item stays the live one the user picked.
+    void testReselectingTheSameScriptLeavesTheNotedHandlerLive()
     {
         QTreeWidgetItem* pScript = addSavedScript(qsl("SoloScript"), {qsl("myTestEvent")});
 
@@ -264,15 +266,17 @@ private slots:
         emit mpEditor->treeWidget_scripts->itemClicked(pScript, 0);
         QTest::qWait(50ms);
 
-        QCOMPARE(mpEditor->mpScriptsMainAreaEditHandlerItem, nullptr);
-        QCOMPARE(mpEditor->mIsScriptsMainAreaEditHandler, false);
+        QCOMPARE(handlerList()->count(), 1);
+        QCOMPARE(mpEditor->mpScriptsMainAreaEditHandlerItem, handlerList()->item(0));
+        QCOMPARE(mpEditor->mIsScriptsMainAreaEditHandler, true);
 
+        // still editing that handler, so "+" renames it rather than adding a second one
         handlerEntry()->setText(qsl("secondEvent"));
         mpEditor->slot_scriptMainAreaAddHandler();
         mpEditor->slot_saveSelectedItem();
         QTest::qWait(50ms);
 
-        QCOMPARE(savedHandlersOf(pScript), (QStringList{qsl("myTestEvent"), qsl("secondEvent")}));
+        QCOMPARE(savedHandlersOf(pScript), QStringList{qsl("secondEvent")});
 
         removeScripts({pScript});
     }

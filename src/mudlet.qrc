@@ -81,6 +81,27 @@
         <file>icons/edit-paste.png</file>
         <file>icons/edit-select-all.png</file>
         <file>icons/edit-web-search.png</file>
+        <file>icons/editor-add-group.png</file>
+        <file>icons/editor-add.png</file>
+        <file>icons/editor-aliases.png</file>
+        <file>icons/editor-buttons.png</file>
+        <file>icons/editor-debug.png</file>
+        <file>icons/editor-delete.png</file>
+        <file>icons/editor-errors.png</file>
+        <file>icons/editor-export.png</file>
+        <file>icons/editor-import.png</file>
+        <file>icons/editor-keys.png</file>
+        <file>icons/editor-module.png</file>
+        <file>icons/editor-options.png</file>
+        <file>icons/editor-redo.png</file>
+        <file>icons/editor-save-item.png</file>
+        <file>icons/editor-save-profile.png</file>
+        <file>icons/editor-scripts.png</file>
+        <file>icons/editor-statistics.png</file>
+        <file>icons/editor-timers.png</file>
+        <file>icons/editor-triggers.png</file>
+        <file>icons/editor-undo.png</file>
+        <file>icons/editor-variables.png</file>
         <file>icons/errors.png</file>
         <file>icons/export.png</file>
         <file>icons/face-plain.png</file>

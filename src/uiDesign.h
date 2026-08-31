@@ -1,0 +1,239 @@
+#ifndef MUDLET_UIDESIGN_H
+#define MUDLET_UIDESIGN_H
+
+/***************************************************************************
+ *   Copyright (C) 2026 by Vadim Peretokin - vadim.peretokin@mudlet.org    *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, write to the                         *
+ *   Free Software Foundation, Inc.,                                       *
+ *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
+ ***************************************************************************/
+
+#include <QColor>
+#include <QHash>
+#include <QKeySequence>
+#include <QList>
+#include <QMap>
+#include <QPixmap>
+#include <QPointer>
+#include <QString>
+#include <QStringList>
+#include <QVariant>
+
+class QAbstractButton;
+class QGridLayout;
+class QLayout;
+class QLineEdit;
+class QObject;
+class QTimer;
+class QWidget;
+class TKeySequenceEdit;
+
+// The shell the settings dialog is built into: the pieces of it that describe a
+// look rather than a setting, so another dialog can be given the same one.
+namespace uiDesign {
+
+// Synonyms a control is searchable by that it does not show anywhere. The
+// property names the shell stylesheet selects on stay literals beside it: a
+// constant cannot be interpolated into a QStringLiteral.
+inline constexpr char scmProp_searchKeywords[] = "searchKeywords";
+// The sidebar is collapsed to icons only. Named for the dialog it started in
+// and kept that way in the editor, since it is the shared delegate's contract.
+inline constexpr char scmProp_rail[] = "settingsRail";
+// ...and likewise the list holding the keyboard focus, which a QSS rule cannot
+// ask about on its own
+inline constexpr char scmProp_focused[] = "settingsFocused";
+// This group box is a card. The two windows draw the same card from their own
+// rules, so which property says so is the one thing that differs.
+inline constexpr char scmProp_settingsCard[] = "settingsCard";
+inline constexpr char scmProp_editorCard[] = "editorCard";
+
+// Every surface in either window is mixed from three palette colours and
+// nothing else, so that a theme change moves all of them together. The recipes
+// live here rather than in each window: two windows deriving a border by eye is
+// how they drift apart.
+struct ThemeTokens
+{
+    // Straight off the palette: the card a control sits on, the words on it,
+    // and the colour the theme points with
+    QColor card;
+    QColor text;
+    QColor accent;
+    // Off the palette rather than mudlet::inDarkMode(), so a dark system theme
+    // under "follow the system" gets the dark treatment too
+    bool darkPage = false;
+    // The surface the cards are laid on, and the hairline round one. Measured
+    // from the card and text colours, the one pair a palette must keep apart to
+    // be usable at all: Mudlet's light appearance has window, base and mid
+    // within three levels, so a border mixed from those is invisible.
+    QColor page;
+    QColor border;
+    QColor mutedText;
+    QColor disabledText;
+    // A saturated highlight colour rarely holds its own against both pages
+    QColor accentText;
+    // A marker pen whose lightness is chosen for the page it lies on: an opaque
+    // pale wash under dark text, a darker one light text still shows through
+    QColor marker;
+    // Washes rather than colours, ready to go into a stylesheet: what a hovered
+    // row is tinted with, and what a chosen chip is filled with
+    QString hoverSoft;
+    QString accentSoft;
+};
+
+ThemeTokens themeTokens();
+
+// What a dot, a chip or a banner is drawn in: the hue says which reading it is
+// while the lightness comes off the page it is drawn on, so one colour holds
+// against a light and a dark theme alike
+inline constexpr qreal scmStateHue_ok = 0.34;
+inline constexpr qreal scmStateHue_warning = 0.09;
+inline constexpr qreal scmStateHue_error = 0.02;
+QColor stateColor(const qreal hue, const bool darkPage);
+
+// A scroll bar is chrome the reader is not meant to notice until they reach for
+// it, and one window's idea of that is every window's. The prefix is what the
+// rules are scoped by - a scroll area's own bars answer only to a descendant
+// selector.
+QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
+
+// QLayout::setAlignment() is documented not to look in child layouts, and a
+// card's controls are nested in them
+bool alignInLayoutTree(QLayout* pLayout, const QWidget* pWidget, const Qt::Alignment alignment);
+
+// QLayout::removeWidget() only looks at its own items, and the .ui file nests
+// controls several layouts deep. Qt would find it from QLayout::addWidget()
+// instead, but warns once per widget - which for a dialog's worth of moves
+// buries anything else on the console.
+bool removeFromLayoutTree(QLayout* pLayout, QWidget* pWidget);
+
+void detachFromLayout(QWidget* pWidget);
+
+void invalidateLayoutsUpTo(QWidget* pWidget, const QWidget* pTop);
+
+// A profile's Lua stylesheet is applied to the whole dialog and reaches every
+// widget it does not name, so the shell's own scaffolding carries a property
+// the shell stylesheet keeps it transparent by.
+void markAsShellSurface(QWidget* pWidget);
+
+// A grid has no notion of inserting a row, so every item is taken out and put
+// back one row lower, carrying its row properties. The columns are untouched,
+// which keeps a .ui file's column stretches meaning what they said.
+void insertGridRowAtTop(QGridLayout* pGrid, QWidget* pWidget);
+
+// A row that leads somewhere rather than setting something; the chevron at its
+// right edge is drawn by the shell stylesheet from the property this puts on.
+void makeChevronRow(QAbstractButton* pButton);
+
+void collectFocusableInLayoutOrder(const QLayout* pLayout, QList<QWidget*>& chain);
+
+QString spotlightStyleSheet(const QColor& accent, const qreal strength);
+
+// Rich text, the & of keyboard accelerators, accents and case are all folded
+// away, so that "fonte" finds "Fonté" and "save" finds "&Save"
+QString foldForSearch(const QString& text);
+
+// A combo box is not here: what it shows is one of its items, and the two
+// callers want its whole list or nothing at all
+QString visibleTextOf(const QWidget* pWidget);
+
+// What it shows, what its tooltip says, and any synonyms it was given
+void collectSearchText(const QWidget* pWidget, QStringList& parts);
+
+// Synonyms count too: a card found by a keyword still shows which control carries it
+QString highlightTextOf(const QWidget* pWidget);
+
+// One ideograph is a word where one Latin letter is not, so it is a query worth
+// running; a lone letter matches most of the dialog and answers nothing.
+bool wordEnoughToSearch(const QStringList& needles);
+
+// A stylesheet rule selecting on a property only takes effect on a re-polish
+void repolish(QWidget* pWidget);
+
+void setSearchMatch(QWidget* pWidget, const QVariant& matched);
+
+// Every surface is blended from the palette rather than written out as hex, so
+// the shell follows whichever theme it is handed
+QColor blend(const QColor& from, const QColor& to, const qreal amount);
+
+QString rgba(const QColor& color, const qreal alpha);
+
+// The shape lives in the alpha channel: filling through it keeps the
+// antialiased edges that recolouring the pixels would harden into a staircase
+QPixmap tintedGlyph(const QPixmap& source, const QColor& color);
+
+// Measured off a throwaway pair rather than added up from the indicator's
+// width, because what a style leaves after an indicator is the style's business:
+// Fusion allows 6px and the macOS style 8. The throwaway box carries whichever
+// card property the rules being measured under select on.
+int measuredCardTitleInset(QWidget* pParent, const QString& indicatorRules, const char* cardProperty = scmProp_settingsCard);
+
+// A QLabel's rich text reaches a picture only through a URL, and a glyph tinted
+// at runtime has no path - so it travels inline
+QString inlineGlyph(const QPixmap& glyph);
+
+// The types are the ones connectApplyTriggers() listens to, so everything able
+// to schedule an apply can also be told apart from how it was populated
+QVariant controlValue(const QObject* pControl);
+
+// Qt sets the modified flag on the first keystroke and slot_lineEditFinished()
+// clears it again, so until then the field holds half a word rather than a
+// setting - which neither the apply nor the snapshot below takes it for.
+bool beingTypedInto(const QObject* pControl);
+
+// What every apply-relevant control held the last time the dialog read the
+// settings, so that an apply writes back only what the user changed since
+// rather than the whole page (#10165).
+//
+// Both references are to members of the dialog that owns this, so both outlive
+// it. Snapshot keys may dangle if a control is destroyed: they are only ever
+// compared, never dereferenced, and a control coming into being after the last
+// snapshot reads as dirty, which is the safe way round.
+class SettingsSnapshot
+{
+public:
+    Q_DISABLE_COPY(SettingsSnapshot)
+    SettingsSnapshot(const QWidget& owner, const QMap<QString, QKeySequence>& shortcuts);
+    // Whether a widget holds a value a setting is written from at all
+    static bool carriesValue(const QObject* pControl);
+    // Called once the controls hold what the settings say, so that anything
+    // differing from this afterwards is the user's own edit
+    void take();
+    // ...and for one control whose list was rebuilt under a dialog already
+    // showing it
+    void take(const QObject* pControl);
+    bool dirty(const QObject* pControl) const;
+    bool anyDirty(const QList<const QObject*>& controls) const;
+    bool shortcutsDirty() const;
+    bool shortcutDirty(const QString& key) const;
+    // Anything the user has changed that the settings do not know about yet: a
+    // control differing from its snapshot, an uncommitted shortcut, a part-typed
+    // line edit, or an apply still waiting out its debounce
+    bool pendingEdits(const QTimer* pApplyTimer, const QLineEdit* pSearchField) const;
+    // A second profile re-reads the editors the first left behind rather than
+    // adding a second row of them
+    TKeySequenceEdit* editorFor(const QString& key) const;
+    void addEditor(const QString& key, TKeySequenceEdit* pEditor);
+
+private:
+    const QWidget& mOwner;
+    const QMap<QString, QKeySequence>& mCurrentShortcuts;
+    QHash<const QObject*, QVariant> mValues;
+    QMap<QString, QKeySequence> mShortcuts;
+    QMap<QString, QPointer<TKeySequenceEdit>> mEditors;
+};
+
+} // namespace uiDesign
+
+#endif // MUDLET_UIDESIGN_H
