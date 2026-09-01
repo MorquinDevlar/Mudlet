@@ -70,6 +70,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -141,6 +142,34 @@ static constexpr int scmEditorSidebarRowChrome = 40;
 // breakpoint, not a width anything is held to
 static constexpr int scmEditorContentColumnWidth = 640;
 
+// The column an item is edited in - the form, the strip that heads the code
+// pane and the pane itself - is one surface, held away from the window's edges
+// by this and by nothing else. Set on the frame that carries all three rather
+// than on each of them, so that everything down the column lines up by
+// construction.
+static constexpr int scmEditorColumnPaddingHorizontal = 14;
+static constexpr int scmEditorColumnPaddingTop = 12;
+// ...and what one piece of that column is held away from the next by
+static constexpr int scmEditorColumnSpacing = 12;
+
+// The ID beside an item's name, drawn as a pill: a monospace word a size down
+// from the form around it, in a box whose corner is half its height
+static constexpr qreal scmEditorIdChipFontScale = 0.85;
+static constexpr int scmEditorIdChipPaddingVertical = 3;
+
+// What is left round the word on the button the trigger's options are opened
+// from. Its height is not left to these: a min-height in a stylesheet is what a
+// tool button's contents are given, and the style then adds its own margins on
+// top - so the button is set to the fields' height outright instead.
+static constexpr int scmEditorRowButtonPaddingVertical = 5;
+static constexpr int scmEditorRowButtonPaddingHorizontal = 12;
+
+// How far a control the reader can press is taken while the pointer is on it:
+// a raised one lifts a shade further off what carries it, while an outlined one
+// draws its hairline a shade nearer the words instead
+static constexpr qreal scmEditorRaisedHoverWeight = 0.08;
+static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
+
 // A match row is stepped in from the heading naming the item it was found in -
 // far enough to read as belonging to it, and no further, because the panel is
 // narrow and the line the match is on is what the row is there to show
@@ -148,6 +177,8 @@ static constexpr int scmEditorSearchResultIndent = 14;
 
 // The heading strip the Lua editor sits under, which is the splitter's handle
 static constexpr int scmEditorCodeHeaderGlyphSize = 13;
+// What the heading is set in from the code pane's own left edge
+static constexpr int scmEditorCodeHeaderInset = 4;
 // Kept clear in the middle of the strip for the grip the handle draws there
 static constexpr int scmEditorCodeHeaderGripGap = 56;
 static constexpr int scmEditorCompileDotDiameter = 8;
@@ -165,7 +196,8 @@ static constexpr int scmEditorColorWellHeight = 26;
 // The boxes the two matching modes are named in, and the gap after them, which
 // is also what the rows of the panel are spaced by
 static constexpr int scmEditorModeChipPadding = 7;
-static constexpr int scmEditorModeChipGap = 6;
+static constexpr int scmEditorCardRowGap = 8;
+static constexpr int scmEditorModeChipGap = scmEditorCardRowGap;
 // Three digits and a pair of arrows; the rest of the row is the words around it
 static constexpr int scmEditorOptionsSpinBoxWidth = 72;
 // How many lines the AND mode can be asked to match within. Nothing in TTrigger
@@ -176,6 +208,11 @@ static constexpr int scmEditorOptionsSpinBoxWidth = 72;
 static constexpr int scmEditorMatchWithinLinesMax = 999;
 // A styled check indicator has no size of its own to fall back on
 static constexpr int scmEditorCardIndicatorSize = 13;
+// What a card leaves round what it holds - tighter than the settings dialog's
+// 16, as the options column is a third of the width a settings page is - and,
+// since the title is the first line inside the frame rather than a heading
+// above it, how far in from the frame the title starts as well
+static constexpr int scmEditorCardPadding = 12;
 // The least the code pane is left with when the options panel borrows height
 // from it: below this the editor stops being one anything can be typed into
 static constexpr int scmEditorSourcePaneFloor = 120;
@@ -187,10 +224,12 @@ static constexpr int scmEditorBannerGlyphSize = 20;
 // for, since that is the font the pattern itself is read in - but never shorter
 // than a field elsewhere on the form plus what the row's layout insets its
 // controls by, or the pattern and the type beside it would be the two controls
-// in the window drawn a size down from the rest
-static constexpr int scmEditorPatternRowMargins = 2;
+// in the window drawn a size down from the rest. This is what the row's layout
+// leaves above and below its controls together, and has to stay the sum of
+// trigger_pattern_edit.ui's top and bottom margins.
+static constexpr int scmEditorPatternRowMargins = 8;
 static constexpr int scmEditorPatternRowMinimumHeight = uiDesign::scmInputHeight + scmEditorPatternRowMargins;
-static constexpr int scmEditorPatternRowPadding = 8;
+static constexpr int scmEditorPatternRowPadding = scmEditorPatternRowMargins;
 // How far the row is taken towards the text on it while the mouse is there -
 // the same wash every other hovered row in the two windows gets
 static constexpr qreal scmEditorPatternHoverStrength = 0.07;
@@ -560,8 +599,18 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpTimer_statusCounts->setInterval(200ms);
     connect(mpTimer_statusCounts, &QTimer::timeout, this, &dlgTriggerEditor::updateEditorItemCounts);
 
+    // The column an item is edited in is inset once, on the frame that carries
+    // the form, the code pane and the strip between them - so the name at the
+    // top of the form, the patterns under it and the first character of the
+    // Lua all start at the same place. Everything inside is flush with it.
+    if (QLayout* pColumnLayout = frame_right->layout()) {
+        pColumnLayout->setContentsMargins(scmEditorColumnPaddingHorizontal, scmEditorColumnPaddingTop, scmEditorColumnPaddingHorizontal, 0);
+    }
+
     mpNonCodeWidgets = new QWidget(this);
     auto* layoutColumn = new QVBoxLayout(mpNonCodeWidgets);
+    layoutColumn->setContentsMargins(0, 0, 0, 0);
+    layoutColumn->setSpacing(scmEditorColumnSpacing);
     splitter_right->addWidget(mpNonCodeWidgets);
 
     // system message area
@@ -14632,14 +14681,37 @@ void dlgTriggerEditor::slot_clearSoundFile()
     mpTriggersMainArea->lineEdit_soundFile->setToolTip(utils::richText(tr("Sound file to play when the trigger fires.")));
 }
 
+// The ID beside a trigger's name, drawn as a pill. The type is set on the two
+// labels here rather than named in the form's stylesheet, because the radius
+// that makes the box a pill is half the height these metrics come to: a size
+// the sheet applied would only be measurable after it had been applied, and a
+// radius named any larger than half the height is clamped into an ellipse
+// rather than rounded further. Answers that height.
+static int styleEditorIdChip(dlgTriggersMainArea* pForm)
+{
+    QFont chipFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QFont formFont = pForm->font();
+    if (formFont.pointSizeF() > 0.0) {
+        chipFont.setPointSizeF(formFont.pointSizeF() * scmEditorIdChipFontScale);
+    } else {
+        chipFont.setPixelSize(std::max(1, qRound(formFont.pixelSize() * scmEditorIdChipFontScale)));
+    }
+
+    for (QLabel* pLabel : {pForm->label_idLabel, pForm->label_idNumber}) {
+        pLabel->setFont(chipFont);
+    }
+
+    const int chipHeight = QFontMetrics(chipFont).height() + 2 * (scmEditorIdChipPaddingVertical + uiDesign::scmInputBorderWidth);
+    pForm->frameId->setFixedHeight(chipHeight);
+    return chipHeight;
+}
+
 // A card in the settings dialog's language. What makes a group box one is the
-// property the shell stylesheet selects on, so nothing else is set here; the
-// inset lines a card without a check box up with the title of one that has one.
+// property the shell stylesheet selects on, so nothing else is set here.
 static QGroupBox* makeEditorCard(QWidget* pParent, const QString& title)
 {
     auto* pCard = new QGroupBox(title, pParent);
     pCard->setProperty("editorCard", true);
-    pCard->setProperty("editorCardTitleInset", true);
     pCard->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     return pCard;
 }
@@ -14704,12 +14776,18 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // The stylesheet draws the frame the checked state is read from, which
     // auto-raise would otherwise take away again
     pToggle->setAutoRaise(false);
+    // ...and it stands on the row at the height of the fields beside it
+    pToggle->setFixedHeight(uiDesign::scmInputHeight);
+
+    // What the two fields on the row are, said quietly: the words are the
+    // form's scaffolding and the name typed beside them is its content, so
+    // only one of the two is drawn at full strength
+    pForm->label_trigger_name->setProperty("editorRowLabel", true);
+    pForm->label_trigger_command->setProperty("editorRowLabel", true);
 
     // The ID reads as a quiet label on the trigger rather than a second field.
     // showIDLabels() still decides whether it is there at all.
     pForm->frameId->setProperty("editorIdChip", true);
-    pForm->label_idLabel->setProperty("editorFieldLabel", true);
-    pForm->label_idNumber->setProperty("editorFieldLabel", true);
     // The .ui file greys the pair out to make them quiet; the chip is quiet
     // enough on its own, and a disabled label cannot be selected from
     pForm->label_idLabel->setEnabled(true);
@@ -14726,8 +14804,10 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // The cards keep this width whether or not a scroll bar has appeared beside
     // them: the scroll area is the wider of the two by exactly that bar
     pForm->widget_right->setFixedWidth(scmEditorTriggerOptionsWidth);
-    pPanelLayout->setContentsMargins(12, 0, 0, 0);
-    pPanelLayout->setSpacing(12);
+    // The gap between the patterns and the cards is the grid's, so the cards
+    // themselves have the whole width the column was measured for
+    pPanelLayout->setContentsMargins(0, 0, 0, 0);
+    pPanelLayout->setSpacing(scmEditorColumnSpacing);
 
     // Four cards are taller than a short window, and a column that reports that
     // height as a minimum drags the whole window open to fit and will not let it
@@ -14762,13 +14842,13 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     auto* pCard_matching = makeEditorCard(pForm->widget_right, tr("Matching"));
     auto* pMatchingLayout = new QVBoxLayout(pCard_matching);
     pMatchingLayout->setContentsMargins(0, 0, 0, 0);
-    pMatchingLayout->setSpacing(6);
+    pMatchingLayout->setSpacing(scmEditorCardRowGap);
 
     mpWidget_matchModeRows = new QWidget(pCard_matching);
     mpWidget_matchModeRows->setProperty("editorPanelSurface", true);
     auto* pModeLayout = new QVBoxLayout(mpWidget_matchModeRows);
     pModeLayout->setContentsMargins(0, 0, 0, 0);
-    pModeLayout->setSpacing(6);
+    pModeLayout->setSpacing(scmEditorCardRowGap);
 
     mpLabel_matchAnyChip = new QLabel(mpWidget_matchModeRows);
     mpLabel_matchAnyChip->setObjectName(qsl("editorModeChip"));
@@ -14850,7 +14930,7 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     auto* pCard_firing = makeEditorCard(pForm->widget_right, tr("Firing"));
     auto* pFiringLayout = new QVBoxLayout(pCard_firing);
     pFiringLayout->setContentsMargins(0, 0, 0, 0);
-    pFiringLayout->setSpacing(6);
+    pFiringLayout->setSpacing(scmEditorCardRowGap);
 
     auto* pStayOpenRow = new QHBoxLayout();
     pStayOpenRow->setSpacing(scmEditorModeChipGap);
@@ -15737,7 +15817,9 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     mpWidget_editorCodeHeader = new QWidget(this);
     mpWidget_editorCodeHeader->setObjectName(qsl("editorCodeHeader"));
     auto* pHeaderLayout = new QHBoxLayout(mpWidget_editorCodeHeader);
-    pHeaderLayout->setContentsMargins(10, 0, 10, 0);
+    // The column the strip lies in is already held off the window's edge, so
+    // this is only what the heading is set in from the code under it
+    pHeaderLayout->setContentsMargins(scmEditorCodeHeaderInset, 0, scmEditorCodeHeaderInset, 0);
     pHeaderLayout->setSpacing(6);
 
     mpLabel_editorCodeHeaderIcon = new QLabel(mpWidget_editorCodeHeader);
@@ -16049,50 +16131,80 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                "QGroupBox[editorCard=\"true\"]::indicator:hover { border: 1px solid %4; }"
                                                "QGroupBox[editorCard=\"true\"]::indicator:checked { border: 1px solid %4; image: url(:/icons/dialog-ok-apply_small.png); }")
                                                    .arg(QString::number(scmEditorCardIndicatorSize), indicatorOutline.name(), fieldColor.name(), accentColor.name());
-        // Where a checkable card's title starts is only known once the rules
-        // above are the ones being laid out under - and the box measured against
-        // them has to be one they select on
-        const QString cardTitleRule = qsl("QGroupBox[editorCardTitleInset=\"true\"]::title { left: %1px; }")
-                                              .arg(QString::number(uiDesign::measuredCardTitleInset(mpTriggersMainArea, cardIndicatorRules, uiDesign::scmProp_editorCard)));
+        // How much of the card's top padding is the title's rather than the gap
+        // under it is a line of the type the title is drawn in - and the box
+        // measured against the rules above has to be one they select on
+        const int cardTitleHeight = uiDesign::measuredCardTitleHeight(mpTriggersMainArea, cardIndicatorRules, uiDesign::scmProp_editorCard);
         // Styling the options column's scroll area takes its scroll bar with
         // it, the same way the pattern list's does
         const QString optionsScrollBarRules = uiDesign::scrollBarStyleSheet(qsl("#editorTriggerOptionsScroll"), tokens);
 
+        // The two words in the ID pill are given their type here rather than in
+        // the sheet, because the pill's corner is half the height those metrics
+        // come to: a font-size the sheet applied would only be known after it
+        // had been, and a corner named larger than half the height is clamped
+        // into an ellipse rather than drawn rounder.
+        const int idChipHeight = styleEditorIdChip(mpTriggersMainArea);
+
+        // A control pressed rather than a surface: the button lifts a shade
+        // further off the row while the pointer is on it, and the outlined strip
+        // under it draws its hairline a shade nearer the words instead
+        const QColor hoveredButton = uiDesign::blend(cardColor, textColor, scmEditorRaisedHoverWeight);
+        const QColor hoveredBorder = uiDesign::blend(borderColor, textColor, scmEditorHoveredBorderWeight);
+
         mpTriggersMainArea->setStyleSheet(qsl(
-                                                  // The top margin lifts the title clear of the frame, rather than
-                                                  // leaving it cutting through the card's border
-                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %9px;"
-                                                  " margin-top: 20px; padding: 12px; font-weight: bold; }"
-                                                  "QGroupBox[editorCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
+                                                  // The title is the card's first line, inside the frame: the top
+                                                  // padding is what leaves room for it, and the same padding sets
+                                                  // it in from the left edge as the controls under it
+                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %8px;"
+                                                  " padding: %16px %17px %17px %17px; font-weight: bold; }"
+                                                  "QGroupBox[editorCard=\"true\"]::title { subcontrol-origin: padding; subcontrol-position: top left;"
+                                                  " left: %17px; top: %17px; padding: 0px; }"
                                                   // ...but only the title is bold, not everything the card holds:
                                                   "QGroupBox[editorCard=\"true\"] > * { font-weight: normal; }"
                                                   // The rows the cards are built out of show the card through them,
                                                   // named outright so a profile stylesheet cannot paint a band across one
                                                   "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
                                                   "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
+                                                  // What a field on the form's own row is, as against what a card's
+                                                  // rows hold: read at the size the rest of the row is read at
+                                                  "QLabel[editorRowLabel=\"true\"] { color: %3; background: transparent; }"
                                                   // The box naming a matching mode; the chosen one carries the accent
-                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %10px; padding: 1px 0px;"
+                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %9px; padding: 1px 0px;"
                                                   " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
                                                   "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                  // The button the options are opened from, and the strip that stands
-                                                  // in for them while they are away
-                                                  "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: 6px; padding: 3px 8px; background: transparent; }"
-                                                  "#toolButton_toggleExtraControls:hover { color: %7; background-color: %8; }"
+                                                  // The button the options are opened from is one to press, so it is
+                                                  // lifted off the row the way a card is lifted off the page; the
+                                                  // strip that stands in for them while they are away is a line of
+                                                  // readings to click, so it is only outlined
+                                                  "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %11px;"
+                                                  " padding: %14px %15px; background-color: %1; }"
+                                                  "#toolButton_toggleExtraControls:hover { color: %7; background-color: %12; }"
                                                   "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                  "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 5px 10px;"
+                                                  "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
                                                   " background: transparent; text-align: left; }"
-                                                  "#editorOptionsSummary:hover { color: %7; background-color: %8; }"
-                                                  // The ID reads as a label on the trigger, not as a second field
+                                                  "#editorOptionsSummary:hover { color: %7; border: 1px solid %13; }"
+                                                  // The ID reads as a label on the trigger, not as a second field: a
+                                                  // pill, whose corner is half the height its own type comes to.
+                                                  // Anything larger is clamped into an ellipse rather than rounded
+                                                  // further, which is why the number is measured rather than named.
                                                   "#frameId { border: 1px solid %2; border-radius: %10px; background: transparent; }"
+                                                  "#frameId QLabel { color: %3; background: transparent; }"
                                                   // The cards are what is drawn in the options column: the scroll
                                                   // area holding them and the viewport Qt gives it show the page
                                                   // through. Named outright, as the pattern rows are, so that a
                                                   // profile stylesheet cannot put the field colour back behind them.
                                                   "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
                                                   " { background: transparent; border: none; }")
-                                                  .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name(), hoverSoft)
+                                                  .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
                                                   .arg(QString::number(uiDesign::scmRadiusPanel), QString::number(uiDesign::scmRadiusChip))
-                                          + cardIndicatorRules + cardTitleRule + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
+                                                  .arg(QString::number(idChipHeight / 2), QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
+                                                  .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
+                                                  // The card's top padding carries the title and the gap under it;
+                                                  // %17 is the padding the other three sides are given, which is
+                                                  // also what the title is set in by
+                                                  .arg(QString::number(scmEditorCardPadding + cardTitleHeight + uiDesign::scmCardTitleGap), QString::number(scmEditorCardPadding))
+                                          + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();
         // ...and the options column against the bar it just sized, so that the

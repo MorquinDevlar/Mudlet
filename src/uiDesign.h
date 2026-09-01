@@ -238,11 +238,21 @@ QString rgba(const QColor& color, const qreal alpha);
 // antialiased edges that recolouring the pixels would harden into a staircase
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color);
 
-// Measured off a throwaway pair rather than added up from the indicator's
-// width, because what a style leaves after an indicator is the style's business:
-// Fusion allows 6px and the macOS style 8. The throwaway box carries whichever
-// card property the rules being measured under select on.
-int measuredCardTitleInset(QWidget* pParent, const QString& indicatorRules, const char* cardProperty = scmProp_settingsCard);
+// A card's title is the first line inside its frame, so the card has to leave
+// room for it above the first control: how much is a line of the bold type the
+// title is set in, which is the font the window is running at rather than a
+// number a stylesheet could name. Measured off a throwaway box rather than
+// added up, because what a style leaves round a title - and round the check
+// indicator a checkable card's title begins with - is the style's business.
+// The throwaway box carries whichever card property the rules being measured
+// under select on.
+int measuredCardTitleHeight(QWidget* pParent, const QString& indicatorRules, const char* cardProperty = scmProp_settingsCard);
+
+// What is left between a card's title and the first control under it. The
+// padding round the card is the window's own - 16px in the settings dialog, 12
+// in the editor's narrower column - but the gap under the title is the same in
+// both, because it separates two lines rather than a box from its frame.
+inline constexpr int scmCardTitleGap = 8;
 
 // A QLabel's rich text reaches a picture only through a URL, and a glyph tinted
 // at runtime has no path - so it travels inline

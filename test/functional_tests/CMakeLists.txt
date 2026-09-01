@@ -115,6 +115,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EdbeeReinitTest.cpp
     EditorBannerViewSwitchTest.cpp
     EditorMinimumSizeTest.cpp
+    EditorPlacementPersistenceTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp
     VariableEditorWriteBackTest.cpp

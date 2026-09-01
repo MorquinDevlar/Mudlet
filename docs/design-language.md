@@ -105,8 +105,19 @@ interface font.
 
 Content is grouped into cards: a `QGroupBox` carrying the `settingsCard` dynamic
 property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
-16px padding. Pages are a single column of cards with 16px spacing
-(`createScrollPage()`, `buildPage()`).
+16px padding - 12px in the editor's narrower options column. Pages are a single
+column of cards with 16px spacing (`createScrollPage()`, `buildPage()`).
+
+The title is the card's first line **inside** the frame, not a heading above it:
+`subcontrol-origin: padding` with `left` and `top` set to the card's own
+padding, so the title starts on the same left edge as the controls under it. A
+stylesheet reserves no room for a title placed that way, so the card's top
+padding does it - `padding + measuredCardTitleHeight() + scmCardTitleGap` -
+and getting that number wrong draws the first control over the title. A
+checkable card's title line begins with its check indicator on that same left
+edge and the words after it, which is where the style puts them; nothing insets
+a plain card's title to match, because on a card whose controls all start at the
+padding edge that would indent the heading away from what it heads.
 
 ### Human copy
 
@@ -195,8 +206,7 @@ Stylesheets select on these; setting one after the widget is shown needs an
 | --- | --- |
 | `settingsSurface` | Shell scaffolding a profile's Lua stylesheet must not colour |
 | `settingsCard` | This group box is a card |
-| `settingsCardPlain` | A card without the top margin its title would need |
-| `settingsCardTitleInset` | Non-checkable card - title starts at the frame edge, so checkable and plain titles line up |
+| `settingsCardPlain` | A card without the top padding its title would need |
 | `settingsHero` | The prominent lead card of a page |
 | `settingsChevronRow` | A button that reads as a navigation row into a subpage |
 | `settingsRail` | The sidebar is collapsed to icons only |

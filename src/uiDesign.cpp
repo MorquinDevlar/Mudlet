@@ -542,30 +542,38 @@ QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
     return glyph;
 }
 
-int measuredCardTitleInset(QWidget* pParent, const QString& indicatorRules, const char* cardProperty)
+// Where the style puts a card's title, on a throwaway box laid out under the
+// rules the real cards are drawn with
+static QRect measuredCardTitleRect(QWidget* pParent, const QString& indicatorRules, const char* cardProperty, const bool checkable)
 {
-    const auto titleLeft = [&](const bool checkable) {
-        QGroupBox box(pParent);
-        box.setProperty(cardProperty, true);
-        box.setCheckable(checkable);
-        // Never shown or read, but a box with no title has no label to place
-        box.setTitle(qsl("Aa"));
-        // Its own rather than the shell's, which is the string being built
-        box.setStyleSheet(indicatorRules);
-        QStyleOptionGroupBox option;
-        option.initFrom(&box);
-        option.subControls = QStyle::SC_GroupBoxFrame | QStyle::SC_GroupBoxLabel;
-        if (checkable) {
-            option.subControls |= QStyle::SC_GroupBoxCheckBox;
-            option.state |= QStyle::State_On;
-        }
-        option.text = box.title();
-        option.textAlignment = Qt::AlignLeft;
-        option.lineWidth = 0;
-        option.midLineWidth = 0;
-        return box.style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxLabel, &box).left();
-    };
-    return qMax(0, titleLeft(true) - titleLeft(false));
+    QGroupBox box(pParent);
+    box.setProperty(cardProperty, true);
+    box.setCheckable(checkable);
+    // Never shown or read, but a box with no title has no label to place
+    box.setTitle(qsl("Aa"));
+    // Its own rather than the shell's, which is the string being built. The
+    // weight goes with the indicator rules because a card's title is set bold,
+    // and how tall a line of it comes to is one of the answers asked for here.
+    box.setStyleSheet(indicatorRules + qsl("QGroupBox[%1=\"true\"] { font-weight: bold; }").arg(QString::fromLatin1(cardProperty)));
+    QStyleOptionGroupBox option;
+    option.initFrom(&box);
+    option.subControls = QStyle::SC_GroupBoxFrame | QStyle::SC_GroupBoxLabel;
+    if (checkable) {
+        option.subControls |= QStyle::SC_GroupBoxCheckBox;
+        option.state |= QStyle::State_On;
+    }
+    option.text = box.title();
+    option.textAlignment = Qt::AlignLeft;
+    option.lineWidth = 0;
+    option.midLineWidth = 0;
+    return box.style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxLabel, &box);
+}
+
+int measuredCardTitleHeight(QWidget* pParent, const QString& indicatorRules, const char* cardProperty)
+{
+    // The taller of the two: a checkable card's title line is as tall as its
+    // check indicator where the type is smaller than the box
+    return qMax(measuredCardTitleRect(pParent, indicatorRules, cardProperty, true).height(), measuredCardTitleRect(pParent, indicatorRules, cardProperty, false).height());
 }
 
 QString inlineGlyph(const QPixmap& glyph)

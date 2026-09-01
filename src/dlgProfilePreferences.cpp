@@ -115,9 +115,10 @@ using uiDesign::insertGridRowAtTop;
 using uiDesign::invalidateLayoutsUpTo;
 using uiDesign::makeChevronRow;
 using uiDesign::markAsShellSurface;
-using uiDesign::measuredCardTitleInset;
+using uiDesign::measuredCardTitleHeight;
 using uiDesign::repolish;
 using uiDesign::rgba;
+using uiDesign::scmCardTitleGap;
 using uiDesign::scmProp_focused;
 using uiDesign::scmProp_rail;
 using uiDesign::scmProp_searchKeywords;
@@ -145,10 +146,14 @@ static constexpr int scmSidebarPadding = 12;
 static constexpr int scmSidebarAccentBarWidth = 3;
 static constexpr int scmSidebarRailWidth = 48;
 static constexpr int scmSidebarRailPadding = 6;
-// How far right of the frame edge this leaves a card's title is not a constant
-// to go with it: styles disagree on the room after the indicator, so
-// measuredCardTitleInset() measures it.
+// How far right of the frame edge this leaves a checkable card's title is not a
+// constant to go with it: styles disagree on the room after an indicator, which
+// is between the box and the words rather than before both
 static constexpr int scmCardIndicatorSize = 13;
+// What a card leaves round what it holds - and, since the title is the first
+// line inside the frame rather than a heading above it, how far in from the
+// frame the title starts as well
+static constexpr int scmCardPadding = 16;
 
 static const QString scmCategory_general = qsl("general");
 static const QString scmCategory_appearance = qsl("appearance");
@@ -1259,12 +1264,13 @@ QScrollArea* dlgProfilePreferences::buildPage(const QString& objectSuffix, const
         }
         detachFromLayout(pCard);
         pCard->setProperty("settingsCard", true);
-        // A checkable card's title starts after its check indicator, a plain
-        // one's at the frame edge - twenty-odd pixels apart, which reads as the
-        // titles of a page wandering. A property rather than a stylesheet rule,
-        // because a stylesheet cannot ask whether a group box is checkable.
-        auto* pGroupBox = qobject_cast<QGroupBox*>(pCard);
-        pCard->setProperty("settingsCardTitleInset", pGroupBox && !pGroupBox->isCheckable());
+        // What a card leaves round what it holds is its padding, and nothing
+        // else: a layout's own default margins are a second helping of it, and
+        // they put the controls a style's worth of pixels right of the title
+        // now drawn on the padding edge above them
+        if (QLayout* pCardLayout = pCard->layout(); pCardLayout) {
+            pCardLayout->setContentsMargins(0, 0, 0, 0);
+        }
         pColumnLayout->addWidget(pCard);
     }
     pColumnLayout->addStretch(1);
@@ -2732,9 +2738,10 @@ void dlgProfilePreferences::applyShellStyle()
                                            // than an accent that could be orange
                                            "QGroupBox[settingsCard=\"true\"]::indicator:checked { border: 1px solid %4; image: url(:/icons/dialog-ok-apply_small.png); }")
                                                .arg(QString::number(scmCardIndicatorSize), indicatorOutline.name(), fieldColor.name(), accentColor.name());
-    // Where a checkable card's title starts is only known once the rules above
-    // are the ones being laid out under
-    const QString cardTitleRule = qsl("QGroupBox[settingsCardTitleInset=\"true\"]::title { left: %1px; }").arg(QString::number(measuredCardTitleInset(mpWidget_shell, cardIndicatorRules)));
+    // How much of the card's top padding is the title's rather than the gap
+    // under it is a line of the type the title is drawn in, and only known once
+    // the rules above are the ones being laid out under
+    const int cardTitleHeight = measuredCardTitleHeight(mpWidget_shell, cardIndicatorRules);
 
     mpWidget_shell->setStyleSheet(qsl("#settingsShell, #settingsSidebar, #settingsContent { background-color: %1; }"
                                       // Or the platform style draws its own selection as a square
@@ -2770,14 +2777,17 @@ void dlgProfilePreferences::applyShellStyle()
                                       // panel it heads is worked from, so it takes a panel's corner
                                       "#settingsSearchField { border: 1px solid %7; border-radius: %16px; padding-left: 6px; background-color: %15; }"
                                       "#settingsSearchField:focus { border: 1px solid %5; }"
-                                      // The top margin lifts the title clear of the frame, rather
-                                      // than leaving it cutting through the card's border
-                                      "QGroupBox[settingsCard=\"true\"] { background-color: %8; border: 1px solid %7; border-radius: %17px; margin-top: 24px; padding: 16px; font-weight: bold; }"
-                                      "QGroupBox[settingsCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
+                                      // The title is the card's first line, inside the frame: the top
+                                      // padding is what leaves room for it, and the same padding sets
+                                      // it in from the left edge as the controls under it
+                                      "QGroupBox[settingsCard=\"true\"] { background-color: %8; border: 1px solid %7; border-radius: %17px;"
+                                      " padding: %18px %19px %19px %19px; font-weight: bold; }"
+                                      "QGroupBox[settingsCard=\"true\"]::title { subcontrol-origin: padding; subcontrol-position: top left;"
+                                      " left: %19px; top: %19px; padding: 0px; }"
                                       // ...but only the title is bold, not everything the card holds:
                                       "QGroupBox[settingsCard=\"true\"] > * { font-weight: normal; }"
-                                      // A card carrying a single option needs no heading, nor room above for one
-                                      "QGroupBox[settingsCardPlain=\"true\"] { margin-top: 0px; }"
+                                      // A card carrying a single option needs no heading, nor room inside for one
+                                      "QGroupBox[settingsCardPlain=\"true\"] { padding-top: %19px; }"
                                       // A group box the .ui file nests inside what is now a card
                                       // would draw a second frame; a heading alone divides them
                                       "QGroupBox[settingsCard=\"true\"] QGroupBox { border: none; background: transparent; margin-top: 20px; padding: 0px 0px 0px 8px; font-weight: bold; }"
@@ -2819,8 +2829,11 @@ void dlgProfilePreferences::applyShellStyle()
                                           // is the card the rest of the shell is laid out on - and
                                           // the two corners of the scale this dialog draws with
                                           .arg(fieldColor.name(), QString::number(scmRadiusProminentInput), QString::number(scmRadiusPanel))
+                                          // The card's top padding carries the title and the gap under
+                                          // it; %19 is the padding the other three sides are given,
+                                          // which is also what the title is set in by
+                                          .arg(QString::number(scmCardPadding + cardTitleHeight + scmCardTitleGap), QString::number(scmCardPadding))
                                   + cardIndicatorRules
-                                  + cardTitleRule
                                   // A scroll area's bars answer only to a descendant selector
                                   + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens)
                                   + scrollBarStyleSheet(qsl("#settingsCategoryList"), tokens)

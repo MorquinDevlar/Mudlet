@@ -2644,8 +2644,10 @@ void TDetachedWindow::showScriptEditorDialog(std::function<void(dlgTriggerEditor
             showMethod(pEditor);
         }
 
-        // Position dialog on the same screen as this detached window
-        utils::positionDialogOnParentScreen(pEditor, this);
+        // The editor places itself in dlgTriggerEditor::showEvent(). Re-centring it
+        // here moved it on every show - the singleton is hidden at this point, and
+        // positionDialogOnParentScreen() re-centres any dialog that is not visible -
+        // which discarded wherever the user had dragged it to.
 
         // Show and activate the editor
         pEditor->raise();

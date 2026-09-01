@@ -497,26 +497,72 @@ private slots:
                  qPrintable(qsl("the dark theme draws the card's check indicator as %1 against %2, a contrast of %3:1").arg(outline.name(), page.name(), QString::number(worst, 'f', 2))));
     }
 
-    // A checkable card's title starts after its check indicator and a plain
-    // one's at the frame edge, which reads as the headings of a page wandering
-    // in and out. The plain ones are inset to match rather than the checkable
-    // ones being made plain, which landmine 11 forbids.
-    void test_everyCardTitleStartsAtTheSameDistanceFromItsFrame()
+    // Every card's first line starts on the same left edge, which is the card's
+    // padding: a plain card's title, and a checkable card's check indicator
+    // with its title after it. This used to be measured on the title alone,
+    // with a plain card's inset by the room an indicator takes - which was the
+    // only alignment there was while the titles floated above the frames, and
+    // indents a heading away from its own controls now that they are inside.
+    void test_everyCardsFirstLineStartsAtTheSameDistanceFromItsFrame()
     {
         selectCategory(qsl("privacy"));
 
-        const auto titleLeft = [](QGroupBox* pCard) {
+        const auto firstLineLeft = [](QGroupBox* pCard) {
             QStyleOptionGroupBox option = groupBoxStyleOption(pCard);
-            return pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxLabel, pCard).left();
+            const QStyle::SubControl leading = pCard->isCheckable() ? QStyle::SC_GroupBoxCheckBox : QStyle::SC_GroupBoxLabel;
+            const QRect frame = pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxFrame, pCard);
+            return pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, leading, pCard).left() - frame.left();
         };
 
         QGroupBox* pCheckable = mpPreferences->groupBox_ssl;
         auto* pPlain = mpPreferences->findChild<QGroupBox*>(qsl("card_passwords"));
         QVERIFY(pPlain);
         QVERIFY2(pCheckable->isCheckable(), "the checkable card this case compares against is not checkable");
-        QVERIFY2(!pPlain->isCheckable(), "the plain card this case compares is checkable, so there is no inset to check");
+        QVERIFY2(!pPlain->isCheckable(), "the plain card this case compares is checkable, so the two lead with the same thing");
 
-        QCOMPARE(titleLeft(pPlain), titleLeft(pCheckable));
+        QCOMPARE(firstLineLeft(pPlain), firstLineLeft(pCheckable));
+    }
+
+    // The title is the card's first line, inside the frame - not a heading
+    // sitting above it. Nothing in a stylesheet reserves room for it, so the
+    // card's top padding is what holds the first control clear of the title;
+    // get that number wrong and the two are drawn on top of each other.
+    void test_aCardsTitleIsDrawnInsideTheFrameWithItsControlsClearOfIt()
+    {
+        selectCategory(qsl("privacy"));
+
+        QGroupBox* pCheckable = mpPreferences->groupBox_ssl;
+        auto* pPlain = mpPreferences->findChild<QGroupBox*>(qsl("card_passwords"));
+        QVERIFY(pPlain);
+        QVERIFY2(pCheckable->isCheckable(), "the checkable card this case measures is not checkable, so its indicator is not being placed");
+
+        for (QGroupBox* pCard : {pCheckable, pPlain}) {
+            QStyleOptionGroupBox option = groupBoxStyleOption(pCard);
+            const QRect frame = pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxFrame, pCard);
+            const QRect title = pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxLabel, pCard);
+            const QRect contents = pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxContents, pCard);
+            const QString card = pCard->objectName();
+            const auto asText = [](const QRect& rect) {
+                return qsl("%1x%2+%3+%4").arg(rect.width()).arg(rect.height()).arg(rect.left()).arg(rect.top());
+            };
+            QVERIFY2(frame.contains(title), qPrintable(qsl("the card %1 draws its title at %2, which is not inside its frame at %3").arg(card, asText(title), asText(frame))));
+            QVERIFY2(contents.top() >= title.bottom(),
+                     qPrintable(qsl("the card %1 starts its controls at y=%2, on top of a title that runs to y=%3").arg(card).arg(contents.top()).arg(title.bottom())));
+            if (pCard->isCheckable()) {
+                const QRect indicator = pCard->style()->subControlRect(QStyle::CC_GroupBox, &option, QStyle::SC_GroupBoxCheckBox, pCard);
+                QVERIFY2(frame.contains(indicator), qPrintable(qsl("the card %1 draws its check indicator at %2, which is not inside its frame at %3").arg(card, asText(indicator), asText(frame))));
+                QVERIFY2(indicator.right() <= title.left(),
+                         qPrintable(qsl("the card %1 draws its check indicator over its title: the indicator ends at x=%2 and the title starts at x=%3")
+                                            .arg(card)
+                                            .arg(indicator.right())
+                                            .arg(title.left())));
+                // Half a line apart at most: an indicator drawn off the line of
+                // the words beside it is what a title band looks like when the
+                // room for it was guessed rather than measured
+                QVERIFY2(std::abs(indicator.center().y() - title.center().y()) <= title.height() / 2,
+                         qPrintable(qsl("the card %1 centres its check indicator at y=%2 and its title at y=%3").arg(card).arg(indicator.center().y()).arg(title.center().y())));
+            }
+        }
     }
 
     // No test run should depend on a file modification time to stay off the

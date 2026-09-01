@@ -3552,12 +3552,12 @@ void mudlet::slot_showEditorDialog()
     showEditorRestoringWindowState(pEditor);
     pEditor->activateWindow();
 
-    // Force reposition after showing, since script editor is a singleton
-    // that may restore its position after being shown
-    Host* activeHost = getActiveHost();
-    QWidget* activeConsole = activeHost ? activeHost->mpConsole : nullptr;
-    QWidget* referenceWidget = activeConsole ? activeConsole : this;
-    utils::forceRepositionDialogOnParentScreen(pEditor, referenceWidget);
+    // No repositioning here: the editor places itself in dlgTriggerEditor::showEvent().
+    // This used to force the singleton editor back to the centre of the profile's
+    // screen on every show, which also threw away wherever the user had dragged it.
+    // The editor now moves itself only in the two cases that call for it - a window
+    // left somewhere it can no longer be grabbed, and an editor with no placement of
+    // the user's own whose profile is on another screen.
 }
 
 void mudlet::slot_showTriggerDialog()
@@ -3590,9 +3590,10 @@ void mudlet::slot_showTriggerDialog()
         });
     });
 
-    // Position dialog on the same screen as the main window for better multi-monitor UX
-    utils::positionDialogOnParentScreen(pEditor, this);
-
+    // As in slot_showEditorDialog(), placement is the editor's own. This ran while
+    // the singleton was still hidden, and positionDialogOnParentScreen() re-centres
+    // any dialog that is not currently visible, so it moved the editor on every show
+    // just as the forced version did.
     pEditor->slot_showTriggers();
     pEditor->raise();
     showEditorRestoringWindowState(pEditor);
