@@ -25,6 +25,7 @@
 #include <QColor>
 #include <QHash>
 #include <QIcon>
+#include <QPersistentModelIndex>
 #include <QPixmap>
 #include <QPointer>
 #include <QSize>
@@ -66,10 +67,26 @@ public:
 
     void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override;
 
-    // The dot is the switch the row draws, so the clicks that land on it are
+    // The dot is the switch the row draws, so the presses that land on it are
     // answered here rather than by the view - which is where Qt answers the
-    // clicks on an item's check box from, and for the same reason
+    // clicks on an item's check box from, and for the same reason. Only the
+    // presses: the view asks a delegate about a mouse event by way of edit(),
+    // which is given an index and gives up on an invalid one, so nothing here
+    // hears the rest of a press whose pointer has left the row it started on.
     bool editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index) override;
+
+    // Installed on the tree's viewport, which every mouse event reaches whether
+    // or not it lands on a row - including the release that Qt's implicit grab
+    // delivers there from wherever the pointer ended up. That is where a press
+    // the dot answered is seen through to its end: the moves it would otherwise
+    // become a drag of the row on are swallowed here, and so is the release
+    // that closes it. A switch is not a handle.
+    bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
+
+    // Where a row's dot can be clicked, in the viewport's coordinates. The
+    // editor never asks: the events that need this arrive with the option it is
+    // measured against. The tests that aim a synthesized click at a dot do.
+    [[nodiscard]] QRect dotHitRect(const QModelIndex& index) const;
 
 signals:
     // Sent once the row to switch is the tree's current one, so there is nothing
@@ -127,9 +144,13 @@ private:
     QColor mQuietDot;
     QString mNewItemDescription;
     // Set by a press the dot answered and cleared by the release that closes it,
-    // so that the moves in between can be kept from turning the press into a
-    // drag of the row it started on
+    // wherever that release lands - and by the next press either way, so that a
+    // press whose release never arrived cannot leave this saying otherwise
     bool mDotPressed = false;
+    // The row of the press the dot answered, which is what the second press of a
+    // double click is read against. A double click is allowed a few pixels of
+    // drift by the platform, and that is most of the dot's small square.
+    QPersistentModelIndex mLastDotPressIndex;
 
     // Three shapes are all a whole tree of rows needs, and a tree being laid out
     // asks every one of its rows for a size

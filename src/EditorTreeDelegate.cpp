@@ -58,6 +58,11 @@ EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeTy
 , mTreeType(treeType)
 , mpHost(pHost)
 {
+    // The viewport is made by QAbstractScrollArea's constructor and never
+    // replaced, so it is here to be watched from the moment the tree exists
+    if (mpTree) {
+        mpTree->viewport()->installEventFilter(this);
+    }
     restyle();
 }
 
@@ -342,52 +347,104 @@ QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const Q
     return dotRect.adjusted(-scmDotHitSlack, -scmDotHitSlack, scmDotHitSlack, scmDotHitSlack);
 }
 
-bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index)
+QRect EditorTreeDelegate::dotHitRect(const QModelIndex& index) const
 {
+    if (!mpTree) {
+        return {};
+    }
+    // The option the view would hand editorEvent() for a mouse event on this
+    // row, rebuilt: QAbstractItemView makes one out of initViewItemOption(), the
+    // row's rectangle and whether the row is the current one, and keeps all
+    // three to itself
+    QStyleOptionViewItem option = mpTree->viewItemOption();
+    option.rect = mpTree->visualRect(index);
+    if (index == mpTree->currentIndex()) {
+        option.state |= QStyle::State_HasFocus;
+    }
+    return dotHitRect(option, index);
+}
+
+bool EditorTreeDelegate::eventFilter(QObject* pWatched, QEvent* pEvent)
+{
+    // Anything else being watched is an editor widget that QStyledItemDelegate
+    // put this filter on itself, and its own handling of those has to stand
+    if (!mpTree || pWatched != mpTree->viewport()) {
+        return QStyledItemDelegate::eventFilter(pWatched, pEvent);
+    }
+
     switch (pEvent->type()) {
     case QEvent::MouseButtonPress:
-    case QEvent::MouseButtonRelease:
-    case QEvent::MouseButtonDblClick:
+        // Every press starts a new one of these, and the second press of a
+        // double click is not a press but its own event type - which is what
+        // lets the breadcrumb below outlive the first press of the pair
+        mDotPressed = false;
+        mLastDotPressIndex = QPersistentModelIndex();
         break;
     case QEvent::MouseMove:
-        // The view records what was pressed before it asks here, so a move made
-        // with the button still down would drag-select out of the dot or pull
-        // the row it is on out of the tree. A switch is not a handle.
-        if (mDotPressed) {
-            if (static_cast<QMouseEvent*>(pEvent)->buttons() & Qt::LeftButton) {
-                return true;
-            }
-            // A move with the button up is a press that ended somewhere this was
-            // not told about - a release over a different row, say, which the
-            // view answers by itself
-            mDotPressed = false;
+        // The view records what was pressed before it consults a delegate, and
+        // consults one about a row rather than about the blank space past the
+        // last one - so a move handed on here would drag-select out of the dot,
+        // or lift the row it is on out of the tree the moment it left them both
+        if (mDotPressed && (static_cast<QMouseEvent*>(pEvent)->buttons() & Qt::LeftButton)) {
+            return true;
         }
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
+        break;
+    case QEvent::MouseButtonRelease:
+        // The press did the toggling, so its release is eaten wherever it lands:
+        // handed on, the view would read it as a click on whichever row it ended
+        // over and reload that row, losing whatever was typed into the editor
+        if (mDotPressed) {
+            mDotPressed = false;
+            return true;
+        }
+        break;
     default:
+        break;
+    }
+
+    return false;
+}
+
+bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index)
+{
+    const QEvent::Type eventType = pEvent->type();
+    if (eventType != QEvent::MouseButtonPress && eventType != QEvent::MouseButtonDblClick) {
         return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
     }
 
     auto* pMouseEvent = static_cast<QMouseEvent*>(pEvent);
-    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmSelectionModifiers) || !dotHitRect(option, index).contains(pMouseEvent->position().toPoint())) {
-        mDotPressed = false;
+    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmSelectionModifiers)) {
+        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
+    }
+    const bool onDot = dotHitRect(option, index).contains(pMouseEvent->position().toPoint());
+
+    if (eventType == QEvent::MouseButtonDblClick) {
+        // The pair's first press has already toggled the row, so the second is
+        // eaten whether or not it landed on the dot a second time: the platform
+        // allows a double click a few pixels of drift, which is most of the way
+        // out of a target this size, and a drifted one handed on reaches the
+        // view's activated() and toggles the row straight back
+        if (!onDot && !(mLastDotPressIndex.isValid() && mLastDotPressIndex == index)) {
+            return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
+        }
+        // Set for the release that closes the double click, which the filter
+        // swallows for the same reason it swallows a single click's
+        mDotPressed = true;
+        return true;
+    }
+
+    if (!onDot) {
         return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
     }
 
-    mDotPressed = pEvent->type() != QEvent::MouseButtonRelease;
-
-    if (pEvent->type() == QEvent::MouseButtonPress) {
-        // The toggle reads the tree's current item rather than being handed one,
-        // so the row is chosen first and asked for after - one toggle, one path
-        if (QTreeWidgetItem* pItem = mpTree ? mpTree->itemFromIndex(index) : nullptr) {
-            mpTree->setCurrentItem(pItem);
-            emit toggleRequested();
-        }
+    // The toggle reads the tree's current item rather than being handed one, so
+    // the row is chosen first and asked for after - one toggle, one path
+    if (QTreeWidgetItem* pItem = mpTree->itemFromIndex(index)) {
+        mpTree->setCurrentItem(pItem);
+        emit toggleRequested();
     }
-
-    // The press did the toggling, so the release that closes it and the second
-    // press of a double click are both eaten: handed on, the view would read
-    // them as a click on the row and reload it, losing whatever was typed into
-    // the editor
+    mDotPressed = true;
+    mLastDotPressIndex = index;
     return true;
 }
 

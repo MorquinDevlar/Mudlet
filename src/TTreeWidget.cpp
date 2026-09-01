@@ -79,6 +79,13 @@ void TTreeWidget::getAllChildren(QTreeWidgetItem* pItem, QList<QTreeWidgetItem*>
     }
 }
 
+QStyleOptionViewItem TTreeWidget::viewItemOption() const
+{
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
+    return option;
+}
+
 void TTreeWidget::mouseReleaseEvent(QMouseEvent* event)
 {
     QModelIndex indexClicked = indexAt(event->pos());

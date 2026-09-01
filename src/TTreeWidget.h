@@ -24,6 +24,7 @@
 
 
 #include <QPointer>
+#include <QStyleOptionViewItem>
 #include <QTreeWidget>
 
 class Host;
@@ -57,6 +58,10 @@ public:
     void rowsInserted(const QModelIndex& parent, int start, int end) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    // The option the view lays a row out from. QAbstractItemView keeps
+    // initViewItemOption() to itself, and measuring a row against the style from
+    // outside the view needs the same starting point the view uses.
+    [[nodiscard]] QStyleOptionViewItem viewItemOption() const;
     void setHost(Host* pH);
     void setTreeType(TreeType type);
     void beginInsertRows(const QModelIndex& parent, int first, int last);
