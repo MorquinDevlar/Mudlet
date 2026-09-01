@@ -21,12 +21,12 @@
  * The editor's sidebar has two ways of losing its names, and they must not be
  * able to overwrite each other.
  *
- * The panel-left button at the left end of the actions toolbar - where every
- * platform puts the control that shows and hides a sidebar - is the user's own
- * choice, kept across sessions under editorSidebarLabelsShown. A labels-shown
- * preference, since the sidebar has no closed state to remember: it minimises
- * to a rail of icons and the rows go on being reachable, with their names as
- * tooltips.
+ * The chevron on the line between the sidebar and the rest of the window -
+ * where Finder and VS Code put the control that shows and hides a sidebar - is
+ * the user's own choice, kept across sessions under editorSidebarLabelsShown. A
+ * labels-shown preference, since the sidebar has no closed state to remember:
+ * it minimises to a rail of icons and the rows go on being reachable, with
+ * their names as tooltips.
  *
  * A window too narrow to draw the names takes them away regardless, and that
  * one is transient: it must never reach the stored preference, or a stretch of
@@ -34,20 +34,20 @@
  * is the split slot_rightSplitterMoved() already makes for the trigger options
  * panel, where only the explicit click writes anything down.
  *
- * Where the button sits and how it is drawn are checked here too. It used to be
- * a chevron at the foot of the sidebar, which reads as an arrow somebody left
- * behind rather than as the control it is; it is now the first thing on the
- * toolbar, drawn as a picture alone, and held down while the names are showing.
+ * Where the control sits and which way it points are checked here too. It was
+ * for a while the leading button of the actions toolbar, which is a bar the
+ * user can drag to another edge of the window or float - taking the sidebar's
+ * only control with it. It now rides on the seam itself, centred on the line
+ * down the sidebar's trailing edge and halfway down the pane, and its chevron
+ * points the way the sidebar will go.
  */
 
-#include <QAction>
 #include <QListWidget>
 #include <QTemporaryDir>
-#include <QToolBar>
-#include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
 
+#include "EditorSidebarToggle.h"
 #include "Host.h"
 #include "MudletInstanceCoordinator.h"
 #include "PortableModeTestHelper.h"
@@ -110,9 +110,21 @@ private:
 
     bool storedLabelsShown() const { return mudlet::getQSettings()->value(qsl("editorSidebarLabelsShown"), true).toBool(); }
 
-    // The toolbar's own button for the toggle action, which is the widget a
-    // pointer and a screen reader both reach
-    QToolButton* toggle() const { return mpEditor->mpButton_editorSidebarToggle; }
+    // The chevron on the seam, which is the widget a pointer and a screen
+    // reader both reach
+    uiDesign::EditorSidebarToggle* toggle() const { return mpEditor->mpToggle_editorSidebar; }
+
+    // The shell holding the sidebar and everything beside it, which is what the
+    // chevron is a child of and so the frame both are measured in
+    QWidget* shell() const { return mpEditor->centralWidget(); }
+
+    // How far the chevron's middle is from the line the sidebar's pane ends on
+    int offsetFromTheSeam() const
+    {
+        QWidget* pPane = mpEditor->mpWidget_editorSidebarPane;
+        const int seamX = pPane->mapTo(shell(), QPoint(0, 0)).x() + pPane->width();
+        return qRound(toggle()->x() + toggle()->width() / 2.0) - seamX;
+    }
 
     void resizeEditor(const int width)
     {
@@ -123,7 +135,7 @@ private:
 
     void pressTheToggle()
     {
-        QVERIFY2(toggle() != nullptr, "The toolbar has no sidebar toggle");
+        QVERIFY2(toggle() != nullptr, "The editor has no sidebar toggle");
         QVERIFY2(toggle()->isEnabled(), "The sidebar toggle is not pressable at this width");
         QTest::mouseClick(toggle(), Qt::LeftButton);
         QCoreApplication::sendPostedEvents();
@@ -208,48 +220,64 @@ private slots:
     {
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(!railShowing(), qPrintable(qsl("A fresh profile opened as a rail: %1").arg(state())));
-        QVERIFY2(toggle() != nullptr, "The toolbar has no sidebar toggle");
+        QVERIFY2(toggle() != nullptr, "The editor has no sidebar toggle");
         QVERIFY2(toggle()->isEnabled(), "The sidebar toggle cannot be pressed on a window with room for the names");
     }
 
-    // Where it is and what it looks like: the leading item of the actions
-    // toolbar, ahead of everything that acts on what the sidebar points at,
-    // drawn as a picture alone on a bar whose other buttons carry their names
-    void test_theToggleLeadsTheToolbarAsAPictureAlone()
+    // Where it is: on the line the sidebar's pane ends on, halfway down that
+    // pane - not up under the toolbar, and not inside either of the two things
+    // it lies between. Read in both modes, because the line moves when the
+    // sidebar gives its names up and the control has to follow it.
+    void test_theToggleRidesTheSeamBesideTheSidebar()
     {
-        QToolBar* pToolBar = mpEditor->toolBar;
-        QVERIFY2(pToolBar != nullptr, "The editor has no actions toolbar");
-        const QList<QAction*> actions = pToolBar->actions();
-        QVERIFY2(!actions.isEmpty(), "The actions toolbar is empty");
-        qInfo().noquote() << qsl("  the toolbar leads with \"%1\", drawn %2, and holds %3 items")
-                                     .arg(actions.constFirst()->text(),
-                                          toggle()->toolButtonStyle() == Qt::ToolButtonIconOnly ? qsl("as a picture alone") : qsl("with its name beside the picture"),
-                                          QString::number(actions.size()));
+        QVERIFY2(toggle() != nullptr, "The editor has no sidebar toggle");
+        QVERIFY2(toggle()->parentWidget() == shell(), "The toggle is a child of one of the two things it lies between, which would clip it");
 
-        QCOMPARE(actions.constFirst(), mpEditor->mpAction_editorSidebarToggle);
-        QVERIFY2(!mpEditor->mpAction_editorSidebarToggle->icon().isNull(), "The sidebar toggle has no picture");
-        QCOMPARE(toggle()->toolButtonStyle(), Qt::ToolButtonIconOnly);
-        // ...and the buttons it leads still carry theirs, or this says nothing
-        if (auto* pAddItem = qobject_cast<QToolButton*>(pToolBar->widgetForAction(mpEditor->mAddItem))) {
-            QVERIFY2(pAddItem->toolButtonStyle() != Qt::ToolButtonIconOnly, "Every button on the toolbar is a picture alone, so the toggle being one says nothing");
+        QWidget* pPane = mpEditor->mpWidget_editorSidebarPane;
+        QStringList measured;
+        QStringList adrift;
+        for (const QString& mode : {qsl("with the names showing"), qsl("as a rail")}) {
+            const int fromTheSeam = offsetFromTheSeam();
+            const int paneMiddle = pPane->mapTo(shell(), QPoint(0, 0)).y() + pPane->height() / 2;
+            const int fromTheMiddle = qRound(toggle()->y() + toggle()->height() / 2.0) - paneMiddle;
+            measured << qsl("%1: the sidebar ends at x=%2 and the chevron's middle is %3px off it, %4px off the pane's own middle")
+                                .arg(mode, QString::number(pPane->mapTo(shell(), QPoint(0, 0)).x() + pPane->width()), QString::number(fromTheSeam), QString::number(fromTheMiddle));
+            // A pixel either way: the pill straddles a line rather than filling
+            // a column, so its middle lands on the boundary between two pixels
+            if (std::abs(fromTheSeam) > 1) {
+                adrift << qsl("%1, %2px off the seam").arg(mode, QString::number(fromTheSeam));
+            }
+            if (std::abs(fromTheMiddle) > 1) {
+                adrift << qsl("%1, %2px off the middle of the pane").arg(mode, QString::number(fromTheMiddle));
+            }
+            pressTheToggle();
         }
+        // The second of the two presses above put the names back, which is the
+        // state the next case starts from
+        qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("; ")));
+
+        QVERIFY2(adrift.isEmpty(), qPrintable(qsl("the sidebar toggle is not on the seam: %1").arg(adrift.join(qsl("; ")))));
     }
 
-    // It says which of the sidebar's two states is in force rather than what
-    // the next press will do, which is what a checkable button is for
-    void test_theToggleIsHeldDownWhileTheNamesAreShowing()
+    // Which way it points is what pressing it will do: into the seam while
+    // there are names to give up, out of it while there are not. Read off the
+    // control's own picture as well as off the flag, so that a chevron that
+    // stopped following the mode would be caught.
+    void test_theChevronTurnsRoundWithTheMode()
     {
-        QVERIFY2(mpEditor->mpAction_editorSidebarToggle->isCheckable(), "The sidebar toggle does not hold a state");
         QVERIFY2(!railShowing(), "This case starts from the names showing");
-        QVERIFY2(mpEditor->mpAction_editorSidebarToggle->isChecked(), "The names are showing and the toggle is not held down");
+        QVERIFY2(toggle()->pointingLeft(), "The names are showing and the chevron does not point at the sidebar");
+        const QImage pointingIn = toggle()->grab().toImage();
 
         pressTheToggle();
-        qInfo().noquote() << qsl("  %1, toggle held down: %2").arg(state(), mpEditor->mpAction_editorSidebarToggle->isChecked() ? qsl("yes") : qsl("no"));
         QVERIFY2(railShowing(), "The toggle did not minimise the sidebar");
-        QVERIFY2(!mpEditor->mpAction_editorSidebarToggle->isChecked(), "The sidebar is a rail and the toggle is still held down");
+        QVERIFY2(!toggle()->pointingLeft(), "The sidebar is a rail and the chevron still points at it");
+        const QImage pointingOut = toggle()->grab().toImage();
+        qInfo().noquote() << qsl("  the chevron is %1px by %2px and is drawn two ways").arg(QString::number(toggle()->width()), QString::number(toggle()->height()));
+        QVERIFY2(pointingIn != pointingOut, "The chevron is drawn the same way in both of the sidebar's modes");
 
         pressTheToggle();
-        QVERIFY2(!railShowing() && mpEditor->mpAction_editorSidebarToggle->isChecked(), "The toggle did not come back up with the names");
+        QVERIFY2(!railShowing() && toggle()->pointingLeft(), "The toggle did not turn back round with the names");
     }
 
     // The toggle says what happens rather than open or close, and a screen

@@ -34,8 +34,11 @@
  * is the user asking for a taller form, and nothing here runs then.
  */
 
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QTemporaryDir>
+#include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <algorithm>
 #include <chrono>
@@ -44,6 +47,7 @@
 #include "MudletInstanceCoordinator.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
+#include "TTrigger.h"
 #include "TelnetServerStub.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
@@ -295,6 +299,74 @@ private slots:
 
         mpEditor->setTriggerOptionsShown(false);
         QTest::qWait(100ms);
+    }
+
+    // The other half of the same fault, and the one the user reported: the
+    // stored split was never the wrong size for the view, it was the wrong size
+    // for the item. A trigger with three pattern rows opened after one with a
+    // single row was given the height the single row needed, so the rows
+    // scrolled inside a pane a third of the window tall while the code pane
+    // under it sat nearly empty.
+    void test_choosingATallerItemGivesItsFormTheRoom()
+    {
+        // Two triggers of known height, built on the profile and read back
+        // through the editor's own fill of the tree
+        auto* pOne = new TTrigger(qsl("One pattern"), QStringList{qsl("alpha")}, QList<int>{REGEX_SUBSTRING}, false, mpHost);
+        pOne->registerTrigger();
+        auto* pThree = new TTrigger(qsl("Three patterns"), QStringList{qsl("alpha"), qsl("beta"), qsl("gamma")}, QList<int>{REGEX_SUBSTRING, REGEX_SUBSTRING, REGEX_SUBSTRING}, false, mpHost);
+        pThree->registerTrigger();
+        mpEditor->treeWidget_triggers->clear();
+        mpEditor->fillout_form();
+        enterTheTriggerView();
+        QTest::qWait(50ms);
+
+        const auto rowFor = [this](const int id) -> QTreeWidgetItem* {
+            QTreeWidgetItem* pBase = mpEditor->mpTriggerBaseItem;
+            for (int row = 0; pBase && row < pBase->childCount(); ++row) {
+                if (pBase->child(row)->data(0, Qt::UserRole).toInt() == id) {
+                    return pBase->child(row);
+                }
+            }
+            return nullptr;
+        };
+        QTreeWidgetItem* pRowOne = rowFor(pOne->getID());
+        QTreeWidgetItem* pRowThree = rowFor(pThree->getID());
+        QVERIFY2(pRowOne && pRowThree, "The two triggers this case reads are not in the tree");
+
+        const auto choose = [this](QTreeWidgetItem* pRow) {
+            mpEditor->treeWidget_triggers->setCurrentItem(pRow);
+            mpEditor->slot_triggerSelected(pRow);
+            QCoreApplication::processEvents();
+            QTest::qWait(50ms);
+        };
+
+        choose(pRowOne);
+        const QList<int> forOne = mpSplitter->sizes();
+        const int panesForOne = forOne.at(0) + forOne.at(1);
+        choose(pRowThree);
+        const QList<int> sizes = mpSplitter->sizes();
+
+        auto* pPatterns = mpEditor->findChild<QScrollArea*>(qsl("editorPatternScroll"));
+        QVERIFY2(pPatterns != nullptr && pPatterns->widget() != nullptr, "The trigger form has no pattern list to scroll");
+        const int rowsWant = pPatterns->widget()->sizeHint().height();
+        const int rowsShown = pPatterns->viewport()->height();
+        const bool scrolling = pPatterns->verticalScrollBar() && pPatterns->verticalScrollBar()->isVisible();
+        qInfo().noquote() << qsl("  one pattern row left the panes at %1; three rows want %2px and are shown %3px, with the panes at %4 - the rows %5")
+                                     .arg(describe(forOne), QString::number(rowsWant), QString::number(rowsShown), describe(sizes), scrolling ? qsl("scroll") : qsl("all fit"));
+
+        QVERIFY2(rowsWant > forOne.at(0) - rowsShown, "The three-row list is no taller than the pane it is in, so this case says nothing about growing it");
+        QVERIFY2(sizes.at(0) > forOne.at(0),
+                 qPrintable(qsl("the form pane stayed at %1 for an item whose rows want %2px of the %3px it shows them in")
+                                    .arg(QString::number(sizes.at(0)), QString::number(rowsWant), QString::number(rowsShown))));
+        QVERIFY2(rowsShown >= rowsWant,
+                 qPrintable(qsl("the pattern rows want %1px and are shown %2px, so the last of them is off the bottom of the form").arg(QString::number(rowsWant), QString::number(rowsShown))));
+        QVERIFY2(!scrolling, "the pattern rows are still scrolling inside the form pane");
+        // ...and what the form grew by came off the code pane, which keeps its
+        // own floor - the editor is no use with a code pane too short to type in
+        QVERIFY2(sizes.at(1) >= 120, qPrintable(qsl("the code pane was left at %1, under the floor it keeps").arg(QString::number(sizes.at(1)))));
+        // The two of them still add up to what they did: the form took its room
+        // off the code pane rather than off the error console under it
+        QCOMPARE(sizes.at(0) + sizes.at(1), panesForOne);
     }
 };
 

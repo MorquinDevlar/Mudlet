@@ -335,6 +335,8 @@ private slots:
             const qreal onCard = uiDesign::contrastRatio(tokens.text, tokens.card);
             const qreal onField = uiDesign::contrastRatio(tokens.text, tokens.field);
             const qreal mutedOnPage = uiDesign::contrastRatio(tokens.mutedText, tokens.page);
+            const qreal disabledOnPage = uiDesign::contrastRatio(tokens.disabledText, tokens.page);
+            const qreal disabledOnField = uiDesign::contrastRatio(tokens.disabledText, tokens.field);
             qInfo().noquote()
                     << qsl("%1: text %2 (palette %3), field %4 (palette %5), page %6, card %7, muted %8 - text reads %9:1 on the page, %10:1 on a card, %11:1 in a field; muted %12:1 on the page")
                                .arg(theme,
@@ -349,6 +351,8 @@ private slots:
                                     QString::number(onCard, 'f', 2),
                                     QString::number(onField, 'f', 2),
                                     QString::number(mutedOnPage, 'f', 2));
+            qInfo().noquote() << qsl("%1: an unavailable word is %2, reading %3:1 on the page and %4:1 in a field")
+                                         .arg(theme, tokens.disabledText.name(), QString::number(disabledOnPage, 'f', 2), QString::number(disabledOnField, 'f', 2));
 
             // Softened, and softened the one way: towards the page rather than
             // away from it, and never past it
@@ -369,6 +373,25 @@ private slots:
             }
             QVERIFY2(mutedOnPage >= 3.0,
                      qPrintable(qsl("on the %1 theme the quiet tone reads %2:1 on the page, under the 3:1 a large or secondary line has to clear").arg(theme, QString::number(mutedOnPage, 'f', 2))));
+
+            // ...and the tone an unavailable word is written in, which is
+            // quieter again but still a word. A third of the way from the page
+            // to the text lands at about 2.3:1 on a light theme - the pattern
+            // row that says "match on the prompt line (disabled)" was all but
+            // invisible - so it is floored against both of the surfaces such a
+            // word is set on: the page it is a label on, and the field it is
+            // typed into.
+            for (const auto& reading : {QPair<QString, qreal>{qsl("the page"), disabledOnPage}, {qsl("a field"), disabledOnField}}) {
+                QVERIFY2(reading.second >= 3.0,
+                         qPrintable(qsl("on the %1 theme an unavailable word is %2, reading %3:1 against %4 - under the 3:1 a secondary line has to clear, and a word nobody can read is not a word "
+                                        "switched off")
+                                            .arg(theme, tokens.disabledText.name(), QString::number(reading.second, 'f', 2), reading.first)));
+            }
+            // ...and it is still quieter than the tone a live secondary line is
+            // written in, or "switched off" has stopped meaning anything
+            QVERIFY2(disabledOnPage < mutedOnPage,
+                     qPrintable(qsl("on the %1 theme an unavailable word reads %2:1 on the page against the quiet tone's %3:1, so the two say the same thing")
+                                        .arg(theme, QString::number(disabledOnPage, 'f', 2), QString::number(mutedOnPage, 'f', 2))));
 
             if (!tokens.darkPage) {
                 // A light theme's Base is white, and lifting white towards a

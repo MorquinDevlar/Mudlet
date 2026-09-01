@@ -26,12 +26,19 @@
 #include <QSplitter>
 #include <QSplitterHandle>
 
+class QPainter;
+
 namespace uiDesign {
 
-// The gap between two panes, drawn so that it says it can be dragged: a short
-// rounded bar across the middle of it, picked out in the accent colour while the
-// pointer is on it. Every colour is mixed at paint time from the application
-// palette, so a theme change needs no more than the repaint it brings with it.
+struct ThemeTokens;
+
+// The seam between two panes. A handle carrying nothing is drawn as one: a
+// hairline down the middle with each pane's own tone carried up to it, which
+// widens to three pixels of the accent while the pointer is on it. A handle
+// given a heading to carry is drawn as a strip deep enough to read the heading
+// in, with the short rounded bar that says it can be dragged across the middle
+// of it. Every colour is mixed at paint time from the application palette, so a
+// theme change needs no more than the repaint it brings with it.
 class GripSplitterHandle : public QSplitterHandle
 {
     Q_OBJECT
@@ -49,6 +56,9 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    // What a handle carrying nothing is drawn as: the seam, and each pane's own
+    // tone carried up to it
+    void paintSeam(QPainter& painter, const ThemeTokens& tokens) const;
     void resizeEvent(QResizeEvent* event) override;
     void enterEvent(TEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;

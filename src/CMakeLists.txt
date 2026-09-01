@@ -87,6 +87,7 @@ set(mudlet_SRCS
     EditorMoveItemCommand.cpp
     EditorPlaceholderButton.cpp
     EditorToggleActiveCommand.cpp
+    EditorSidebarToggle.cpp
     EditorTreeDelegate.cpp
     EditorUndoStack.cpp
     EventLoopPump.cpp
@@ -326,6 +327,7 @@ set(mudlet_HDRS
     EditorMoveItemCommand.h
     EditorPlaceholderButton.h
     EditorToggleActiveCommand.h
+    EditorSidebarToggle.h
     EditorTreeDelegate.h
     EditorUndoStack.h
     enums.h

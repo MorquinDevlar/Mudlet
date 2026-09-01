@@ -54,6 +54,7 @@
 #include "EditorModifyPropertyCommand.h"
 #include "EditorMoveItemCommand.h"
 #include "EditorPlaceholderButton.h"
+#include "EditorSidebarToggle.h"
 #include "EditorToggleActiveCommand.h"
 #include "EditorTreeDelegate.h"
 #include "GripSplitter.h"
@@ -170,6 +171,10 @@ static constexpr int scmEditorIconSizeStep = 6;
 // bar and padding, the icon and the gap the view leaves after it. A larger
 // glyph moves it by the difference - see editorSidebarWidths().
 static constexpr int scmEditorSidebarRowChrome = 40;
+// What the grip at the leading end of the actions toolbar is given: the six
+// dots are five pixels across, and the rest is what holds them off the bar's
+// edge and off the first button
+static constexpr int scmEditorToolbarGripExtent = 11;
 // The narrowest the editor is worth showing its names beside - a floor for the
 // breakpoint, not a width anything is held to
 static constexpr int scmEditorContentColumnWidth = 640;
@@ -196,6 +201,10 @@ static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 // tone rather than a wash, so that the pill reads as one colour the whole way
 // along however wide the panel is dragged.
 static constexpr qreal scmEditorTreeSelectionWeight = 0.24;
+// What a row of one of those trees holds its contents off its leading edge by.
+// The accent bar down a chosen row is a border cut out of this rather than a
+// gap added to it, so a row's contents sit where they did with or without one.
+static constexpr int scmEditorTreeRowGutter = 4;
 
 // The one measurement of that sidebar which is not a constant is what it is
 // drawn at with the names showing, since that is the longest of the names -
@@ -222,6 +231,11 @@ static constexpr int scmEditorCodeHeaderInset = 4;
 // Kept clear in the middle of the strip for the grip the handle draws there
 static constexpr int scmEditorCodeHeaderGripGap = 56;
 static constexpr int scmEditorCompileDotDiameter = 8;
+// What is left round the words in the chip. Tight vertically: the strip it sits
+// on is what has to show above and below it, and the chip has its own fill to
+// hold the words apart from the bar.
+static constexpr int scmEditorCompileChipPaddingVertical = 1;
+static constexpr int scmEditorCompileChipPaddingHorizontal = 7;
 // A failure is named on the strip and spelled out in the tooltip: a compiler's
 // idea of a sentence does not fit next to a heading
 static constexpr int scmEditorCompileMessageWidth = 260;
@@ -1368,20 +1382,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     //: This is the toolbar that is initially placed at the top of the editor.
     toolBar->setWindowTitle(tr("Editor Toolbar - %1 - Actions").arg(hostName));
 
-    // The leading button is the one that shows and hides the sidebar, where
-    // every platform puts it. It is not one of the item actions and is kept off
-    // to their left by a rule, the way the profile half is kept off to the
-    // right. Checkable, because it says which of two states the sidebar is in
-    // rather than running something: held down while the names are on show.
-    mpAction_editorSidebarToggle = new QAction(this);
-    mpAction_editorSidebarToggle->setObjectName(qsl("editorSidebarToggle"));
-    mpAction_editorSidebarToggle->setCheckable(true);
-    connect(mpAction_editorSidebarToggle, &QAction::triggered, this, [this]() {
-        setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
-    });
-    toolBar->addAction(mpAction_editorSidebarToggle);
-    toolBar->addSeparator();
-
     // Grouped by what the buttons do to the item being worked on, with what
     // acts on the profile as a whole pushed to the far end
     toolBar->addAction(mAddItem);
@@ -1437,10 +1437,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
 
     applyEditorToolbarButtonStyles();
-    // The widget a screen reader reaches is the toolbar's button rather than
-    // the action, and it is made when the action is added to the bar
-    mpButton_editorSidebarToggle = qobject_cast<QToolButton*>(toolBar->widgetForAction(mpAction_editorSidebarToggle));
-    updateEditorSidebarToggle();
 
     connect(checkBox_displayAllVariables, &QAbstractButton::toggled, this, &dlgTriggerEditor::slot_toggleHiddenVariables);
 
@@ -1485,6 +1481,16 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         pEditorBody->show();
     }
     QMainWindow::setCentralWidget(pShell);
+
+    // The control that gives the sidebar's names up rides on the seam between
+    // the sidebar and the rest of the window, so it is a child of the shell
+    // holding both rather than of either of them - and of the toolbar least of
+    // all, which the user can drag to another edge of the window or float.
+    mpToggle_editorSidebar = new uiDesign::EditorSidebarToggle(mpWidget_editorSidebarPane, pShell);
+    connect(mpToggle_editorSidebar, &QAbstractButton::clicked, this, [this]() {
+        setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
+    });
+    updateEditorSidebarToggle();
 
     QMainWindow::addToolBar(Qt::TopToolBarArea, toolBar);
 
@@ -8512,6 +8518,10 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
@@ -8578,6 +8588,10 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
@@ -8640,6 +8654,10 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 // This should not modify the contents of what pItem points at:
@@ -8959,6 +8977,10 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
                        "Its value may show up blank for the same reason. A script can still change it.")
                             .arg(var->getName().toHtmlEscaped()));
     }
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
@@ -9099,6 +9121,10 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 void dlgTriggerEditor::slot_treeSelectionChanged()
@@ -9207,6 +9233,10 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
@@ -9274,6 +9304,10 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
+    // The item just loaded is not the one this view's split was last sized
+    // for - the next one along can hold three pattern rows where the last held
+    // one - so the form is given the height its contents ask for
+    fitFormPaneToItsContents();
 }
 
 void dlgTriggerEditor::fillout_form()
@@ -10376,7 +10410,61 @@ int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
     // of its immediate parent, so the chain up to the column is told first or
     // this measures the form as it was before the panel appeared
     uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
-    return std::clamp(mpNonCodeWidgets->sizeHint().height(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+    int wanted = mpNonCodeWidgets->sizeHint().height();
+    // The pattern rows scroll, and a scrolling area answers with the height it
+    // was first asked at rather than the height its contents have since grown
+    // to - QScrollArea caches its widget's hint and clears that cache only when
+    // it is handed a different widget. So the form's own hint carries the rows
+    // of whichever trigger was open when that answer was cached, and what the
+    // rows want over it is asked for on top. This is what stops a trigger with
+    // three patterns opening with two of them on show and a scroll bar beside
+    // them, under a code pane with the rest of the window to itself.
+    if (mpScrollArea && mpWidget_triggerItems && mpTriggersMainArea->isVisible()) {
+        wanted += std::max(0, mpWidget_triggerItems->sizeHint().height() - mpScrollArea->sizeHint().height());
+    }
+    return std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+}
+
+// A form is given the height its contents ask for whenever the item being
+// edited changes. A stored split is the user's idea of how tall this view's
+// form should be, but it was stored against whichever item was open then, and
+// the next one along can hold three pattern rows where that one held one - so
+// the form pane scrolls while the code pane under it sits nearly empty.
+//
+// Only ever grown: a pane dragged taller than its contents is the user's own
+// and stays where it was put. What it grows by comes off the code pane, which
+// formPaneHeightForItsContents() has already left its floor.
+void dlgTriggerEditor::fitFormPaneToItsContents()
+{
+    if (!splitter_right || !mpNonCodeWidgets || !mpNonCodeWidgets->isVisible()) {
+        return;
+    }
+    QList<int> sizes = splitter_right->sizes();
+    if (sizes.size() < 2) {
+        return;
+    }
+    const int paneTotal = sizes.at(0) + sizes.at(1);
+    if (paneTotal <= 0) {
+        return;
+    }
+    // A row shown or hidden posts a layout request rather than sending one, and
+    // it is that request arriving which clears the scrolling pattern area's
+    // cached idea of how tall its contents are. Until it does, the form answers
+    // with the height the item before this one needed - which is the whole of
+    // why a trigger with three rows opened after one with a single row was left
+    // scrolling. Only that one kind of event is flushed, so nothing else the
+    // selection has queued runs in the middle of it.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+    if (QLayout* pLayout = mpNonCodeWidgets->layout()) {
+        pLayout->activate();
+    }
+    const int wanted = formPaneHeightForItsContents(paneTotal);
+    if (wanted <= sizes.at(0)) {
+        return;
+    }
+    sizes[1] -= wanted - sizes.at(0);
+    sizes[0] = wanted;
+    splitter_right->setSizes(sizes);
 }
 
 // Each view keeps its own sizes for the right hand splitter and puts them back
@@ -13829,12 +13917,16 @@ void dlgTriggerEditor::slot_editorContextMenu()
 QString dlgTriggerEditor::generateButtonStyleSheet(const QColor& color, const bool isEnabled)
 {
     if (color != QColorConstants::Transparent && color.isValid()) {
+        // The hairline is read here rather than kept with the sheet: a theme
+        // change is one of the things that restyles these wells, and the tone
+        // it is drawn in has moved by the time it does
+        const QString hairline = uiDesign::themeTokens().border.name();
         if (isEnabled) {
-            return mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(color.lightness() > 127 ? QLatin1String("black") : QLatin1String("white"), color.name());
+            return mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(color.lightness() > 127 ? QLatin1String("black") : QLatin1String("white"), color.name(), hairline);
         }
 
         const QColor disabledColor = QColor::fromHsl(color.hslHue(), color.hslSaturation() / 4, color.lightness());
-        return mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(QLatin1String("darkGray"), disabledColor.name());
+        return mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(QLatin1String("darkGray"), disabledColor.name(), hairline);
     }
     return QString();
 }
@@ -14771,60 +14863,37 @@ void dlgTriggerEditor::buildEditorSidebar()
     invalidateEditorSidebarWidths();
 }
 
-// The button at the left end of the toolbar. What it is called is what will
-// become of the names - never of the sidebar, which stays: a rail turns every
-// row's name into its tooltip, so a reader who cannot see the button has to be
-// told that much in words.
+// The chevron on the line between the sidebar and the rest of the window. What
+// it is called is what will become of the names - never of the sidebar, which
+// stays: a rail turns every row's name into its tooltip, so a reader who cannot
+// see the control has to be told that much in words.
 void dlgTriggerEditor::updateEditorSidebarToggle()
 {
-    if (!mpAction_editorSidebarToggle) {
+    if (!mpToggle_editorSidebar) {
         return;
     }
     const bool namesShowing = mEditorSidebarLabelsShown && mEditorSidebarNamesFit;
-    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    // Pointing the way the sidebar will go: into the seam while the names are
+    // there to be given up, out of it while they are not
+    mpToggle_editorSidebar->setPointingLeft(namesShowing);
 
-    // A resize asks for the sidebar's mode on every frame of a drag, and
-    // tinting a glyph three times over is not free - so the picture is only
-    // redone when one of the two colours it is mixed from has moved. The size
-    // is not among them: the toolbar draws every action's glyph at its own icon
-    // size, so this one follows the preference the way its neighbours do.
-    const EditorSidebarToggleGlyph wanted{.tint = tokens.mutedText.rgb(), .activeTint = tokens.accentText.rgb()};
-    if (wanted != mEditorSidebarToggleGlyph) {
-        mEditorSidebarToggleGlyph = wanted;
-        const QPixmap source(qsl(":/icons/editor-sidebar.png"));
-        const QPixmap quiet = uiDesign::tintedGlyph(source, tokens.mutedText);
-        const QPixmap lively = uiDesign::tintedGlyph(source, tokens.accentText);
-        QIcon icon(quiet);
-        // Active rather than Selected, as with the toolbar's other glyphs: a
-        // tool button asks for Active while the pointer is on it. On is what it
-        // is drawn in while the names are showing, which is the state the
-        // button is held down in.
-        icon.addPixmap(lively, QIcon::Active, QIcon::Off);
-        icon.addPixmap(lively, QIcon::Normal, QIcon::On);
-        icon.addPixmap(lively, QIcon::Active, QIcon::On);
-        mpAction_editorSidebarToggle->setIcon(icon);
-    }
-
-    // Held down while the names are on show, the way a sidebar toggle is
-    // everywhere else: the button carries the state rather than the next move
-    mpAction_editorSidebarToggle->setChecked(namesShowing);
-
-    //: Tooltip and accessible name of the button at the left of the script editor's toolbar while the section names are showing. Pressing it leaves the sidebar in place as a rail of icons - it closes nothing - so the wording is about the labels rather than the sidebar.
+    //: Tooltip and accessible name of the chevron on the line down the right of the script editor's sidebar while the section names are showing. Pressing it leaves the sidebar in place as a rail of icons - it closes nothing - so the wording is about the labels rather than the sidebar.
     const QString minimise = tr("Minimise the sidebar to icons");
-    //: Tooltip and accessible name of that same button while the sidebar is a rail of icons. Pressing it puts the section names back beside the icons.
+    //: Tooltip and accessible name of that same chevron while the sidebar is a rail of icons. Pressing it puts the section names back beside the icons.
     const QString showLabels = tr("Show the sidebar's labels");
     const QString wording = namesShowing ? minimise : showLabels;
-    // The button is drawn as a picture alone, so its text is the name a screen
-    // reader is given rather than anything on show
-    mpAction_editorSidebarToggle->setText(wording);
+    // The chevron is drawn rather than written, so its text is the name a
+    // screen reader is given rather than anything on show
+    mpToggle_editorSidebar->setText(wording);
+    mpToggle_editorSidebar->setAccessibleName(wording);
     // A window with no room for the names cannot be talked into them, so rather
-    // than doing nothing when it is pressed the button says why it will not
-    mpAction_editorSidebarToggle->setEnabled(mEditorSidebarNamesFit);
-    //: Tooltip on that same button when the editor window is too narrow to fit the section names, which is why pressing it is not offered.
-    mpAction_editorSidebarToggle->setToolTip(utils::richText(mEditorSidebarNamesFit ? wording : tr("The window is too narrow for the sidebar's labels")));
-    if (mpButton_editorSidebarToggle) {
-        mpButton_editorSidebarToggle->setAccessibleName(wording);
-    }
+    // than doing nothing when it is pressed the control says why it will not
+    mpToggle_editorSidebar->setEnabled(mEditorSidebarNamesFit);
+    //: Tooltip on that same chevron when the editor window is too narrow to fit the section names, which is why pressing it is not offered.
+    mpToggle_editorSidebar->setToolTip(utils::richText(mEditorSidebarNamesFit ? wording : tr("The window is too narrow for the sidebar's labels")));
+    // The sidebar's width is what the seam is, and this is called from every
+    // path that can have moved it
+    mpToggle_editorSidebar->reposition();
 }
 
 // The one place the preference changes, so that the toggle and the session
@@ -15077,9 +15146,15 @@ void dlgTriggerEditor::restyleEditorIcons()
     // ...and the heading row of each tree, which carries the same seven glyphs
     restyleEditorTreeHeadingIcons();
 
-    // ...and the toolbar's leading button, which is mixed from the same two
-    // colours and says which of the sidebar's two modes is in force
-    updateEditorSidebarToggle();
+    // The button that empties the sound file field. It carries the same tinted
+    // set as the toolbar's actions rather than a green bitmap, and the mode that
+    // matters most here is the disabled one: with no sound file set there is
+    // nothing to take away, which is how the button spends most of its life.
+    if (mpTriggersMainArea) {
+        QToolButton* pClearSoundFile = mpTriggersMainArea->toolButton_clearSoundFile;
+        pClearSoundFile->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.png"), tokens));
+        pClearSoundFile->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
+    }
 
     if (mpLabel_editorCodeHeaderIcon) {
         const qreal glyphRatio = mpLabel_editorCodeHeaderIcon->devicePixelRatioF();
@@ -15249,7 +15324,7 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     mpWidget_editorCompileChip = new QWidget(mpWidget_editorCodeHeader);
     mpWidget_editorCompileChip->setObjectName(qsl("editorCompileChip"));
     auto* pChipLayout = new QHBoxLayout(mpWidget_editorCompileChip);
-    pChipLayout->setContentsMargins(7, 2, 8, 2);
+    pChipLayout->setContentsMargins(scmEditorCompileChipPaddingHorizontal, scmEditorCompileChipPaddingVertical, scmEditorCompileChipPaddingHorizontal, scmEditorCompileChipPaddingVertical);
     pChipLayout->setSpacing(5);
     mpLabel_editorCompileDot = new QLabel(mpWidget_editorCompileChip);
     mpLabel_editorCompileDot->setObjectName(qsl("editorCompileDot"));
@@ -15258,7 +15333,11 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     mpLabel_editorCompileState = new QLabel(mpWidget_editorCompileChip);
     mpLabel_editorCompileState->setObjectName(qsl("editorCompileState"));
     pChipLayout->addWidget(mpLabel_editorCompileState);
-    pHeaderLayout->addWidget(mpWidget_editorCompileChip);
+    // Aligned rather than stretched: a widget a row lays out with no alignment
+    // of its own is given the whole height of the row, which is how the chip
+    // came to be the strip. Given its own height instead, what is left above
+    // and below it is what says the chip is on the bar rather than being it.
+    pHeaderLayout->addWidget(mpWidget_editorCompileChip, 0, Qt::AlignVCenter);
 
     // Index 1 is the handle over mpSourceEditorArea, which is the second of the
     // three panes the right hand splitter stacks
@@ -15298,7 +15377,11 @@ void dlgTriggerEditor::updateEditorCompileChip()
 
     mpLabel_editorCompileDot->setStyleSheet(qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(stateColor.name(), QString::number(scmEditorCompileDotDiameter / 2)));
     mpWidget_editorCompileChip->setStyleSheet(qsl("#editorCompileChip { background-color: %1; border-radius: %3px; }"
-                                                  "#editorCompileState { color: %2; font-size: 92%; }")
+                                                  // A step down from the heading beside it, which is
+                                                  // itself a step down from the window's own type: the
+                                                  // chip is a note on the strip rather than a second
+                                                  // heading on it
+                                                  "#editorCompileState { color: %2; font-size: 85%; }")
                                                       .arg(uiDesign::rgba(stateColor, 0.14), stateColor.name(), QString::number(uiDesign::scmRadiusChip)));
 }
 
@@ -15330,10 +15413,8 @@ void dlgTriggerEditor::applyEditorToolbarButtonStyles()
     }
     toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     // Two arrows side by side read as one control, and spelling them out costs
-    // more width than the pair is worth. The sidebar toggle is a picture
-    // everywhere else it appears, and its words are its tooltip and the name a
-    // screen reader is given.
-    for (QAction* pAction : {mpUndoAction, mpRedoAction, mpAction_editorSidebarToggle}) {
+    // more width than the pair is worth
+    for (QAction* pAction : {mpUndoAction, mpRedoAction}) {
         if (!pAction) {
             continue;
         }
@@ -15364,6 +15445,14 @@ QString dlgTriggerEditor::patternRowStyleSheet() const
 
     return qsl("#label_dragHandle { background: transparent; }"
                "#label_patternNumber { color: %2; background: transparent; }"
+               // The words that stand in for a pattern on a row matching the
+               // prompt line, read at the weight the rest of the row's chrome
+               // is - and, where the game sends no Go-Ahead and there is
+               // nothing to match on, at the tone the design writes an
+               // unavailable word in rather than the platform's, which on a
+               // light theme is a shade off the page it is written on
+               "#label_prompt { color: %2; background: transparent; }"
+               "#label_prompt:disabled { color: %8; }"
                // Its own tint over the row's, or the button would be no more
                // than the row it is already sitting on
                "#toolButton_deletePattern { border: none; border-radius: 4px; background: transparent; }"
@@ -15390,7 +15479,8 @@ QString dlgTriggerEditor::patternRowStyleSheet() const
                         tokens.accent.name(),
                         uiDesign::rgba(tokens.text, 0.14),
                         QString::number(scmEditorAddPatternMarginTop),
-                        QString::number(scmEditorAddPatternMarginBottom))
+                        QString::number(scmEditorAddPatternMarginBottom),
+                        tokens.disabledText.name())
            // Styling the scroll area at all takes its scroll bar with it, so
            // the bar is given the same one the trees use
            + uiDesign::scrollBarStyleSheet(qsl("#editorPatternScroll"), tokens);
@@ -15450,8 +15540,21 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     restyleEditorIcons();
 
+    // The bar can be dragged to another edge of the window or floated, and what
+    // says so is the grip at its leading end. Styling the bar at all takes the
+    // platform's own handle with it, which leaves a pair of faint dots barely
+    // on the page - so the same six the pattern rows are dragged by are inked
+    // to the palette and pointed at here.
+    const QString gripAcross = uiDesign::gripGlyphFile(mutedText, false);
+    const QString gripAlong = uiDesign::gripGlyphFile(mutedText, true);
     const QString toolBarRules = qsl("QToolBar#editorActionsToolbar { background-color: %1; border: none; border-bottom: 1px solid %2; spacing: 2px; padding: 4px 6px; }"
                                      "QToolBar#editorActionsToolbar::separator { background-color: %2; width: 1px; margin: 5px 6px; }"
+                                     // A background rather than an image: a sub-control's
+                                     // image is stretched to fill it, which turns six small
+                                     // dots into a wash across the whole handle
+                                     "QToolBar#editorActionsToolbar::handle { background-image: url(%8); background-repeat: no-repeat;"
+                                     " background-position: center; width: %10px; margin: 6px 2px; }"
+                                     "QToolBar#editorActionsToolbar::handle:vertical { background-image: url(%9); height: %10px; margin: 2px 6px; }"
                                      // The transparent border keeps the label from stepping
                                      // sideways when a hovered button gains one
                                      "QToolBar#editorActionsToolbar QToolButton { color: %3; border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; }"
@@ -15462,7 +15565,16 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                      // separator with it, so the menu half is drawn as one
                                      // piece with the rest
                                      "QToolBar#editorActionsToolbar QToolButton::menu-button { border: none; background: transparent; width: 14px; }")
-                                         .arg(pageColor.name(), borderColor.name(), mutedText.name(), textColor.name(), hoverSoft, accentSoft, disabledText.name());
+                                         .arg(pageColor.name(),
+                                              borderColor.name(),
+                                              mutedText.name(),
+                                              textColor.name(),
+                                              hoverSoft,
+                                              accentSoft,
+                                              disabledText.name(),
+                                              gripAcross,
+                                              gripAlong,
+                                              QString::number(scmEditorToolbarGripExtent));
 
     const QString statusBarRules = qsl("QStatusBar#editorStatusBar { background-color: %1; border-top: 1px solid %2; }"
                                        // Or the platform style draws a sunken frame around
@@ -15503,6 +15615,17 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // which are the page.
     frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }").arg(paneColor.name()));
 
+    // What the seam either side of each column is painted with. A handle
+    // carrying no heading draws a hairline and carries each neighbour's own
+    // tone up to it, and a stylesheet is what fills these - so each one says
+    // what it was filled with rather than the handle guessing at it.
+    frame_left->setProperty(uiDesign::scmProp_paneTone, paneColor);
+    for (QWidget* pPane : {static_cast<QWidget*>(frame_right), static_cast<QWidget*>(mpNonCodeWidgets), static_cast<QWidget*>(mpSourceEditorArea), static_cast<QWidget*>(mpErrorConsole)}) {
+        if (pPane) {
+            pPane->setProperty(uiDesign::scmProp_paneTone, pageColor);
+        }
+    }
+
     // The trees on that pane. No colour is named for an unselected row: what a
     // row is drawn in says whether the thing it stands for is running, and
     // EditorTreeDelegate is what knows that.
@@ -15515,12 +15638,25 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // the chevron inside it - where the view's own indentation would have left
     // the column the chevron stands in painted by the style, in the platform's
     // saturated selection colour, with the row's pill stuck to the side of it.
+    // ...and the chosen one carries the accent bar down its leading edge that
+    // the sidebar's chosen row does, at the same width and in the same colour.
+    // The bar is a transparent border on every row rather than a gap on the
+    // chosen one, so that nothing steps sideways when it appears - and the
+    // row's own padding gives back what the border takes, which is what leaves
+    // the dot, the chevron and the mark the delegate draws where they were.
     const QColor selectedRow = uiDesign::blend(paneColor, accentColor, scmEditorTreeSelectionWeight);
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
-                                  "QTreeWidget::item { border-radius: %5px; padding: 2px 4px; }"
+                                  "QTreeWidget::item { border-radius: %5px; border-left: %6px solid transparent; padding: 2px 4px 2px %7px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
-                                  "QTreeWidget::item:selected { color: %4; background-color: %3; }")
-                                      .arg(paneColor.name(), hoverSoft, selectedRow.name(), accentText.name(), QString::number(uiDesign::scmRadiusPanel))
+                                  "QTreeWidget::item:selected { color: %4; background-color: %3; border-left: %6px solid %8; }")
+                                      .arg(paneColor.name(),
+                                           hoverSoft,
+                                           selectedRow.name(),
+                                           accentText.name(),
+                                           QString::number(uiDesign::scmRadiusPanel),
+                                           QString::number(uiDesign::scmAccentBarWidth),
+                                           QString::number(scmEditorTreeRowGutter - uiDesign::scmAccentBarWidth),
+                                           accentColor.name())
                               + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
     // The tree of Lua variables takes the same rules and is drawn by no delegate
@@ -15632,6 +15768,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     // further, which is why the number is measured rather than named.
                                                     "#frameId { border: 1px solid %2; border-radius: %9px; background: transparent; }"
                                                     "#frameId QLabel { color: %3; background: transparent; }"
+                                                    // The button that empties the sound file field, drawn as
+                                                    // the picture alone the way the toolbar's are: a frame
+                                                    // round a glyph this small reads as a second control
+                                                    "#toolButton_clearSoundFile { border: none; border-radius: %8px; background: transparent; padding: 2px; }"
+                                                    "#toolButton_clearSoundFile:hover { background-color: %11; }"
                                                     // The cards are what is drawn in the options column: the scroll
                                                     // area holding them and the viewport Qt gives it show the page
                                                     // through. Named outright, as the pattern rows are, so that a
@@ -15714,13 +15855,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                               // same rules; the names are quieter here, as the rest of the
                                               // editor's chrome is
                                               + uiDesign::sidebarStyleSheet(qsl("editorSidebar"), qsl("editorSidebarSeparator"), mutedText, editorSidebarMetrics(widths.expanded), tokens)
-                                              + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens)
-                                              // The chevron below the rows, hovered the way the toolbar's
-                                              // buttons are and cornered on the same scale as a row's pill
-                                              + qsl("#editorSidebarToggle { border: none; background: transparent; border-radius: %1px; }"
-                                                    "#editorSidebarToggle:hover { background-color: %2; }"
-                                                    "#editorSidebarToggle:pressed { background-color: %3; }")
-                                                        .arg(QString::number(uiDesign::scmRadiusInput), hoverSoft, accentSoft));
+                                              + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens));
 
     // A different font is a different width for the names, so the breakpoint is
     // re-measured with the look it belongs to

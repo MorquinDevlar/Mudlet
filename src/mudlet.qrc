@@ -83,6 +83,7 @@
         <file>icons/editor-add.png</file>
         <file>icons/editor-aliases.png</file>
         <file>icons/editor-buttons.png</file>
+        <file>icons/editor-clear.png</file>
         <file>icons/editor-copy.png</file>
         <file>icons/editor-debug.png</file>
         <file>icons/editor-delete.png</file>
@@ -102,7 +103,6 @@
         <file>icons/editor-save-item.png</file>
         <file>icons/editor-save-profile.png</file>
         <file>icons/editor-scripts.png</file>
-        <file>icons/editor-sidebar.png</file>
         <file>icons/editor-statistics.png</file>
         <file>icons/editor-timers.png</file>
         <file>icons/editor-triggers.png</file>

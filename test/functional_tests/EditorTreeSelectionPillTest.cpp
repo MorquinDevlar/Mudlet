@@ -315,6 +315,48 @@ private slots:
         }
     }
 
+    // ...and it leads with the accent bar the sidebar's chosen row leads with,
+    // which is the mark that says "this one" in both of the window's lists. Read
+    // across the middle of the row, where the bar is at its full width: the
+    // corner it is drawn inside pinches it towards either end.
+    void test_theChosenRowLeadsWithTheAccentBar()
+    {
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        const QRect chosenBand = rowBand(mpInnerGroup);
+        // The row above it, which nothing has hovered yet, so its leading edge
+        // is the panel and the reading below says the bar is the selection's
+        // rather than every row's
+        const QRect plainBand = rowBand(mpOuterGroup);
+        QVERIFY2(plainBand.top() < chosenBand.top(), "The row read as the unchosen one is not above the chosen one");
+        const QImage shot = windowShot();
+
+        QStringList measuredBar;
+        QStringList measuredPlain;
+        QStringList wrong;
+        for (int x = 0; x < uiDesign::scmAccentBarWidth; ++x) {
+            const QColor bar = shot.pixelColor(inViewport(QPoint(chosenBand.left() + x, chosenBand.center().y())));
+            const QColor plain = shot.pixelColor(inViewport(QPoint(plainBand.left() + x, plainBand.center().y())));
+            measuredBar << bar.name();
+            measuredPlain << plain.name();
+            if (bar.rgb() != tokens.accent.rgb()) {
+                wrong << qsl("the chosen row is %1 at x=%2 where the accent is %3").arg(bar.name(), QString::number(x), tokens.accent.name());
+            }
+            if (plain.rgb() != tokens.pane.rgb()) {
+                wrong << qsl("the row above it is %1 at x=%2 where the panel is %3").arg(plain.name(), QString::number(x), tokens.pane.name());
+            }
+        }
+        // ...and the fill starts where the bar ends, rather than the bar being
+        // the whole leading edge of the pill
+        const QColor afterTheBar = shot.pixelColor(inViewport(QPoint(chosenBand.left() + uiDesign::scmAccentBarWidth, chosenBand.center().y())));
+        qInfo().noquote()
+                << qsl("  the chosen row's leading %1px are %2 and the row above's are %3; the pixel after the bar is %4, the accent %5 and the panel %6")
+                           .arg(QString::number(uiDesign::scmAccentBarWidth), measuredBar.join(qsl(" ")), measuredPlain.join(qsl(" ")), afterTheBar.name(), tokens.accent.name(), tokens.pane.name());
+
+        QVERIFY2(wrong.isEmpty(), qPrintable(qsl("the accent bar down the chosen row is not what is painted: %1").arg(wrong.join(qsl("; ")))));
+        QVERIFY2(afterTheBar.rgb() != tokens.accent.rgb(), qPrintable(qsl("the chosen row is the accent past the bar as well, at %1").arg(afterTheBar.name())));
+        QVERIFY2(afterTheBar.rgb() != tokens.pane.rgb(), qPrintable(qsl("the chosen row is not filled past its bar: it is %1, which is the panel").arg(afterTheBar.name())));
+    }
+
     // The user's own reading of the pair, and the one that says the two states
     // are drawn as one shape: a hovered row and a chosen row, on the same tree,
     // measured at the same four corners and along the same two edges. The hover

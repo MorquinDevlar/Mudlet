@@ -426,8 +426,10 @@ public:
     // Value of QCoreApplication::testAttribute(Qt::AA_DontShowIconsInMenus) on
     // startup which the user may leave as is or force on or off:
     bool mShowIconsOnMenuOriginally = true;
-    // 2 (of 2) needed to work around a (Windows/MacOs specific QStyleFactory)
-    // issue:
+    // A button or label showing a colour, drawn as a well: the caller fills in
+    // the ink, the fill and the hairline, in that order - the corner and the
+    // padding are already in it. See the constructor for why it is not the pair
+    // of platform variants the sheet above it still is.
     QString mTEXT_ON_BG_STYLESHEET;
     int mToolbarIconSize = 0;
     QMap<QString, translation> mTranslationsMap;

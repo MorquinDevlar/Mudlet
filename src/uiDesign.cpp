@@ -107,6 +107,16 @@ constexpr qreal scmTextSoftenOnLight = 0.10;
 // white towards a grey page only muddies it - so the lift is the dark theme's
 // alone.
 constexpr qreal scmFieldLiftOnDark = 0.30;
+// What an unavailable word is written in: a third of the way from the page to
+// the words on it, so it reads as a word switched off rather than as one merely
+// quiet. That fraction alone is not enough on a light theme - it lands about
+// 2.3:1 on the page, which is a word the reader has to hunt for - so it is a
+// starting point rather than the answer, and the mixture is walked on towards
+// the text until it clears the floor a large or secondary line has to clear
+// against both surfaces such a word is ever set on.
+constexpr qreal scmDisabledTextWeight = 0.32;
+constexpr qreal scmDisabledTextMinimumRatio = 3.0;
+constexpr qreal scmDisabledTextWeightStep = 0.02;
 // How many stops readableOn() tries between the colour it was asked for and the
 // end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
@@ -117,11 +127,9 @@ constexpr int scmInputDropDownWidth = 18;
 constexpr int scmInputArrowSize = 9;
 constexpr int scmInputStepperWidth = 16;
 constexpr int scmInputStepperArrowSize = 8;
-// The accent bar down the left of the chosen item in a sidebar, and how far the
-// name beside it is held off the item's left edge in all. The bar is a border
-// rather than a gap, so the padding written into the rules is what it leaves of
-// that gutter.
-constexpr int scmSidebarAccentBarWidth = 3;
+// How far the name beside the accent bar is held off the item's left edge in
+// all. The bar is a border rather than a gap, so the padding written into the
+// rules is what it leaves of that gutter.
 constexpr int scmSidebarItemGutter = 10;
 // The ring drawn round the pill while the list holds the keyboard. It is taken
 // out of the item rather than added to it, a pixel off either side, so the
@@ -474,7 +482,15 @@ ThemeTokens themeTokens()
     tokens.separator = blend(tokens.page, QColor(Qt::black), tokens.darkPage ? scmSeparatorDropOnDark : scmSeparatorDropOnLight);
     tokens.border = blend(tokens.page, tokens.text, tokens.darkPage ? 0.22 : 0.18);
     tokens.mutedText = blend(tokens.page, tokens.text, 0.70);
-    tokens.disabledText = blend(tokens.page, tokens.text, 0.32);
+    tokens.disabledText = blend(tokens.page, tokens.text, scmDisabledTextWeight);
+    // Both surfaces, since an unavailable word is set on the page - a toolbar
+    // button, a label on a form - and in a field it is typed into alike, and on
+    // a light theme those two are a grey page and a white well
+    for (qreal weight = scmDisabledTextWeight;
+         weight < 1.0 && (contrastRatio(tokens.disabledText, tokens.page) < scmDisabledTextMinimumRatio || contrastRatio(tokens.disabledText, tokens.field) < scmDisabledTextMinimumRatio);) {
+        weight = std::min(1.0, weight + scmDisabledTextWeightStep);
+        tokens.disabledText = blend(tokens.page, tokens.text, weight);
+    }
     tokens.accentText = tokens.darkPage ? blend(tokens.accent, QColor(Qt::white), 0.45) : blend(tokens.accent, QColor(Qt::black), 0.2);
     tokens.marker = QColor::fromHslF(scmMarkerHue, scmMarkerSaturation, tokens.darkPage ? scmMarkerLightnessOnDark : scmMarkerLightnessOnLight);
     tokens.hoverSoft = rgba(tokens.text, 0.07);
@@ -508,7 +524,7 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
     // its rounded corners - at the cost of the bar being a fraction of the
     // item's width, and a different fraction at each of the two widths.
     const auto barStop = [](const int width, const int padding) {
-        return static_cast<qreal>(scmSidebarAccentBarWidth) / std::max(1, width - 2 * padding);
+        return static_cast<qreal>(scmAccentBarWidth) / std::max(1, width - 2 * padding);
     };
     // Two stops a ten-thousandth apart rather than one: a gradient is
     // interpolated between its stops, and the bar has to end rather than fade
@@ -519,10 +535,10 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
 
     const QString list = QLatin1Char('#') + listName;
     const QString separator = QLatin1Char('#') + separatorName;
-    const QString accentBar = QString::number(scmSidebarAccentBarWidth);
+    const QString accentBar = QString::number(scmAccentBarWidth);
     const QString focusRing = QString::number(scmSidebarFocusRingWidth);
-    const QString itemPadding = QString::number(scmSidebarItemGutter - scmSidebarAccentBarWidth);
-    const QString focusedItemPadding = QString::number(scmSidebarItemGutter - scmSidebarAccentBarWidth - 2 * scmSidebarFocusRingWidth);
+    const QString itemPadding = QString::number(scmSidebarItemGutter - scmAccentBarWidth);
+    const QString focusedItemPadding = QString::number(scmSidebarItemGutter - scmAccentBarWidth - 2 * scmSidebarFocusRingWidth);
     const QString railProperty = QLatin1StringView(scmProp_rail);
     const QString focusedProperty = QLatin1StringView(scmProp_focused);
     // Or the platform style draws its own selection as a square box inside the
@@ -577,7 +593,9 @@ bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& sepa
 // force, and left in the cache directory for the sheet to point at. The colour
 // is part of the file's name: a theme change writes a new file rather than
 // changing one a stylesheet has already read and cached by path.
-static QString themedArrowFile(const QColor& color, const bool pointingUp)
+// Where a glyph a stylesheet has to point at is written. One directory for all
+// of them, made on the way past.
+static QString glyphCacheFile(const QString& fileName)
 {
     const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     if (cacheRoot.isEmpty()) {
@@ -587,9 +605,56 @@ static QString themedArrowFile(const QColor& color, const bool pointingUp)
     if (!cacheDir.exists() && !cacheDir.mkpath(qsl("."))) {
         return QString();
     }
+    return cacheDir.absoluteFilePath(fileName);
+}
 
-    const QString filePath = cacheDir.absoluteFilePath(qsl("arrow-%1-%2.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1)));
-    if (QFileInfo::exists(filePath)) {
+QString gripGlyphFile(const QColor& color, const bool alongTheBar)
+{
+    const int columns = alongTheBar ? scmGripDotsAlong : scmGripDotsAcross;
+    const int rows = alongTheBar ? scmGripDotsAcross : scmGripDotsAlong;
+    const QString filePath = glyphCacheFile(qsl("grip-%1-%2x%3.png").arg(color.name().mid(1), QString::number(columns), QString::number(rows)));
+    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
+        return filePath;
+    }
+
+    const qreal width = (columns - 1) * scmGripDotPitch + scmGripDotDiameter;
+    const qreal height = (rows - 1) * scmGripDotPitch + scmGripDotDiameter;
+    // Written twice on a screen that doubles its pixels: a stylesheet loads the
+    // path it is given through QPixmap, which looks for the @2x file beside it
+    // first, so the plain one is what the rule names and the larger one is what
+    // a retina screen actually draws
+    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
+    QList<qreal> ratios{1.0};
+    if (ratio > 1.0) {
+        ratios << ratio;
+    }
+    for (const qreal drawnAt : std::as_const(ratios)) {
+        QPixmap grip(qRound(width * drawnAt), qRound(height * drawnAt));
+        grip.fill(Qt::transparent);
+        QPainter painter(&grip);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.scale(drawnAt, drawnAt);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+        for (int column = 0; column < columns; ++column) {
+            for (int row = 0; row < rows; ++row) {
+                painter.drawEllipse(QRectF(column * scmGripDotPitch, row * scmGripDotPitch, scmGripDotDiameter, scmGripDotDiameter));
+            }
+        }
+        painter.end();
+        const QString wanted =
+                drawnAt > 1.0 ? glyphCacheFile(qsl("grip-%1-%2x%3@%4x.png").arg(color.name().mid(1), QString::number(columns), QString::number(rows), QString::number(qRound(drawnAt)))) : filePath;
+        if (!grip.save(wanted, "PNG")) {
+            return QString();
+        }
+    }
+    return filePath;
+}
+
+static QString themedArrowFile(const QColor& color, const bool pointingUp)
+{
+    const QString filePath = glyphCacheFile(qsl("arrow-%1-%2.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1)));
+    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
         return filePath;
     }
 

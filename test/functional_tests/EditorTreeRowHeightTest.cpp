@@ -405,6 +405,14 @@ private slots:
         mpEditor = mpHost->mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1000, 800);
+        // The last case here reads shapes off a shot of the window, and a
+        // window the compositor has not shown yet is one whose first paint has
+        // not run. Not fatal if it never comes: grab() renders the widget tree
+        // itself, so an unexposed window is only a reason to wait rather than a
+        // reason to stop.
+        if (!QTest::qWaitForWindowExposed(mpEditor, 2000)) {
+            qInfo().noquote() << qsl("  the editor window was never exposed; the readings below are off a rendered widget tree alone");
+        }
 
         // The editor is built with the profile rather than on demand, so its
         // trees were filled before the items above existed. Emptied and filled
@@ -568,27 +576,20 @@ private slots:
         pTree->setFocus();
         QTest::qWait(50ms);
 
-        const QRect hoveredBand = pTree->visualItemRect(pHovered);
-        const QRect chosenBand = pTree->visualItemRect(pChosen);
-        QVERIFY2(pTree->viewport()->rect().contains(hoveredBand) && pTree->viewport()->rect().contains(chosenBand), "Both rows have to be on screen to be read off a shot of the window");
-        QVERIFY2(std::abs(hoveredBand.top() - chosenBand.top()) > hoveredBand.height() + chosenBand.height(),
+        QVERIFY2(pTree->viewport()->rect().contains(pTree->visualItemRect(pHovered)) && pTree->viewport()->rect().contains(pTree->visualItemRect(pChosen)),
+                 "Both rows have to be on screen to be read off a shot of the window");
+        QVERIFY2(std::abs(pTree->visualItemRect(pHovered).top() - pTree->visualItemRect(pChosen).top()) > pTree->visualItemRect(pHovered).height() + pTree->visualItemRect(pChosen).height(),
                  "The hovered and the chosen row are neighbours, so their two shapes would be measured as one");
 
-        const QPoint hoveredAt = hoveredBand.center();
-        QMouseEvent move(QEvent::MouseMove, QPointF(hoveredAt), QPointF(hoveredAt), pTree->viewport()->mapToGlobal(hoveredAt), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(pTree->viewport(), &move);
-        QTest::qWait(50ms);
-
-        const QImage shot = mpEditor->grab().toImage();
-        // A shot of a window on a screen that doubles its pixels is twice the
-        // size the window measures, so a point on the window has to be taken
-        // there before it can be read
-        const qreal shotRatio = shot.devicePixelRatio();
         // The unbroken run of painted pixels through the middle of the row,
         // read near its trailing end - clear of the arc its corner is cut with,
         // and past where any of these rows' names reach, so the run stops at the
         // shape's own edge rather than running on into the next row's letters
-        const auto paintedHeightAt = [&](const QRect& band) {
+        const auto paintedHeightAt = [&](const QImage& shot, const QRect& band) {
+            // A shot of a window on a screen that doubles its pixels is twice
+            // the size the window measures, so a point on the window has to be
+            // taken there before it can be read
+            const qreal shotRatio = shot.devicePixelRatio();
             const int x = band.right() - scmClearOfTheCorners;
             const auto painted = [&](const int y) {
                 const QPoint inWindow = pTree->viewport()->mapTo(mpEditor, QPoint(x, y));
@@ -610,14 +611,43 @@ private slots:
             }
             return bottom - top + 1;
         };
-        const int hoveredHeight = paintedHeightAt(hoveredBand);
-        const int chosenHeight = paintedHeightAt(chosenBand);
-        qInfo().noquote()
-                << qsl("  the hover fill is %1px tall and the selection pill %2px, on rows of %3px and %4px; the panel is %5")
-                           .arg(QString::number(hoveredHeight), QString::number(chosenHeight), QString::number(hoveredBand.height()), QString::number(chosenBand.height()), tokens.pane.name());
 
-        QVERIFY2(hoveredHeight > 0, "The row under the pointer is not tinted at all, so there is nothing to compare the pill with");
-        QVERIFY2(chosenHeight > 0, "The chosen row is not painted at all, so there is nothing to compare the hover with");
+        // Both readings come off one shot, and the shot is taken again if
+        // either shape is missing from it. The hover is a state the view holds
+        // rather than anything in the model: a leave, or the window losing its
+        // activation - which another process opening a window of its own is
+        // enough to cause - drops it, and the wash goes with it. So the move is
+        // sent again on each attempt rather than once before the first.
+        constexpr int scmAttempts = 5;
+        QRect hoveredBand;
+        QRect chosenBand;
+        int hoveredHeight = 0;
+        int chosenHeight = 0;
+        int attempts = 0;
+        while (attempts < scmAttempts && (hoveredHeight == 0 || chosenHeight == 0)) {
+            ++attempts;
+            hoveredBand = pTree->visualItemRect(pHovered);
+            chosenBand = pTree->visualItemRect(pChosen);
+            const QPoint hoveredAt = hoveredBand.center();
+            QMouseEvent move(QEvent::MouseMove, QPointF(hoveredAt), QPointF(hoveredAt), pTree->viewport()->mapToGlobal(hoveredAt), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(pTree->viewport(), &move);
+            QCoreApplication::sendPostedEvents();
+            QTest::qWait(50ms);
+
+            const QImage shot = mpEditor->grab().toImage();
+            hoveredHeight = paintedHeightAt(shot, hoveredBand);
+            chosenHeight = paintedHeightAt(shot, chosenBand);
+        }
+        qInfo().noquote() << qsl("  the hover fill is %1px tall and the selection pill %2px, on rows of %3px and %4px, read on attempt %5; the panel is %6")
+                                     .arg(QString::number(hoveredHeight),
+                                          QString::number(chosenHeight),
+                                          QString::number(hoveredBand.height()),
+                                          QString::number(chosenBand.height()),
+                                          QString::number(attempts),
+                                          tokens.pane.name());
+
+        QVERIFY2(hoveredHeight > 0, qPrintable(qsl("the row under the pointer is not tinted at all after %1 attempts, so there is nothing to compare the pill with").arg(QString::number(attempts))));
+        QVERIFY2(chosenHeight > 0, qPrintable(qsl("the chosen row is not painted at all after %1 attempts, so there is nothing to compare the hover with").arg(QString::number(attempts))));
         QVERIFY2(hoveredHeight == chosenHeight,
                  qPrintable(qsl("the wash under the hovered row is %1px tall and the pill under the chosen row %2px").arg(QString::number(hoveredHeight), QString::number(chosenHeight))));
     }

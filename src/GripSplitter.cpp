@@ -30,10 +30,30 @@ namespace uiDesign {
 namespace {
 constexpr int scmGripLength = 36;
 constexpr int scmGripThickness = 3;
-// What a handle carrying content is at least as tall as
-constexpr int scmHeaderThickness = 26;
+// What a handle carrying content is at least as tall as. Room enough that the
+// chip on the code pane's heading is a chip on a bar rather than the bar
+// itself: what is left above and below it is what says the two are different
+// things.
+constexpr int scmHeaderThickness = 32;
 // Room left around that content, so a larger font is not up against either pane
 constexpr int scmHeaderPadding = 2;
+// The seam a plain handle draws down its middle, and what that line widens to
+// while the pointer is on it - the way a split view says which of its edges is
+// about to be dragged
+constexpr int scmSeamThickness = 1;
+constexpr int scmSeamHoveredThickness = 3;
+
+// What a pane was painted with. A stylesheet is what fills a window's columns
+// and a palette knows nothing about one, so the pane is asked rather than
+// guessed at - and one that never said is taken for a piece of the page.
+QColor paneTone(const QWidget* pPane, const QColor& fallback)
+{
+    if (!pPane) {
+        return fallback;
+    }
+    const QColor tone = qvariant_cast<QColor>(pPane->property(scmProp_paneTone));
+    return tone.isValid() ? tone : fallback;
+}
 } // namespace
 
 GripSplitterHandle::GripSplitterHandle(const Qt::Orientation orientation, QSplitter* pParent)
@@ -110,6 +130,36 @@ void GripSplitterHandle::leaveEvent(QEvent* event)
     update();
 }
 
+void GripSplitterHandle::paintSeam(QPainter& painter, const ThemeTokens& tokens) const
+{
+    // A handle carrying nothing is a line rather than a band: the two panes are
+    // drawn up to a one pixel seam and the rest of the width the mouse needs is
+    // each pane's own tone carried on to it, so that what has to be nine pixels
+    // wide to be draggable reads as no gap at all. Hovered, the seam widens to
+    // three and takes the accent, which is the whole of what says it can be
+    // dragged - a grip pill on a line this thin would be the only thing on it.
+    QSplitter* pSplitter = splitter();
+    const int index = pSplitter ? pSplitter->indexOf(const_cast<GripSplitterHandle*>(this)) : -1;
+    const QColor before = paneTone(index > 0 ? pSplitter->widget(index - 1) : nullptr, tokens.page);
+    const QColor after = paneTone(index >= 0 ? pSplitter->widget(index) : nullptr, tokens.page);
+
+    const QColor seamColor = mHovered ? tokens.accent : tokens.separator;
+    const int thickness = mHovered ? scmSeamHoveredThickness : scmSeamThickness;
+    // The seam is centred on the handle, so an odd width grows either side of
+    // the middle pixel the resting line is drawn on
+    if (orientation() == Qt::Vertical) {
+        const int middle = (height() - scmSeamThickness) / 2;
+        painter.fillRect(QRect(0, 0, width(), middle), before);
+        painter.fillRect(QRect(0, middle + scmSeamThickness, width(), height() - middle - scmSeamThickness), after);
+        painter.fillRect(QRect(0, middle - (thickness - scmSeamThickness) / 2, width(), thickness), seamColor);
+        return;
+    }
+    const int middle = (width() - scmSeamThickness) / 2;
+    painter.fillRect(QRect(0, 0, middle, height()), before);
+    painter.fillRect(QRect(middle + scmSeamThickness, 0, width() - middle - scmSeamThickness, height()), after);
+    painter.fillRect(QRect(middle - (thickness - scmSeamThickness) / 2, 0, thickness, height()), seamColor);
+}
+
 void GripSplitterHandle::paintEvent(QPaintEvent*)
 {
     const ThemeTokens tokens = themeTokens();
@@ -117,11 +167,28 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // The seam between the two panes, whether or not it is carrying anything:
-    // one groove darker than either of them, rather than a strip of whichever
-    // pane it is nearer bounded by hairlines. A handle given a heading to carry
-    // is the same seam, only deep enough to read the heading in.
-    painter.fillRect(rect(), tokens.separator);
+    if (!mpContent) {
+        paintSeam(painter, tokens);
+        return;
+    }
+
+    // A handle given a heading to carry is the top of the pane under it, so it
+    // is drawn with that pane's own corner: the page shows through outside the
+    // arc and the strip fills everything inside it. Only the top is cut - what
+    // is under the pane is the next pane down or the window's own edge, neither
+    // of which the heading has anything to say about - so the rounded rectangle
+    // is drawn a corner's worth taller than the handle and its bottom two
+    // corners fall outside what is painted.
+    painter.fillRect(rect(), tokens.page);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(tokens.separator);
+    QRectF strip(rect());
+    if (orientation() == Qt::Vertical) {
+        strip.setHeight(strip.height() + scmRadiusPanel);
+    } else {
+        strip.setWidth(strip.width() + scmRadiusPanel);
+    }
+    painter.drawRoundedRect(strip, scmRadiusPanel, scmRadiusPanel);
 
     // Halfway from the hairline a border gets away with to the words beside it:
     // a grip is small and has to be findable without being a rule across the pane
@@ -132,7 +199,6 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
     } else {
         gripRect = QRectF((width() - scmGripThickness) / 2.0, (height() - scmGripLength) / 2.0, scmGripThickness, scmGripLength);
     }
-    painter.setPen(Qt::NoPen);
     painter.setBrush(gripColor);
     painter.drawRoundedRect(gripRect, scmGripThickness / 2.0, scmGripThickness / 2.0);
 }

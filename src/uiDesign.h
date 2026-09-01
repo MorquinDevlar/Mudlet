@@ -60,6 +60,12 @@ inline constexpr char scmProp_rail[] = "settingsRail";
 // ...and likewise the list holding the keyboard focus, which a QSS rule cannot
 // ask about on its own
 inline constexpr char scmProp_focused[] = "settingsFocused";
+// What a column was painted with, so that the seam between two of them can
+// carry each one's tone up to the line. A stylesheet is what fills the editor's
+// columns and a palette knows nothing about one, so the column says so itself -
+// and a splitter handle reads it off whichever widgets it happens to lie
+// between rather than being told which pair those are.
+inline constexpr char scmProp_paneTone[] = "uiPaneTone";
 // This group box is a card. Both windows draw their cards from cardStyleSheet()
 // below, so which property says so is the first of the few things that differ.
 inline constexpr char scmProp_settingsCard[] = "settingsCard";
@@ -206,6 +212,12 @@ bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& sepa
 // A word in a box: the ID beside an item's name, the kind beside a search
 // result, the OR/AND beside a matching mode
 inline constexpr int scmRadiusChip = 4;
+// The accent bar down the leading edge of a chosen row, in the sidebar and in
+// the editor's item trees alike - one number, so that the two lists cannot come
+// to disagree about how wide the mark that says "this one" is. It is a border
+// rather than a gap, so whatever leaves room for it takes that much out of its
+// own padding and the row's contents stay where they were.
+inline constexpr int scmAccentBarWidth = 3;
 // The controls a form is filled in through, a little over 30px tall: line edits,
 // combo boxes, spin boxes. Tighter than the card they sit on, so that a control
 // inside one does not echo the box around it.
@@ -303,6 +315,24 @@ QString highlightTextOf(const QWidget* pWidget);
 // One ideograph is a word where one Latin letter is not, so it is a query worth
 // running; a lone letter matches most of the dialog and answers nothing.
 bool wordEnoughToSearch(const QStringList& needles);
+
+// The grid of dots a draggable thing is gripped by: a pattern row, and the bar
+// the editor's actions are on. One geometry rather than one per window, so that
+// the two grips are read as the same mark.
+inline constexpr qreal scmGripDotDiameter = 2.0;
+inline constexpr qreal scmGripDotPitch = 3.0;
+inline constexpr int scmGripDotsAcross = 2;
+inline constexpr int scmGripDotsAlong = 3;
+
+// ...and that grid saved where a stylesheet can point at it, since a rule can
+// only take a picture from a file and cannot recolour one on the way in. The
+// ink is part of the file's name, the way the arrows above are cached, so a
+// theme change writes a new file rather than changing one a stylesheet has
+// already read and cached by path. Empty if there is nowhere to write it.
+// alongTheBar says which way the dots are the longer way round: a bar running
+// across the window is gripped by a tall handle, and one down its side by a
+// wide one.
+QString gripGlyphFile(const QColor& color, const bool alongTheBar);
 
 // A stylesheet rule selecting on a property only takes effect on a re-polish
 void repolish(QWidget* pWidget);

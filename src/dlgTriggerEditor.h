@@ -108,6 +108,7 @@ class dlgVarsMainArea;
 class QShortcut;
 
 namespace uiDesign {
+class EditorSidebarToggle;
 class EditorTreeDelegate;
 class SearchResultDelegate;
 }
@@ -120,6 +121,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     // Allow QTest-based test classes to access private members
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
+    friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorIconScaleTest;
     friend class EditorMinimumSizeTest;
@@ -251,6 +253,7 @@ public:
     // What the form column asks for as it stands, floored so the code pane
     // keeps its own minimum whatever the form wants
     int formPaneHeightForItsContents(const int paneTotal) const;
+    void fitFormPaneToItsContents();
     // Every view puts the right hand splitter back to the sizes it was last left
     // at, which is also the one thing that can take the geometry the trigger
     // options panel borrowed against out from under it
@@ -856,13 +859,11 @@ private:
 
     QWidget* mpWidget_editorSidebarPane = nullptr;
     QListWidget* mpListWidget_editorSidebar = nullptr;
-    // The panel-left button at the left end of the actions toolbar, where every
-    // platform puts the control that shows and hides a sidebar. It gives the
-    // names up and brings them back; the sidebar itself never goes away.
-    QAction* mpAction_editorSidebarToggle = nullptr;
-    // ...and the toolbar's own button for it, held so that the accessible name
-    // can be written on the widget a screen reader reaches
-    QToolButton* mpButton_editorSidebarToggle = nullptr;
+    // The chevron on the seam between the sidebar and the rest of the window,
+    // which is where every platform puts the control that shows and hides a
+    // sidebar. It gives the names up and brings them back; the sidebar itself
+    // never goes away.
+    uiDesign::EditorSidebarToggle* mpToggle_editorSidebar = nullptr;
     // ...and the same for the sidebar's rows
     QList<QPair<QListWidgetItem*, QString>> mEditorSidebarGlyphs;
     // The actions the sidebar rows stand for, which is also what the Ctrl+1 to
@@ -890,16 +891,6 @@ private:
     // 18px the design language draws a glyph at, which is what that
     // preference's own default maps to.
     int mEditorIconSize = 18;
-    // What the toggle's picture was last mixed from, so that a resize - which
-    // asks for the sidebar's mode on every frame of a drag - only pays for a
-    // new one when it would come out different
-    struct EditorSidebarToggleGlyph
-    {
-        QRgb tint = 0;
-        QRgb activeTint = 0;
-        bool operator==(const EditorSidebarToggleGlyph&) const = default;
-    };
-    EditorSidebarToggleGlyph mEditorSidebarToggleGlyph;
     // A splitter that has never been shown reports the minimum size hint of a
     // layout that has never been run, and the breakpoint is measured off that -
     // so the answer taken before the first show is one to throw away

@@ -96,7 +96,7 @@ model has, and `separator` is a line rather than a surface:
 | Token | Recipe | Use it for |
 | --- | --- | --- |
 | `pane` | a fifth of the way from `page` to `card` | A column that is a surface of its own rather than a piece of the page, taken as one thing from the row heading it to the trees under it: the editor's panel of items (`#editorItemPane`, its trees and their scroll bars). Two levels of lightness on a dark theme - enough to be told apart from the page beside it, and far short of reading as a panel laid on top of it |
-| `separator` | `page` taken towards black (36% on dark, 10% on light) | The seam between two panes, drawn where the handle that resizes them is (`GripSplitterHandle`, including the one carrying the code pane's heading) and along the sidebar's right edge. A groove cut into the window, as against `border`, which is a hairline drawn on it |
+| `separator` | `page` taken towards black (36% on dark, 10% on light) | The seam between two panes, and along the sidebar's right edge. A `GripSplitterHandle` carrying nothing draws it as one pixel down the middle of itself, with each neighbour's own tone carried up to it, so the nine pixels the mouse needs are not nine the reader sees; hovered, that line widens to three of the accent. A handle carrying a heading - the code pane's - is the same tone filling a strip deep enough to read it in, with the top corners cut to `scmRadiusPanel` since it is the top of the pane under it. A groove cut into the window, as against `border`, which is a hairline drawn on it |
 
 The separator's drop is the smaller one on a light theme on purpose: a light page
 is near enough to white that a dark-theme drop would draw a grey rule across the
@@ -142,6 +142,15 @@ The accent bar is a gradient stop rather than a `border-left`, which would be
 drawn as an arc where the pill's corner radius is and pinched to nothing at both
 ends; a stop is a *fraction* of the item, which is why those widths have to be
 known numbers.
+
+A chosen row in the editor's item trees carries the same bar, at the same width
+- `scmAccentBarWidth` in `src/uiDesign.h`, so the two lists cannot come to
+disagree about it - but drawn as that `border-left`, because a tree row is as
+wide as the panel happens to be dragged to and there is no fraction to write a
+stop at. The arc at each end of the bar is what that costs. Every row carries
+the border transparent and gives back what it takes out of its own padding, so
+nothing steps sideways when a row is chosen and the delegate's dot, chevron and
+mark stay where they were.
 
 ### Radius follows control size
 
