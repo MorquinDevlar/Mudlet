@@ -148,7 +148,15 @@ static constexpr int scmEditorContentColumnWidth = 640;
 // than on each of them, so that everything down the column lines up by
 // construction.
 static constexpr int scmEditorColumnPaddingHorizontal = 14;
-static constexpr int scmEditorColumnPaddingTop = 12;
+// Where the first thing in every one of the window's three columns starts: the
+// sidebar's first row, the search field heading the panel of items, and
+// whatever leads the column an item is edited in - the notice when one is
+// showing, the name row when it is not. One number rather than three that agree
+// today, because three drift apart the next time one column's margins are
+// touched. The settings dialog's columns start further down (16px, 24px inside
+// a page), so this is the editor's own measurement rather than the design
+// language's.
+static constexpr int scmEditorColumnTopInset = 12;
 // ...and what one piece of that column is held away from the next by
 static constexpr int scmEditorColumnSpacing = 12;
 
@@ -604,7 +612,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // top of the form, the patterns under it and the first character of the
     // Lua all start at the same place. Everything inside is flush with it.
     if (QLayout* pColumnLayout = frame_right->layout()) {
-        pColumnLayout->setContentsMargins(scmEditorColumnPaddingHorizontal, scmEditorColumnPaddingTop, scmEditorColumnPaddingHorizontal, 0);
+        pColumnLayout->setContentsMargins(scmEditorColumnPaddingHorizontal, scmEditorColumnTopInset, scmEditorColumnPaddingHorizontal, 0);
     }
 
     mpNonCodeWidgets = new QWidget(this);
@@ -617,6 +625,14 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpSystemMessageArea = new dlgSystemMessageArea(this);
     mpSystemMessageArea->setObjectName(qsl("mpSystemMessageArea"));
     mpSystemMessageArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+    // The notice is the first thing in the column when it is showing, so it
+    // starts on the same line as the sidebar's first row and the search field.
+    // Its own .ui file leaves the style's default margin round it, which is what
+    // used to push it below both; the column it is in is what holds it off the
+    // window's edges, as it does for the form that leads the column otherwise.
+    if (QLayout* pMessageAreaLayout = mpSystemMessageArea->layout()) {
+        pMessageAreaLayout->setContentsMargins(0, 0, 0, 0);
+    }
     // set the stretch factor of the message area to 0 and everything else to 1,
     // so our errors box doesn't stretch to produce a grey area
     layoutColumn->addWidget(mpSystemMessageArea, 0);
@@ -1709,6 +1725,13 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // untouched.
     verticalLayout_frame_left->removeWidget(widget_searchTerm);
     verticalLayout_frame_left->insertWidget(0, widget_searchTerm);
+    // ...and being the first thing in its column, it starts on the line the
+    // other two columns start on. The row's own layout is what holds it down,
+    // since the pane behind it is painted to the top of the window.
+    if (QLayout* pSearchRowLayout = widget_searchTerm->layout()) {
+        const QMargins searchRowMargins = pSearchRowLayout->contentsMargins();
+        pSearchRowLayout->setContentsMargins(searchRowMargins.left(), scmEditorColumnTopInset, searchRowMargins.right(), searchRowMargins.bottom());
+    }
 
     // Which variables are listed narrows what a search of them turns up, so it
     // stays reachable while the results are the thing on show: it sits with the
@@ -15506,7 +15529,7 @@ void dlgTriggerEditor::buildEditorSidebar()
     mpWidget_editorSidebarPane->setObjectName(qsl("editorSidebarPane"));
     mpWidget_editorSidebarPane->setFixedWidth(scmEditorSidebarRailWidth);
     auto* pSidebarLayout = new QVBoxLayout(mpWidget_editorSidebarPane);
-    pSidebarLayout->setContentsMargins(scmEditorSidebarPadding, 12, scmEditorSidebarPadding, 12);
+    pSidebarLayout->setContentsMargins(scmEditorSidebarPadding, scmEditorColumnTopInset, scmEditorSidebarPadding, scmEditorColumnTopInset);
     pSidebarLayout->setSpacing(4);
 
     mpListWidget_editorSidebar = new QListWidget(mpWidget_editorSidebarPane);
@@ -15708,7 +15731,7 @@ void dlgTriggerEditor::setEditorSidebarCollapsed(const bool collapsed, const int
     mEditorSidebarCollapsed = collapsed;
     const int padding = collapsed ? scmEditorSidebarRailPadding : scmEditorSidebarPadding;
     mpWidget_editorSidebarPane->setFixedWidth(wanted);
-    mpWidget_editorSidebarPane->layout()->setContentsMargins(padding, 12, padding, 12);
+    mpWidget_editorSidebarPane->layout()->setContentsMargins(padding, scmEditorColumnTopInset, padding, scmEditorColumnTopInset);
     // What the shared delegate leaves the names out by, and the stylesheet draws
     // the narrower selection pill from - the property name is the one the
     // settings dialog established, as it is the delegate's contract
@@ -15851,6 +15874,12 @@ void dlgTriggerEditor::setupEditorPanel()
     // The .ui file's name for the search row says which control it holds; the
     // shell stylesheet selects on it as one of the editor's own surfaces
     widget_searchTerm->setObjectName(qsl("editorSearchRow"));
+
+    // The panel of items is one pane from the search row at its head to the
+    // trees under it, so it is named as one thing and painted once - everything
+    // it holds shows it through. The .ui file's name says where the frame is;
+    // this one says what it is.
+    frame_left->setObjectName(qsl("editorItemPane"));
 }
 
 // The gap above the Lua editor is the only chrome that pane has, so it is what
@@ -16066,6 +16095,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     const bool darkPage = tokens.darkPage;
     const QColor pageColor = tokens.page;
+    // The panel of items is a pane of its own between two columns drawn on the
+    // page, and what parts one pane from the next is a groove rather than a
+    // hairline
+    const QColor paneColor = tokens.pane;
+    const QColor separatorColor = tokens.separator;
     const QColor borderColor = tokens.border;
     const QColor mutedText = tokens.mutedText;
     const QColor disabledText = tokens.disabledText;
@@ -16126,15 +16160,22 @@ void dlgTriggerEditor::applyEditorShellStyle()
         pShell->setStyleSheet(qsl("#editorShell { background-color: %1; }").arg(pageColor.name()));
     }
 
-    // The panel down the left. No colour is named for an unselected row: what a
+    // The panel of items, painted once for the whole column: the search row at
+    // its head shows this through, and the trees under it name the same tone.
+    // A pane rather than the page, so that the panel reads as a column of its
+    // own between the sidebar and the column an item is edited in, both of
+    // which are the page.
+    frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }").arg(paneColor.name()));
+
+    // The trees on that pane. No colour is named for an unselected row: what a
     // row is drawn in says whether the thing it stands for is running, and
     // EditorTreeDelegate is what knows that.
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
                                   "QTreeWidget::item { border-radius: 6px; padding: 2px 4px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
                                   "QTreeWidget::item:selected { color: %5; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
-                                      .arg(pageColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
-                              + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens);
+                                      .arg(paneColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
+                              + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
@@ -16344,7 +16385,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const qreal railAccentBarStop = static_cast<qreal>(scmEditorSidebarAccentBarWidth) / (scmEditorSidebarRailWidth - 2 * scmEditorSidebarRailPadding);
 
     mpWidget_editorSidebarPane->setStyleSheet(
-            qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %7; }"
+            qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %12; }"
                 // Or the platform style draws its own selection as a square box
                 // inside the rounded pill the rules below draw
                 "#editorSidebar { background: transparent; border: none; outline: none; show-decoration-selected: 1;"
@@ -16367,7 +16408,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                 "#editorSidebarSeparator { border: none; background-color: %7; margin: 8px 12px; }"
                 "#editorSidebarSeparator[settingsRail=\"true\"] { margin: 8px 2px; }")
                     .arg(pageColor.name(), mutedText.name(), hoverSoft, accentSoft, accentColor.name(), accentText.name(), borderColor.name(), QString::number(accentBarStop, 'f', 5))
-                    .arg(QString::number(accentBarStop + 0.0001, 'f', 5), QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5))
+                    .arg(QString::number(accentBarStop + 0.0001, 'f', 5), QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5), separatorColor.name())
             + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens));
 
     // A different font is a different width for the names, so the breakpoint is

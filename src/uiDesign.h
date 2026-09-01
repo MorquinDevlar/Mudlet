@@ -67,12 +67,18 @@ inline constexpr char scmProp_editorCard[] = "editorCard";
 // Three tones carry the depth, and which one a rule reaches for is the whole of
 // what says how deep the thing it draws sits:
 //   page  - the window itself, and anything that is a piece of the window: the
-//           toolbar, the status bar, the panel down the left, a tree's viewport,
-//           the row a search field sits in
+//           toolbar, the status bar, the sidebar, the column an item is edited
+//           in
+//   pane  - a column of the window that is a surface of its own rather than a
+//           piece of the page: the editor's panel of items, taken as one thing
+//           from the search row at its head to the trees under it
 //   card  - a panel lifted off the page: the options cards, a popup surface
 //   field - sunk into whatever holds it, because the user types into it or
 //           picks a value in it: line edits, combo boxes, spin boxes, the code
 //           pane, a check indicator
+// ...and one tone is a line rather than a surface:
+//   separator - the seam between two panes, drawn where the handle that resizes
+//           them is
 struct ThemeTokens
 {
     // Straight off the palette: the words on the page and the colour the theme
@@ -87,6 +93,9 @@ struct ThemeTokens
     QColor page;
     // Lifted off the page, so that a card reads as nearer than what carries it
     QColor card;
+    // A fifth of that lift: enough for a column to be told apart from the page
+    // beside it, and far short of what would read as a panel laid on top of it
+    QColor pane;
     // QPalette::Base: what Qt paints an editable control with, and the one
     // surface a platform style already agrees with us about
     QColor field;
@@ -95,6 +104,12 @@ struct ThemeTokens
     // appearance has window, base and mid within three levels, so a border mixed
     // from those is invisible.
     QColor border;
+    // The seam between two panes: the page taken towards black, so it reads as a
+    // groove cut into the window rather than as a hairline drawn on it - which
+    // is what the border tone is for. A light page is near enough to white that
+    // the drop has to be the smaller one, or the seam becomes a grey rule across
+    // the window.
+    QColor separator;
     QColor mutedText;
     QColor disabledText;
     // A saturated highlight colour rarely holds its own against both pages
@@ -121,8 +136,9 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // A scroll bar is chrome the reader is not meant to notice until they reach for
 // it, and one window's idea of that is every window's. The prefix is what the
 // rules are scoped by - a scroll area's own bars answer only to a descendant
-// selector.
-QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
+// selector. The groove is the surface the bar is set into, which is the page
+// unless the caller names the one it is actually drawing over.
+QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens, const QColor& surface = QColor());
 
 // How round a corner is says how big the thing behind it is: the radius that
 // reads as a card's corner turns a chip into a lozenge, and the one that suits a

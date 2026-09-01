@@ -114,6 +114,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     dlgTriggerEditorUndoRedoTest.cpp
     EdbeeReinitTest.cpp
     EditorBannerViewSwitchTest.cpp
+    EditorColumnAlignmentTest.cpp
     EditorMinimumSizeTest.cpp
     EditorPlacementPersistenceTest.cpp
     EditorSplitterRestoreTest.cpp

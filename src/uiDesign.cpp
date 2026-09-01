@@ -77,6 +77,17 @@ constexpr qreal scmCardLiftOnLight = 0.55;
 // back on it.
 constexpr int scmMinimumCardLift = 6;
 constexpr qreal scmPageDropUnderCard = 0.05;
+// How far a pane is lifted off the page, said as a fraction of the card's lift
+// rather than of the room above the page: it is the smallest step the depth
+// model has, and measuring it against the card is what keeps it a small one on
+// either theme without a second pair of numbers to keep in step.
+constexpr qreal scmPaneLiftTowardsCard = 0.2;
+// ...and how far a separator is taken below the page, towards black. A dark page
+// has room under it for a groove; a light one is near enough to white that the
+// same drop would draw a grey rule across the window rather than a seam between
+// two panes.
+constexpr qreal scmSeparatorDropOnDark = 0.36;
+constexpr qreal scmSeparatorDropOnLight = 0.10;
 // How many stops readableOn() tries between the colour it was asked for and the
 // end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
@@ -392,6 +403,10 @@ ThemeTokens themeTokens()
         tokens.card = tokens.page;
         tokens.page = blend(tokens.page, QColor(Qt::black), scmPageDropUnderCard);
     }
+    // A fifth of the way from the page towards a card: told apart from the page
+    // beside it, and nowhere near reading as a panel laid on top of it
+    tokens.pane = blend(tokens.page, tokens.card, scmPaneLiftTowardsCard);
+    tokens.separator = blend(tokens.page, QColor(Qt::black), tokens.darkPage ? scmSeparatorDropOnDark : scmSeparatorDropOnLight);
     tokens.border = blend(tokens.page, tokens.text, tokens.darkPage ? 0.22 : 0.18);
     tokens.mutedText = blend(tokens.page, tokens.text, 0.70);
     tokens.disabledText = blend(tokens.page, tokens.text, 0.32);
@@ -407,8 +422,9 @@ QColor stateColor(const qreal hue, const bool darkPage)
     return QColor::fromHslF(hue, scmStateSaturation, darkPage ? scmStateLightnessOnDark : scmStateLightnessOnLight);
 }
 
-QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens)
+QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens, const QColor& surface)
 {
+    const QColor groove = surface.isValid() ? surface : tokens.page;
     return qsl("%1 QScrollBar:vertical { background-color: %2; width: 12px; margin: 0px; border: none; }"
                "%1 QScrollBar:horizontal { background-color: %2; height: 12px; margin: 0px; border: none; }"
                "%1 QScrollBar::handle:vertical { background-color: %3; border-radius: 5px; min-height: 32px; margin: 1px; }"
@@ -416,7 +432,7 @@ QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& to
                "%1 QScrollBar::handle:hover { background-color: %4; }"
                "%1 QScrollBar::add-line, %1 QScrollBar::sub-line { width: 0px; height: 0px; }"
                "%1 QScrollBar::add-page, %1 QScrollBar::sub-page { background-color: %2; }")
-            .arg(selectorPrefix, tokens.page.name(), blend(tokens.page, tokens.text, 0.22).name(), blend(tokens.page, tokens.text, 0.40).name());
+            .arg(selectorPrefix, groove.name(), blend(groove, tokens.text, 0.22).name(), blend(groove, tokens.text, 0.40).name());
 }
 
 // A stylesheet can only take a picture from a file or a resource, and neither
