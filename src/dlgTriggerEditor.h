@@ -93,6 +93,7 @@ class dlgAliasMainArea;
 class dlgScriptsMainArea;
 class dlgKeysMainArea;
 class dlgTriggerPatternEdit;
+class QBoxLayout;
 class QComboBox;
 class QLabel;
 class QFrame;
@@ -121,8 +122,10 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
     friend class EditorColumnAlignmentTest;
+    friend class EditorIconScaleTest;
     friend class EditorMinimumSizeTest;
     friend class EditorOptionsPanelDefaultTest;
+    friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorSurfaceToneTest;
     friend class EditorTreeDotClickTest;
@@ -258,6 +261,11 @@ public:
     void addEditorSidebarRow(QAction* pAction, const EditorViewType view, const QString& iconFile);
     void addEditorSidebarSeparator();
     void restyleEditorSidebarIcons(const QColor& normal, const QColor& selected);
+    // The chevron below the last row, and the one place the preference it
+    // carries is changed
+    void buildEditorSidebarToggle(QBoxLayout* pSidebarLayout);
+    void updateEditorSidebarToggle();
+    void setEditorSidebarLabelsShown(const bool shown);
     void syncEditorSidebarSelection();
     struct EditorSidebarWidths
     {
@@ -845,6 +853,9 @@ private:
 
     QWidget* mpWidget_editorSidebarPane = nullptr;
     QListWidget* mpListWidget_editorSidebar = nullptr;
+    // The chevron at the foot of the sidebar, below Debug. It gives the names
+    // up and brings them back; the sidebar itself never goes away.
+    QToolButton* mpButton_editorSidebarToggle = nullptr;
     // ...and the same for the sidebar's rows
     QList<QPair<QListWidgetItem*, QString>> mEditorSidebarGlyphs;
     // The actions the sidebar rows stand for, which is also what the Ctrl+1 to
@@ -858,6 +869,32 @@ private:
     // for the answer on every frame of a drag
     mutable EditorSidebarWidths mEditorSidebarWidths;
     mutable bool mEditorSidebarWidthsKnown = false;
+    // What the user asked the sidebar for, kept across sessions under
+    // editorSidebarLabelsShown. It is a preference about the names alone: the
+    // sidebar is there either way, as a list of names or as a rail of icons.
+    bool mEditorSidebarLabelsShown = true;
+    // ...and whether the window is currently wide enough to grant it. This one
+    // is the window's answer rather than the user's, so it is never stored -
+    // a window dragged narrow shows the rail and gives the names back when it
+    // is widened, whatever it was in the middle of
+    bool mEditorSidebarNamesFit = true;
+    // The size every glyph in this window is drawn at, taken from the "Icon
+    // size toolbars" preference by slot_setToolBarIconSize(). Starts at the
+    // 18px the design language draws a glyph at, which is what that
+    // preference's own default maps to.
+    int mEditorIconSize = 18;
+    // What the chevron's picture was last mixed from, so that a resize - which
+    // asks for the sidebar's mode on every frame of a drag - only pays for a
+    // new one when it would come out different
+    struct EditorSidebarToggleGlyph
+    {
+        bool pointsLeft = false;
+        int size = 0;
+        QRgb tint = 0;
+        QRgb activeTint = 0;
+        bool operator==(const EditorSidebarToggleGlyph&) const = default;
+    };
+    EditorSidebarToggleGlyph mEditorSidebarToggleGlyph;
     // A splitter that has never been shown reports the minimum size hint of a
     // layout that has never been run, and the breakpoint is measured off that -
     // so the answer taken before the first show is one to throw away

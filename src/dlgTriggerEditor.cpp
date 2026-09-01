@@ -104,6 +104,7 @@
 #include <QRegularExpression>
 #include <QToolButton>
 #include <QToolBar>
+#include <QTransform>
 #include <algorithm>
 #include <chrono>
 #include <sstream>
@@ -156,8 +157,25 @@ static constexpr int scmEditorSidebarRailPadding = 6;
 static constexpr int scmEditorSidebarSeparatorInset = 12;
 static constexpr int scmEditorSidebarRowHeight = 36;
 static constexpr int scmEditorSidebarIconSize = 18;
-// What a row costs beside its name: the pill's accent bar and padding, the icon
-// and the gap the view leaves after it
+// The chevron at the foot of the sidebar: a pointer target round the glyph, and
+// what is left round a glyph the preference has made bigger than the one this
+// was measured for. The rail is 46px less 6px of padding either side, so the
+// largest the preference can ask for still sits inside it.
+static constexpr int scmEditorSidebarToggleSize = 28;
+static constexpr int scmEditorSidebarTogglePadding = 10;
+// "Icon size toolbars" is a step from 1 to 4 rather than a pixel count, and 3 is
+// what a profile that has never touched it holds. Six pixels a step is what
+// makes that default the 18px the design language draws a glyph at everywhere
+// else in this window; eight, which it used to be, made it 24px - a third again
+// as large as the sidebar beside it, and wide enough that the toolbar started
+// posting actions into its overflow menu on windows with room to spare. The
+// steps either side of the default are still there for anyone who needs a
+// bigger target: 1 to 4 now spans 6px to 24px, the top of which is what the
+// default used to draw.
+static constexpr int scmEditorIconSizeStep = 6;
+// What a row costs beside its name at the 18px glyph above: the pill's accent
+// bar and padding, the icon and the gap the view leaves after it. A larger
+// glyph moves it by the difference - see editorSidebarWidths().
 static constexpr int scmEditorSidebarRowChrome = 40;
 // The narrowest the editor is worth showing its names beside - a floor for the
 // breakpoint, not a width anything is held to
@@ -2821,7 +2839,20 @@ void dlgTriggerEditor::slot_setToolBarIconSize(const int s)
     // a row of names beside pictures is what its grouping is read from
     applyEditorToolbarButtonStyles();
 
-    toolBar->setIconSize(QSize(s * 8, s * 8));
+    // One scale for the whole editor rather than a toolbar that honours the
+    // preference beside a sidebar that does not: the two bars sit against each
+    // other, and a window where one set of glyphs is bigger than the other
+    // reads as a mistake whichever size is chosen
+    mEditorIconSize = s * scmEditorIconSizeStep;
+    toolBar->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
+    // This runs from the constructor as well, before there is a sidebar to size
+    if (mpListWidget_editorSidebar) {
+        mpListWidget_editorSidebar->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
+        // A wider glyph is a wider row, which is the breakpoint the names are
+        // given up at
+        invalidateEditorSidebarWidths();
+        updateEditorSidebarMode();
+    }
 }
 
 void dlgTriggerEditor::slot_setTreeWidgetIconSize(const int s)
@@ -2950,6 +2981,12 @@ void dlgTriggerEditor::readSettings()
 
     mAutosaveInterval = settings.value("autosaveIntervalMinutes", 2).toInt();
 
+    // Named for what it is: the sidebar has no closed state to remember, only
+    // whether its rows are labelled. A profile that has never touched the
+    // chevron starts with them on.
+    mEditorSidebarLabelsShown = settings.value(qsl("editorSidebarLabelsShown"), true).toBool();
+    updateEditorSidebarMode();
+
     mTriggerEditorSplitterState = settings.value("mTriggerEditorSplitterState", QByteArray()).toByteArray();
     mAliasEditorSplitterState = settings.value("mAliasEditorSplitterState", QByteArray()).toByteArray();
     mScriptEditorSplitterState = settings.value("mScriptEditorSplitterState", QByteArray()).toByteArray();
@@ -2962,14 +2999,27 @@ void dlgTriggerEditor::readSettings()
 void dlgTriggerEditor::writeSettings()
 {
     QSettings& settings = *mudlet::getQSettings();
-    // A maximized or full-screen window would otherwise store the size of the
-    // whole screen and reopen at it for good, so what is stored is the geometry
-    // it would return to
-    const QRect normalArea = normalGeometry();
-    const QRect storedArea = ((isMaximized() || isFullScreen()) && normalArea.isValid()) ? normalArea : QRect(pos(), size());
-    settings.setValue(qsl("script_editor_pos"), storedArea.topLeft());
-    settings.setValue(qsl("script_editor_size"), storedArea.size());
+    // Every profile builds an editor as it loads, and script_editor_pos and
+    // script_editor_size are one pair for the whole application - so an editor
+    // that was never put on screen has nothing to say about where the editor
+    // belongs, and saying it anyway is how a second profile's unopened editor
+    // overwrote the placement the user chose in the first one's. Its geometry
+    // at that point is whatever restoreWindowGeometry() and the layout left it
+    // at, not a placement anybody picked.
+    if (mEditorFirstShown) {
+        // A maximized or full-screen window would otherwise store the size of the
+        // whole screen and reopen at it for good, so what is stored is the geometry
+        // it would return to
+        const QRect normalArea = normalGeometry();
+        const QRect storedArea = ((isMaximized() || isFullScreen()) && normalArea.isValid()) ? normalArea : QRect(pos(), size());
+        settings.setValue(qsl("script_editor_pos"), storedArea.topLeft());
+        settings.setValue(qsl("script_editor_size"), storedArea.size());
+    }
     settings.setValue("autosaveIntervalMinutes", mAutosaveInterval);
+    // Only the chevron writes this - a window too narrow for the names never
+    // touches it, so a session spent working in a small window does not decide
+    // what the next one opens with
+    settings.setValue(qsl("editorSidebarLabelsShown"), mEditorSidebarLabelsShown);
 
     settings.setValue("mTriggerEditorSplitterState", mTriggerEditorSplitterState);
     settings.setValue("mAliasEditorSplitterState", mAliasEditorSplitterState);
@@ -15567,7 +15617,7 @@ void dlgTriggerEditor::buildEditorSidebar()
     mpListWidget_editorSidebar->setObjectName(qsl("editorSidebar"));
     mpListWidget_editorSidebar->setFrameShape(QFrame::NoFrame);
     mpListWidget_editorSidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    mpListWidget_editorSidebar->setIconSize(QSize(scmEditorSidebarIconSize, scmEditorSidebarIconSize));
+    mpListWidget_editorSidebar->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
     mpListWidget_editorSidebar->setItemDelegate(new uiDesign::SidebarItemDelegate(mpListWidget_editorSidebar));
     //: Accessible name of the list down the left of the editor that switches between triggers, aliases, scripts and the rest
     mpListWidget_editorSidebar->setAccessibleName(tr("Editor sections"));
@@ -15583,7 +15633,98 @@ void dlgTriggerEditor::buildEditorSidebar()
     // slot_editorSidebarItemActivated() is where the second of is dropped.
     connect(mpListWidget_editorSidebar, &QListWidget::itemClicked, this, &dlgTriggerEditor::slot_editorSidebarItemActivated);
     connect(mpListWidget_editorSidebar, &QListWidget::itemActivated, this, &dlgTriggerEditor::slot_editorSidebarItemActivated);
+    buildEditorSidebarToggle(pSidebarLayout);
     invalidateEditorSidebarWidths();
+}
+
+// Below the last row, which is Debug. It is the one control that gives the
+// names up on purpose - and it never closes the sidebar, since the icons and
+// the tooltips they carry stay behind either way, which is what the words on it
+// say.
+void dlgTriggerEditor::buildEditorSidebarToggle(QBoxLayout* pSidebarLayout)
+{
+    mpButton_editorSidebarToggle = new QToolButton(mpWidget_editorSidebarPane);
+    mpButton_editorSidebarToggle->setObjectName(qsl("editorSidebarToggle"));
+    mpButton_editorSidebarToggle->setAutoRaise(true);
+    mpButton_editorSidebarToggle->setCursor(Qt::PointingHandCursor);
+    pSidebarLayout->addWidget(mpButton_editorSidebarToggle);
+    connect(mpButton_editorSidebarToggle, &QAbstractButton::clicked, this, [this]() {
+        setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
+    });
+    updateEditorSidebarToggle();
+}
+
+// Which way the chevron points is which way the sidebar is about to move, and
+// what it is called is what will become of the names - never of the sidebar,
+// which stays. A rail already turns every row's name into its tooltip, so a
+// reader who cannot see the chevron has to be told that much in words.
+void dlgTriggerEditor::updateEditorSidebarToggle()
+{
+    if (!mpButton_editorSidebarToggle) {
+        return;
+    }
+    const bool namesShowing = mEditorSidebarLabelsShown && mEditorSidebarNamesFit;
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+
+    // A resize asks for the sidebar's mode on every frame of a drag, and
+    // mirroring and tinting a glyph is not free - so the picture is only redone
+    // when one of the four things it is made of has moved
+    const EditorSidebarToggleGlyph wanted{.pointsLeft = namesShowing, .size = mEditorIconSize, .tint = tokens.mutedText.rgb(), .activeTint = tokens.accentText.rgb()};
+    if (wanted != mEditorSidebarToggleGlyph) {
+        mEditorSidebarToggleGlyph = wanted;
+        // There is no chevron among the editor's own glyphs, so the arrow in
+        // the resources stands in and is mirrored for the direction it does not
+        // have - the same reuse the search field's history chevron is cut from
+        // the down arrow by
+        const QPixmap arrow(qsl(":/icons/arrow-right.png"));
+        const QPixmap source = namesShowing ? arrow.transformed(QTransform().scale(-1, 1)) : arrow;
+        QIcon icon(uiDesign::tintedGlyph(source, tokens.mutedText));
+        // Active rather than Selected, as with the toolbar's glyphs: a tool
+        // button asks for Active while the pointer is on it
+        icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Active);
+        mpButton_editorSidebarToggle->setIcon(icon);
+        mpButton_editorSidebarToggle->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
+        const int side = std::max(scmEditorSidebarToggleSize, mEditorIconSize + scmEditorSidebarTogglePadding);
+        mpButton_editorSidebarToggle->setFixedSize(side, side);
+    }
+
+    // Against the edge the names are about to be taken towards while they are
+    // on show, and in the middle of the rail once they are gone
+    if (auto* pLayout = qobject_cast<QBoxLayout*>(mpWidget_editorSidebarPane->layout())) {
+        const Qt::Alignment alignment = namesShowing ? Qt::AlignRight : Qt::AlignHCenter;
+        QLayoutItem* pItem = pLayout->itemAt(pLayout->indexOf(mpButton_editorSidebarToggle));
+        // Setting it invalidates the layout whether or not it changed anything
+        if (pItem && pItem->alignment() != alignment) {
+            pLayout->setAlignment(mpButton_editorSidebarToggle, alignment);
+        }
+    }
+
+    if (namesShowing) {
+        //: Tooltip and accessible name of the chevron at the foot of the script editor's sidebar while the section names are showing. Pressing it leaves the sidebar in place as a rail of icons - it closes nothing - so the wording is about the labels rather than the sidebar.
+        const QString minimise = tr("Minimise the sidebar to icons");
+        mpButton_editorSidebarToggle->setToolTip(utils::richText(minimise));
+        mpButton_editorSidebarToggle->setAccessibleName(minimise);
+        mpButton_editorSidebarToggle->setEnabled(true);
+        return;
+    }
+
+    //: Tooltip and accessible name of the chevron at the foot of the script editor's sidebar while it is a rail of icons. Pressing it puts the section names back beside the icons.
+    const QString showLabels = tr("Show the sidebar's labels");
+    mpButton_editorSidebarToggle->setAccessibleName(showLabels);
+    // A window with no room for the names cannot be talked into them, so rather
+    // than doing nothing when it is pressed the button says why it will not
+    mpButton_editorSidebarToggle->setEnabled(mEditorSidebarNamesFit);
+    //: Tooltip on that same chevron when the editor window is too narrow to fit the section names, which is why pressing it is not offered.
+    mpButton_editorSidebarToggle->setToolTip(utils::richText(mEditorSidebarNamesFit ? showLabels : tr("The window is too narrow for the sidebar's labels")));
+}
+
+// The one place the preference changes, so that the chevron and the session
+// hold the same answer. The space-driven collapse in updateEditorSidebarMode()
+// deliberately does not come through here.
+void dlgTriggerEditor::setEditorSidebarLabelsShown(const bool shown)
+{
+    mEditorSidebarLabelsShown = shown;
+    updateEditorSidebarMode();
 }
 
 // No icon yet: the set is single-colour, so which colour is not known until
@@ -15720,24 +15861,36 @@ dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() co
     for (int row = 0, rows = mpListWidget_editorSidebar->count(); row < rows; ++row) {
         widestName = std::max(widestName, nameMetrics.horizontalAdvance(mpListWidget_editorSidebar->item(row)->text()));
     }
-    widths.expanded = std::clamp(2 * scmEditorSidebarPadding + scmEditorSidebarRowChrome + widestName, scmEditorSidebarRailWidth, scmEditorSidebarMaximumWidth);
+    // The chrome is measured at the design language's 18px glyph, so a
+    // preference asking for a bigger one takes the difference out of the name's
+    // share of the row
+    const int rowChrome = scmEditorSidebarRowChrome + (mEditorIconSize - scmEditorSidebarIconSize);
+    widths.expanded = std::clamp(2 * scmEditorSidebarPadding + rowChrome + widestName, scmEditorSidebarRailWidth, scmEditorSidebarMaximumWidth);
 
     // Deliberately not the width above: held equal, the sidebar had its names at
     // exactly one window width and the first pixel of a drag inwards took them
-    // away. It is instead the narrowest the editor itself can be drawn at,
-    // capped at a comfortable reading column so that a window that has to be
-    // wide for one of its forms does not cost the names.
+    // away. It is the names plus a comfortable reading column beside them -
+    // floored there rather than capped there, which is what scmEditorContent-
+    // ColumnWidth says it is for. Capped, the breakpoint came out at exactly
+    // the window's own minimum width whenever the body could be drawn narrower
+    // than that column, since a layout's total minimum is the sidebar's fixed
+    // width plus the body's: the test below is strict, so a window that can
+    // never be dragged past its minimum could never reach it and the names were
+    // never given up. Floored, the body keeps its own minimum as the floor for
+    // a form too wide to fit the column.
     const int bodyMinimum = splitter_main ? splitter_main->minimumSizeHint().width() : 0;
-    widths.collapseBelow = widths.expanded + std::min(scmEditorContentColumnWidth, bodyMinimum);
+    widths.collapseBelow = widths.expanded + std::max(scmEditorContentColumnWidth, bodyMinimum);
 
     mEditorSidebarWidths = widths;
     mEditorSidebarWidthsKnown = true;
     return widths;
 }
 
-// The one piece of the editor's chrome no preference decides: the sidebar is a
-// rail whenever the window is too narrow to hold it, and a list of names when
-// not.
+// Two answers decide the sidebar's mode, and only one of them is the user's:
+// the chevron's stored preference says whether the names are wanted, and the
+// window's width says whether there is room to grant it. A window with no room
+// takes them away without writing anything down, so widening it again is
+// settled by the preference alone.
 void dlgTriggerEditor::updateEditorSidebarMode()
 {
     if (!mpWidget_editorSidebarPane) {
@@ -15750,7 +15903,10 @@ void dlgTriggerEditor::updateEditorSidebarMode()
     // The window's width rather than the space left over: the threshold is what
     // the *expanded* sidebar needs, so collapsing cannot flip the test that
     // collapsed it and start it oscillating
-    uiDesign::setSidebarCollapsed(mpWidget_editorSidebarPane, mpListWidget_editorSidebar, qsl("editorSidebarSeparator"), width() < widths.collapseBelow, editorSidebarMetrics(widths.expanded));
+    mEditorSidebarNamesFit = width() >= widths.collapseBelow;
+    uiDesign::setSidebarCollapsed(
+            mpWidget_editorSidebarPane, mpListWidget_editorSidebar, qsl("editorSidebarSeparator"), !(mEditorSidebarNamesFit && mEditorSidebarLabelsShown), editorSidebarMetrics(widths.expanded));
+    updateEditorSidebarToggle();
 }
 
 // Called from applyEditorShellStyle() alone, which is both where the colours
@@ -15776,6 +15932,10 @@ void dlgTriggerEditor::restyleEditorIcons()
 
     // Quieter than the name beside them, and the accent under a chosen one
     restyleEditorSidebarIcons(quietColor, accentText);
+
+    // ...and the chevron under those, which is mixed from the same two colours
+    // and points whichever way the sidebar is about to move
+    updateEditorSidebarToggle();
 
     if (mpLabel_editorCodeHeaderIcon) {
         const qreal glyphRatio = mpLabel_editorCodeHeaderIcon->devicePixelRatioF();
@@ -16389,7 +16549,13 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                               // same rules; the names are quieter here, as the rest of the
                                               // editor's chrome is
                                               + uiDesign::sidebarStyleSheet(qsl("editorSidebar"), qsl("editorSidebarSeparator"), mutedText, editorSidebarMetrics(widths.expanded), tokens)
-                                              + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens));
+                                              + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens)
+                                              // The chevron below the rows, hovered the way the toolbar's
+                                              // buttons are and cornered on the same scale as a row's pill
+                                              + qsl("#editorSidebarToggle { border: none; background: transparent; border-radius: %1px; }"
+                                                    "#editorSidebarToggle:hover { background-color: %2; }"
+                                                    "#editorSidebarToggle:pressed { background-color: %3; }")
+                                                        .arg(QString::number(uiDesign::scmRadiusInput), hoverSoft, accentSoft));
 
     // A different font is a different width for the names, so the breakpoint is
     // re-measured with the look it belongs to
