@@ -89,6 +89,16 @@ constexpr int scmInputDropDownWidth = 18;
 constexpr int scmInputArrowSize = 9;
 constexpr int scmInputStepperWidth = 16;
 constexpr int scmInputStepperArrowSize = 8;
+// The accent bar down the left of the chosen item in a sidebar, and how far the
+// name beside it is held off the item's left edge in all. The bar is a border
+// rather than a gap, so the padding written into the rules is what it leaves of
+// that gutter.
+constexpr int scmSidebarAccentBarWidth = 3;
+constexpr int scmSidebarItemGutter = 10;
+// The ring drawn round the pill while the list holds the keyboard. It is taken
+// out of the item rather than added to it, a pixel off either side, so the
+// padding gives both back and the name stays where it was.
+constexpr int scmSidebarFocusRingWidth = 1;
 
 // One channel of a colour, straightened out of the curve a display applies to it
 qreal linearised(const qreal channel)
@@ -441,6 +451,11 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
     const QString list = QLatin1Char('#') + listName;
     const QString separator = QLatin1Char('#') + separatorName;
     const QString accentBar = QString::number(scmSidebarAccentBarWidth);
+    const QString focusRing = QString::number(scmSidebarFocusRingWidth);
+    const QString itemPadding = QString::number(scmSidebarItemGutter - scmSidebarAccentBarWidth);
+    const QString focusedItemPadding = QString::number(scmSidebarItemGutter - scmSidebarAccentBarWidth - 2 * scmSidebarFocusRingWidth);
+    const QString railProperty = QLatin1StringView(scmProp_rail);
+    const QString focusedProperty = QLatin1StringView(scmProp_focused);
     // Or the platform style draws its own selection as a square box inside the
     // rounded pill the rules below draw
     return list
@@ -450,19 +465,20 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
            // The transparent left border keeps a chosen row's name from
            // stepping sideways under its accent bar; outline:none drops a
            // focus rectangle drawn square inside a round pill
-           + list + qsl("::item { border-radius: 8px; border-left: %1px solid transparent; padding-left: 7px; color: %2; outline: none; }").arg(accentBar, itemColor.name()) + list
+           + list + qsl("::item { border-radius: 8px; border-left: %1px solid transparent; padding-left: %2px; color: %3; outline: none; }").arg(accentBar, itemPadding, itemColor.name()) + list
            + qsl("::item:hover { background-color: %1; }").arg(tokens.hoverSoft) + list
            + qsl("::item:selected { color: %1; font-weight: bold; background: %2; }").arg(tokens.accentText.name(), pillFill(barStop(metrics.expandedWidth, metrics.padding)))
            // Keyboard focus is otherwise indistinguishable from the selection;
            // an event filter on the list puts scmProp_focused on
            + list
-           + qsl("[settingsFocused=\"true\"]::item:selected { border: 1px solid %1; border-left: %2px solid %1; padding-left: 5px; }").arg(tokens.accent.name(), accentBar)
+           + qsl("[%1=\"true\"]::item:selected { border: %2px solid %3; border-left: %4px solid %3; padding-left: %5px; }")
+                     .arg(focusedProperty, focusRing, tokens.accent.name(), accentBar, focusedItemPadding)
            // On a rail the row is only as wide as its icon, so the padding
            // goes and the bar is a different fraction
-           + list + qsl("[settingsRail=\"true\"]::item { padding-left: 0px; }") + list
-           + qsl("[settingsRail=\"true\"]::item:selected { background: %1; }").arg(pillFill(barStop(metrics.railWidth, metrics.railPadding))) + separator
+           + list + qsl("[%1=\"true\"]::item { padding-left: 0px; }").arg(railProperty) + list
+           + qsl("[%1=\"true\"]::item:selected { background: %2; }").arg(railProperty, pillFill(barStop(metrics.railWidth, metrics.railPadding))) + separator
            + qsl(" { border: none; background-color: %1; margin: 8px %2px; }").arg(tokens.border.name(), QString::number(metrics.separatorInset)) + separator
-           + qsl("[settingsRail=\"true\"] { margin: 8px 2px; }");
+           + qsl("[%1=\"true\"] { margin: 8px 2px; }").arg(railProperty);
 }
 
 bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& separatorName, const bool collapsed, const SidebarMetrics& metrics)

@@ -89,14 +89,15 @@ with more to do at that moment can skip it too: the settings dialog hides its
 wordmark and offers the hidden names as tooltips, the editor's rows already
 carry a tooltip naming their shortcut.
 
-`SidebarMetrics` is the whole of what the two windows differ by - the two
-widths, the padding at each, the vertical padding and the divider inset - plus
-the colour an unchosen name is written in, which is muted in the editor where
-all the chrome is and full strength in the settings dialog where the sidebar is
-the navigation. The accent bar is a gradient stop rather than a `border-left`,
-which would be drawn as an arc where the pill's corner radius is and pinched to
-nothing at both ends; a stop is a *fraction* of the item, which is why those
-widths have to be known numbers.
+`SidebarMetrics` carries the measurements the two windows differ by - the two
+widths, the padding at each, the vertical padding and the divider inset - and
+the `itemColor` parameter beside it carries the only other difference, the
+colour an unchosen name is written in: muted in the editor where all the chrome
+is, full strength in the settings dialog where the sidebar is the navigation.
+The accent bar is a gradient stop rather than a `border-left`, which would be
+drawn as an arc where the pill's corner radius is and pinched to nothing at both
+ends; a stop is a *fraction* of the item, which is why those widths have to be
+known numbers.
 
 ### Radius follows control size
 

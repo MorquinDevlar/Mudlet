@@ -125,14 +125,11 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // selector.
 QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
 
-// The accent bar down the left of the chosen item in a sidebar. Not a length
-// the stylesheet is left to work out: it is drawn as a gradient stop, which is
-// a fraction of the item's width rather than a number of pixels.
-inline constexpr int scmSidebarAccentBarWidth = 3;
-
-// The whole of what one window's sidebar differs from the other's by. What is
-// not here - the pill, its accent bar, the hover wash, the ring that says the
-// list has the keyboard - is the same in both and is drawn out of these.
+// The measurements one window's sidebar differs from the other's by; the colour
+// an unchosen name is written in is the only other difference, and travels
+// beside these. What is in neither - the pill, its accent bar, the hover wash,
+// the ring that says the list has the keyboard - is the same in both and is
+// drawn out of them.
 struct SidebarMetrics
 {
     // What the sidebar is drawn at with the names showing. The settings dialog
@@ -156,7 +153,7 @@ struct SidebarMetrics
 // The list of places down the left of a window, drawn the one way in both of
 // them. The two names are object names rather than selectors, because the
 // collapse below finds the separators by the same string the rules select on.
-// itemColor is what an unchosen row's name is written in and the one thing the
+// itemColor is what an unchosen row's name is written in, the one colour the
 // two windows answer differently: the editor's chrome is muted throughout,
 // while the settings sidebar is the whole of that dialog's navigation.
 QString sidebarStyleSheet(const QString& listName, const QString& separatorName, const QColor& itemColor, const SidebarMetrics& metrics, const ThemeTokens& tokens);
