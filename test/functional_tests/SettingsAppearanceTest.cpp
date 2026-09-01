@@ -24,9 +24,15 @@
  * that stylesheet leaves the whole of the dialog in the previous theme while
  * the text on it turns over to the new one.
  *
+ * The same stylesheet draws every field a setting is typed into, from the
+ * recipe the editor window is drawn from - and it is scoped to the pages, so
+ * the cases below also hold it off the search field, the sidebar and the
+ * indicators the card rules own.
+ *
  * Run with: ctest -R SettingsAppearanceTest -V
  */
 
+#include <algorithm>
 #include <cmath>
 
 #include <QDir>
@@ -34,11 +40,14 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QComboBox>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPixmap>
+#include <QStackedWidget>
 
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
@@ -47,6 +56,7 @@
 #include "TelnetServerStub.h"
 #include "dlgProfilePreferences.h"
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include "GroupedTest.h"
 
@@ -138,6 +148,28 @@ private:
         const qreal first = relativeLuminance(one);
         const qreal second = relativeLuminance(other);
         return (std::max(first, second) + 0.05) / (std::min(first, second) + 0.05);
+    }
+
+    // Which of two colours a painted pixel is: both surfaces are flat fills, so
+    // the nearer one is the one that was painted
+    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
+
+    // The selector half of every rule in a stylesheet, one selector per entry -
+    // "a, b { ... }" counts as two
+    static QStringList selectorsIn(const QString& styleSheet)
+    {
+        QStringList selectors;
+        const QStringList rules = styleSheet.split(QLatin1Char('}'), Qt::SkipEmptyParts);
+        for (const QString& rule : rules) {
+            const QString selectorList = rule.section(QLatin1Char('{'), 0, 0);
+            const QStringList parts = selectorList.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString& part : parts) {
+                if (const QString selector = part.simplified(); !selector.isEmpty()) {
+                    selectors.append(selector);
+                }
+            }
+        }
+        return selectors;
     }
 
     static QString describe(const QColor& surface)
@@ -260,6 +292,107 @@ private slots:
         const QColor surface = paintedSurface();
         QVERIFY2(!(surface.red() > 200 && surface.green() < 60), qPrintable(qsl("the profile stylesheet painted the shell %1 after the theme change").arg(surface.name())));
         QVERIFY2(surface.lightness() >= 128, qPrintable(describe(surface)));
+    }
+
+    // A setting is typed into the same control the editor window is filled in
+    // through: the field surface, sunk into the card, at the height the shared
+    // recipe gives every field. Left to the platform it is a flat box drawn a
+    // third shorter, which is what this dialog looked like beside the editor.
+    void test_aPagesFieldsAreDrawnFromTheSharedInputRecipe()
+    {
+        setAppearance(enums::Appearance::dark);
+        auto* pField = mpPreferences->lineEdit_logFileFolder;
+        QVERIFY2(pField, "the log folder field this case reads is not there any more");
+        QVERIFY2(pField->height() >= uiDesign::scmInputHeight,
+                 qPrintable(qsl("a field on a page is %1px tall, against the %2px the shared recipe asks for").arg(QString::number(pField->height()), QString::number(uiDesign::scmInputHeight))));
+
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        // Below the text and above the bottom border, where nothing but the
+        // control's own surface is drawn
+        const QColor fill = pixelOf(pField, QPoint(pField->width() / 2, pField->height() - 4));
+        QVERIFY2(distanceBetween(fill, tokens.field) < distanceBetween(fill, tokens.card),
+                 qPrintable(qsl("a field is painted %1, nearer the card's %2 than the field surface's %3").arg(fill.name(), tokens.card.name(), tokens.field.name())));
+    }
+
+    // ...and the card under it is untouched by the rules that draw the fields
+    // on it
+    void test_aCardIsStillPaintedAsACard()
+    {
+        setAppearance(enums::Appearance::dark);
+        auto* pCard = mpPreferences->findChild<QGroupBox*>(qsl("card_theme"));
+        QVERIFY2(pCard, "the Appearance card this case reads its colours off is not there any more");
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        const QColor fill = pixelOf(pCard, QPoint(pCard->width() / 2, pCard->height() - 4));
+        QVERIFY2(distanceBetween(fill, tokens.card) < distanceBetween(fill, tokens.field),
+                 qPrintable(qsl("a card is painted %1, nearer the field surface's %2 than the card's own %3").arg(fill.name(), tokens.field.name(), tokens.card.name())));
+    }
+
+    // The fields are claimed under the stack of pages and nowhere else. Named
+    // on the shell instead, the same rules would take the search box over the
+    // pages and the editors the sidebar's list opens.
+    void test_theInputRulesReachNothingOutsideThePages()
+    {
+        auto* pStack = mpPreferences->findChild<QStackedWidget*>(qsl("settingsStack"));
+        auto* pSearchField = mpPreferences->findChild<QLineEdit*>(qsl("settingsSearchField"));
+        QVERIFY2(pStack && pSearchField, "the stack and the search field are the two things this case is about");
+        QVERIFY2(!pStack->isAncestorOf(pSearchField), "the search field is inside the stack, so the rules scoped to the pages now draw it too");
+
+        const QStringList inputTypes{qsl("QLineEdit"), qsl("QPlainTextEdit"), qsl("QTextEdit"), qsl("QComboBox"), qsl("QAbstractSpinBox")};
+        int scopedRules = 0;
+        for (const QString& selector : selectorsIn(shell()->styleSheet())) {
+            const bool namesAField = std::any_of(inputTypes.cbegin(), inputTypes.cend(), [&selector](const QString& type) {
+                return selector.contains(type);
+            });
+            if (!namesAField) {
+                continue;
+            }
+            QVERIFY2(selector.startsWith(qsl("#settingsStack ")), qPrintable(qsl("\"%1\" draws a field from outside the stack of pages").arg(selector)));
+            ++scopedRules;
+        }
+        QVERIFY2(scopedRules > 0, "the shell stylesheet draws no fields at all, so nothing here was checked");
+
+        // The search field keeps a rule of its own, at the corner a control
+        // that heads a panel is drawn with
+        QVERIFY2(shell()->styleSheet().contains(qsl("#settingsSearchField { border: 1px solid")), "the search field lost the rule that draws it");
+        QVERIFY2(shell()->styleSheet().contains(qsl("border-radius: %1px; padding-left").arg(QString::number(uiDesign::scmRadiusProminentInput))),
+                 "the search field is no longer drawn with the prominent input's corner");
+    }
+
+    // The shared recipe draws fields; everything else on a card is drawn by the
+    // card's own rules, the check indicators among them
+    void test_theInputRulesNameNothingButFields()
+    {
+        const QStringList claimedByTheCards{
+                qsl("indicator"), qsl("QCheckBox"), qsl("QRadioButton"), qsl("QGroupBox"), qsl("QAbstractButton"), qsl("QListWidget"), qsl("QTreeWidget"), qsl("QScrollBar")};
+        const QString inputRules = uiDesign::inputStyleSheet(uiDesign::themeTokens(), qsl("#settingsStack"));
+        for (const QString& claimed : claimedByTheCards) {
+            QVERIFY2(!inputRules.contains(claimed), qPrintable(qsl("the input rules name %1, which is not a field and is drawn by something else").arg(claimed)));
+        }
+    }
+
+    // The list a combo box drops down is a window of its own, parented to the
+    // box - so the rule that draws it as a lifted surface has to be found
+    // across that boundary, from a sheet scoped to the stack several widgets up
+    void test_aComboBoxPopupIsDrawnAsALiftedSurface()
+    {
+        setAppearance(enums::Appearance::dark);
+        auto* pCombo = mpPreferences->comboBox_appearance;
+        // Shown rather than only asked for: a list is polished against the
+        // stylesheets over it when it is dropped down, and an unshown one still
+        // holds the palette it was made with
+        pCombo->showPopup();
+        QCoreApplication::processEvents();
+        QAbstractItemView* pList = pCombo->view();
+        QVERIFY2(pList, "the appearance combo box has no list to drop down");
+
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        // The colour itself, not the nearest of two: left unstyled the list is
+        // painted the page colour, which is nearer the card than the field and
+        // would let a rule that never reached it pass for one that did
+        const QColor fill = pixelOf(pList->viewport(), QPoint(pList->viewport()->width() / 2, 4));
+        pCombo->hidePopup();
+        QVERIFY2(fill.rgb() == tokens.card.rgb(),
+                 qPrintable(qsl("the popup list is painted %1 rather than the card surface's %2 - the rule scoped to the stack did not reach it").arg(fill.name(), tokens.card.name())));
     }
 };
 

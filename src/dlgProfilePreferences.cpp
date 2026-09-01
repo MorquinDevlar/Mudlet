@@ -110,6 +110,7 @@ using uiDesign::detachFromLayout;
 using uiDesign::foldForSearch;
 using uiDesign::highlightTextOf;
 using uiDesign::inlineGlyph;
+using uiDesign::inputStyleSheet;
 using uiDesign::insertGridRowAtTop;
 using uiDesign::invalidateLayoutsUpTo;
 using uiDesign::makeChevronRow;
@@ -120,6 +121,8 @@ using uiDesign::rgba;
 using uiDesign::scmProp_focused;
 using uiDesign::scmProp_rail;
 using uiDesign::scmProp_searchKeywords;
+using uiDesign::scmRadiusPanel;
+using uiDesign::scmRadiusProminentInput;
 using uiDesign::scrollBarStyleSheet;
 using uiDesign::setSearchMatch;
 using uiDesign::SettingsSnapshot;
@@ -2675,8 +2678,10 @@ void dlgProfilePreferences::restyleSidebarIcons(const QColor& normal, const QCol
 
 // Kept on the shell widget rather than on the dialog, whose stylesheet
 // mudlet::showOptionsDialog() assigns the profile's Lua one to on every show.
-// Every selector is scoped by objectName or by the card property, so a profile
-// stylesheet still reaches the controls inside the pages.
+// Every selector is scoped by objectName, by the card property, or by the stack
+// the pages sit in - so a profile stylesheet still reaches what the shell does
+// not draw itself, which on a page is the labels, the check boxes and the
+// buttons rather than the fields a setting is typed into.
 void dlgProfilePreferences::applyShellStyle()
 {
     if (!mpWidget_shell) {
@@ -2761,11 +2766,13 @@ void dlgProfilePreferences::applyShellStyle()
                                       "QWidget[settingsSurface=\"true\"] { background-color: %1; border: none; }"
                                       "#settingsWordmark { font-weight: bold; font-size: 125%; }"
                                       "#settingsPageTitle { font-weight: bold; font-size: 145%; }"
-                                      "#settingsSearchField { border: 1px solid %7; border-radius: 8px; padding-left: 6px; background-color: %15; }"
+                                      // Taller than the controls on a page and the one thing the
+                                      // panel it heads is worked from, so it takes a panel's corner
+                                      "#settingsSearchField { border: 1px solid %7; border-radius: %16px; padding-left: 6px; background-color: %15; }"
                                       "#settingsSearchField:focus { border: 1px solid %5; }"
                                       // The top margin lifts the title clear of the frame, rather
                                       // than leaving it cutting through the card's border
-                                      "QGroupBox[settingsCard=\"true\"] { background-color: %8; border: 1px solid %7; border-radius: 8px; margin-top: 24px; padding: 16px; font-weight: bold; }"
+                                      "QGroupBox[settingsCard=\"true\"] { background-color: %8; border: 1px solid %7; border-radius: %17px; margin-top: 24px; padding: 16px; font-weight: bold; }"
                                       "QGroupBox[settingsCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
                                       // ...but only the title is bold, not everything the card holds:
                                       "QGroupBox[settingsCard=\"true\"] > * { font-weight: normal; }"
@@ -2775,7 +2782,7 @@ void dlgProfilePreferences::applyShellStyle()
                                       // would draw a second frame; a heading alone divides them
                                       "QGroupBox[settingsCard=\"true\"] QGroupBox { border: none; background: transparent; margin-top: 20px; padding: 0px 0px 0px 8px; font-weight: bold; }"
                                       "QGroupBox[settingsCard=\"true\"] QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
-                                      "#settingsMigrationBanner { background-color: %4; border: 1px solid %7; border-radius: 8px; }"
+                                      "#settingsMigrationBanner { background-color: %4; border: 1px solid %7; border-radius: %17px; }"
                                       "#settingsMigrationBannerTitle { font-weight: bold; }"
                                       "#settingsSearchHeader { font-weight: bold; font-size: 110%; color: %2; }"
                                       "#settingsSearchEmpty { padding: 32px; color: %9; }"
@@ -2809,12 +2816,19 @@ void dlgProfilePreferences::applyShellStyle()
                                           .arg(markerSoft, QString::number(accentBarStop, 'f', 5), QString::number(accentBarStop + 0.0001, 'f', 5))
                                           .arg(QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5))
                                           // %15, the surface the search box is sunk into - %8 above
-                                          // is the card the rest of the shell is laid out on
-                                          .arg(fieldColor.name())
+                                          // is the card the rest of the shell is laid out on - and
+                                          // the two corners of the scale this dialog draws with
+                                          .arg(fieldColor.name(), QString::number(scmRadiusProminentInput), QString::number(scmRadiusPanel))
                                   + cardIndicatorRules
                                   + cardTitleRule
                                   // A scroll area's bars answer only to a descendant selector
-                                  + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens) + scrollBarStyleSheet(qsl("#settingsCategoryList"), tokens));
+                                  + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens)
+                                  + scrollBarStyleSheet(qsl("#settingsCategoryList"), tokens)
+                                  // Every control a setting is typed into or picked in is drawn the
+                                  // one way the editor draws its own, and under the stack alone:
+                                  // named on the shell instead, the same rules would take the search
+                                  // box above it and the category list beside it as well.
+                                  + inputStyleSheet(tokens, qsl("#settingsStack")));
 
     // Fusion draws every control outline - checkbox and radio indicators
     // included - as palette(window) darkened by 40%, within 1.1:1 of a dark

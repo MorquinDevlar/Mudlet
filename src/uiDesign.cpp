@@ -80,9 +80,6 @@ constexpr qreal scmPageDropUnderCard = 0.05;
 // How many stops readableOn() tries between the colour it was asked for and the
 // end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
-// The corner and the frame every field is drawn with. Smaller than a card's, so
-// that a control inside one does not echo the box around it.
-constexpr int scmInputRadius = 5;
 constexpr int scmInputPaddingHorizontal = 6;
 // The room the arrows are given at a control's right edge, and how big the
 // arrows drawn in it are
@@ -225,8 +222,10 @@ void collectFocusableInLayoutOrder(const QLayout* pLayout, QList<QWidget*>& chai
 
 QString spotlightStyleSheet(const QColor& accent, const qreal strength)
 {
-    return qsl("#settingsSpotlight { border: 2px solid rgba(%1, %2, %3, %4); border-radius: 8px; background-color: rgba(%1, %2, %3, %5); }")
-            .arg(QString::number(accent.red()), QString::number(accent.green()), QString::number(accent.blue()), QString::number(strength, 'f', 3), QString::number(strength * 0.08, 'f', 3));
+    // Drawn round a card, so it takes a card's corner
+    return qsl("#settingsSpotlight { border: 2px solid rgba(%1, %2, %3, %4); border-radius: %6px; background-color: rgba(%1, %2, %3, %5); }")
+            .arg(QString::number(accent.red()), QString::number(accent.green()), QString::number(accent.blue()), QString::number(strength, 'f', 3), QString::number(strength * 0.08, 'f', 3))
+            .arg(QString::number(scmRadiusPanel));
 }
 
 QString foldForSearch(const QString& text)
@@ -455,12 +454,26 @@ static QString themedArrowFile(const QColor& color, const bool pointingUp)
     return filePath;
 }
 
-QString inputStyleSheet(const ThemeTokens& tokens)
+QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
 {
     // A field the user cannot reach is a piece of the page rather than a place
     // to put something, so its surface is let back down towards the page
     const QColor disabledField = blend(tokens.field, tokens.page, 0.6);
     const QColor disabledBorder = blend(tokens.page, tokens.text, 0.10);
+
+    // Every selector below names a control and nothing about where it is; a
+    // caller with one container to claim under puts them all beneath it here
+    const auto scoped = [&selectorPrefix](const QStringList& selectors) {
+        if (selectorPrefix.isEmpty()) {
+            return selectors.join(qsl(", "));
+        }
+        QStringList scopedSelectors;
+        scopedSelectors.reserve(selectors.size());
+        for (const QString& selector : selectors) {
+            scopedSelectors << selectorPrefix + QLatin1Char(' ') + selector;
+        }
+        return scopedSelectors.join(qsl(", "));
+    };
 
     // Drawing a control's frame from a stylesheet takes the arrows inside it
     // away with it, and the macOS style then leaves a combo box looking like a
@@ -483,40 +496,38 @@ QString inputStyleSheet(const ThemeTokens& tokens)
     }
 
     QString rules =
-            fieldTypes.join(qsl(", "))
+            scoped(fieldTypes)
             + qsl(" { background-color: %1; color: %2; border: %10px solid %3; border-radius: %4px;"
                   " padding: %5px %6px; min-height: %7px;"
                   " selection-background-color: %8; selection-color: %9; }")
-                      .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), QString::number(scmInputRadius))
+                      .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), QString::number(scmRadiusInput))
                       .arg(QString::number(scmInputPaddingVertical), QString::number(scmInputPaddingHorizontal), QString::number(scmInputContentHeight))
                       .arg(tokens.accent.name(), tokens.accentText.name(), QString::number(scmInputBorderWidth))
             // A 1px accent frame rather than a ring drawn outside the control:
             // where the platform draws one of its own, two rings round the same
             // box read as a fault
-            + focusedTypes.join(qsl(", ")) + qsl(" { border: %2px solid %1; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth)) + disabledTypes.join(qsl(", "))
+            + scoped(focusedTypes) + qsl(" { border: %2px solid %1; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth)) + scoped(disabledTypes)
             + qsl(" { color: %1; background-color: %2; border: %4px solid %3; }").arg(tokens.disabledText.name(), disabledField.name(), disabledBorder.name(), QString::number(scmInputBorderWidth))
             // The list a combo box drops down is a surface lifted off the page,
             // not a taller copy of the field it came out of
-            + qsl("QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3;"
-                  " selection-background-color: %4; selection-color: %5; outline: none; }"
-                  // Both of those hold a QLineEdit of their own, which the rules
-                  // above would otherwise draw as a second field inside the first
-                  "QComboBox QLineEdit, QAbstractSpinBox QLineEdit"
-                  " { background: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; }")
-                      .arg(tokens.card.name(), tokens.text.name(), tokens.border.name(), tokens.accent.name(), tokens.accentText.name());
+            + scoped({qsl("QComboBox QAbstractItemView")})
+            + qsl(" { background-color: %1; color: %2; border: 1px solid %3;"
+                  " selection-background-color: %4; selection-color: %5; outline: none; }")
+                      .arg(tokens.card.name(), tokens.text.name(), tokens.border.name(), tokens.accent.name(), tokens.accentText.name())
+            // Both of those hold a QLineEdit of their own, which the rules above
+            // would otherwise draw as a second field inside the first
+            + scoped({qsl("QComboBox QLineEdit"), qsl("QAbstractSpinBox QLineEdit")}) + qsl(" { background: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; }");
 
     if (arrowsAvailable) {
-        rules += qsl("QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: center right;"
-                     " width: %3px; border: none; background: transparent; }"
-                     "QComboBox::down-arrow { image: url(\"%1\"); width: %4px; height: %4px; }"
-                     "QAbstractSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right;"
-                     " width: %5px; border: none; background: transparent; }"
-                     "QAbstractSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right;"
-                     " width: %5px; border: none; background: transparent; }"
-                     "QAbstractSpinBox::up-arrow { image: url(\"%2\"); width: %6px; height: %6px; }"
-                     "QAbstractSpinBox::down-arrow { image: url(\"%1\"); width: %6px; height: %6px; }")
-                         .arg(downArrow, upArrow, QString::number(scmInputDropDownWidth))
-                         .arg(QString::number(scmInputArrowSize), QString::number(scmInputStepperWidth), QString::number(scmInputStepperArrowSize));
+        rules += scoped({qsl("QComboBox::drop-down")})
+                 + qsl(" { subcontrol-origin: padding; subcontrol-position: center right; width: %1px; border: none; background: transparent; }").arg(QString::number(scmInputDropDownWidth))
+                 + scoped({qsl("QComboBox::down-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(downArrow, QString::number(scmInputArrowSize))
+                 + scoped({qsl("QAbstractSpinBox::up-button")})
+                 + qsl(" { subcontrol-origin: border; subcontrol-position: top right; width: %1px; border: none; background: transparent; }").arg(QString::number(scmInputStepperWidth))
+                 + scoped({qsl("QAbstractSpinBox::down-button")})
+                 + qsl(" { subcontrol-origin: border; subcontrol-position: bottom right; width: %1px; border: none; background: transparent; }").arg(QString::number(scmInputStepperWidth))
+                 + scoped({qsl("QAbstractSpinBox::up-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(upArrow, QString::number(scmInputStepperArrowSize))
+                 + scoped({qsl("QAbstractSpinBox::down-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(downArrow, QString::number(scmInputStepperArrowSize));
     }
     return rules;
 }

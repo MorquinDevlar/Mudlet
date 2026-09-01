@@ -15806,9 +15806,9 @@ void dlgTriggerEditor::updateEditorCompileChip()
     }
 
     mpLabel_editorCompileDot->setStyleSheet(qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(stateColor.name(), QString::number(scmEditorCompileDotDiameter / 2)));
-    mpWidget_editorCompileChip->setStyleSheet(qsl("#editorCompileChip { background-color: %1; border-radius: 8px; }"
+    mpWidget_editorCompileChip->setStyleSheet(qsl("#editorCompileChip { background-color: %1; border-radius: %3px; }"
                                                   "#editorCompileState { color: %2; font-size: 92%; }")
-                                                      .arg(uiDesign::rgba(stateColor, 0.14), stateColor.name()));
+                                                      .arg(uiDesign::rgba(stateColor, 0.14), stateColor.name(), QString::number(uiDesign::scmRadiusChip)));
 }
 
 void dlgTriggerEditor::clearCompileState()
@@ -16011,7 +16011,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // Only the field is drawn: the row around it is the panel it sits on, so
     // the box is the one thing here that carries the sunken colour
     widget_searchTerm->setStyleSheet(qsl("#editorSearchRow { background: transparent; }"
-                                         "#editorSearchRow QComboBox { background-color: %1; border: 1px solid %2; border-radius: 6px; min-height: 32px; padding: 0px 6px; color: %3; }"
+                                         // Taller than a form control and the one thing the panel
+                                         // under it is worked from, so it takes a panel's corner
+                                         "#editorSearchRow QComboBox { background-color: %1; border: 1px solid %2; border-radius: %5px; min-height: 32px; padding: 0px 6px; color: %3; }"
                                          "#editorSearchRow QComboBox:focus { border: 1px solid %4; }"
                                          // A field to type into rather than a list to pick from:
                                          // what the box holds is the searches already run, which
@@ -16023,7 +16025,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                          // Or the field is drawn a second time, in
                                          // its own frame, inside the one above
                                          "#editorSearchRow QComboBox QLineEdit { background: transparent; border: none; }")
-                                             .arg(fieldColor.name(), borderColor.name(), textColor.name(), accentColor.name()));
+                                             .arg(fieldColor.name(), borderColor.name(), textColor.name(), accentColor.name(), QString::number(uiDesign::scmRadiusProminentInput)));
 
     if (mpWidget_editorCodeHeader) {
         // Only what the strip holds is drawn: the bar behind it is painted by
@@ -16059,7 +16061,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
         mpTriggersMainArea->setStyleSheet(qsl(
                                                   // The top margin lifts the title clear of the frame, rather than
                                                   // leaving it cutting through the card's border
-                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: 8px;"
+                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %9px;"
                                                   " margin-top: 20px; padding: 12px; font-weight: bold; }"
                                                   "QGroupBox[editorCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
                                                   // ...but only the title is bold, not everything the card holds:
@@ -16069,7 +16071,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
                                                   "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
                                                   // The box naming a matching mode; the chosen one carries the accent
-                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: 4px; padding: 1px 0px;"
+                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %10px; padding: 1px 0px;"
                                                   " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
                                                   "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
                                                   // The button the options are opened from, and the strip that stands
@@ -16081,7 +16083,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   " background: transparent; text-align: left; }"
                                                   "#editorOptionsSummary:hover { color: %7; background-color: %8; }"
                                                   // The ID reads as a label on the trigger, not as a second field
-                                                  "#frameId { border: 1px solid %2; border-radius: 8px; background: transparent; }"
+                                                  "#frameId { border: 1px solid %2; border-radius: %10px; background: transparent; }"
                                                   // The cards are what is drawn in the options column: the scroll
                                                   // area holding them and the viewport Qt gives it show the page
                                                   // through. Named outright, as the pattern rows are, so that a
@@ -16089,6 +16091,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
                                                   " { background: transparent; border: none; }")
                                                   .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name(), hoverSoft)
+                                                  .arg(QString::number(uiDesign::scmRadiusPanel), QString::number(uiDesign::scmRadiusChip))
                                           + cardIndicatorRules + cardTitleRule + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();
@@ -16137,9 +16140,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // A notice rather than a strip of highlighter pen: the accent the rest
         // of the editor points with, and the picture beside the words is what
         // says which of the three readings this one is
-        mpSystemMessageArea->frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: 8px; }"
+        mpSystemMessageArea->frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: %4px; }"
                                                                        "QFrame#frame_notificationArea QLabel { background: transparent; color: %3; }")
-                                                                           .arg(accentSoft, accentColor.name(), textColor.name()));
+                                                                           .arg(accentSoft, accentColor.name(), textColor.name(), QString::number(uiDesign::scmRadiusPanel)));
         // The .ui file sizes the area around a 64px picture; what it holds now
         // is a line of text beside a small one
         mpSystemMessageArea->setMinimumSize(0, 0);

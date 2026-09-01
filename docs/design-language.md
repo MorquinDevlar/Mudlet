@@ -60,6 +60,40 @@ answers white to `Window` and `Base` alike on its light appearance - so
 `themeTokens()` steps the page down instead of the card up when the lift would
 be under six levels of lightness. Neither window does that arithmetic itself.
 
+### One treatment for every input
+
+`inputStyleSheet(tokens, selectorPrefix)` draws everything a value is typed into
+or picked in - line edits, combo boxes, spin boxes - as one control: the `field`
+surface, a 1px border, `scmRadiusInput`, an accent frame on focus. Framing a
+`QComboBox` or a `QAbstractSpinBox` from a stylesheet removes the arrows the
+platform draws inside it, so the sheet claims those two only once it has tinted
+arrow PNGs cached to point at, and otherwise leaves them the platform's frame.
+
+Scope it, never set it on a window: the editor sets it on each of its seven
+forms, the settings dialog passes `#settingsStack` so the rules stop at the
+pages. Unscoped it would take the search field, the sidebar's editors and every
+tree's inline editor with it.
+
+### Radius follows control size
+
+How round a corner is says how big the thing behind it is. The same 8px that
+reads as a card's corner turns a chip into a lozenge, and the 4px that suits a
+chip leaves a card looking square - so the radius is proportional to the control,
+and the scale is four named constants in `src/uiDesign.h`. No rule writes a
+radius of its own.
+
+| Constant | Value | Use it for |
+| --- | --- | --- |
+| `scmRadiusChip` | 4px | A word in a box: the ID beside an item's name (`#frameId`), the kind beside a search result (`SearchResultDelegate`), the OR/AND beside a matching mode (`#editorModeChip`), the compile state over the code pane |
+| `scmRadiusInput` | 5px | The controls a form is filled in through, a little over 30px tall: line edits, combo boxes, spin boxes - every rule in `inputStyleSheet()` |
+| `scmRadiusPanel` | 8px | The boxes a window is laid out in: `settingsCard` and `editorCard` group boxes, the migration banner, the editor's notice frame, the deep-link spotlight ring |
+| `scmRadiusProminentInput` | 8px | A search field: the one control a panel is headed by rather than one of several filled in on it, and drawn taller than a form control, so it takes the corner of the panel it heads (`#settingsSearchField`, `#editorSearchRow QComboBox`) |
+
+Sizes not in the scale stay literal on purpose: the 6px of a hovered toolbar
+button or a navigation row, the 8px pill of a sidebar item, the 3px of a check
+indicator or a marker-pen highlight. Those are rows and glyphs, not the boxes
+this scale is about.
+
 ### Font sizes are relative
 
 Stylesheet font sizes are percentages, never points: `#settingsPageTitle
@@ -70,8 +104,8 @@ interface font.
 ### Cards, not bare group boxes
 
 Content is grouped into cards: a `QGroupBox` carrying the `settingsCard` dynamic
-property, styled with a background, a 1px border, an 8px radius and 16px
-padding. Pages are a single column of cards with 16px spacing
+property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
+16px padding. Pages are a single column of cards with 16px spacing
 (`createScrollPage()`, `buildPage()`).
 
 ### Human copy

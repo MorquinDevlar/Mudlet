@@ -43,7 +43,6 @@ constexpr int scmMatchRowPaddingV = 3;
 constexpr int scmChipGap = 8;
 constexpr int scmChipPaddingH = 6;
 constexpr int scmChipPaddingV = 1;
-constexpr int scmChipRadius = 4;
 constexpr int scmMarkerRadius = 3;
 // The marker is drawn a hair wider than the letters it is under, so the query
 // does not read as ending flush against the character after it
@@ -222,7 +221,7 @@ void SearchResultDelegate::paintItemRow(QPainter* pPainter, const QStyleOptionVi
     pPainter->setRenderHint(QPainter::Antialiasing, true);
     pPainter->setPen(QPen(mChipBorder, 1));
     pPainter->setBrush(Qt::NoBrush);
-    pPainter->drawRoundedRect(QRectF(chipRect).adjusted(0.5, 0.5, -0.5, -0.5), scmChipRadius, scmChipRadius);
+    pPainter->drawRoundedRect(QRectF(chipRect).adjusted(0.5, 0.5, -0.5, -0.5), scmRadiusChip, scmRadiusChip);
     pPainter->setFont(mChipFont);
     pPainter->setPen(mMutedColor);
     pPainter->drawText(chipRect, Qt::AlignCenter, typeLabel);

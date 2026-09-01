@@ -124,12 +124,35 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // selector.
 QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
 
+// How round a corner is says how big the thing behind it is: the radius that
+// reads as a card's corner turns a chip into a lozenge, and the one that suits a
+// chip leaves a card looking square. So the scale is proportional - the smaller
+// the control, the tighter the corner - and these four are the whole of it. No
+// rule writes a radius of its own.
+//
+// A word in a box: the ID beside an item's name, the kind beside a search
+// result, the OR/AND beside a matching mode
+inline constexpr int scmRadiusChip = 4;
+// The controls a form is filled in through, a little over 30px tall: line edits,
+// combo boxes, spin boxes. Tighter than the card they sit on, so that a control
+// inside one does not echo the box around it.
+inline constexpr int scmRadiusInput = 5;
+// The boxes a window is laid out in: an options card, a notice, the ring a deep
+// link is pointed out with
+inline constexpr int scmRadiusPanel = 8;
+// A search field is the one control a panel is headed by rather than one of
+// several filled in on it, and is drawn taller than a form control - so it takes
+// the corner of the panel it heads rather than the form controls' one
+inline constexpr int scmRadiusProminentInput = scmRadiusPanel;
+
 // Everything a value is typed into or picked in, drawn as one control: the
 // field surface sunk into whatever holds it, a hairline round it and the corner
 // the rest of the shell uses. Set on a form rather than on a window, so that
 // only the controls under that form are claimed - a code pane paints its own,
-// and a tree is a list rather than a field.
-QString inputStyleSheet(const ThemeTokens& tokens);
+// and a tree is a list rather than a field. A window with no form to set it on,
+// but with one container everything it means sits under, passes that container's
+// selector as selectorPrefix and keeps the same sheet on the shell instead.
+QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
 
 // The height a field's contents are given, what is left round them, and what
 // the whole control therefore comes out at - which a form laying a field into a
