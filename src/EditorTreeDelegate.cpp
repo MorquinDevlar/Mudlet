@@ -28,6 +28,7 @@
 #include "TTrigger.h"
 #include "uiDesign.h"
 
+#include <QMouseEvent>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionViewItem>
@@ -46,6 +47,9 @@ constexpr int scmDotHitSlack = 2;
 // A profile keeps its rows' pictures as one QIcon each, so a tree of nothing but
 // folders would otherwise have the cache grow a row at a time
 constexpr int scmDecorationCacheLimit = 256;
+// A click carrying one of these is the selection being worked on rather than a
+// row being switched on or off
+constexpr Qt::KeyboardModifiers scmSelectionModifiers = Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier;
 } // namespace
 
 EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeType, Host* pHost)
@@ -315,23 +319,18 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
     }
 }
 
-QRect EditorTreeDelegate::dotHitRect(const QModelIndex& index) const
+QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
-    if (!mpTree || !index.isValid() || index.column() != 0 || !stateOf(index).known) {
-        return {};
-    }
-    const QRect rowRect = mpTree->visualRect(index);
-    if (rowRect.isEmpty()) {
+    if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || !stateOf(index).known) {
         return {};
     }
 
     // Asked of the style rather than worked out here: the trees carry a
     // stylesheet, so it is QStyleSheetStyle that decides where a row's picture
     // lands, and its padding is nothing this could guess at
-    QStyleOptionViewItem option = mpTree->viewItemOption();
-    option.rect = rowRect;
-    initStyleOption(&option, index);
-    const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &option, mpTree);
+    QStyleOptionViewItem dotOption(option);
+    initStyleOption(&dotOption, index);
+    const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &dotOption, mpTree);
     if (decorationRect.isEmpty()) {
         return {};
     }
@@ -341,6 +340,55 @@ QRect EditorTreeDelegate::dotHitRect(const QModelIndex& index) const
     // the row's remaining leading edge is left to start a drag from
     const QRect dotRect(decorationRect.left(), decorationRect.top() + (decorationRect.height() - scmDotDiameter) / 2, scmDotDiameter, scmDotDiameter);
     return dotRect.adjusted(-scmDotHitSlack, -scmDotHitSlack, scmDotHitSlack, scmDotHitSlack);
+}
+
+bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index)
+{
+    switch (pEvent->type()) {
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonRelease:
+    case QEvent::MouseButtonDblClick:
+        break;
+    case QEvent::MouseMove:
+        // The view records what was pressed before it asks here, so a move made
+        // with the button still down would drag-select out of the dot or pull
+        // the row it is on out of the tree. A switch is not a handle.
+        if (mDotPressed) {
+            if (static_cast<QMouseEvent*>(pEvent)->buttons() & Qt::LeftButton) {
+                return true;
+            }
+            // A move with the button up is a press that ended somewhere this was
+            // not told about - a release over a different row, say, which the
+            // view answers by itself
+            mDotPressed = false;
+        }
+        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
+    default:
+        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
+    }
+
+    auto* pMouseEvent = static_cast<QMouseEvent*>(pEvent);
+    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmSelectionModifiers) || !dotHitRect(option, index).contains(pMouseEvent->position().toPoint())) {
+        mDotPressed = false;
+        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
+    }
+
+    mDotPressed = pEvent->type() != QEvent::MouseButtonRelease;
+
+    if (pEvent->type() == QEvent::MouseButtonPress) {
+        // The toggle reads the tree's current item rather than being handed one,
+        // so the row is chosen first and asked for after - one toggle, one path
+        if (QTreeWidgetItem* pItem = mpTree ? mpTree->itemFromIndex(index) : nullptr) {
+            mpTree->setCurrentItem(pItem);
+            emit toggleRequested();
+        }
+    }
+
+    // The press did the toggling, so the release that closes it and the second
+    // press of a double click are both eaten: handed on, the view would read
+    // them as a click on the row and reload it, losing whatever was typed into
+    // the editor
+    return true;
 }
 
 } // namespace uiDesign

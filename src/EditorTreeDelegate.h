@@ -64,14 +64,18 @@ public:
     // everything loaded out of the profile carries it for the whole session.
     void setNewItemDescription(const QString& description) { mNewItemDescription = description; }
 
-    // Where a row's dot can be clicked, in viewport coordinates; a null
-    // rectangle for a row that has no dot. The dot's own square grown by a
-    // couple of pixels - a 9px target is not one to ask for accuracy on - and no
-    // more than that, so the rest of the row's leading edge is still somewhere a
-    // drag can be started from.
-    [[nodiscard]] QRect dotHitRect(const QModelIndex& index) const;
-
     void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override;
+
+    // The dot is the switch the row draws, so the clicks that land on it are
+    // answered here rather than by the view - which is where Qt answers the
+    // clicks on an item's check box from, and for the same reason
+    bool editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index) override;
+
+signals:
+    // Sent once the row to switch is the tree's current one, so there is nothing
+    // to carry: this reaches the slot that a double click on a row reaches by
+    // way of the tree's own itemActivated(), and that slot reads the tree
+    void toggleRequested();
 
 private:
     // Three readings of one shape, in the order they are cached in
@@ -102,6 +106,14 @@ private:
     // picture rather than one per row.
     using DecorationKey = QPair<int, qint64>;
 
+    // Where a row's dot can be clicked, in viewport coordinates; a null
+    // rectangle for a row that has no dot. The dot's own square grown by a
+    // couple of pixels - a 9px target is not one to ask for accuracy on - and no
+    // more than that, so the rest of the row's leading edge is still somewhere a
+    // drag can be started from. Measured against the option the view laid the
+    // row out from, which is the one handed to editorEvent().
+    [[nodiscard]] QRect dotHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const;
+
     void clearDecorations() const;
     [[nodiscard]] qreal glyphRatio() const;
     [[nodiscard]] ItemState stateOf(const QModelIndex& index) const;
@@ -114,6 +126,10 @@ private:
     QColor mRunningDot;
     QColor mQuietDot;
     QString mNewItemDescription;
+    // Set by a press the dot answered and cleared by the release that closes it,
+    // so that the moves in between can be kept from turning the press into a
+    // drag of the row it started on
+    bool mDotPressed = false;
 
     // Three shapes are all a whole tree of rows needs, and a tree being laid out
     // asks every one of its rows for a size

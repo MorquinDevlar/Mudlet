@@ -22,7 +22,6 @@
 
 #include "TTreeWidget.h"
 
-#include "EditorTreeDelegate.h"
 #include "Host.h"
 #include "LuaInterface.h"
 #include "TTimer.h"
@@ -32,12 +31,6 @@
 #include <QtEvents>
 #include <QHeaderView>
 #include <QToolTip>
-
-namespace {
-// A click carrying one of these is the selection being worked on rather than a
-// row being switched on or off
-constexpr Qt::KeyboardModifiers scmSelectionModifiers = Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier;
-} // namespace
 
 TTreeWidget::TTreeWidget(QWidget* pW)
 : QTreeWidget(pW)
@@ -86,37 +79,8 @@ void TTreeWidget::getAllChildren(QTreeWidgetItem* pItem, QList<QTreeWidgetItem*>
     }
 }
 
-QStyleOptionViewItem TTreeWidget::viewItemOption() const
-{
-    QStyleOptionViewItem option;
-    initViewItemOption(&option);
-    return option;
-}
-
-bool TTreeWidget::pressTogglesStateDot(const QMouseEvent* event) const
-{
-    if (event->button() != Qt::LeftButton || (event->modifiers() & scmSelectionModifiers)) {
-        return false;
-    }
-    const QModelIndex indexClicked = indexAt(event->pos());
-    if (!indexClicked.isValid()) {
-        return false;
-    }
-    auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(itemDelegateForIndex(indexClicked));
-    return pDelegate && pDelegate->dotHitRect(indexClicked).contains(event->pos());
-}
-
 void TTreeWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    // The press this release belongs to was answered by the dot, so the view
-    // never heard it: what the view still has recorded as pressed is from some
-    // earlier click, and a release matched against that would select the row a
-    // second time - reloading it, and losing whatever was typed into the editor
-    if (mDotPressed) {
-        mDotPressed = false;
-        return;
-    }
-
     QModelIndex indexClicked = indexAt(event->pos());
     if (mTreeType == TreeType::Var && indexClicked.isValid() && indexClicked.row() != 0 && mClickedItem == indexClicked) {
         QRect vrect = visualRect(indexClicked);
@@ -156,23 +120,6 @@ void TTreeWidget::mouseReleaseEvent(QMouseEvent* event)
 void TTreeWidget::mousePressEvent(QMouseEvent* event)
 {
     QModelIndex indexClicked = indexAt(event->pos());
-    // Cleared here as well as on the release it belongs to: a release that never
-    // arrived would otherwise have the next one swallowed in its place
-    mDotPressed = false;
-
-    // The dot at the head of a row is the switch it draws, so a click on it is a
-    // click on the switch. The toggle reads the tree's current item rather than
-    // being handed one, so the row is chosen first, and it is then asked for
-    // through the same signal a double click arrives by - one toggle, one path.
-    if (pressTogglesStateDot(event)) {
-        if (QTreeWidgetItem* pItem = itemFromIndex(indexClicked)) {
-            mDotPressed = true;
-            setCurrentItem(pItem);
-            emit itemActivated(pItem, 0);
-        }
-        return;
-    }
-
     if (mTreeType == TreeType::Var && indexClicked.isValid()) {
         QRect vrect = visualRect(indexClicked);
         int itemIndentation = vrect.x() - visualRect(rootIndex()).x();
@@ -185,24 +132,6 @@ void TTreeWidget::mousePressEvent(QMouseEvent* event)
     }
 
     QTreeWidget::mousePressEvent(event);
-}
-
-void TTreeWidget::mouseDoubleClickEvent(QMouseEvent* event)
-{
-    // The first press of the pair already toggled the row. Handed on, this would
-    // reach a view whose record of what was pressed does not match the row under
-    // the pointer - which QAbstractItemView answers by synthesising a press, and
-    // that press would toggle the row a second time.
-    if (pressTogglesStateDot(event)) {
-        // ...and the release that closes the double click has to be swallowed
-        // for the same reason a single click's is: the view never heard this
-        // press, so it would match the release against an older one and reload
-        // the row, losing whatever was typed into the editor
-        mDotPressed = true;
-        return;
-    }
-
-    QTreeWidget::mouseDoubleClickEvent(event);
 }
 
 void TTreeWidget::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end)

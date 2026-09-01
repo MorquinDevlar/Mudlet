@@ -15693,6 +15693,9 @@ void dlgTriggerEditor::setupEditorPanel()
         // never been saved - see setNewItemDescription() for why the three types
         // that also have a checkIfNew() are not asked it
         pDelegate->setNewItemDescription(descNewItem);
+        // A click on the dot is answered by the delegate that draws it, and the
+        // switching itself is the same one the trees' itemActivated() reaches
+        connect(pDelegate, &uiDesign::EditorTreeDelegate::toggleRequested, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
         itemTree.first->setItemDelegate(pDelegate);
         mEditorTreeDelegates.append(pDelegate);
         // A long name is cut rather than pushed off the side: a panel this
