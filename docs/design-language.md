@@ -25,9 +25,11 @@ never written as a hex literal. See `applyShellStyle()`
 
 Four palette roles carry the design: `QPalette::Window` (page),
 `QPalette::Base` (field), `QPalette::WindowText` (text), `QPalette::Highlight`
-(accent). Light and dark treatments are chosen from the measured lightness of the
-page colour (`darkPage`), not from `mudlet::inDarkMode()`, so a dark system theme
-under "follow the system" is handled too.
+(accent). Two of the four are taken as they come and two are softened before
+anything is mixed from them - see below. Light and dark treatments are chosen
+from the measured lightness of the page colour (`darkPage`), not from
+`mudlet::inDarkMode()`, so a dark system theme under "follow the system" is
+handled too.
 
 This is correctness, not taste: a profile's Lua stylesheet can retheme the whole
 application, and a hardcoded colour becomes unreadable the moment it does. Read
@@ -44,13 +46,40 @@ whole of what says how deep the thing it draws sits. Pick by what the widget
 | --- | --- | --- |
 | `page` | `QPalette::Window` | The window itself and every piece of it: toolbar, status bar, sidebar pane, the column an item is edited in, scroll areas |
 | `card` | `page` lifted towards white (6% on dark, 55% on light) | A panel raised off the page: the options cards, popup and menu surfaces |
-| `field` | `QPalette::Base` | Anything the user types into or picks a value in: line edits, combo boxes, spin boxes, the search field, a check indicator's fill |
+| `field` | `QPalette::Base`, lifted 30% towards `page` on dark | Anything the user types into or picks a value in: line edits, combo boxes, spin boxes, the search field, a check indicator's fill |
 
 The order is fixed - `field` is sunk into `card`, `card` is lifted off `page` -
 and it is what makes the windows read as having depth rather than as flat
 collapsing to black. Deriving the page from `QPalette::Base` gets this exactly
 backwards: Base is the *input field* colour, near-black on a dark theme, so a
 page mixed off it ends up darker than the fields lying on it.
+
+A dark theme's `Base` is near-black - #191919 under a #353535 page - which
+reads as a hole cut through the window rather than as a well sunk into it, so
+the dark field is lifted back towards the page and lands at #212121. A light
+theme's `Base` is white and is left where it is: lifting white towards a grey
+page only muddies it.
+
+### The words are softened towards the page
+
+`text` is not `QPalette::WindowText` as it comes. A palette answers pure white
+on a dark theme and pure black on a light one, and neither is a colour a page of
+text is set in - the white glares against a #353535 page and the black is
+heavier than anything else in the window. So the words are pulled a little way
+back towards whatever they are written on: 16% on dark, which turns #ffffff into
+#dfdfdf, and 10% on light, which turns #000000 into #181818.
+
+| Theme | palette `WindowText` | `text` | `mutedText` | `page` | `card` | `field` |
+| --- | --- | --- | --- | --- | --- | --- |
+| dark (#353535 window, #191919 base) | #ffffff | #dfdfdf | #acacac | #353535 | #414141 | #212121 |
+| light (#ececec window, white base) | #000000 | #181818 | #575757 | #ececec | #f6f6f6 | #ffffff |
+
+Every other ink is mixed from `text` over a surface, so the whole scale softens
+with it - `mutedText`, `disabledText`, `border`, and the `accentText` blend.
+That is the point rather than a side effect, and the contrast is measured rather
+than assumed (`EditorSurfaceToneTest`): body text clears 4.5:1 on all three
+surfaces in both themes - 9.2:1, 7.6:1 and 12.0:1 on dark, 15.1:1, 16.6:1 and
+17.8:1 on light - and `mutedText` clears 3:1 on the page at 5.4:1 and 6.1:1.
 
 Anything mixed to sit *on* a surface takes that surface as its `from`:
 `border`, `mutedText` and `disabledText` are blends over `page`; a card's check

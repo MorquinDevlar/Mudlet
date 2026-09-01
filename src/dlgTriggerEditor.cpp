@@ -104,7 +104,6 @@
 #include <QRegularExpression>
 #include <QToolButton>
 #include <QToolBar>
-#include <QTransform>
 #include <algorithm>
 #include <chrono>
 #include <sstream>
@@ -157,12 +156,6 @@ static constexpr int scmEditorSidebarRailPadding = 6;
 static constexpr int scmEditorSidebarSeparatorInset = 12;
 static constexpr int scmEditorSidebarRowHeight = 36;
 static constexpr int scmEditorSidebarIconSize = 18;
-// The chevron at the foot of the sidebar: a pointer target round the glyph, and
-// what is left round a glyph the preference has made bigger than the one this
-// was measured for. The rail is 46px less 6px of padding either side, so the
-// largest the preference can ask for still sits inside it.
-static constexpr int scmEditorSidebarToggleSize = 28;
-static constexpr int scmEditorSidebarTogglePadding = 10;
 // "Icon size toolbars" is a step from 1 to 4 rather than a pixel count, and 3 is
 // what a profile that has never touched it holds. Six pixels a step is what
 // makes that default the 18px the design language draws a glyph at everywhere
@@ -1375,6 +1368,20 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     //: This is the toolbar that is initially placed at the top of the editor.
     toolBar->setWindowTitle(tr("Editor Toolbar - %1 - Actions").arg(hostName));
 
+    // The leading button is the one that shows and hides the sidebar, where
+    // every platform puts it. It is not one of the item actions and is kept off
+    // to their left by a rule, the way the profile half is kept off to the
+    // right. Checkable, because it says which of two states the sidebar is in
+    // rather than running something: held down while the names are on show.
+    mpAction_editorSidebarToggle = new QAction(this);
+    mpAction_editorSidebarToggle->setObjectName(qsl("editorSidebarToggle"));
+    mpAction_editorSidebarToggle->setCheckable(true);
+    connect(mpAction_editorSidebarToggle, &QAction::triggered, this, [this]() {
+        setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
+    });
+    toolBar->addAction(mpAction_editorSidebarToggle);
+    toolBar->addSeparator();
+
     // Grouped by what the buttons do to the item being worked on, with what
     // acts on the profile as a whole pushed to the far end
     toolBar->addAction(mAddItem);
@@ -1430,6 +1437,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
 
     applyEditorToolbarButtonStyles();
+    // The widget a screen reader reaches is the toolbar's button rather than
+    // the action, and it is made when the action is added to the bar
+    mpButton_editorSidebarToggle = qobject_cast<QToolButton*>(toolBar->widgetForAction(mpAction_editorSidebarToggle));
+    updateEditorSidebarToggle();
 
     connect(checkBox_displayAllVariables, &QAbstractButton::toggled, this, &dlgTriggerEditor::slot_toggleHiddenVariables);
 
@@ -2853,6 +2864,11 @@ void dlgTriggerEditor::slot_setToolBarIconSize(const int s)
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
     }
+    // ...and the heading row of each tree, which carries the sidebar's glyph and
+    // so is drawn at the sidebar's size
+    for (uiDesign::EditorTreeDelegate* pDelegate : std::as_const(mEditorTreeDelegates)) {
+        pDelegate->setHeadingIconSize(mEditorIconSize);
+    }
 }
 
 void dlgTriggerEditor::slot_setTreeWidgetIconSize(const int s)
@@ -2983,7 +2999,7 @@ void dlgTriggerEditor::readSettings()
 
     // Named for what it is: the sidebar has no closed state to remember, only
     // whether its rows are labelled. A profile that has never touched the
-    // chevron starts with them on.
+    // toolbar's toggle starts with them on.
     mEditorSidebarLabelsShown = settings.value(qsl("editorSidebarLabelsShown"), true).toBool();
     updateEditorSidebarMode();
 
@@ -3016,9 +3032,9 @@ void dlgTriggerEditor::writeSettings()
         settings.setValue(qsl("script_editor_size"), storedArea.size());
     }
     settings.setValue("autosaveIntervalMinutes", mAutosaveInterval);
-    // Only the chevron writes this - a window too narrow for the names never
-    // touches it, so a session spent working in a small window does not decide
-    // what the next one opens with
+    // Only the toolbar's toggle writes this - a window too narrow for the names
+    // never touches it, so a session spent working in a small window does not
+    // decide what the next one opens with
     settings.setValue(qsl("editorSidebarLabelsShown"), mEditorSidebarLabelsShown);
 
     settings.setValue("mTriggerEditorSplitterState", mTriggerEditorSplitterState);
@@ -9830,46 +9846,45 @@ void dlgTriggerEditor::fillout_form()
 
     mNeedUpdateData = false;
     mpTriggerBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(tr("Triggers")));
-    mpTriggerBaseItem->setIcon(0, QPixmap(qsl(":/icons/tools-wizard.png")));
     treeWidget_triggers->insertTopLevelItem(0, mpTriggerBaseItem);
     populateTriggers();
     mpTriggerBaseItem->setExpanded(true);
     treeWidget_triggers->setCurrentItem(mpTriggerBaseItem);
 
     mpTimerBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(tr("Timers")));
-    mpTimerBaseItem->setIcon(0, QPixmap(qsl(":/icons/chronometer.png")));
     treeWidget_timers->insertTopLevelItem(0, mpTimerBaseItem);
     populateTimers();
     mpTimerBaseItem->setExpanded(true);
     treeWidget_timers->setCurrentItem(mpTimerBaseItem);
 
     mpScriptsBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(tr("Scripts")));
-    mpScriptsBaseItem->setIcon(0, QPixmap(qsl(":/icons/accessories-text-editor.png")));
     treeWidget_scripts->insertTopLevelItem(0, mpScriptsBaseItem);
     populateScripts();
     mpScriptsBaseItem->setExpanded(true);
     treeWidget_scripts->setCurrentItem(mpScriptsBaseItem);
 
     mpAliasBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(tr("Aliases - Input Triggers")));
-    mpAliasBaseItem->setIcon(0, QPixmap(qsl(":/icons/system-users.png")));
     treeWidget_aliases->insertTopLevelItem(0, mpAliasBaseItem);
     populateAliases();
     mpAliasBaseItem->setExpanded(true);
     treeWidget_aliases->setCurrentItem(mpAliasBaseItem);
 
     mpActionBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(tr("Buttons")));
-    mpActionBaseItem->setIcon(0, QPixmap(qsl(":/icons/bookmarks.png")));
     treeWidget_actions->insertTopLevelItem(0, mpActionBaseItem);
     populateActions();
     mpActionBaseItem->setExpanded(true);
     treeWidget_actions->setCurrentItem(mpActionBaseItem);
 
     mpKeyBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(tr("Key Bindings")));
-    mpKeyBaseItem->setIcon(0, QPixmap(qsl(":/icons/preferences-desktop-keyboard.png")));
     treeWidget_keys->insertTopLevelItem(0, mpKeyBaseItem);
     populateKeys();
     mpKeyBaseItem->setExpanded(true);
     treeWidget_keys->setCurrentItem(mpKeyBaseItem);
+
+    // The six rows above are the six rows of the sidebar, so they carry the
+    // same glyphs - which are tinted to the palette rather than read off disk,
+    // and so cannot be set where the rows are made
+    restyleEditorTreeHeadingIcons();
 
     // Clear undo stack after initial profile loading (only on first call)
     // Only user actions after this point should be undo-able
@@ -10362,10 +10377,12 @@ void dlgTriggerEditor::repopulateVars()
     treeWidget_variables->setUpdatesEnabled(false);
     mpVarBaseItem = new QTreeWidgetItem(QStringList(tr("Variables")));
     mpVarBaseItem->setTextAlignment(0, Qt::AlignLeft | Qt::AlignVCenter);
-    mpVarBaseItem->setIcon(0, QPixmap(qsl(":/icons/variables.png")));
     treeWidget_variables->clear();
     mpCurrentVarItem = nullptr;
     treeWidget_variables->insertTopLevelItem(0, mpVarBaseItem);
+    // This row is made afresh every time the variables are read, so the glyph
+    // it shares with the sidebar has to be put back on it every time
+    restyleEditorTreeHeadingIcons();
     mpVarBaseItem->setExpanded(true);
     LuaInterface* lI = mpHost->getLuaInterface();
     lI->getVars(false);
@@ -15633,92 +15650,66 @@ void dlgTriggerEditor::buildEditorSidebar()
     // slot_editorSidebarItemActivated() is where the second of is dropped.
     connect(mpListWidget_editorSidebar, &QListWidget::itemClicked, this, &dlgTriggerEditor::slot_editorSidebarItemActivated);
     connect(mpListWidget_editorSidebar, &QListWidget::itemActivated, this, &dlgTriggerEditor::slot_editorSidebarItemActivated);
-    buildEditorSidebarToggle(pSidebarLayout);
     invalidateEditorSidebarWidths();
 }
 
-// Below the last row, which is Debug. It is the one control that gives the
-// names up on purpose - and it never closes the sidebar, since the icons and
-// the tooltips they carry stay behind either way, which is what the words on it
-// say.
-void dlgTriggerEditor::buildEditorSidebarToggle(QBoxLayout* pSidebarLayout)
-{
-    mpButton_editorSidebarToggle = new QToolButton(mpWidget_editorSidebarPane);
-    mpButton_editorSidebarToggle->setObjectName(qsl("editorSidebarToggle"));
-    mpButton_editorSidebarToggle->setAutoRaise(true);
-    mpButton_editorSidebarToggle->setCursor(Qt::PointingHandCursor);
-    pSidebarLayout->addWidget(mpButton_editorSidebarToggle);
-    connect(mpButton_editorSidebarToggle, &QAbstractButton::clicked, this, [this]() {
-        setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
-    });
-    updateEditorSidebarToggle();
-}
-
-// Which way the chevron points is which way the sidebar is about to move, and
-// what it is called is what will become of the names - never of the sidebar,
-// which stays. A rail already turns every row's name into its tooltip, so a
-// reader who cannot see the chevron has to be told that much in words.
+// The button at the left end of the toolbar. What it is called is what will
+// become of the names - never of the sidebar, which stays: a rail turns every
+// row's name into its tooltip, so a reader who cannot see the button has to be
+// told that much in words.
 void dlgTriggerEditor::updateEditorSidebarToggle()
 {
-    if (!mpButton_editorSidebarToggle) {
+    if (!mpAction_editorSidebarToggle) {
         return;
     }
     const bool namesShowing = mEditorSidebarLabelsShown && mEditorSidebarNamesFit;
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
     // A resize asks for the sidebar's mode on every frame of a drag, and
-    // mirroring and tinting a glyph is not free - so the picture is only redone
-    // when one of the four things it is made of has moved
-    const EditorSidebarToggleGlyph wanted{.pointsLeft = namesShowing, .size = mEditorIconSize, .tint = tokens.mutedText.rgb(), .activeTint = tokens.accentText.rgb()};
+    // tinting a glyph three times over is not free - so the picture is only
+    // redone when one of the two colours it is mixed from has moved. The size
+    // is not among them: the toolbar draws every action's glyph at its own icon
+    // size, so this one follows the preference the way its neighbours do.
+    const EditorSidebarToggleGlyph wanted{.tint = tokens.mutedText.rgb(), .activeTint = tokens.accentText.rgb()};
     if (wanted != mEditorSidebarToggleGlyph) {
         mEditorSidebarToggleGlyph = wanted;
-        // There is no chevron among the editor's own glyphs, so the arrow in
-        // the resources stands in and is mirrored for the direction it does not
-        // have - the same reuse the search field's history chevron is cut from
-        // the down arrow by
-        const QPixmap arrow(qsl(":/icons/arrow-right.png"));
-        const QPixmap source = namesShowing ? arrow.transformed(QTransform().scale(-1, 1)) : arrow;
-        QIcon icon(uiDesign::tintedGlyph(source, tokens.mutedText));
-        // Active rather than Selected, as with the toolbar's glyphs: a tool
-        // button asks for Active while the pointer is on it
-        icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Active);
-        mpButton_editorSidebarToggle->setIcon(icon);
-        mpButton_editorSidebarToggle->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
-        const int side = std::max(scmEditorSidebarToggleSize, mEditorIconSize + scmEditorSidebarTogglePadding);
-        mpButton_editorSidebarToggle->setFixedSize(side, side);
+        const QPixmap source(qsl(":/icons/editor-sidebar.png"));
+        const QPixmap quiet = uiDesign::tintedGlyph(source, tokens.mutedText);
+        const QPixmap lively = uiDesign::tintedGlyph(source, tokens.accentText);
+        QIcon icon(quiet);
+        // Active rather than Selected, as with the toolbar's other glyphs: a
+        // tool button asks for Active while the pointer is on it. On is what it
+        // is drawn in while the names are showing, which is the state the
+        // button is held down in.
+        icon.addPixmap(lively, QIcon::Active, QIcon::Off);
+        icon.addPixmap(lively, QIcon::Normal, QIcon::On);
+        icon.addPixmap(lively, QIcon::Active, QIcon::On);
+        mpAction_editorSidebarToggle->setIcon(icon);
     }
 
-    // Against the edge the names are about to be taken towards while they are
-    // on show, and in the middle of the rail once they are gone
-    if (auto* pLayout = qobject_cast<QBoxLayout*>(mpWidget_editorSidebarPane->layout())) {
-        const Qt::Alignment alignment = namesShowing ? Qt::AlignRight : Qt::AlignHCenter;
-        QLayoutItem* pItem = pLayout->itemAt(pLayout->indexOf(mpButton_editorSidebarToggle));
-        // Setting it invalidates the layout whether or not it changed anything
-        if (pItem && pItem->alignment() != alignment) {
-            pLayout->setAlignment(mpButton_editorSidebarToggle, alignment);
-        }
-    }
+    // Held down while the names are on show, the way a sidebar toggle is
+    // everywhere else: the button carries the state rather than the next move
+    mpAction_editorSidebarToggle->setChecked(namesShowing);
 
-    if (namesShowing) {
-        //: Tooltip and accessible name of the chevron at the foot of the script editor's sidebar while the section names are showing. Pressing it leaves the sidebar in place as a rail of icons - it closes nothing - so the wording is about the labels rather than the sidebar.
-        const QString minimise = tr("Minimise the sidebar to icons");
-        mpButton_editorSidebarToggle->setToolTip(utils::richText(minimise));
-        mpButton_editorSidebarToggle->setAccessibleName(minimise);
-        mpButton_editorSidebarToggle->setEnabled(true);
-        return;
-    }
-
-    //: Tooltip and accessible name of the chevron at the foot of the script editor's sidebar while it is a rail of icons. Pressing it puts the section names back beside the icons.
+    //: Tooltip and accessible name of the button at the left of the script editor's toolbar while the section names are showing. Pressing it leaves the sidebar in place as a rail of icons - it closes nothing - so the wording is about the labels rather than the sidebar.
+    const QString minimise = tr("Minimise the sidebar to icons");
+    //: Tooltip and accessible name of that same button while the sidebar is a rail of icons. Pressing it puts the section names back beside the icons.
     const QString showLabels = tr("Show the sidebar's labels");
-    mpButton_editorSidebarToggle->setAccessibleName(showLabels);
+    const QString wording = namesShowing ? minimise : showLabels;
+    // The button is drawn as a picture alone, so its text is the name a screen
+    // reader is given rather than anything on show
+    mpAction_editorSidebarToggle->setText(wording);
     // A window with no room for the names cannot be talked into them, so rather
     // than doing nothing when it is pressed the button says why it will not
-    mpButton_editorSidebarToggle->setEnabled(mEditorSidebarNamesFit);
-    //: Tooltip on that same chevron when the editor window is too narrow to fit the section names, which is why pressing it is not offered.
-    mpButton_editorSidebarToggle->setToolTip(utils::richText(mEditorSidebarNamesFit ? showLabels : tr("The window is too narrow for the sidebar's labels")));
+    mpAction_editorSidebarToggle->setEnabled(mEditorSidebarNamesFit);
+    //: Tooltip on that same button when the editor window is too narrow to fit the section names, which is why pressing it is not offered.
+    mpAction_editorSidebarToggle->setToolTip(utils::richText(mEditorSidebarNamesFit ? wording : tr("The window is too narrow for the sidebar's labels")));
+    if (mpButton_editorSidebarToggle) {
+        mpButton_editorSidebarToggle->setAccessibleName(wording);
+    }
 }
 
-// The one place the preference changes, so that the chevron and the session
+// The one place the preference changes, so that the toggle and the session
 // hold the same answer. The space-driven collapse in updateEditorSidebarMode()
 // deliberately does not come through here.
 void dlgTriggerEditor::setEditorSidebarLabelsShown(const bool shown)
@@ -15763,6 +15754,38 @@ void dlgTriggerEditor::restyleEditorSidebarIcons(const QColor& normal, const QCo
         // Otherwise the view makes one by washing the icon in the highlight colour
         icon.addPixmap(uiDesign::tintedGlyph(source, selected), QIcon::Selected);
         glyph.first->setIcon(icon);
+    }
+}
+
+// The row at the top of each tree stands for the same thing as the row beside
+// it in the sidebar - Triggers, Aliases, Scripts - so it carries the same glyph,
+// tinted from the same pair of colours, where it used to carry a bitmap from an
+// icon set nothing else in the window still draws from.
+//
+// Nothing re-derives a QIcon once it is set on a tree item, so every path that
+// makes one of these rows comes back through here: fillout_form() builds six of
+// them, repopulateVars() rebuilds the seventh on every read of the variables,
+// and a theme change reaches all seven from restyleEditorIcons().
+void dlgTriggerEditor::restyleEditorTreeHeadingIcons()
+{
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    const QList<QPair<QTreeWidgetItem*, QString>> headings{{mpTriggerBaseItem, qsl(":/icons/editor-triggers.png")},
+                                                           {mpAliasBaseItem, qsl(":/icons/editor-aliases.png")},
+                                                           {mpScriptsBaseItem, qsl(":/icons/editor-scripts.png")},
+                                                           {mpTimerBaseItem, qsl(":/icons/editor-timers.png")},
+                                                           {mpKeyBaseItem, qsl(":/icons/editor-keys.png")},
+                                                           {mpActionBaseItem, qsl(":/icons/editor-buttons.png")},
+                                                           {mpVarBaseItem, qsl(":/icons/editor-variables.png")}};
+    for (const auto& heading : headings) {
+        if (!heading.first) {
+            continue;
+        }
+        const QPixmap source(heading.second);
+        QIcon icon(uiDesign::tintedGlyph(source, tokens.mutedText));
+        // The same pair the sidebar's rows are cut from, so that a chosen
+        // heading and a chosen sidebar row are the one colour
+        icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Selected);
+        heading.first->setIcon(0, icon);
     }
 }
 
@@ -15887,7 +15910,7 @@ dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() co
 }
 
 // Two answers decide the sidebar's mode, and only one of them is the user's:
-// the chevron's stored preference says whether the names are wanted, and the
+// the toggle's stored preference says whether the names are wanted, and the
 // window's width says whether there is room to grant it. A window with no room
 // takes them away without writing anything down, so widening it again is
 // settled by the preference alone.
@@ -15933,8 +15956,11 @@ void dlgTriggerEditor::restyleEditorIcons()
     // Quieter than the name beside them, and the accent under a chosen one
     restyleEditorSidebarIcons(quietColor, accentText);
 
-    // ...and the chevron under those, which is mixed from the same two colours
-    // and points whichever way the sidebar is about to move
+    // ...and the heading row of each tree, which carries the same seven glyphs
+    restyleEditorTreeHeadingIcons();
+
+    // ...and the toolbar's leading button, which is mixed from the same two
+    // colours and says which of the sidebar's two modes is in force
     updateEditorSidebarToggle();
 
     if (mpLabel_editorCodeHeaderIcon) {
@@ -16013,6 +16039,10 @@ void dlgTriggerEditor::setupEditorPanel()
         // A click on the dot is answered by the delegate that draws it, and the
         // switching itself is the same one the trees' itemActivated() reaches
         connect(pDelegate, &uiDesign::EditorTreeDelegate::toggleRequested, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
+        // The row at the top of the tree carries the sidebar's glyph, so it is
+        // drawn at the sidebar's size rather than at the size the tree gives the
+        // pictures on the rows under it
+        pDelegate->setHeadingIconSize(mEditorIconSize);
         itemTree.first->setItemDelegate(pDelegate);
         mEditorTreeDelegates.append(pDelegate);
         // A long name is cut rather than pushed off the side: a panel this
@@ -16022,6 +16052,25 @@ void dlgTriggerEditor::setupEditorPanel()
         itemTree.first->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     }
     treeWidget_variables->setTextElideMode(Qt::ElideRight);
+
+    // The mark that says which row the keyboard is on is drawn once for the
+    // whole row while a tree shows focus across all its columns - and
+    // QTreeView::drawRow draws that one through the style with no widget to
+    // look a rule up on, so the "outline: none" the trees carry cannot reach
+    // it and the platform draws its own square hairline round the row. Over
+    // the rounded pill a chosen row is filled with, that reads as a selection
+    // with square corners and an outline the hovered row beside it does not
+    // have. Told to mark the current item instead, the same rectangle is asked
+    // for from the delegate with the widget in hand, where the rule does reach
+    // it - and every tree here is one column wide but the variables one, so
+    // there is nothing the row-wide mark was saying that the item's does not.
+    // The .ui file asks for the row-wide one on all but the results tree, which
+    // is listed here so that all eight are settled in one place.
+    const QList<QTreeWidget*> focusMarkedTrees{
+            treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables, treeWidget_searchResults};
+    for (QTreeWidget* pTreeWidget : focusMarkedTrees) {
+        pTreeWidget->setAllColumnsShowFocus(false);
+    }
 
     // A match is a heading naming the item it was found in, with a row under it
     // per place inside that item - all of it drawn into one column by
@@ -16167,8 +16216,10 @@ void dlgTriggerEditor::applyEditorToolbarButtonStyles()
     }
     toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     // Two arrows side by side read as one control, and spelling them out costs
-    // more width than the pair is worth
-    for (QAction* pAction : {mpUndoAction, mpRedoAction}) {
+    // more width than the pair is worth. The sidebar toggle is a picture
+    // everywhere else it appears, and its words are its tooltip and the name a
+    // screen reader is given.
+    for (QAction* pAction : {mpUndoAction, mpRedoAction, mpAction_editorSidebarToggle}) {
         if (!pAction) {
             continue;
         }

@@ -73,6 +73,12 @@ public:
     // everything loaded out of the profile carries it for the whole session.
     void setNewItemDescription(const QString& description) { mNewItemDescription = description; }
 
+    // The row at the top of a tree stands for the same thing as the row beside
+    // it in the sidebar and carries the same glyph, so it is drawn at the size
+    // the sidebar draws it rather than at the size the tree gives the pictures
+    // on the rows under it. Zero leaves the tree's own size in force.
+    void setHeadingIconSize(const int size);
+
     void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override;
 
     // The dot is the switch the row draws and the chevron is the handle that
@@ -184,6 +190,9 @@ private:
     QColor mQuietDot;
     QColor mChevronInk;
     QString mNewItemDescription;
+    // What a tree's heading row draws its glyph at, which is the sidebar's size
+    // rather than the tree's - the two rows carry the same picture
+    int mHeadingIconSize = 0;
     // Set by a press the dot or the chevron answered and cleared by the release
     // that closes it, wherever that release lands - and by the next press either
     // way, so that a press whose release never arrived cannot leave this saying

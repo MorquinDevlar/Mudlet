@@ -93,7 +93,6 @@ class dlgAliasMainArea;
 class dlgScriptsMainArea;
 class dlgKeysMainArea;
 class dlgTriggerPatternEdit;
-class QBoxLayout;
 class QComboBox;
 class QLabel;
 class QFrame;
@@ -129,6 +128,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorSplitterRestoreTest;
     friend class EditorSurfaceToneTest;
     friend class EditorTreeDotClickTest;
+    friend class EditorTreeHeadingIconTest;
     friend class EditorTreeSelectionPillTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
@@ -261,9 +261,11 @@ public:
     void addEditorSidebarRow(QAction* pAction, const EditorViewType view, const QString& iconFile);
     void addEditorSidebarSeparator();
     void restyleEditorSidebarIcons(const QColor& normal, const QColor& selected);
-    // The chevron below the last row, and the one place the preference it
-    // carries is changed
-    void buildEditorSidebarToggle(QBoxLayout* pSidebarLayout);
+    // ...and the heading row of each of the seven trees, which carries the same
+    // glyph as the sidebar row that opens it
+    void restyleEditorTreeHeadingIcons();
+    // The toolbar's leading button, and the one place the preference it carries
+    // is changed
     void updateEditorSidebarToggle();
     void setEditorSidebarLabelsShown(const bool shown);
     void syncEditorSidebarSelection();
@@ -853,8 +855,12 @@ private:
 
     QWidget* mpWidget_editorSidebarPane = nullptr;
     QListWidget* mpListWidget_editorSidebar = nullptr;
-    // The chevron at the foot of the sidebar, below Debug. It gives the names
-    // up and brings them back; the sidebar itself never goes away.
+    // The panel-left button at the left end of the actions toolbar, where every
+    // platform puts the control that shows and hides a sidebar. It gives the
+    // names up and brings them back; the sidebar itself never goes away.
+    QAction* mpAction_editorSidebarToggle = nullptr;
+    // ...and the toolbar's own button for it, held so that the accessible name
+    // can be written on the widget a screen reader reaches
     QToolButton* mpButton_editorSidebarToggle = nullptr;
     // ...and the same for the sidebar's rows
     QList<QPair<QListWidgetItem*, QString>> mEditorSidebarGlyphs;
@@ -883,13 +889,11 @@ private:
     // 18px the design language draws a glyph at, which is what that
     // preference's own default maps to.
     int mEditorIconSize = 18;
-    // What the chevron's picture was last mixed from, so that a resize - which
+    // What the toggle's picture was last mixed from, so that a resize - which
     // asks for the sidebar's mode on every frame of a drag - only pays for a
     // new one when it would come out different
     struct EditorSidebarToggleGlyph
     {
-        bool pointsLeft = false;
-        int size = 0;
         QRgb tint = 0;
         QRgb activeTint = 0;
         bool operator==(const EditorSidebarToggleGlyph&) const = default;

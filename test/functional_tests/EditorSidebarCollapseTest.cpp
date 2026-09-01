@@ -21,20 +21,29 @@
  * The editor's sidebar has two ways of losing its names, and they must not be
  * able to overwrite each other.
  *
- * The chevron at its foot is the user's own choice, kept across sessions under
- * editorSidebarLabelsShown - a labels-shown preference, since the sidebar has
- * no closed state to remember: it minimises to a rail of icons and the rows go
- * on being reachable, with their names as tooltips.
+ * The panel-left button at the left end of the actions toolbar - where every
+ * platform puts the control that shows and hides a sidebar - is the user's own
+ * choice, kept across sessions under editorSidebarLabelsShown. A labels-shown
+ * preference, since the sidebar has no closed state to remember: it minimises
+ * to a rail of icons and the rows go on being reachable, with their names as
+ * tooltips.
  *
  * A window too narrow to draw the names takes them away regardless, and that
  * one is transient: it must never reach the stored preference, or a stretch of
  * work in a small window would decide what every later session opens with. This
  * is the split slot_rightSplitterMoved() already makes for the trigger options
  * panel, where only the explicit click writes anything down.
+ *
+ * Where the button sits and how it is drawn are checked here too. It used to be
+ * a chevron at the foot of the sidebar, which reads as an arrow somebody left
+ * behind rather than as the control it is; it is now the first thing on the
+ * toolbar, drawn as a picture alone, and held down while the names are showing.
  */
 
+#include <QAction>
 #include <QListWidget>
 #include <QTemporaryDir>
+#include <QToolBar>
 #include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -101,7 +110,9 @@ private:
 
     bool storedLabelsShown() const { return mudlet::getQSettings()->value(qsl("editorSidebarLabelsShown"), true).toBool(); }
 
-    QToolButton* chevron() const { return mpEditor->mpButton_editorSidebarToggle; }
+    // The toolbar's own button for the toggle action, which is the widget a
+    // pointer and a screen reader both reach
+    QToolButton* toggle() const { return mpEditor->mpButton_editorSidebarToggle; }
 
     void resizeEditor(const int width)
     {
@@ -110,11 +121,11 @@ private:
         QTest::qWait(50ms);
     }
 
-    void pressTheChevron()
+    void pressTheToggle()
     {
-        QVERIFY2(chevron() != nullptr, "The sidebar has no chevron at its foot");
-        QVERIFY2(chevron()->isEnabled(), "The chevron is not pressable at this width");
-        QTest::mouseClick(chevron(), Qt::LeftButton);
+        QVERIFY2(toggle() != nullptr, "The toolbar has no sidebar toggle");
+        QVERIFY2(toggle()->isEnabled(), "The sidebar toggle is not pressable at this width");
+        QTest::mouseClick(toggle(), Qt::LeftButton);
         QCoreApplication::sendPostedEvents();
         QTest::qWait(50ms);
     }
@@ -192,34 +203,74 @@ private slots:
     }
 
     // Nothing stored yet, and a window with room: the names are on show, and
-    // the chevron points the way they would go
+    // the toggle is pressable
     void test_aFreshProfileStartsWithTheNamesShowing()
     {
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(!railShowing(), qPrintable(qsl("A fresh profile opened as a rail: %1").arg(state())));
-        QVERIFY2(chevron() != nullptr, "The sidebar has no chevron at its foot");
-        QVERIFY2(chevron()->isEnabled(), "The chevron cannot be pressed on a window with room for the names");
+        QVERIFY2(toggle() != nullptr, "The toolbar has no sidebar toggle");
+        QVERIFY2(toggle()->isEnabled(), "The sidebar toggle cannot be pressed on a window with room for the names");
     }
 
-    // The chevron says what happens rather than open or close, and a screen
+    // Where it is and what it looks like: the leading item of the actions
+    // toolbar, ahead of everything that acts on what the sidebar points at,
+    // drawn as a picture alone on a bar whose other buttons carry their names
+    void test_theToggleLeadsTheToolbarAsAPictureAlone()
+    {
+        QToolBar* pToolBar = mpEditor->toolBar;
+        QVERIFY2(pToolBar != nullptr, "The editor has no actions toolbar");
+        const QList<QAction*> actions = pToolBar->actions();
+        QVERIFY2(!actions.isEmpty(), "The actions toolbar is empty");
+        qInfo().noquote() << qsl("  the toolbar leads with \"%1\", drawn %2, and holds %3 items")
+                                     .arg(actions.constFirst()->text(),
+                                          toggle()->toolButtonStyle() == Qt::ToolButtonIconOnly ? qsl("as a picture alone") : qsl("with its name beside the picture"),
+                                          QString::number(actions.size()));
+
+        QCOMPARE(actions.constFirst(), mpEditor->mpAction_editorSidebarToggle);
+        QVERIFY2(!mpEditor->mpAction_editorSidebarToggle->icon().isNull(), "The sidebar toggle has no picture");
+        QCOMPARE(toggle()->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        // ...and the buttons it leads still carry theirs, or this says nothing
+        if (auto* pAddItem = qobject_cast<QToolButton*>(pToolBar->widgetForAction(mpEditor->mAddItem))) {
+            QVERIFY2(pAddItem->toolButtonStyle() != Qt::ToolButtonIconOnly, "Every button on the toolbar is a picture alone, so the toggle being one says nothing");
+        }
+    }
+
+    // It says which of the sidebar's two states is in force rather than what
+    // the next press will do, which is what a checkable button is for
+    void test_theToggleIsHeldDownWhileTheNamesAreShowing()
+    {
+        QVERIFY2(mpEditor->mpAction_editorSidebarToggle->isCheckable(), "The sidebar toggle does not hold a state");
+        QVERIFY2(!railShowing(), "This case starts from the names showing");
+        QVERIFY2(mpEditor->mpAction_editorSidebarToggle->isChecked(), "The names are showing and the toggle is not held down");
+
+        pressTheToggle();
+        qInfo().noquote() << qsl("  %1, toggle held down: %2").arg(state(), mpEditor->mpAction_editorSidebarToggle->isChecked() ? qsl("yes") : qsl("no"));
+        QVERIFY2(railShowing(), "The toggle did not minimise the sidebar");
+        QVERIFY2(!mpEditor->mpAction_editorSidebarToggle->isChecked(), "The sidebar is a rail and the toggle is still held down");
+
+        pressTheToggle();
+        QVERIFY2(!railShowing() && mpEditor->mpAction_editorSidebarToggle->isChecked(), "The toggle did not come back up with the names");
+    }
+
+    // The toggle says what happens rather than open or close, and a screen
     // reader hears the same words - which matters most in the rail, where the
     // rows have given their names up to their tooltips
-    void test_theChevronNamesWhatItDoesToTheLabels()
+    void test_theToggleNamesWhatItDoesToTheLabels()
     {
-        const QString expanded = chevron()->accessibleName();
-        QVERIFY2(!expanded.isEmpty(), "The chevron has no accessible name");
+        const QString expanded = toggle()->accessibleName();
+        QVERIFY2(!expanded.isEmpty(), "The sidebar toggle has no accessible name");
         qInfo().noquote() << qsl("  with the names showing: \"%1\"").arg(expanded);
 
-        pressTheChevron();
-        const QString collapsed = chevron()->accessibleName();
+        pressTheToggle();
+        const QString collapsed = toggle()->accessibleName();
         qInfo().noquote() << qsl("  as a rail: \"%1\"").arg(collapsed);
-        QVERIFY2(collapsed != expanded, "The chevron says the same thing in both modes");
+        QVERIFY2(collapsed != expanded, "The sidebar toggle says the same thing in both modes");
 
         // Whatever the translation, neither wording may be about opening or
         // closing the sidebar - it is always there
         for (const QString& wording : {expanded, collapsed}) {
             QVERIFY2(!wording.contains(qsl("close"), Qt::CaseInsensitive) && !wording.contains(qsl("open"), Qt::CaseInsensitive),
-                     qPrintable(qsl("The chevron reads as opening or closing the sidebar: \"%1\"").arg(wording)));
+                     qPrintable(qsl("The sidebar toggle reads as opening or closing the sidebar: \"%1\"").arg(wording)));
         }
     }
 
@@ -227,7 +278,7 @@ private slots:
     // user's choice and the width has nothing to say about it
     void test_aManualRailStaysOnAWideWindow()
     {
-        QVERIFY2(railShowing(), qPrintable(qsl("The chevron did not minimise the sidebar: %1").arg(state())));
+        QVERIFY2(railShowing(), qPrintable(qsl("The toggle did not minimise the sidebar: %1").arg(state())));
 
         resizeEditor(mWideEnough + 200);
         QVERIFY2(railShowing(), qPrintable(qsl("A wider window put the names back over the user's choice: %1").arg(state())));
@@ -235,10 +286,10 @@ private slots:
     }
 
     // ...and pressed again, the names come back
-    void test_theChevronPutsTheNamesBack()
+    void test_theTogglePutsTheNamesBack()
     {
-        pressTheChevron();
-        QVERIFY2(!railShowing(), qPrintable(qsl("The chevron did not bring the names back: %1").arg(state())));
+        pressTheToggle();
+        QVERIFY2(!railShowing(), qPrintable(qsl("The toggle did not bring the names back: %1").arg(state())));
     }
 
     // The width's own collapse, over a preference that says otherwise. It is
@@ -252,9 +303,9 @@ private slots:
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(railShowing(), qPrintable(qsl("A window too narrow for the names kept them: %1").arg(state())));
         QVERIFY2(mpEditor->mEditorSidebarLabelsShown, qPrintable(qsl("Running out of room rewrote the user's preference: %1").arg(state())));
-        // The chevron cannot be pressed here, so it says why rather than doing
+        // The toggle cannot be pressed here, so it says why rather than doing
         // nothing
-        QVERIFY2(!chevron()->isEnabled(), "The chevron offers labels a window this narrow cannot draw");
+        QVERIFY2(!toggle()->isEnabled(), "The toggle offers labels a window this narrow cannot draw");
     }
 
     // ...so widening it again is settled by the preference alone
@@ -265,16 +316,16 @@ private slots:
         QVERIFY2(!railShowing(), qPrintable(qsl("The names did not come back when the window had room again: %1").arg(state())));
     }
 
-    // The round trip across instances: the chevron's choice is written on
+    // The round trip across instances: the toggle's choice is written on
     // close, and a brand new editor opens with it
     void test_aManualRailSurvivesAFreshEditor()
     {
-        pressTheChevron();
-        QVERIFY2(railShowing(), "The chevron did not minimise the sidebar");
+        pressTheToggle();
+        QVERIFY2(railShowing(), "The toggle did not minimise the sidebar");
 
         mpEditor->close();
         QCoreApplication::processEvents();
-        QVERIFY2(!storedLabelsShown(), "Closing the editor did not write the chevron's choice down");
+        QVERIFY2(!storedLabelsShown(), "Closing the editor did not write the toggle's choice down");
 
         delete mpEditor;
         mpEditor = nullptr;

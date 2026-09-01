@@ -89,9 +89,13 @@ inline constexpr char scmProp_settingsCardPlain[] = "settingsCardPlain";
 //           them is
 struct ThemeTokens
 {
-    // Straight off the palette: the words on the page and the colour the theme
-    // points with
+    // The words on the page: QPalette::WindowText pulled a little way back
+    // towards the page it is written on, since a palette answers pure white on
+    // a dark theme and pure black on a light one and neither is a colour a page
+    // of text is set in. Every muted tone below is mixed from this, so the whole
+    // scale softens with it.
     QColor text;
+    // Straight off the palette: the colour the theme points with
     QColor accent;
     // Off the palette rather than mudlet::inDarkMode(), so a dark system theme
     // under "follow the system" gets the dark treatment too
@@ -104,8 +108,11 @@ struct ThemeTokens
     // A fifth of that lift: enough for a column to be told apart from the page
     // beside it, and far short of what would read as a panel laid on top of it
     QColor pane;
-    // QPalette::Base: what Qt paints an editable control with, and the one
-    // surface a platform style already agrees with us about
+    // QPalette::Base, what Qt paints an editable control with - lifted back
+    // towards the page on a dark theme, where Base is near-black and a well cut
+    // that deep reads as a hole in the window rather than as a surface sunk into
+    // it. A light theme's Base is white and is left alone: lifting white towards
+    // a grey page only muddies it.
     QColor field;
     // The hairline round a card. Measured from the page and text colours, the
     // one pair a palette must keep apart to be usable at all: Mudlet's light

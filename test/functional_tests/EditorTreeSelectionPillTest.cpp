@@ -36,10 +36,22 @@
  * the pill's four extreme corners are cut away to the panel behind rather than
  * being more of the selection.
  *
+ * The corners are read on a tree that holds the keyboard, because that is the
+ * one state the mark that used to square them off was drawn in.
+ * QTreeView::drawRow marks the row the keyboard is on with a focus rectangle
+ * across the whole row while the tree shows focus on all its columns - and it
+ * draws that one through the style with no widget to look a rule up on, so the
+ * "outline: none" the trees carry cannot reach it and the platform draws its
+ * own square hairline round the row. Over the pill that reads as a chosen row
+ * with square corners and an outline the hovered row beside it does not have,
+ * which is the pair the last case here compares.
+ *
  * Run with: ctest -R EditorTreeSelectionPillTest -V
  */
 
 #include <QImage>
+#include <QListWidget>
+#include <QMouseEvent>
 #include <QPixmap>
 #include <QTemporaryDir>
 #include <QTreeWidget>
@@ -193,7 +205,12 @@ private slots:
         mpOuterGroup->setExpanded(true);
         mpInnerGroup->setExpanded(true);
         tree()->setCurrentItem(mpInnerGroup);
+        // The mark that used to square the pill off is only drawn on the row
+        // the keyboard is on, so a tree without the keyboard measures nothing
+        mpEditor->activateWindow();
+        tree()->setFocus();
         QTest::qWait(50ms);
+        QVERIFY2(tree()->hasFocus(), "The tree does not hold the keyboard, so the state a chosen row is drawn in here is not the one the reader sees");
 
         QVERIFY2(!rowBand(mpInnerGroup).isEmpty(), "The chosen row is not laid out");
         QVERIFY2(rowBand(mpInnerGroup).width() > 4 * scmClearOfTheCorners, "The panel of items is too narrow to read a row across");
@@ -284,11 +301,126 @@ private slots:
         QVERIFY2(topMiddle.rgb() != tokens.pane.rgb(),
                  qPrintable(qsl("the chosen row does not reach the top of its band, so the corners below say nothing: the middle of that edge is %1").arg(describe(topMiddle, tokens))));
         for (const auto& corner : corners) {
-            const int toPane = distanceBetween(corner.second, tokens.pane);
-            const int toFill = distanceBetween(corner.second, fill);
-            QVERIFY2(2 * toPane < toFill,
-                     qPrintable(qsl("the chosen row's %1 corner is not cut away: it is painted %2, which is %3 off the pane and %4 off the row's own fill of %5")
-                                        .arg(corner.first, describe(corner.second, tokens), QString::number(toPane), QString::number(toFill), fill.name())));
+            // The panel itself, to the last digit: the pill's arc does not
+            // reach the extreme corner of the band, so nothing is painted
+            // there at all. It used to be a wash of the platform's focus ring,
+            // whose square corner passed through this very pixel.
+            QVERIFY2(corner.second.rgb() == tokens.pane.rgb(),
+                     qPrintable(qsl("the chosen row's %1 corner is not cut away to the panel: it is painted %2, %3 off the panel and %4 off the row's own fill of %5")
+                                        .arg(corner.first,
+                                             describe(corner.second, tokens),
+                                             QString::number(distanceBetween(corner.second, tokens.pane)),
+                                             QString::number(distanceBetween(corner.second, fill)),
+                                             fill.name())));
+        }
+    }
+
+    // The user's own reading of the pair, and the one that says the two states
+    // are drawn as one shape: a hovered row and a chosen row, on the same tree,
+    // measured at the same four corners and along the same two edges. The hover
+    // was always right - what a row is filled with is a stylesheet rule either
+    // way - and it is the chosen row that used to gain a square hairline around
+    // the whole of it, drawn by the platform over the rounded fill.
+    void test_theChosenRowAndTheHoveredRowAreTheSameShape()
+    {
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+
+        // A sibling of the chosen row rather than the row itself: the two
+        // states have to be read at once, off one shot, or a difference in the
+        // window between the two grabs would read as a difference in the shape
+        QTreeWidgetItem* pHovered = mpOuterGroup;
+        QVERIFY2(pHovered != mpInnerGroup, "The hovered and the chosen row must be two different rows");
+        const QRect hoveredBand = rowBand(pHovered);
+        const QPoint hoveredCentre = hoveredBand.center();
+        QMouseEvent move(QEvent::MouseMove, QPointF(hoveredCentre), QPointF(hoveredCentre), tree()->viewport()->mapToGlobal(hoveredCentre), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(tree()->viewport(), &move);
+        QTest::qWait(50ms);
+
+        const QImage shot = windowShot();
+        const QRect chosenBand = rowBand(mpInnerGroup);
+        auto at = [&shot, this](const QPoint& point) {
+            return shot.pixelColor(inViewport(point));
+        };
+
+        const QColor hoveredFill = at(QPoint(hoveredBand.center().x(), hoveredBand.top() + 3));
+        const QColor chosenFill = at(QPoint(chosenBand.center().x(), chosenBand.top() + 3));
+        QVERIFY2(hoveredFill.rgb() != tokens.pane.rgb(), qPrintable(qsl("the row under the pointer is not tinted at all: it is painted %1").arg(describe(hoveredFill, tokens))));
+        QVERIFY2(chosenFill.rgb() != tokens.pane.rgb(), qPrintable(qsl("the chosen row is not painted at all: it is %1").arg(describe(chosenFill, tokens))));
+        QVERIFY2(hoveredFill.rgb() != chosenFill.rgb(), "the hovered row and the chosen row are filled with the same colour, so this case is reading one state twice");
+
+        // Four corners and the middle of each edge. A shape drawn to the same
+        // radius on the same rectangle leaves the corners empty and the edges
+        // filled, whichever of the two states it is in.
+        const QList<QPair<QString, QPoint>> readings{
+                {qsl("leading top corner"), QPoint(0, 0)}, {qsl("trailing top corner"), QPoint(1, 0)}, {qsl("leading bottom corner"), QPoint(0, 1)}, {qsl("trailing bottom corner"), QPoint(1, 1)}};
+        QStringList measured;
+        QStringList disagreed;
+        for (const auto& reading : readings) {
+            const auto cornerOf = [&reading](const QRect& band) {
+                return QPoint(reading.second.x() == 0 ? band.left() : band.right(), reading.second.y() == 0 ? band.top() : band.bottom());
+            };
+            const QColor hovered = at(cornerOf(hoveredBand));
+            const QColor chosen = at(cornerOf(chosenBand));
+            measured << qsl("%1 hovered %2 chosen %3").arg(reading.first, hovered.name(), chosen.name());
+            if (hovered.rgb() != tokens.pane.rgb() || chosen.rgb() != tokens.pane.rgb()) {
+                disagreed << qsl("%1: hovered %2, chosen %3").arg(reading.first, hovered.name(), chosen.name());
+            }
+        }
+        qInfo().noquote()
+                << qsl("corners of the two rows: %1; the panel is %2, the hover fill %3, the chosen fill %4").arg(measured.join(qsl("; ")), tokens.pane.name(), hoveredFill.name(), chosenFill.name());
+
+        QVERIFY2(disagreed.isEmpty(),
+                 qPrintable(
+                         qsl("the hovered row and the chosen row are not cut to the same corner - the panel is %1 and these corners are not: %2").arg(tokens.pane.name(), disagreed.join(qsl(", ")))));
+
+        // ...and no hairline anywhere along the chosen row's edges: the pixel
+        // one in from either end of its top edge is the fill, the same as the
+        // hovered row's is
+        QStringList outlined;
+        for (const int x : {chosenBand.left() + scmClearOfTheCorners, chosenBand.center().x(), chosenBand.right() - scmClearOfTheCorners}) {
+            const QColor chosenEdge = at(QPoint(x, chosenBand.top()));
+            const QColor hoveredEdge = at(QPoint(x, hoveredBand.top()));
+            if (chosenEdge.rgb() != chosenFill.rgb() || hoveredEdge.rgb() != hoveredFill.rgb()) {
+                outlined << qsl("x=%1 chosen %2 against a fill of %3, hovered %4 against %5").arg(QString::number(x), chosenEdge.name(), chosenFill.name(), hoveredEdge.name(), hoveredFill.name());
+            }
+        }
+        QVERIFY2(outlined.isEmpty(), qPrintable(qsl("one of the two rows carries an outline the other does not: %1").arg(outlined.join(qsl(", ")))));
+    }
+
+    // The control case: the sidebar's chosen row, drawn from the same corner
+    // and the same accent by rules of its own. It never had the fault - a list
+    // draws no row-wide focus mark - so a reading that says otherwise would
+    // mean the corners are being measured wrong rather than painted wrong.
+    void test_theSidebarsChosenRowIsCutToTheSameCorner()
+    {
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        QListWidget* pSidebar = mpEditor->mpListWidget_editorSidebar;
+        QVERIFY2(pSidebar != nullptr, "The editor has no sidebar");
+        QListWidgetItem* pChosen = pSidebar->currentItem();
+        QVERIFY2(pChosen != nullptr, "No sidebar row is chosen");
+
+        const QRect rowRect = pSidebar->visualItemRect(pChosen);
+        QVERIFY2(!rowRect.isEmpty(), "The chosen sidebar row is not laid out");
+        const QImage shot = windowShot();
+        auto at = [&](const QPoint& point) {
+            return shot.pixelColor(pSidebar->viewport()->mapTo(mpEditor, point));
+        };
+
+        const QColor fill = at(QPoint(rowRect.center().x(), rowRect.center().y()));
+        const QList<QPair<QString, QPoint>> corners{
+                {qsl("leading top"), rowRect.topLeft()}, {qsl("trailing top"), rowRect.topRight()}, {qsl("leading bottom"), rowRect.bottomLeft()}, {qsl("trailing bottom"), rowRect.bottomRight()}};
+        QStringList measured;
+        for (const auto& corner : corners) {
+            measured << qsl("%1 %2").arg(corner.first, at(corner.second).name());
+        }
+        qInfo().noquote() << qsl("corners of the sidebar's chosen row: %1; its fill is %2 and the page %3").arg(measured.join(qsl(", ")), fill.name(), tokens.page.name());
+
+        QVERIFY2(fill.rgb() != tokens.page.rgb(), qPrintable(qsl("the sidebar's chosen row is not painted at all: its middle is %1").arg(fill.name())));
+        for (const auto& corner : corners) {
+            const QColor cornerColor = at(corner.second);
+            QVERIFY2(distanceBetween(cornerColor, tokens.page) < distanceBetween(cornerColor, fill),
+                     qPrintable(qsl("the sidebar's %1 corner is not cut away: it is painted %2 against a page of %3 and a fill of %4")
+                                        .arg(corner.first, cornerColor.name(), tokens.page.name(), fill.name())));
         }
     }
 

@@ -303,6 +303,88 @@ private slots:
         QVERIFY2(sheet.contains(uiDesign::themeTokens().page.name()), qPrintable(qsl("the shell is painted something other than the page tone: \"%1\"").arg(sheet)));
     }
 
+    // The words and the wells they are typed into. A palette answers pure white
+    // to WindowText on a dark theme and near-black to Base, which is white type
+    // in a hole cut through the window - so the text is pulled a little way back
+    // towards the page it is written on and a dark field is lifted a little way
+    // up towards it. Every muted tone is mixed over the page from that same
+    // text colour, so the whole scale softens with it, and what the softening
+    // left of the contrast is measured here rather than assumed.
+    void test_theWordsAreSoftenedAndADarkFieldIsLifted()
+    {
+        const QPalette savedPalette = QApplication::palette();
+
+        QPalette darkPalette(savedPalette);
+        darkPalette.setColor(QPalette::Window, QColor(0x35, 0x35, 0x35));
+        darkPalette.setColor(QPalette::WindowText, QColor(Qt::white));
+        darkPalette.setColor(QPalette::Base, QColor(0x19, 0x19, 0x19));
+
+        QPalette lightPalette(savedPalette);
+        lightPalette.setColor(QPalette::Window, QColor(0xec, 0xec, 0xec));
+        lightPalette.setColor(QPalette::WindowText, QColor(Qt::black));
+        lightPalette.setColor(QPalette::Base, QColor(Qt::white));
+
+        for (const QPalette& palette : {darkPalette, lightPalette}) {
+            QApplication::setPalette(palette);
+            const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+            const QString theme = tokens.darkPage ? qsl("dark") : qsl("light");
+            const QColor paletteText = palette.color(QPalette::WindowText);
+            const QColor paletteField = palette.color(QPalette::Base);
+
+            const qreal onPage = uiDesign::contrastRatio(tokens.text, tokens.page);
+            const qreal onCard = uiDesign::contrastRatio(tokens.text, tokens.card);
+            const qreal onField = uiDesign::contrastRatio(tokens.text, tokens.field);
+            const qreal mutedOnPage = uiDesign::contrastRatio(tokens.mutedText, tokens.page);
+            qInfo().noquote()
+                    << qsl("%1: text %2 (palette %3), field %4 (palette %5), page %6, card %7, muted %8 - text reads %9:1 on the page, %10:1 on a card, %11:1 in a field; muted %12:1 on the page")
+                               .arg(theme,
+                                    tokens.text.name(),
+                                    paletteText.name(),
+                                    tokens.field.name(),
+                                    paletteField.name(),
+                                    tokens.page.name(),
+                                    tokens.card.name(),
+                                    tokens.mutedText.name(),
+                                    QString::number(onPage, 'f', 2),
+                                    QString::number(onCard, 'f', 2),
+                                    QString::number(onField, 'f', 2),
+                                    QString::number(mutedOnPage, 'f', 2));
+
+            // Softened, and softened the one way: towards the page rather than
+            // away from it, and never past it
+            QVERIFY2(tokens.text.rgb() != paletteText.rgb(),
+                     qPrintable(qsl("on the %1 theme the words are the palette's own %2, which is the glare the softening is for").arg(theme, paletteText.name())));
+            const int towardsThePage = std::abs(tokens.text.lightness() - paletteText.lightness());
+            const int roomToThePage = std::abs(tokens.page.lightness() - paletteText.lightness());
+            QVERIFY2(towardsThePage > 0 && towardsThePage < roomToThePage / 2,
+                     qPrintable(qsl("on the %1 theme the words are %2, %3 levels off the palette's %4 with only %5 between that and the page - that is a wash, not a softening")
+                                        .arg(theme, tokens.text.name(), QString::number(towardsThePage), paletteText.name(), QString::number(roomToThePage))));
+
+            // What a reader has to be able to make out: the words on each of
+            // the three surfaces they are set on, and the quieter tone that
+            // labels and captions are written in
+            for (const auto& reading : {QPair<QString, qreal>{qsl("the page"), onPage}, {qsl("a card"), onCard}, {qsl("a field"), onField}}) {
+                QVERIFY2(reading.second >= 4.5,
+                         qPrintable(qsl("on the %1 theme the words read %2:1 against %3, under the 4.5:1 body text has to clear").arg(theme, QString::number(reading.second, 'f', 2), reading.first)));
+            }
+            QVERIFY2(mutedOnPage >= 3.0,
+                     qPrintable(qsl("on the %1 theme the quiet tone reads %2:1 on the page, under the 3:1 a large or secondary line has to clear").arg(theme, QString::number(mutedOnPage, 'f', 2))));
+
+            if (!tokens.darkPage) {
+                // A light theme's Base is white, and lifting white towards a
+                // grey page only muddies it
+                QCOMPARE(tokens.field.rgb(), paletteField.rgb());
+                continue;
+            }
+            QVERIFY2(tokens.field.lightness() > paletteField.lightness() && tokens.field.lightness() < tokens.page.lightness(),
+                     qPrintable(qsl("on the dark theme the field is %1, which is not between the palette's %2 and the page's %3 - a well is sunk into the page, not cut through it")
+                                        .arg(tokens.field.name(), paletteField.name(), tokens.page.name())));
+        }
+
+        QApplication::setPalette(savedPalette);
+        QTest::qWait(50ms);
+    }
+
     // The three tones are mixed from the palette, so what holds on the theme the
     // test happens to be running under says nothing about the other one. Both
     // are put to the tokens directly here: a dark page with room under it for a

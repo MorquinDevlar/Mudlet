@@ -112,6 +112,19 @@ void EditorTreeDelegate::restyle()
     clearDecorations();
 }
 
+void EditorTreeDelegate::setHeadingIconSize(const int size)
+{
+    if (size == mHeadingIconSize) {
+        return;
+    }
+    mHeadingIconSize = size;
+    if (mpTree) {
+        // A heading row's height is measured from its decoration, so the rows
+        // have to be asked for their size again
+        mpTree->doItemsLayout();
+    }
+}
+
 void EditorTreeDelegate::clearDecorations() const
 {
     mPlainDecorations.clear();
@@ -404,8 +417,14 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
     const int level = levelOf(index);
     const ChevronState chevron = chevronOf(index, level);
     // Nothing to lead the row with: no dot, no room to hold it in and nothing
-    // folded inside it, which is what a tree's own heading row is
+    // folded inside it, which is what a tree's own heading row is. It carries
+    // the same glyph as the row beside it in the sidebar, so it is drawn at the
+    // size the sidebar draws it rather than at the tree's own - which is a
+    // preference, and a third again as large at its default.
     if (!state.known && level < 1 && chevron == ChevronState::None) {
+        if (mHeadingIconSize > 0) {
+            pOption->decorationSize = QSize(mHeadingIconSize, mHeadingIconSize);
+        }
         return;
     }
 

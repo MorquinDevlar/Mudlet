@@ -91,6 +91,21 @@ constexpr qreal scmPaneLiftTowardsCard = 0.2;
 // two panes.
 constexpr qreal scmSeparatorDropOnDark = 0.36;
 constexpr qreal scmSeparatorDropOnLight = 0.10;
+// How far the words are pulled back towards the page they are written on. A
+// palette answers pure white to WindowText on a dark theme and pure black on a
+// light one, and neither is a colour a page of text is set in: the white glares
+// and the black is heavier than anything else in the window. A sixteenth of the
+// way back leaves a dark theme at the off-white the design was drawn in, and a
+// tenth is all a light one can give up before the smaller type starts to fade.
+// Every muted tone is mixed from this, so the whole text scale moves with it.
+constexpr qreal scmTextSoftenOnDark = 0.16;
+constexpr qreal scmTextSoftenOnLight = 0.10;
+// ...and how far a field is lifted back towards the page. QPalette::Base is
+// near-black on a dark theme, which reads as a hole cut in the window rather
+// than as a surface sunk into it. A light theme's Base is white, and lifting
+// white towards a grey page only muddies it - so the lift is the dark theme's
+// alone.
+constexpr qreal scmFieldLiftOnDark = 0.30;
 // How many stops readableOn() tries between the colour it was asked for and the
 // end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
@@ -433,14 +448,12 @@ ThemeTokens themeTokens()
     // mudlet::setAppearance(), so it is already the new one.
     const QPalette themePalette = QApplication::palette();
     ThemeTokens tokens;
-    tokens.text = themePalette.color(QPalette::WindowText);
     tokens.accent = themePalette.color(QPalette::Highlight);
     // The window's own colour, not the colour of an input field: a page mixed
     // off Base is a page darker than the fields lying on it, which is the one
     // way round three surfaces cannot be read as depth.
     tokens.page = themePalette.color(QPalette::Window);
     tokens.darkPage = tokens.page.lightness() < 128;
-    tokens.field = themePalette.color(QPalette::Base);
     tokens.card = blend(tokens.page, QColor(Qt::white), tokens.darkPage ? scmCardLiftOnDark : scmCardLiftOnLight);
     // Where a palette leaves no room above the page - a white Window under a
     // white Base - the card keeps the window's colour and the page steps down
@@ -449,6 +462,11 @@ ThemeTokens themeTokens()
         tokens.card = tokens.page;
         tokens.page = blend(tokens.page, QColor(Qt::black), scmPageDropUnderCard);
     }
+    // Mixed after the page rather than taken straight off the palette, and
+    // after the step above has settled which page it is: the words are pulled
+    // back towards whatever they end up written on
+    tokens.text = blend(themePalette.color(QPalette::WindowText), tokens.page, tokens.darkPage ? scmTextSoftenOnDark : scmTextSoftenOnLight);
+    tokens.field = tokens.darkPage ? blend(themePalette.color(QPalette::Base), tokens.page, scmFieldLiftOnDark) : themePalette.color(QPalette::Base);
     // A fifth of the way from the page towards a card: told apart from the page
     // beside it, and nowhere near reading as a panel laid on top of it
     tokens.pane = blend(tokens.page, tokens.card, scmPaneLiftTowardsCard);
