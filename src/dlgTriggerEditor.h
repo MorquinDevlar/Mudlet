@@ -241,7 +241,7 @@ public:
     // Every view puts the right hand splitter back to the sizes it was last left
     // at, which is also the one thing that can take the geometry the trigger
     // options panel borrowed against out from under it
-    void restoreRightSplitterState(QByteArray& savedState);
+    void restoreRightSplitterState(const QByteArray& savedState);
     void updateEditorItemCounts();
     void scheduleEditorItemCountUpdate();
     // The list down the left that switches between what the editor is showing
@@ -267,6 +267,9 @@ public:
     void fillout_form();
     void showError(const QString&);
     void showWarning(const QString&, bool announce = true);
+    // The one place the "this item is part of a package" banner is raised from,
+    // and what remembers which packages have already had their say
+    void showPackageWarning(const QString& packageName, QTreeWidgetItem* pItem = nullptr);
     void showInfo(const QString&);
     void children_icon_triggers(QTreeWidgetItem* pWidgetItemParent);
     void children_icon_alias(QTreeWidgetItem* pWidgetItemParent);
@@ -412,6 +415,9 @@ private slots:
     void slot_addPattern();
     void slot_deletePatternRow();
     void slot_bannerDismissClicked();
+    // The close button on the package warning, which is not one of the tip
+    // banners and so is not dismissed like one
+    void slot_packageWarningDismissed();
     void slot_refreshBannerLinkColors();
     void slot_itemsChanged(EditorViewTypes::EditorViewType viewType, QList<int> affectedItemIDs);
 
@@ -675,7 +681,12 @@ private:
     void showPatternItems(int count);
     void updatePatternPlaceholders();
     [[nodiscard]] QString patternPlaceholderText(int patternType) const;
-    void handlePatternChange(dlgTriggerPatternEdit* patternItem, bool hasContentHint);
+    // What one row being typed in leaves to redo; the count of rows on show is
+    // not one of those things - only the Add pattern button and a delete or a
+    // move change that
+    void handlePatternChange();
+    // Pulls the rows in behind a move or a delete, down to a floor of one
+    void compactPatternRows();
     void applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWidget);
 
     // Everything one pattern row holds, so that a row can be taken away or moved
@@ -813,6 +824,8 @@ private:
     QWidget* mpWidget_matchWithinRow = nullptr;
     // Enabled only once the trigger has more than one pattern to combine
     QWidget* mpWidget_matchModeRows = nullptr;
+    // ...and this says why, for as long as that is the case
+    QLabel* mpLabel_matchModeHint = nullptr;
     // Shown in the panel's place, saying what it holds
     QToolButton* mpButton_triggerOptionsSummary = nullptr;
     // Height the panel borrowed from the code pane when it was opened, so that
@@ -889,6 +902,9 @@ private:
     EditorViewType mCurrentView = EditorViewType::cmUnknownView;
 
     QScrollArea* mpScrollArea = nullptr;
+    // Holds the trigger options panel, so that a window too short for the four
+    // cards scrolls them instead of being held open by them
+    QScrollArea* mpScrollArea_triggerOptions = nullptr;
     QWidget* mpWidget_triggerItems = nullptr;
     // this widget holds the errors, trigger patterns, and all other widgets that aren't edbee
     // in it, as a workaround for an extra splitter getting created by Qt below the error msg otherwise
@@ -1081,6 +1097,14 @@ private:
     QString mCurrentBannerKey;
     QString mLastDismissedBannerKey;
     QSet<QString> mTemporarilyHiddenBanners;
+
+    // The package warning is not a tip banner - it has no settings key and is
+    // never restored - so it keeps its own memory: the packages it has already
+    // been raised for, whether the close button has put it away for good, and
+    // whether the longer message screen readers get has been spoken.
+    QSet<QString> mWarnedPackages;
+    bool mPackageWarningsDismissed = false;
+    bool mPackageWarningAnnounced = false;
 
     // Banner methods
     void handleBannerDismiss();

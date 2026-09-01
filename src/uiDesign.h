@@ -124,6 +124,32 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // selector.
 QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
 
+// Everything a value is typed into or picked in, drawn as one control: the
+// field surface sunk into whatever holds it, a hairline round it and the corner
+// the rest of the shell uses. Set on a form rather than on a window, so that
+// only the controls under that form are claimed - a code pane paints its own,
+// and a tree is a list rather than a field.
+QString inputStyleSheet(const ThemeTokens& tokens);
+
+// The height a field's contents are given, what is left round them, and what
+// the whole control therefore comes out at - which a form laying a field into a
+// row of its own has to leave room for
+inline constexpr int scmInputContentHeight = 24;
+inline constexpr int scmInputPaddingVertical = 3;
+inline constexpr int scmInputBorderWidth = 1;
+inline constexpr int scmInputHeight = scmInputContentHeight + 2 * (scmInputPaddingVertical + scmInputBorderWidth);
+
+// How far apart two colours are to read, on the scale WCAG measures it: 1 is a
+// colour on itself and 21 is black on white
+qreal contrastRatio(const QColor& first, const QColor& second);
+
+// The nearest colour to the one asked for that can be read on a given
+// background: its lightness is walked away from that background until it clears
+// minimumRatio, and if the hue runs out of room first, the fallback is used.
+// What a syntax theme calls a keyword is chosen against that theme's own
+// background, so it has to be brought over before it means anything on a field.
+QColor readableOn(const QColor& background, const QColor& wanted, const QColor& fallback, const qreal minimumRatio);
+
 // QLayout::setAlignment() is documented not to look in child layouts, and a
 // card's controls are nested in them
 bool alignInLayoutTree(QLayout* pLayout, const QWidget* pWidget, const Qt::Alignment alignment);

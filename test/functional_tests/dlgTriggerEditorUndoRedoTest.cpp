@@ -2529,6 +2529,78 @@ private slots:
 
     cleanupAll(mItemTypes[0]);
   }
+
+  // A trigger is opened with as many rows as it has patterns and no more: the
+  // trailing empty row the form used to grow by itself went away with the Add
+  // pattern button, so nothing appears under the cursor while a row is typed
+  // in, and one empty row is the floor a delete stops at.
+  void testPatternRowFloorIsOneRow() {
+    mpEditor->slot_showTriggers();
+    cleanupAll(mItemTypes[0]);
+
+    mpEditor->addTrigger(false);
+    QVERIFY(mpEditor->mpTriggerBaseItem->childCount() > 0);
+
+    QTreeWidgetItem *trigger = mpEditor->mpTriggerBaseItem->child(0);
+    const int triggerID = trigger->data(0, Qt::UserRole).toInt();
+    TTrigger *pT = mpHost->getTriggerUnit()->getTrigger(triggerID);
+    QVERIFY(pT != nullptr);
+
+    mpEditor->treeWidget_triggers->setCurrentItem(trigger);
+    mpEditor->slot_triggerSelected(trigger);
+    mpEditor->mpUndoStack->clear();
+
+    // A new trigger has no patterns, so it opens with one empty row
+    QCOMPARE(mpEditor->mVisiblePatternCount, 1);
+    // ...and the OR / AND choice says why it cannot be used yet
+    QVERIFY(mpEditor->mpLabel_matchModeHint != nullptr);
+    QVERIFY(!mpEditor->mpWidget_matchModeRows->isEnabled());
+    // The options panel may be put away, so what is asked of the caption is
+    // that it is not hidden in its own right
+    QVERIFY(!mpEditor->mpLabel_matchModeHint->isHidden());
+
+    // Typing in the last row no longer grows the form
+    mpEditor->mTriggerPatternEdit[0]->singleLineTextEdit_pattern->setPlainText(
+        qsl("alpha"));
+    QCoreApplication::processEvents();
+    QCOMPARE(mpEditor->mVisiblePatternCount, 1);
+
+    // Return in the last row is what the keyboard adds one with
+    QTest::keyClick(mpEditor->mTriggerPatternEdit[0]->singleLineTextEdit_pattern,
+                    Qt::Key_Return);
+    QCOMPARE(mpEditor->mVisiblePatternCount, 2);
+    QCOMPARE(mpEditor->mTriggerPatternEdit[1]
+                 ->singleLineTextEdit_pattern->toPlainText(),
+             QString());
+
+    mpEditor->mTriggerPatternEdit[1]->singleLineTextEdit_pattern->setPlainText(
+        qsl("beta"));
+    QCoreApplication::processEvents();
+    QCOMPARE(mpEditor->mVisiblePatternCount, 2);
+    // Two patterns is what the modes need, so the caption goes away again
+    QVERIFY(mpEditor->mpWidget_matchModeRows->isEnabled());
+    QVERIFY(mpEditor->mpLabel_matchModeHint->isHidden());
+
+    mpEditor->saveTrigger();
+    QCOMPARE(pT->getPatternsList(), QStringList({qsl("alpha"), qsl("beta")}));
+
+    // Loading it back shows those two rows and no trailing empty one
+    mpEditor->slot_triggerSelected(trigger);
+    QCOMPARE(mpEditor->mVisiblePatternCount, 2);
+
+    // Deleting down to the last row leaves it there, empty
+    mpEditor->deletePatternRow(1);
+    QCoreApplication::processEvents();
+    QCOMPARE(mpEditor->mVisiblePatternCount, 1);
+    mpEditor->deletePatternRow(0);
+    QCoreApplication::processEvents();
+    QCOMPARE(mpEditor->mVisiblePatternCount, 1);
+    QCOMPARE(mpEditor->mTriggerPatternEdit[0]
+                 ->singleLineTextEdit_pattern->toPlainText(),
+             QString());
+
+    cleanupAll(mItemTypes[0]);
+  }
 };
 
 #include "dlgTriggerEditorUndoRedoTest.moc"

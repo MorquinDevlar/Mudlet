@@ -28,7 +28,9 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTimeEdit>
+#include <QDir>
 #include <QDoubleSpinBox>
+#include <QFileInfo>
 #include <QFontComboBox>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -38,13 +40,16 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionGroupBox>
 #include <QTimer>
 #include <QToolButton>
+#include <QTransform>
 #include <QWidget>
 
 #include <algorithm>
+#include <cmath>
 #include <tuple>
 #include <utility>
 
@@ -72,6 +77,30 @@ constexpr qreal scmCardLiftOnLight = 0.55;
 // back on it.
 constexpr int scmMinimumCardLift = 6;
 constexpr qreal scmPageDropUnderCard = 0.05;
+// How many stops readableOn() tries between the colour it was asked for and the
+// end of the scale it is walking towards
+constexpr int scmReadabilitySteps = 12;
+// The corner and the frame every field is drawn with. Smaller than a card's, so
+// that a control inside one does not echo the box around it.
+constexpr int scmInputRadius = 5;
+constexpr int scmInputPaddingHorizontal = 6;
+// The room the arrows are given at a control's right edge, and how big the
+// arrows drawn in it are
+constexpr int scmInputDropDownWidth = 18;
+constexpr int scmInputArrowSize = 9;
+constexpr int scmInputStepperWidth = 16;
+constexpr int scmInputStepperArrowSize = 8;
+
+// One channel of a colour, straightened out of the curve a display applies to it
+qreal linearised(const qreal channel)
+{
+    return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
+}
+
+qreal relativeLuminance(const QColor& color)
+{
+    return 0.2126 * linearised(color.redF()) + 0.7152 * linearised(color.greenF()) + 0.0722 * linearised(color.blueF());
+}
 } // namespace
 
 bool alignInLayoutTree(QLayout* pLayout, const QWidget* pWidget, const Qt::Alignment alignment)
@@ -310,6 +339,34 @@ QString rgba(const QColor& color, const qreal alpha)
     return qsl("rgba(%1, %2, %3, %4)").arg(QString::number(color.red()), QString::number(color.green()), QString::number(color.blue()), QString::number(alpha, 'f', 3));
 }
 
+qreal contrastRatio(const QColor& first, const QColor& second)
+{
+    const qreal firstLuminance = relativeLuminance(first);
+    const qreal secondLuminance = relativeLuminance(second);
+    return (std::max(firstLuminance, secondLuminance) + 0.05) / (std::min(firstLuminance, secondLuminance) + 0.05);
+}
+
+QColor readableOn(const QColor& background, const QColor& wanted, const QColor& fallback, const qreal minimumRatio)
+{
+    if (!wanted.isValid() || !background.isValid()) {
+        return wanted.isValid() ? wanted : fallback;
+    }
+    if (contrastRatio(background, wanted) >= minimumRatio) {
+        return wanted;
+    }
+    // Away from the surface it lies on rather than towards the text colour: it
+    // is the hue that says which part of a pattern this is, so the hue is the
+    // half worth keeping and the lightness the half to spend
+    const QColor limit = background.lightness() < 128 ? QColor(Qt::white) : QColor(Qt::black);
+    for (int step = 1; step <= scmReadabilitySteps; ++step) {
+        const QColor moved = blend(wanted, limit, static_cast<qreal>(step) / scmReadabilitySteps);
+        if (contrastRatio(background, moved) >= minimumRatio) {
+            return moved;
+        }
+    }
+    return fallback;
+}
+
 ThemeTokens themeTokens()
 {
     // The application's palette rather than any one widget's: a stylesheet
@@ -361,6 +418,107 @@ QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& to
                "%1 QScrollBar::add-line, %1 QScrollBar::sub-line { width: 0px; height: 0px; }"
                "%1 QScrollBar::add-page, %1 QScrollBar::sub-page { background-color: %2; }")
             .arg(selectorPrefix, tokens.page.name(), blend(tokens.page, tokens.text, 0.22).name(), blend(tokens.page, tokens.text, 0.40).name());
+}
+
+// A stylesheet can only take a picture from a file or a resource, and neither
+// can be recoloured on the way in - so the arrow a combo box and a spin box are
+// drawn with is cut from the one glyph in the resources, tinted for the theme in
+// force, and left in the cache directory for the sheet to point at. The colour
+// is part of the file's name: a theme change writes a new file rather than
+// changing one a stylesheet has already read and cached by path.
+static QString themedArrowFile(const QColor& color, const bool pointingUp)
+{
+    const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (cacheRoot.isEmpty()) {
+        return QString();
+    }
+    QDir cacheDir(cacheRoot + qsl("/ui-glyphs"));
+    if (!cacheDir.exists() && !cacheDir.mkpath(qsl("."))) {
+        return QString();
+    }
+
+    const QString filePath = cacheDir.absoluteFilePath(qsl("arrow-%1-%2.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1)));
+    if (QFileInfo::exists(filePath)) {
+        return filePath;
+    }
+
+    QPixmap glyph(qsl(":/icons/arrow-down_grey-16x.png"));
+    if (glyph.isNull()) {
+        return QString();
+    }
+    if (pointingUp) {
+        glyph = glyph.transformed(QTransform().rotate(180));
+    }
+    if (!tintedGlyph(glyph, color).save(filePath, "PNG")) {
+        return QString();
+    }
+    return filePath;
+}
+
+QString inputStyleSheet(const ThemeTokens& tokens)
+{
+    // A field the user cannot reach is a piece of the page rather than a place
+    // to put something, so its surface is let back down towards the page
+    const QColor disabledField = blend(tokens.field, tokens.page, 0.6);
+    const QColor disabledBorder = blend(tokens.page, tokens.text, 0.10);
+
+    // Drawing a control's frame from a stylesheet takes the arrows inside it
+    // away with it, and the macOS style then leaves a combo box looking like a
+    // line edit and a spin box with no steppers at all. So the two controls that
+    // carry arrows are only claimed once there is a picture to put the arrows
+    // back with; without one they keep the frame the platform draws them with.
+    const QString downArrow = themedArrowFile(tokens.mutedText, false);
+    const QString upArrow = themedArrowFile(tokens.mutedText, true);
+    const bool arrowsAvailable = !downArrow.isEmpty() && !upArrow.isEmpty();
+
+    QStringList fieldTypes{qsl("QLineEdit"), qsl("QPlainTextEdit"), qsl("QTextEdit")};
+    if (arrowsAvailable) {
+        fieldTypes << qsl("QComboBox") << qsl("QAbstractSpinBox");
+    }
+    QStringList focusedTypes;
+    QStringList disabledTypes;
+    for (const QString& fieldType : std::as_const(fieldTypes)) {
+        focusedTypes << fieldType + qsl(":focus");
+        disabledTypes << fieldType + qsl(":disabled");
+    }
+
+    QString rules =
+            fieldTypes.join(qsl(", "))
+            + qsl(" { background-color: %1; color: %2; border: %10px solid %3; border-radius: %4px;"
+                  " padding: %5px %6px; min-height: %7px;"
+                  " selection-background-color: %8; selection-color: %9; }")
+                      .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), QString::number(scmInputRadius))
+                      .arg(QString::number(scmInputPaddingVertical), QString::number(scmInputPaddingHorizontal), QString::number(scmInputContentHeight))
+                      .arg(tokens.accent.name(), tokens.accentText.name(), QString::number(scmInputBorderWidth))
+            // A 1px accent frame rather than a ring drawn outside the control:
+            // where the platform draws one of its own, two rings round the same
+            // box read as a fault
+            + focusedTypes.join(qsl(", ")) + qsl(" { border: %2px solid %1; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth)) + disabledTypes.join(qsl(", "))
+            + qsl(" { color: %1; background-color: %2; border: %4px solid %3; }").arg(tokens.disabledText.name(), disabledField.name(), disabledBorder.name(), QString::number(scmInputBorderWidth))
+            // The list a combo box drops down is a surface lifted off the page,
+            // not a taller copy of the field it came out of
+            + qsl("QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3;"
+                  " selection-background-color: %4; selection-color: %5; outline: none; }"
+                  // Both of those hold a QLineEdit of their own, which the rules
+                  // above would otherwise draw as a second field inside the first
+                  "QComboBox QLineEdit, QAbstractSpinBox QLineEdit"
+                  " { background: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; }")
+                      .arg(tokens.card.name(), tokens.text.name(), tokens.border.name(), tokens.accent.name(), tokens.accentText.name());
+
+    if (arrowsAvailable) {
+        rules += qsl("QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: center right;"
+                     " width: %3px; border: none; background: transparent; }"
+                     "QComboBox::down-arrow { image: url(\"%1\"); width: %4px; height: %4px; }"
+                     "QAbstractSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right;"
+                     " width: %5px; border: none; background: transparent; }"
+                     "QAbstractSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right;"
+                     " width: %5px; border: none; background: transparent; }"
+                     "QAbstractSpinBox::up-arrow { image: url(\"%2\"); width: %6px; height: %6px; }"
+                     "QAbstractSpinBox::down-arrow { image: url(\"%1\"); width: %6px; height: %6px; }")
+                         .arg(downArrow, upArrow, QString::number(scmInputDropDownWidth))
+                         .arg(QString::number(scmInputArrowSize), QString::number(scmInputStepperWidth), QString::number(scmInputStepperArrowSize));
+    }
+    return rules;
 }
 
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color)

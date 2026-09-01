@@ -184,8 +184,12 @@ static constexpr int scmEditorSourcePaneFloor = 120;
 static constexpr int scmEditorBannerGlyphSize = 20;
 
 // A trigger's pattern rows. A row is as tall as the profile's display font asks
-// for, since that is the font the pattern itself is read in
-static constexpr int scmEditorPatternRowMinimumHeight = 30;
+// for, since that is the font the pattern itself is read in - but never shorter
+// than a field elsewhere on the form plus what the row's layout insets its
+// controls by, or the pattern and the type beside it would be the two controls
+// in the window drawn a size down from the rest
+static constexpr int scmEditorPatternRowMargins = 2;
+static constexpr int scmEditorPatternRowMinimumHeight = uiDesign::scmInputHeight + scmEditorPatternRowMargins;
 static constexpr int scmEditorPatternRowPadding = 8;
 // How far the row is taken towards the text on it while the mouse is there -
 // the same wash every other hovered row in the two windows gets
@@ -942,11 +946,18 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpErrorConsole->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     splitter_right->addWidget(mpErrorConsole);
 
-    splitter_right->setStretchFactor(0, 1); // mpNonCodeWidgets
+    // The room a window has over and above what the panes need belongs to the
+    // code, which is the one pane with no natural height of its own: the form
+    // above it is as tall as the item's fields, and the errors box below it
+    // opens at its floor and is dragged from there when it is wanted. Sharing
+    // the surplus out instead left the code starting a long way down the
+    // window, under a form stretched past anything it had to show. Both are
+    // still dragged to any size the handles allow, and neither can collapse.
+    splitter_right->setStretchFactor(0, 0); // mpNonCodeWidgets
     splitter_right->setCollapsible(0, false);
     splitter_right->setStretchFactor(1, 1); // mpSourceEditorArea
     splitter_right->setCollapsible(1, false);
-    splitter_right->setStretchFactor(2, 1); // mpErrorConsole
+    splitter_right->setStretchFactor(2, 0); // mpErrorConsole
     splitter_right->setCollapsible(2, false);
 
     mpErrorConsole->hide();
@@ -1725,7 +1736,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     setupAddPatternButton();
 
-    showPatternItems(2);
+    // One empty row, and the Add pattern button under it for the next one
+    showPatternItems(1);
     setupPatternNavigationShortcuts();
     updatePatternTabOrder();
 
@@ -1949,6 +1961,13 @@ void dlgTriggerEditor::applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWid
 
     patternWidget->singleLineTextEdit_pattern->setTheme(mpHost->getEditorTheme());
     patternWidget->applyThemePalette(referencePalette);
+    // After the row's palette pass, which hands every control the one the form
+    // is drawn with: a pattern is typed into a field like the name above it, so
+    // it is filled and written in the window's own colours whatever the syntax
+    // theme says. The theme is left to say what a group or a quantifier is
+    // coloured, and only once those colours read on this field.
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    patternWidget->singleLineTextEdit_pattern->setFieldColors(tokens.field, tokens.text);
 
     // A pattern is game text rather than interface text, so it is read in the
     // font the game and the script beside it are read in: a space is then as
@@ -2502,7 +2521,7 @@ void dlgTriggerEditor::movePatternRowContent(const int from, const int to)
     mPatternBulkEdit = false;
 
     slot_itemEdited();
-    handlePatternChange(nullptr, false);
+    compactPatternRows();
     updatePatternTabOrder();
 }
 
@@ -2524,7 +2543,7 @@ void dlgTriggerEditor::deletePatternRow(const int row)
 
     slot_itemEdited();
     // Which is what collapses the rows the delete left empty at the bottom
-    handlePatternChange(nullptr, false);
+    compactPatternRows();
     updatePatternTabOrder();
 }
 
@@ -6848,10 +6867,7 @@ void dlgTriggerEditor::slot_itemEdited()
         break;
     }
 
-    if (!packageName.isEmpty()) {
-        //: Package item warning shown in trigger editor when editing package items. Should only be announced to screen readers once per item, not repeatedly on every edit.
-        showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-    }
+    showPackageWarning(packageName);
 }
 
 void dlgTriggerEditor::saveTrigger()
@@ -8369,42 +8385,36 @@ void dlgTriggerEditor::setupPatternControls(const int type, dlgTriggerPatternEdi
     updatePatternPlaceholders();
 }
 
-void dlgTriggerEditor::handlePatternChange(dlgTriggerPatternEdit* patternItem, bool hasContentHint)
+// Typing in a row changes what the form says about the patterns, not how many
+// rows there are: a row is added by the Add pattern button (or by Return in the
+// last row) and taken away by its own delete button, so nothing appears under
+// the cursor or vanishes from under it while the user is filling one in
+void dlgTriggerEditor::handlePatternChange()
+{
+    checkForMoreThanOneTriggerItem();
+    updatePatternPlaceholders();
+}
+
+// A move or a delete shifts what every row below the one it touched holds, so
+// the rows the shift emptied at the bottom are the ones to take away. One row
+// always stays: an empty trigger is one waiting for its first pattern.
+void dlgTriggerEditor::compactPatternRows()
 {
     checkForMoreThanOneTriggerItem();
 
-    bool hasContent = hasContentHint;
-    bool forceLineSpacerActive = false;
-    if (patternItem) {
-        const int type = patternItem->comboBox_patternType->currentIndex();
-        if (type == REGEX_PROMPT) {
-            hasContent = true;
-        } else if (type == REGEX_LINE_SPACER) {
-            forceLineSpacerActive = hasContentHint;
-            if (!forceLineSpacerActive) {
-                hasContent = patternItem->spinBox_lineSpacer->value() > 0;
-            } else {
-                hasContent = true;
-            }
-        }
-
-        if (patternItem->mRow == mVisiblePatternCount - 1 && hasContent && mVisiblePatternCount < scmEditorPatternRowLimit) {
-            showPatternItems(mVisiblePatternCount + 1);
-        }
-    }
-
     int lastActive = -1;
-    for (int i = 0; i < mVisiblePatternCount; ++i) {
-        auto* item = mTriggerPatternEdit[i];
+    for (int i = 0; i < mVisiblePatternCount && i < mTriggerPatternEdit.size(); ++i) {
+        const auto* item = mTriggerPatternEdit.at(i);
+        if (!item) {
+            continue;
+        }
+
         bool itemHasContent = !item->singleLineTextEdit_pattern->toPlainText().isEmpty();
         const int type = item->comboBox_patternType->currentIndex();
         if (type == REGEX_PROMPT) {
             itemHasContent = true;
         } else if (type == REGEX_LINE_SPACER) {
             itemHasContent = item->spinBox_lineSpacer->value() > 0 || item->spinBox_lineSpacer->isVisible();
-            if (forceLineSpacerActive && item == patternItem) {
-                itemHasContent = true;
-            }
         }
 
         if (itemHasContent) {
@@ -8412,7 +8422,7 @@ void dlgTriggerEditor::handlePatternChange(dlgTriggerPatternEdit* patternItem, b
         }
     }
 
-    const int desiredCount = qMax(lastActive + 2, 2);
+    const int desiredCount = qMax(lastActive + 1, 1);
     if (desiredCount != mVisiblePatternCount) {
         showPatternItems(desiredCount);
     } else {
@@ -8599,24 +8609,12 @@ void dlgTriggerEditor::slot_changedPattern()
         textEdit->blockSignals(false);
     }
 
-    auto* patternItem = textEdit ? qobject_cast<dlgTriggerPatternEdit*>(textEdit->parentWidget()) : nullptr;
-    const bool hasText = textEdit && !textEdit->toPlainText().isEmpty();
-    handlePatternChange(patternItem, hasText);
+    handlePatternChange();
 }
 
-void dlgTriggerEditor::slot_lineSpacerChanged(int value)
+void dlgTriggerEditor::slot_lineSpacerChanged(int)
 {
-    auto* spinBox = qobject_cast<QSpinBox*>(sender());
-    if (!spinBox) {
-        return;
-    }
-
-    auto* patternItem = qobject_cast<dlgTriggerPatternEdit*>(spinBox->parentWidget());
-    if (!patternItem) {
-        return;
-    }
-
-    handlePatternChange(patternItem, value > 0);
+    handlePatternChange();
 }
 
 // This can get called after the lineEdit contents has changed and it is now a
@@ -8703,9 +8701,7 @@ void dlgTriggerEditor::slot_setupPatternControls(int type)
         }
     }
 
-    const bool hasText = !pPatternItem->singleLineTextEdit_pattern->toPlainText().isEmpty();
-    const bool treatAsContent = hasText || type == REGEX_PROMPT || type == REGEX_LINE_SPACER;
-    handlePatternChange(pPatternItem, treatAsContent);
+    handlePatternChange();
 }
 
 void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
@@ -8754,7 +8750,9 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
             return;
         }
 
-        showPatternItems(qMax(patternList.size(), 2));
+        // Exactly what the trigger holds, and no trailing empty row: the Add
+        // pattern button is what one more is asked for with
+        showPatternItems(qMax(static_cast<int>(patternList.size()), 1));
         for (int i = 0; i < patternList.size() && i < mTriggerPatternEdit.size(); i++) {
             if (i >= pT->mColorPatternList.size()) {
                 break;
@@ -8880,25 +8878,7 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
         if (!pT->state()) {
             showError(pT->getError());
         } else {
-            // Show package warning if this item belongs to a package
-            QString packageName = pT->packageName(pT);
-            if (!packageName.isEmpty()) {
-                // Update accessibility description for screen readers (appears after item name)
-                QString currentDesc = pItem->data(0, Qt::AccessibleDescriptionRole).toString();
-                updatePackageItemAccessibility(pItem, currentDesc);
-
-                // Show visual warning banner (without screen reader announcement to avoid spam)
-                //: Package item warning banner shown in trigger editor when selecting package items
-                showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-
-                // Announce full educational message only on first package item encountered
-                static bool firstPackageAnnounced = false;
-                if (!firstPackageAnnounced) {
-                    //: First-time educational message for screen reader users about package items
-                    mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
-                    firstPackageAnnounced = true;
-                }
-            }
+            showPackageWarning(pT->packageName(pT), pItem);
         }
     } else {
         clearTriggerForm();
@@ -8961,25 +8941,7 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
         if (!pT->state()) {
             showError(pT->getError());
         } else {
-            // Show package warning if this item belongs to a package
-            QString packageName = pT->packageName(pT);
-            if (!packageName.isEmpty()) {
-                // Update accessibility description for screen readers (appears after item name)
-                QString currentDesc = pItem->data(0, Qt::AccessibleDescriptionRole).toString();
-                updatePackageItemAccessibility(pItem, currentDesc);
-
-                // Show visual warning banner (without screen reader announcement to avoid spam)
-                //: Package item warning banner shown in trigger editor when selecting package items
-                showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-
-                // Announce full educational message only on first package item encountered
-                static bool firstPackageAnnounced = false;
-                if (!firstPackageAnnounced) {
-                    //: First-time educational message for screen reader users about package items
-                    mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
-                    firstPackageAnnounced = true;
-                }
-            }
+            showPackageWarning(pT->packageName(pT), pItem);
         }
 
     } else {
@@ -9044,25 +9006,7 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
         if (!pT->state()) {
             showError(pT->getError());
         } else {
-            // Show package warning if this item belongs to a package
-            QString packageName = pT->packageName(pT);
-            if (!packageName.isEmpty()) {
-                // Update accessibility description for screen readers (appears after item name)
-                QString currentDesc = pItem->data(0, Qt::AccessibleDescriptionRole).toString();
-                updatePackageItemAccessibility(pItem, currentDesc);
-
-                // Show visual warning banner (without screen reader announcement to avoid spam)
-                //: Package item warning banner shown in trigger editor when selecting package items
-                showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-
-                // Announce full educational message only on first package item encountered
-                static bool firstPackageAnnounced = false;
-                if (!firstPackageAnnounced) {
-                    //: First-time educational message for screen reader users about package items
-                    mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
-                    firstPackageAnnounced = true;
-                }
-            }
+            showPackageWarning(pT->packageName(pT), pItem);
         }
     } else {
         clearKeyForm();
@@ -9521,25 +9465,7 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
         if (!pT->state()) {
             showError(pT->getError());
         } else {
-            // Show package warning if this item belongs to a package
-            QString packageName = pT->packageName(pT);
-            if (!packageName.isEmpty()) {
-                // Update accessibility description for screen readers (appears after item name)
-                QString currentDesc = pItem->data(0, Qt::AccessibleDescriptionRole).toString();
-                updatePackageItemAccessibility(pItem, currentDesc);
-
-                // Show visual warning banner (without screen reader announcement to avoid spam)
-                //: Package item warning banner shown in trigger editor when selecting package items
-                showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-
-                // Announce full educational message only on first package item encountered
-                static bool firstPackageAnnounced = false;
-                if (!firstPackageAnnounced) {
-                    //: First-time educational message for screen reader users about package items
-                    mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
-                    firstPackageAnnounced = true;
-                }
-            }
+            showPackageWarning(pT->packageName(pT), pItem);
         }
     } else {
         // On root of treewidget_actions: - show help message instead
@@ -9645,25 +9571,7 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
         } else if (!pT->state()) {
             showError(pT->getError());
         } else {
-            // Show package warning if this item belongs to a package
-            QString packageName = pT->packageName(pT);
-            if (!packageName.isEmpty()) {
-                // Update accessibility description for screen readers (appears after item name)
-                QString currentDesc = pItem->data(0, Qt::AccessibleDescriptionRole).toString();
-                updatePackageItemAccessibility(pItem, currentDesc);
-
-                // Show visual warning banner (without screen reader announcement to avoid spam)
-                //: Package item warning banner shown in trigger editor when selecting package items
-                showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-
-                // Announce full educational message only on first package item encountered
-                static bool firstPackageAnnounced = false;
-                if (!firstPackageAnnounced) {
-                    //: First-time educational message for screen reader users about package items
-                    mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
-                    firstPackageAnnounced = true;
-                }
-            }
+            showPackageWarning(pT->packageName(pT), pItem);
         }
 
     } else {
@@ -9733,25 +9641,7 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
         if (!pT->state()) {
             showError(pT->getError());
         } else {
-            // Show package warning if this item belongs to a package
-            QString packageName = pT->packageName(pT);
-            if (!packageName.isEmpty()) {
-                // Update accessibility description for screen readers (appears after item name)
-                QString currentDesc = pItem->data(0, Qt::AccessibleDescriptionRole).toString();
-                updatePackageItemAccessibility(pItem, currentDesc);
-
-                // Show visual warning banner (without screen reader announcement to avoid spam)
-                //: Package item warning banner shown in trigger editor when selecting package items
-                showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-
-                // Announce full educational message only on first package item encountered
-                static bool firstPackageAnnounced = false;
-                if (!firstPackageAnnounced) {
-                    //: First-time educational message for screen reader users about package items
-                    mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
-                    firstPackageAnnounced = true;
-                }
-            }
+            showPackageWarning(pT->packageName(pT), pItem);
         }
     } else {
         clearTimerForm();
@@ -11181,7 +11071,7 @@ void dlgTriggerEditor::changeView(EditorViewType view)
 // on the way in. That also ends any loan the trigger options panel had taken out
 // of the code pane: what it borrowed was measured against the geometry this
 // throws away, so there would be nothing left to hand back on closing.
-void dlgTriggerEditor::restoreRightSplitterState(QByteArray& savedState)
+void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
 {
     if (!savedState.isEmpty()) {
         splitter_right->restoreState(savedState);
@@ -11191,9 +11081,28 @@ void dlgTriggerEditor::restoreRightSplitterState(QByteArray& savedState)
         // at a thickness nothing else in the editor uses
         splitter_right->setHandleWidth(uiDesign::GripSplitter::scmHandleThickness);
     } else {
-        const QList<int> sizes = {30, 900, 30};
-        splitter_right->setSizes(sizes);
-        savedState = splitter_right->saveState();
+        // The user has not sized this view's panes themselves, so the form takes
+        // the height its fields need and the code takes everything left. Sizes
+        // that do not add up to the space there is are shared out in proportion
+        // rather than met, which is how asking for 30 above 900 came out as half
+        // the window each: a code pane starting a long way down the window,
+        // under a form stretched past anything it had to show.
+        //
+        // Nothing is written back to savedState here. Until a handle is dragged
+        // there is no size to remember, and re-reading the form every time is
+        // what keeps the split following what the item actually holds - the
+        // first of these calls comes before any item has been picked, when the
+        // form has nothing to measure.
+        QList<int> sizes = splitter_right->sizes();
+        const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
+        if (paneTotal > 0) {
+            sizes[0] = std::clamp(mpNonCodeWidgets->sizeHint().height(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+            sizes[1] = paneTotal - sizes.at(0);
+            splitter_right->setSizes(sizes);
+        } else {
+            // Asked for before there is any geometry to divide up
+            splitter_right->setSizes({30, 900, 30});
+        }
     }
     mTriggerOptionsBorrowedHeight = 0;
 }
@@ -11364,8 +11273,10 @@ void dlgTriggerEditor::showError(const QString& text)
         mEditorSaveErrorCaptured = text;
     }
 
-    // Reconnect close button to normal hide behavior (not banner dismiss)
+    // Reconnect close button to normal hide behavior (neither a banner dismiss
+    // nor the package warning, whose close button remembers being pressed)
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
+    disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
     connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
 
     if (!mpHost->mIsProfileLoadingSequence) {
@@ -11385,13 +11296,59 @@ void dlgTriggerEditor::showWarning(const QString& text, bool announce)
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
 
-    // Reconnect close button to normal hide behavior (not banner dismiss)
+    // Reconnect close button to normal hide behavior (neither a banner dismiss
+    // nor the package warning, whose close button remembers being pressed)
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
+    disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
     connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
 
     if (!mpHost->mIsProfileLoadingSequence && announce) {
         mudlet::self()->announce(text);
     }
+}
+
+// Every item of a package raises the same warning, and switching between them
+// used to raise it again for each one. It is said once per package instead, and
+// the close button puts it away for as long as the editor is open: the message
+// is about the package, not about the item that happened to be clicked.
+void dlgTriggerEditor::showPackageWarning(const QString& packageName, QTreeWidgetItem* pItem)
+{
+    if (packageName.isEmpty()) {
+        return;
+    }
+
+    // What a screen reader reads out after the item's name is a property of the
+    // item, so it is set whether or not the banner is raised over it
+    if (pItem) {
+        updatePackageItemAccessibility(pItem, pItem->data(0, Qt::AccessibleDescriptionRole).toString());
+    }
+
+    if (mPackageWarningsDismissed || mWarnedPackages.contains(packageName)) {
+        return;
+    }
+    mWarnedPackages.insert(packageName);
+
+    //: Warning banner shown in the editor when the item being looked at came from a package
+    showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
+
+    // showWarning() wires the close button to the plain hide, which forgets
+    // that it was this that was closed
+    disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
+    connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
+
+    if (!mPackageWarningAnnounced) {
+        mPackageWarningAnnounced = true;
+        //: First-time educational message for screen reader users about package items
+        mudlet::self()->announce(tr("Package item. Copy before editing to preserve changes."));
+    }
+}
+
+// Closing the package warning by hand is taken as "yes, understood": it stays
+// away for the rest of this editor's life, however many packages are opened
+void dlgTriggerEditor::slot_packageWarningDismissed()
+{
+    mPackageWarningsDismissed = true;
+    hideSystemMessageArea();
 }
 
 void dlgTriggerEditor::showInfo(const QString& text)
@@ -11485,6 +11442,7 @@ void dlgTriggerEditor::showHideableBanner(const QString& content, const QString&
 
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
+    disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
     connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
 
     disconnect(mpSystemMessageArea->notificationAreaMessageBox, &QLabel::linkActivated, nullptr, nullptr);
@@ -13746,6 +13704,24 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         return true;
     }
 
+    // Return in the last pattern gives the trigger one more and puts the cursor
+    // in it: the keyboard's way to what the Add pattern button does. A pattern
+    // field takes no line break of its own, so the key is free for this.
+    if (event->type() == QEvent::KeyPress) {
+        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        const bool plainReturn =
+                (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter) && !(keyEvent->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier | Qt::MetaModifier));
+        if (plainReturn) {
+            if (auto* edit = qobject_cast<SingleLineTextEdit*>(watched)) {
+                auto* patternItem = qobject_cast<dlgTriggerPatternEdit*>(edit->parentWidget());
+                if (patternItem && patternItem->mRow == mVisiblePatternCount - 1 && mVisiblePatternCount < scmEditorPatternRowLimit) {
+                    slot_addPattern();
+                    return true;
+                }
+            }
+        }
+    }
+
     if (event->type() == QEvent::KeyPress) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         const Qt::KeyboardModifiers modifiers = keyEvent->modifiers();
@@ -14668,6 +14644,28 @@ static QGroupBox* makeEditorCard(QWidget* pParent, const QString& title)
     return pCard;
 }
 
+// A QScrollArea asks for a couple of dozen lines however tall the thing inside
+// it is, since the rest of it is what scrolling is for. That is the wrong thing
+// to say here: the panel should be given its whole height wherever the form has
+// it, and only scroll where it does not. So this one asks for the height of
+// what it holds, and goes on reporting a minimum of the scroll bars alone -
+// which is the half that keeps the window free to be dragged smaller.
+class OptionsScrollArea : public QScrollArea
+{
+public:
+    using QScrollArea::QScrollArea;
+
+    QSize sizeHint() const override
+    {
+        const QSize hint = QScrollArea::sizeHint();
+        const QWidget* pPanel = widget();
+        if (!pPanel) {
+            return hint;
+        }
+        return QSize(hint.width(), pPanel->sizeHint().height() + 2 * frameWidth());
+    }
+};
+
 // The trigger form's options were a column of centre-titled group boxes, each
 // drawing its own frame around one or two controls. They become four cards
 // built around the .ui file's own controls, so that every object name, every
@@ -14725,9 +14723,40 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     }
     // Painted by the cards, not by the column behind them
     pForm->widget_right->setAutoFillBackground(false);
+    // The cards keep this width whether or not a scroll bar has appeared beside
+    // them: the scroll area is the wider of the two by exactly that bar
     pForm->widget_right->setFixedWidth(scmEditorTriggerOptionsWidth);
     pPanelLayout->setContentsMargins(12, 0, 0, 0);
     pPanelLayout->setSpacing(12);
+
+    // Four cards are taller than a short window, and a column that reports that
+    // height as a minimum drags the whole window open to fit and will not let it
+    // be dragged back down. The column scrolls instead: it keeps its natural
+    // height wherever there is room for it, and where there is not, the window
+    // stays the size the user put it at and the cards move under the viewport.
+    auto* pGrid = qobject_cast<QGridLayout*>(pForm->layout());
+    mpScrollArea_triggerOptions = new OptionsScrollArea(pForm);
+    mpScrollArea_triggerOptions->setObjectName(qsl("editorTriggerOptionsScroll"));
+    mpScrollArea_triggerOptions->setFrameShape(QFrame::NoFrame);
+    mpScrollArea_triggerOptions->setWidgetResizable(true);
+    // Nothing here moves sideways: the cards are drawn at their own width, with
+    // room of its own for the bar beside them, so the only direction there is
+    // to scroll in is the one they are stacked in
+    mpScrollArea_triggerOptions->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    mpScrollArea_triggerOptions->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    // Room for the cards and, beside them, for the bar that scrolls them: they
+    // are drawn at the width they were laid out for whether or not it is there.
+    // applyEditorShellStyle() sets this again once the bar has been given the
+    // width the rest of the editor's are drawn at.
+    mpScrollArea_triggerOptions->setFixedWidth(scmEditorTriggerOptionsWidth + mpScrollArea_triggerOptions->verticalScrollBar()->sizeHint().width());
+    // The grid cell the .ui file put the column in becomes the scroll area's
+    pGrid->removeWidget(pForm->widget_right);
+    mpScrollArea_triggerOptions->setWidget(pForm->widget_right);
+    pGrid->addWidget(mpScrollArea_triggerOptions, 1, 1);
+    // setWidget() fills both from their own palette, and what shows behind the
+    // cards is the page the form is drawn on
+    mpScrollArea_triggerOptions->viewport()->setAutoFillBackground(false);
+    pForm->widget_right->setAutoFillBackground(false);
 
     //: Title of the card holding how a trigger's patterns are combined
     auto* pCard_matching = makeEditorCard(pForm->widget_right, tr("Matching"));
@@ -14760,9 +14789,16 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     mpRadioButton_matchAll->setObjectName(qsl("editorMatchAll"));
     //: The other matching mode: the trigger fires only once every pattern has matched. The line under it holds how many lines they have to match within.
     mpRadioButton_matchAll->setText(tr("All patterns within"));
-    const QString modeToolTip = pForm->groupBox_multiLineTrigger->toolTip();
-    mpRadioButton_matchAny->setToolTip(modeToolTip);
-    mpRadioButton_matchAll->setToolTip(modeToolTip);
+    // What each mode does, said in full: the chip beside a row is two or three
+    // letters, and the row itself is only a little longer
+    //: Tooltip on the OR chip and on the "any pattern" choice beside it, saying what that matching mode does
+    const QString anyToolTip = utils::richText(tr("OR: the trigger fires as soon as any one of its patterns matches a line."));
+    //: Tooltip on the AND chip and on the "all patterns" choice beside it, saying what that matching mode does
+    const QString allToolTip = utils::richText(tr("AND: the trigger only fires once every one of its patterns has matched, within the number of lines set below."));
+    mpRadioButton_matchAny->setToolTip(anyToolTip);
+    mpLabel_matchAnyChip->setToolTip(anyToolTip);
+    mpRadioButton_matchAll->setToolTip(allToolTip);
+    mpLabel_matchAllChip->setToolTip(allToolTip);
 
     auto* pAnyRow = new QHBoxLayout();
     pAnyRow->setSpacing(scmEditorModeChipGap);
@@ -14796,6 +14832,15 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     pWithinLayout->addStretch(1);
     pModeLayout->addWidget(mpWidget_matchWithinRow);
     pMatchingLayout->addWidget(mpWidget_matchModeRows);
+
+    // Sits outside the rows it explains, so that it stays readable while they
+    // are greyed out - checkForMoreThanOneTriggerItem() is what shows it
+    mpLabel_matchModeHint = new QLabel(pCard_matching);
+    mpLabel_matchModeHint->setProperty("editorFieldLabel", true);
+    mpLabel_matchModeHint->setWordWrap(true);
+    //: Caption in a trigger's Matching card, shown while the trigger has only one pattern and the OR / AND choice is therefore greyed out
+    mpLabel_matchModeHint->setText(tr("Add a second pattern to choose how they are combined."));
+    pMatchingLayout->addWidget(mpLabel_matchModeHint);
 
     //: Trigger option, was called "match all": the script runs once for every place in the line the pattern matches, rather than once for the first
     pForm->checkBox_perlSlashGOption->setText(tr("Match every occurrence in a line"));
@@ -15078,8 +15123,13 @@ void dlgTriggerEditor::slot_showAllTriggerControls(const bool isShown)
 
     // Set unconditionally: isVisible() is also false while the whole triggers
     // main area is hidden (e.g. during construction), which would skip the
-    // explicit hide needed to keep the extra controls hidden once it shows:
+    // explicit hide needed to keep the extra controls hidden once it shows.
+    // The scroll area is what holds the grid column open, so it is the one that
+    // has to go; the panel inside it goes with it either way.
     mpTriggersMainArea->widget_right->setVisible(isShown);
+    if (mpScrollArea_triggerOptions) {
+        mpScrollArea_triggerOptions->setVisible(isShown);
+    }
 
     // The strip stands in for the panel whenever the panel is away, whether
     // that was asked for or the form simply ran out of room for it
@@ -15895,6 +15945,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const QString hoverSoft = tokens.hoverSoft;
     const QString accentSoft = tokens.accentSoft;
     const QColor accentText = tokens.accentText;
+    // Every form in the window is filled in through the same set of controls, so
+    // they are all drawn from one recipe. It goes on each form rather than on the
+    // window: a rule naming QLineEdit on the window would reach the code pane's
+    // find bar and the trees' editors as well as the fields it is meant for.
+    const QString inputRules = uiDesign::inputStyleSheet(tokens);
 
     restyleEditorIcons();
 
@@ -15997,6 +16052,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // them has to be one they select on
         const QString cardTitleRule = qsl("QGroupBox[editorCardTitleInset=\"true\"]::title { left: %1px; }")
                                               .arg(QString::number(uiDesign::measuredCardTitleInset(mpTriggersMainArea, cardIndicatorRules, uiDesign::scmProp_editorCard)));
+        // Styling the options column's scroll area takes its scroll bar with
+        // it, the same way the pattern list's does
+        const QString optionsScrollBarRules = uiDesign::scrollBarStyleSheet(qsl("#editorTriggerOptionsScroll"), tokens);
 
         mpTriggersMainArea->setStyleSheet(qsl(
                                                   // The top margin lifts the title clear of the frame, rather than
@@ -16023,11 +16081,22 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   " background: transparent; text-align: left; }"
                                                   "#editorOptionsSummary:hover { color: %7; background-color: %8; }"
                                                   // The ID reads as a label on the trigger, not as a second field
-                                                  "#frameId { border: 1px solid %2; border-radius: 8px; background: transparent; }")
+                                                  "#frameId { border: 1px solid %2; border-radius: 8px; background: transparent; }"
+                                                  // The cards are what is drawn in the options column: the scroll
+                                                  // area holding them and the viewport Qt gives it show the page
+                                                  // through. Named outright, as the pattern rows are, so that a
+                                                  // profile stylesheet cannot put the field colour back behind them.
+                                                  "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
+                                                  " { background: transparent; border: none; }")
                                                   .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name(), hoverSoft)
-                                          + cardIndicatorRules + cardTitleRule + patternRowStyleSheet());
+                                          + cardIndicatorRules + cardTitleRule + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();
+        // ...and the options column against the bar it just sized, so that the
+        // cards keep their own width whether or not that bar is there
+        if (mpScrollArea_triggerOptions) {
+            mpScrollArea_triggerOptions->setFixedWidth(scmEditorTriggerOptionsWidth + mpScrollArea_triggerOptions->verticalScrollBar()->sizeHint().width());
+        }
     }
 
     if (mpScriptsMainArea) {
@@ -16049,7 +16118,19 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                              "#editorScriptHandlers::item:selected { color: %5;"
                                              " background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
                                                  .arg(borderColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
-                                         + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens));
+                                         + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens) + inputRules);
+    }
+
+    // The forms with nothing but fields on them: a name, a delay, a key, a
+    // value. The two above are here as well, appended to what else they carry.
+    for (QWidget* pMainArea : {static_cast<QWidget*>(mpTimersMainArea),
+                               static_cast<QWidget*>(mpAliasMainArea),
+                               static_cast<QWidget*>(mpActionsMainArea),
+                               static_cast<QWidget*>(mpKeysMainArea),
+                               static_cast<QWidget*>(mpVarsMainArea)}) {
+        if (pMainArea) {
+            pMainArea->setStyleSheet(inputRules);
+        }
     }
 
     if (mpSystemMessageArea) {
@@ -16345,8 +16426,14 @@ void dlgTriggerEditor::checkForMoreThanOneTriggerItem()
 
     // The hidden group box is where the mode is still saved from; the radio pair
     // that shows it is the one thing there is to switch off
+    const bool canCombinePatterns = activeItems > 1;
     if (mpWidget_matchModeRows) {
-        mpWidget_matchModeRows->setEnabled(activeItems > 1);
+        mpWidget_matchModeRows->setEnabled(canCombinePatterns);
+    }
+    // ...and with nothing to combine yet, the caption saying so takes the place
+    // of a pair of greyed-out rows with no explanation
+    if (mpLabel_matchModeHint) {
+        mpLabel_matchModeHint->setVisible(!canCombinePatterns);
     }
 }
 

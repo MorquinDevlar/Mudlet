@@ -30,7 +30,13 @@ class SingleLineTextEdit : public QPlainTextEdit
 public:
     explicit SingleLineTextEdit(QWidget* parent = nullptr);
     void setHighlightingEnabled(bool enabled);
+    // The syntax theme the highlighter takes its token colours from. It says
+    // nothing about what the field is drawn in - see setFieldColors() - since a
+    // pattern row is one of the form's inputs rather than a slice of code pane.
     void setTheme(const QString&);
+    // What the field itself is filled with and what plain text in it is written
+    // in, both from the window's own palette
+    void setFieldColors(const QColor& background, const QColor& text);
     void rehighlight();
 
 protected:

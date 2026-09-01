@@ -15,13 +15,17 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "Host.h"
 #include "SingleLineTextEdit.h"
 #include "TrailingWhitespaceMarker.h"
 
 #include <QColor>
 #include <QKeyEvent>
 #include <QPalette>
+
+namespace {
+// How much of the field's own text colour a placeholder is written in
+constexpr qreal scmPlaceholderStrength = 0.6;
+} // namespace
 
 SingleLineTextEdit::SingleLineTextEdit(QWidget* parent)
 : QPlainTextEdit(parent)
@@ -87,23 +91,31 @@ void SingleLineTextEdit::setHighlightingEnabled(bool enabled)
 
 void SingleLineTextEdit::setTheme(const QString& themeName)
 {
-    auto edbee = edbee::Edbee::instance();
-    edbee::TextTheme* theme = edbee->themeManager()->theme(themeName);
+    // Only the syntax colouring: the theme used to be painted onto the widget
+    // as well, which put a code pane's dark background behind a pattern on a
+    // light form. What the field is drawn in comes from setFieldColors().
+    highlighter->setTheme(themeName);
+}
 
-    // set the textedit background and text the same as edbee base settings
-    QPalette p = palette();
-    p.setColor(QPalette::Base, theme->backgroundColor()); // background
-    p.setColor(QPalette::Text, theme->foregroundColor());
+void SingleLineTextEdit::setFieldColors(const QColor& background, const QColor& text)
+{
+    if (!background.isValid() || !text.isValid()) {
+        return;
+    }
 
-    QColor placeholderColor = theme->foregroundColor();
-    placeholderColor.setAlphaF(0.6);
-    p.setColor(QPalette::PlaceholderText, placeholderColor);
-    setPalette(p);
-    viewport()->setPalette(p);
+    QPalette fieldPalette = palette();
+    fieldPalette.setColor(QPalette::Base, background);
+    fieldPalette.setColor(QPalette::Text, text);
+    // Read against the inside of the control it stands in, not against the form
+    QColor placeholderColor = text;
+    placeholderColor.setAlphaF(scmPlaceholderStrength);
+    fieldPalette.setColor(QPalette::PlaceholderText, placeholderColor);
+    setPalette(fieldPalette);
+    viewport()->setPalette(fieldPalette);
     viewport()->setAutoFillBackground(true);
 
-    // the highlighter will perform the syntax colouring using scopes if possible
-    highlighter->setTheme(themeName);
+    // ...and the token colours have to be readable on it
+    highlighter->setFieldColors(background, text);
 }
 
 void SingleLineTextEdit::rehighlight()
