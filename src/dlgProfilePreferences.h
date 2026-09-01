@@ -492,8 +492,6 @@ private:
     // not answered by moving most of the dialog onto the results page and back
     QTimer* mpTimer_search = nullptr;
     QString mPendingSearch;
-    // The sidebar is a rail of icons rather than a list of names
-    bool mSidebarCollapsed = false;
     // Set once buildShell() has finished moving controls between cards, which is
     // when it becomes safe to wrap one that does not fit
     bool mShellReady = false;

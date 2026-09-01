@@ -35,6 +35,7 @@ class QAbstractButton;
 class QGridLayout;
 class QLayout;
 class QLineEdit;
+class QListWidget;
 class QObject;
 class QTimer;
 class QWidget;
@@ -123,6 +124,49 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // rules are scoped by - a scroll area's own bars answer only to a descendant
 // selector.
 QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
+
+// The accent bar down the left of the chosen item in a sidebar. Not a length
+// the stylesheet is left to work out: it is drawn as a gradient stop, which is
+// a fraction of the item's width rather than a number of pixels.
+inline constexpr int scmSidebarAccentBarWidth = 3;
+
+// The whole of what one window's sidebar differs from the other's by. What is
+// not here - the pill, its accent bar, the hover wash, the ring that says the
+// list has the keyboard - is the same in both and is drawn out of these.
+struct SidebarMetrics
+{
+    // What the sidebar is drawn at with the names showing. The settings dialog
+    // knows this ahead of time; the editor measures its longest name for it,
+    // so it is a runtime number there.
+    int expandedWidth = 0;
+    // ...and once the names are given up, leaving the icons
+    int railWidth = 0;
+    // What is left either side of the items at each of those two widths, which
+    // is the whole of why the accent bar is a different fraction of each
+    int padding = 0;
+    int railPadding = 0;
+    // Above and below the items. No rule asks for it - the pane's layout does.
+    int verticalPadding = 0;
+    // How far a divider row is held off the sidebar's edges with the names
+    // showing. Collapsed both windows hold it off by the same 2px, so only the
+    // expanded inset is asked for.
+    int separatorInset = 0;
+};
+
+// The list of places down the left of a window, drawn the one way in both of
+// them. The two names are object names rather than selectors, because the
+// collapse below finds the separators by the same string the rules select on.
+// itemColor is what an unchosen row's name is written in and the one thing the
+// two windows answer differently: the editor's chrome is muted throughout,
+// while the settings sidebar is the whole of that dialog's navigation.
+QString sidebarStyleSheet(const QString& listName, const QString& separatorName, const QColor& itemColor, const SidebarMetrics& metrics, const ThemeTokens& tokens);
+
+// Collapsing that sidebar to a rail of icons and back: the pane's width and
+// margins, and the property both the shared delegate and the rules above read
+// the mode off. That property is the mode, so nothing else has to remember it
+// - and the answer is whether anything moved, which lets a window with more to
+// do at that moment skip it in the same breath.
+bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& separatorName, const bool collapsed, const SidebarMetrics& metrics);
 
 // How round a corner is says how big the thing behind it is: the radius that
 // reads as a card's corner turns a chip into a lozenge, and the one that suits a

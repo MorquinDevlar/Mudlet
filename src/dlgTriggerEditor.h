@@ -263,7 +263,6 @@ public:
     // Gives the panel's focus to one of the item trees, or to the search
     // results while those are what the panel is showing instead
     void focusPanelTree(QWidget* pTreeWidget);
-    void setEditorSidebarCollapsed(const bool collapsed, const int expandedWidth);
     void fillout_form();
     void showError(const QString&);
     void showWarning(const QString&, bool announce = true);
@@ -842,7 +841,6 @@ private:
     // The actions the sidebar rows stand for, which is also what the Ctrl+1 to
     // Ctrl+0 shortcuts are put on and taken off
     QList<QAction*> mEditorViewActions;
-    bool mEditorSidebarCollapsed = false;
     // Held for the rest of the pass through the event loop that a sidebar row's
     // one-off action was asked for in, so that the click and the activation one
     // click can arrive as run it once

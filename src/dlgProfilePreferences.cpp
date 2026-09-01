@@ -116,10 +116,8 @@ using uiDesign::invalidateLayoutsUpTo;
 using uiDesign::makeChevronRow;
 using uiDesign::markAsShellSurface;
 using uiDesign::measuredCardTitleInset;
-using uiDesign::repolish;
 using uiDesign::rgba;
 using uiDesign::scmProp_focused;
-using uiDesign::scmProp_rail;
 using uiDesign::scmProp_searchKeywords;
 using uiDesign::scmRadiusPanel;
 using uiDesign::scmRadiusProminentInput;
@@ -127,6 +125,7 @@ using uiDesign::scrollBarStyleSheet;
 using uiDesign::setSearchMatch;
 using uiDesign::SettingsSnapshot;
 using uiDesign::SidebarItemDelegate;
+using uiDesign::sidebarStyleSheet;
 using uiDesign::spotlightStyleSheet;
 using uiDesign::themeTokens;
 using uiDesign::ThemeTokens;
@@ -137,14 +136,11 @@ using uiDesign::wordEnoughToSearch;
 // stretching across it
 static constexpr int scmContentColumnWidth = 640;
 
-// Known as numbers rather than left to the stylesheet: the selected item's
-// accent bar is a gradient stop, and a gradient stop is a fraction of the item
-// rather than a length.
-static constexpr int scmSidebarWidth = 232;
-static constexpr int scmSidebarPadding = 12;
-static constexpr int scmSidebarAccentBarWidth = 3;
-static constexpr int scmSidebarRailWidth = 48;
-static constexpr int scmSidebarRailPadding = 6;
+// What this dialog's sidebar differs from the editor's by; everything else
+// about it is drawn by uiDesign::sidebarStyleSheet(). A width is known here
+// rather than measured because every name in it is a category the dialog
+// itself puts there.
+static constexpr uiDesign::SidebarMetrics scmSidebarMetrics{.expandedWidth = 232, .railWidth = 48, .padding = 12, .railPadding = 6, .verticalPadding = 16, .separatorInset = 16};
 // How far right of the frame edge this leaves a card's title is not a constant
 // to go with it: styles disagree on the room after the indicator, so
 // measuredCardTitleInset() measures it.
@@ -947,9 +943,9 @@ QWidget* dlgProfilePreferences::buildSidebar()
     auto* pSidebar = new QWidget(mpWidget_shell);
     mpWidget_sidebar = pSidebar;
     pSidebar->setObjectName(qsl("settingsSidebar"));
-    pSidebar->setFixedWidth(scmSidebarWidth);
+    pSidebar->setFixedWidth(scmSidebarMetrics.expandedWidth);
     auto* pSidebarLayout = new QVBoxLayout(pSidebar);
-    pSidebarLayout->setContentsMargins(scmSidebarPadding, 16, scmSidebarPadding, 16);
+    pSidebarLayout->setContentsMargins(scmSidebarMetrics.padding, scmSidebarMetrics.verticalPadding, scmSidebarMetrics.padding, scmSidebarMetrics.verticalPadding);
     pSidebarLayout->setSpacing(4);
 
     auto* pHeader = new QWidget(pSidebar);
@@ -1990,7 +1986,7 @@ dlgProfilePreferences::SidebarWidths dlgProfilePreferences::sidebarWidths() cons
         widestPageMinimum = std::max(widestPageMinimum, pColumn->minimumSizeHint().width());
     }
 
-    const int sidebarAndMargins = scmSidebarWidth + contentMargins.left() + contentMargins.right();
+    const int sidebarAndMargins = scmSidebarMetrics.expandedWidth + contentMargins.left() + contentMargins.right();
     widths.fullyExpanded = sidebarAndMargins + std::max(contentColumn + scrollBarWidth, titleRowChrome + widestTitle);
     // Deliberately not the same number as the width above: held equal, the
     // sidebar had its names at exactly one window width and the first pixel of
@@ -2028,29 +2024,18 @@ void dlgProfilePreferences::updateSidebarMode()
 
 void dlgProfilePreferences::setSidebarCollapsed(const bool collapsed)
 {
-    if (collapsed == mSidebarCollapsed && mpWidget_sidebar->width() == (collapsed ? scmSidebarRailWidth : scmSidebarWidth)) {
+    if (!uiDesign::setSidebarCollapsed(mpWidget_sidebar, mpListWidget_categories, qsl("settingsSidebarSeparator"), collapsed, scmSidebarMetrics)) {
         return;
     }
-    mSidebarCollapsed = collapsed;
-    const int padding = collapsed ? scmSidebarRailPadding : scmSidebarPadding;
-    mpWidget_sidebar->setFixedWidth(collapsed ? scmSidebarRailWidth : scmSidebarWidth);
-    mpWidget_sidebar->layout()->setContentsMargins(padding, 16, padding, 16);
     mpLabel_wordmark->setVisible(!collapsed);
-    // What the delegate leaves the names out by, and the stylesheet draws the
-    // narrower selection pill from
-    mpListWidget_categories->setProperty(scmProp_rail, collapsed);
-    repolish(mpListWidget_categories);
-    for (auto* pSeparator : mpListWidget_categories->findChildren<QFrame*>(qsl("settingsSidebarSeparator"))) {
-        pSeparator->setProperty(scmProp_rail, collapsed);
-        repolish(pSeparator);
-    }
     // A name no longer drawn is still what the row is: the item keeps its text -
-    // its accessible name - and offers it as a tooltip while nothing shows it
+    // its accessible name - and offers it as a tooltip while nothing shows it.
+    // The editor's rows carry one of their own, naming the shortcut as well, so
+    // this half stays here rather than going with the collapse.
     for (int row = 0, rows = mpListWidget_categories->count(); row < rows; ++row) {
         QListWidgetItem* pItem = mpListWidget_categories->item(row);
         pItem->setToolTip(collapsed ? pItem->text() : QString());
     }
-    mpListWidget_categories->doItemsLayout();
 }
 
 // Qt appends a reparented widget to the end of the dialog's focus chain, so
@@ -2711,14 +2696,6 @@ void dlgProfilePreferences::applyShellStyle()
     // Quieter than the name beside them, and the accent under a selected one
     restyleSidebarIcons(mutedText, accentText);
 
-    // A border-left accent bar is drawn as an arc where the pill's corner radius
-    // is, pinching the bar to nothing at both ends. A gradient is clipped by the
-    // radius instead, so the bar keeps its width and the pill's rounded corners.
-    const qreal accentBarStop = static_cast<qreal>(scmSidebarAccentBarWidth) / (scmSidebarWidth - 2 * scmSidebarPadding);
-    // ...and the same bar on a collapsed sidebar's narrower item is a different
-    // fraction of a different width
-    const qreal railAccentBarStop = static_cast<qreal>(scmSidebarAccentBarWidth) / (scmSidebarRailWidth - 2 * scmSidebarRailPadding);
-
     // Fusion draws a group box's check indicator from palette(window) darkened
     // by 40%, which on a dark card is a 1.1:1 outline - and the palette pass
     // below cannot rescue it, as that role also carries the card's title band.
@@ -2736,89 +2713,68 @@ void dlgProfilePreferences::applyShellStyle()
     // are the ones being laid out under
     const QString cardTitleRule = qsl("QGroupBox[settingsCardTitleInset=\"true\"]::title { left: %1px; }").arg(QString::number(measuredCardTitleInset(mpWidget_shell, cardIndicatorRules)));
 
-    mpWidget_shell->setStyleSheet(qsl("#settingsShell, #settingsSidebar, #settingsContent { background-color: %1; }"
-                                      // Or the platform style draws its own selection as a square
-                                      // box inside the rounded pill the rules below draw
-                                      "#settingsCategoryList { background: transparent; border: none; outline: none; show-decoration-selected: 1;"
-                                      " selection-background-color: transparent; selection-color: %6; }"
-                                      // The transparent left border keeps a selected item's text
-                                      // from stepping sideways under its accent bar; outline:none
-                                      // drops a focus rectangle drawn square inside a round pill
-                                      "#settingsCategoryList::item { border-radius: 8px; border-left: 3px solid transparent; padding-left: 7px; color: %2; outline: none; }"
-                                      "#settingsCategoryList::item:hover { background-color: %3; }"
-                                      "#settingsCategoryList::item:selected { color: %6; font-weight: bold; background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-                                      " stop:0 %5, stop:%11 %5, stop:%12 %4, stop:1 %4); }"
-                                      // Keyboard focus is otherwise indistinguishable from the
-                                      // selection; eventFilter() puts the property on
-                                      "#settingsCategoryList[settingsFocused=\"true\"]::item:selected { border: 1px solid %5; border-left: 3px solid %5; padding-left: 5px; }"
-                                      // On a rail the item is only as wide as its icon, so the
-                                      // padding goes and the bar is a different fraction
-                                      "#settingsCategoryList[settingsRail=\"true\"]::item { padding-left: 0px; }"
-                                      "#settingsCategoryList[settingsRail=\"true\"]::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-                                      " stop:0 %5, stop:%13 %5, stop:%14 %4, stop:1 %4); }"
-                                      "#settingsSidebarSeparator { border: none; background-color: %7; margin: 8px 16px; }"
-                                      "#settingsSidebarSeparator[settingsRail=\"true\"] { margin: 8px 2px; }"
-                                      "#settingsStack { background: transparent; }"
-                                      // The shell's own surfaces keep the page colour even when a
-                                      // profile stylesheet paints every QWidget it can reach.
-                                      // Painted rather than left transparent, as a transparent
-                                      // surface falls back to the palette that stylesheet changed.
-                                      "QWidget[settingsSurface=\"true\"] { background-color: %1; border: none; }"
-                                      "#settingsWordmark { font-weight: bold; font-size: 125%; }"
-                                      "#settingsPageTitle { font-weight: bold; font-size: 145%; }"
-                                      // Taller than the controls on a page and the one thing the
-                                      // panel it heads is worked from, so it takes a panel's corner
-                                      "#settingsSearchField { border: 1px solid %7; border-radius: %16px; padding-left: 6px; background-color: %15; }"
-                                      "#settingsSearchField:focus { border: 1px solid %5; }"
-                                      // The top margin lifts the title clear of the frame, rather
-                                      // than leaving it cutting through the card's border
-                                      "QGroupBox[settingsCard=\"true\"] { background-color: %8; border: 1px solid %7; border-radius: %17px; margin-top: 24px; padding: 16px; font-weight: bold; }"
-                                      "QGroupBox[settingsCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
-                                      // ...but only the title is bold, not everything the card holds:
-                                      "QGroupBox[settingsCard=\"true\"] > * { font-weight: normal; }"
-                                      // A card carrying a single option needs no heading, nor room above for one
-                                      "QGroupBox[settingsCardPlain=\"true\"] { margin-top: 0px; }"
-                                      // A group box the .ui file nests inside what is now a card
-                                      // would draw a second frame; a heading alone divides them
-                                      "QGroupBox[settingsCard=\"true\"] QGroupBox { border: none; background: transparent; margin-top: 20px; padding: 0px 0px 0px 8px; font-weight: bold; }"
-                                      "QGroupBox[settingsCard=\"true\"] QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
-                                      "#settingsMigrationBanner { background-color: %4; border: 1px solid %7; border-radius: %17px; }"
-                                      "#settingsMigrationBannerTitle { font-weight: bold; }"
-                                      "#settingsSearchHeader { font-weight: bold; font-size: 110%; color: %2; }"
-                                      "#settingsSearchEmpty { padding: 32px; color: %9; }"
-                                      // The property is put on and taken off by the search itself:
-                                      "QLabel[searchMatch=\"true\"], QCheckBox[searchMatch=\"true\"], QRadioButton[searchMatch=\"true\"], QPushButton[searchMatch=\"true\"]"
-                                      " { background-color: %10; border-radius: 3px; }"
-                                      "QGroupBox[searchMatch=\"true\"]::title { background-color: %10; border-radius: 3px; }"
-                                      // Drawn as a piece of the heading it sits beside, not a button
-                                      "#settingsSearchBack, #settingsSubpageBack { border: 1px solid transparent; border-radius: 6px; padding: 2px 6px; color: %2; background: transparent; }"
-                                      "#settingsSearchBack:hover, #settingsSubpageBack:hover { background-color: %3; }"
-                                      "#settingsSearchBack:focus, #settingsSubpageBack:focus { border: 1px solid %5; }"
-                                      // Quieter than what they describe, and indented under it
-                                      "#settingsCardDescription { color: %9; }"
-                                      "QLabel[settingsControlDescription=\"true\"] { color: %9; margin-left: 20px; margin-bottom: 6px; }"
-                                      // The wrap holder shows the card through it, named outright
-                                      // so a profile stylesheet cannot paint a band across it
-                                      "#settingsCheckBoxWrap { background: transparent; border: none; }"
-                                      // A row that leads somewhere, clickable across the card's width
-                                      "QAbstractButton[settingsChevronRow=\"true\"] { text-align: left; padding: 8px 30px 8px 10px; border: 1px solid %7; border-radius: 6px;"
-                                      // Qt's stylesheets cannot scale a background image, so this
-                                      // is the 16px copy of the icon rather than the 48px one
-                                      " background-color: transparent; background-image: url(:/icons/arrow-right_grey-16x.png); background-repeat: no-repeat;"
-                                      " background-position: right center; background-origin: padding; }"
-                                      "QAbstractButton[settingsChevronRow=\"true\"]:hover { background-color: %3; }"
-                                      "QAbstractButton[settingsChevronRow=\"true\"]:focus { border: 1px solid %5; }"
-                                      // Carries no setting, so tinted rather than framed like a card
-                                      "QGroupBox[settingsHero=\"true\"] { background-color: %4; border: 1px solid %5; }"
-                                      "#settingsHeroHeadline { font-weight: bold; font-size: 115%; }"
-                                      "#settingsHeroDetail { color: %9; }")
-                                          .arg(pageColor.name(), textColor.name(), hoverSoft, accentSoft, accentColor.name(), accentText.name(), borderColor.name(), cardColor.name(), mutedText.name())
-                                          .arg(markerSoft, QString::number(accentBarStop, 'f', 5), QString::number(accentBarStop + 0.0001, 'f', 5))
-                                          .arg(QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5))
-                                          // %15, the surface the search box is sunk into - %8 above
-                                          // is the card the rest of the shell is laid out on - and
-                                          // the two corners of the scale this dialog draws with
-                                          .arg(fieldColor.name(), QString::number(scmRadiusProminentInput), QString::number(scmRadiusPanel))
+    mpWidget_shell->setStyleSheet(qsl("#settingsShell, #settingsSidebar, #settingsContent { background-color: %1; }").arg(pageColor.name())
+                                  // The panel down the left, drawn the one way the editor's is
+                                  + sidebarStyleSheet(qsl("settingsCategoryList"), qsl("settingsSidebarSeparator"), textColor, scmSidebarMetrics, tokens)
+                                  + qsl("#settingsStack { background: transparent; }"
+                                        // The shell's own surfaces keep the page colour even when a
+                                        // profile stylesheet paints every QWidget it can reach.
+                                        // Painted rather than left transparent, as a transparent
+                                        // surface falls back to the palette that stylesheet changed.
+                                        "QWidget[settingsSurface=\"true\"] { background-color: %1; border: none; }"
+                                        "#settingsWordmark { font-weight: bold; font-size: 125%; }"
+                                        "#settingsPageTitle { font-weight: bold; font-size: 145%; }"
+                                        // Taller than the controls on a page and the one thing the
+                                        // panel it heads is worked from, so it takes a panel's corner
+                                        "#settingsSearchField { border: 1px solid %6; border-radius: %11px; padding-left: 6px; background-color: %10; }"
+                                        "#settingsSearchField:focus { border: 1px solid %5; }"
+                                        // The top margin lifts the title clear of the frame, rather
+                                        // than leaving it cutting through the card's border
+                                        "QGroupBox[settingsCard=\"true\"] { background-color: %7; border: 1px solid %6; border-radius: %12px; margin-top: 24px; padding: 16px; font-weight: bold; }"
+                                        "QGroupBox[settingsCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
+                                        // ...but only the title is bold, not everything the card holds:
+                                        "QGroupBox[settingsCard=\"true\"] > * { font-weight: normal; }"
+                                        // A card carrying a single option needs no heading, nor room above for one
+                                        "QGroupBox[settingsCardPlain=\"true\"] { margin-top: 0px; }"
+                                        // A group box the .ui file nests inside what is now a card
+                                        // would draw a second frame; a heading alone divides them
+                                        "QGroupBox[settingsCard=\"true\"] QGroupBox { border: none; background: transparent; margin-top: 20px; padding: 0px 0px 0px 8px; font-weight: bold; }"
+                                        "QGroupBox[settingsCard=\"true\"] QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
+                                        "#settingsMigrationBanner { background-color: %4; border: 1px solid %6; border-radius: %12px; }"
+                                        "#settingsMigrationBannerTitle { font-weight: bold; }"
+                                        "#settingsSearchHeader { font-weight: bold; font-size: 110%; color: %2; }"
+                                        "#settingsSearchEmpty { padding: 32px; color: %8; }"
+                                        // The property is put on and taken off by the search itself:
+                                        "QLabel[searchMatch=\"true\"], QCheckBox[searchMatch=\"true\"], QRadioButton[searchMatch=\"true\"], QPushButton[searchMatch=\"true\"]"
+                                        " { background-color: %9; border-radius: 3px; }"
+                                        "QGroupBox[searchMatch=\"true\"]::title { background-color: %9; border-radius: 3px; }"
+                                        // Drawn as a piece of the heading it sits beside, not a button
+                                        "#settingsSearchBack, #settingsSubpageBack { border: 1px solid transparent; border-radius: 6px; padding: 2px 6px; color: %2; background: transparent; }"
+                                        "#settingsSearchBack:hover, #settingsSubpageBack:hover { background-color: %3; }"
+                                        "#settingsSearchBack:focus, #settingsSubpageBack:focus { border: 1px solid %5; }"
+                                        // Quieter than what they describe, and indented under it
+                                        "#settingsCardDescription { color: %8; }"
+                                        "QLabel[settingsControlDescription=\"true\"] { color: %8; margin-left: 20px; margin-bottom: 6px; }"
+                                        // The wrap holder shows the card through it, named outright
+                                        // so a profile stylesheet cannot paint a band across it
+                                        "#settingsCheckBoxWrap { background: transparent; border: none; }"
+                                        // A row that leads somewhere, clickable across the card's width
+                                        "QAbstractButton[settingsChevronRow=\"true\"] { text-align: left; padding: 8px 30px 8px 10px; border: 1px solid %6; border-radius: 6px;"
+                                        // Qt's stylesheets cannot scale a background image, so this
+                                        // is the 16px copy of the icon rather than the 48px one
+                                        " background-color: transparent; background-image: url(:/icons/arrow-right_grey-16x.png); background-repeat: no-repeat;"
+                                        " background-position: right center; background-origin: padding; }"
+                                        "QAbstractButton[settingsChevronRow=\"true\"]:hover { background-color: %3; }"
+                                        "QAbstractButton[settingsChevronRow=\"true\"]:focus { border: 1px solid %5; }"
+                                        // Carries no setting, so tinted rather than framed like a card
+                                        "QGroupBox[settingsHero=\"true\"] { background-color: %4; border: 1px solid %5; }"
+                                        "#settingsHeroHeadline { font-weight: bold; font-size: 115%; }"
+                                        "#settingsHeroDetail { color: %8; }")
+                                            .arg(pageColor.name(), textColor.name(), hoverSoft, accentSoft, accentColor.name(), borderColor.name(), cardColor.name(), mutedText.name(), markerSoft)
+                                            // %10, the surface the search box is sunk into - %7 above
+                                            // is the card the rest of the shell is laid out on - and
+                                            // the two corners of the scale this dialog draws with
+                                            .arg(fieldColor.name(), QString::number(scmRadiusProminentInput), QString::number(scmRadiusPanel))
                                   + cardIndicatorRules
                                   + cardTitleRule
                                   // A scroll area's bars answer only to a descendant selector

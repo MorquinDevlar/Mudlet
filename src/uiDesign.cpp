@@ -32,11 +32,13 @@
 #include <QDoubleSpinBox>
 #include <QFileInfo>
 #include <QFontComboBox>
+#include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPainter>
 #include <QPushButton>
 #include <QSpinBox>
@@ -417,6 +419,71 @@ QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& to
                "%1 QScrollBar::add-line, %1 QScrollBar::sub-line { width: 0px; height: 0px; }"
                "%1 QScrollBar::add-page, %1 QScrollBar::sub-page { background-color: %2; }")
             .arg(selectorPrefix, tokens.page.name(), blend(tokens.page, tokens.text, 0.22).name(), blend(tokens.page, tokens.text, 0.40).name());
+}
+
+QString sidebarStyleSheet(const QString& listName, const QString& separatorName, const QColor& itemColor, const SidebarMetrics& metrics, const ThemeTokens& tokens)
+{
+    // A border-left accent bar is drawn as an arc where the pill's corner
+    // radius is, pinching the bar to nothing at both ends. A gradient is
+    // clipped by the radius instead, so the bar keeps its width and the pill
+    // its rounded corners - at the cost of the bar being a fraction of the
+    // item's width, and a different fraction at each of the two widths.
+    const auto barStop = [](const int width, const int padding) {
+        return static_cast<qreal>(scmSidebarAccentBarWidth) / std::max(1, width - 2 * padding);
+    };
+    // Two stops a ten-thousandth apart rather than one: a gradient is
+    // interpolated between its stops, and the bar has to end rather than fade
+    const auto pillFill = [&tokens](const qreal stop) {
+        return qsl("qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %1, stop:%2 %1, stop:%3 %4, stop:1 %4)")
+                .arg(tokens.accent.name(), QString::number(stop, 'f', 5), QString::number(stop + 0.0001, 'f', 5), tokens.accentSoft);
+    };
+
+    const QString list = QLatin1Char('#') + listName;
+    const QString separator = QLatin1Char('#') + separatorName;
+    const QString accentBar = QString::number(scmSidebarAccentBarWidth);
+    // Or the platform style draws its own selection as a square box inside the
+    // rounded pill the rules below draw
+    return list
+           + qsl(" { background: transparent; border: none; outline: none; show-decoration-selected: 1;"
+                 " selection-background-color: transparent; selection-color: %1; }")
+                     .arg(tokens.accentText.name())
+           // The transparent left border keeps a chosen row's name from
+           // stepping sideways under its accent bar; outline:none drops a
+           // focus rectangle drawn square inside a round pill
+           + list + qsl("::item { border-radius: 8px; border-left: %1px solid transparent; padding-left: 7px; color: %2; outline: none; }").arg(accentBar, itemColor.name()) + list
+           + qsl("::item:hover { background-color: %1; }").arg(tokens.hoverSoft) + list
+           + qsl("::item:selected { color: %1; font-weight: bold; background: %2; }").arg(tokens.accentText.name(), pillFill(barStop(metrics.expandedWidth, metrics.padding)))
+           // Keyboard focus is otherwise indistinguishable from the selection;
+           // an event filter on the list puts scmProp_focused on
+           + list
+           + qsl("[settingsFocused=\"true\"]::item:selected { border: 1px solid %1; border-left: %2px solid %1; padding-left: 5px; }").arg(tokens.accent.name(), accentBar)
+           // On a rail the row is only as wide as its icon, so the padding
+           // goes and the bar is a different fraction
+           + list + qsl("[settingsRail=\"true\"]::item { padding-left: 0px; }") + list
+           + qsl("[settingsRail=\"true\"]::item:selected { background: %1; }").arg(pillFill(barStop(metrics.railWidth, metrics.railPadding))) + separator
+           + qsl(" { border: none; background-color: %1; margin: 8px %2px; }").arg(tokens.border.name(), QString::number(metrics.separatorInset)) + separator
+           + qsl("[settingsRail=\"true\"] { margin: 8px 2px; }");
+}
+
+bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& separatorName, const bool collapsed, const SidebarMetrics& metrics)
+{
+    const int wanted = collapsed ? metrics.railWidth : metrics.expandedWidth;
+    if (collapsed == pList->property(scmProp_rail).toBool() && pPane->width() == wanted) {
+        return false;
+    }
+    const int padding = collapsed ? metrics.railPadding : metrics.padding;
+    pPane->setFixedWidth(wanted);
+    pPane->layout()->setContentsMargins(padding, metrics.verticalPadding, padding, metrics.verticalPadding);
+    // What the shared delegate leaves the names out by, and the stylesheet
+    // draws the narrower selection pill from
+    pList->setProperty(scmProp_rail, collapsed);
+    repolish(pList);
+    for (auto* pSeparator : pList->findChildren<QFrame*>(separatorName)) {
+        pSeparator->setProperty(scmProp_rail, collapsed);
+        repolish(pSeparator);
+    }
+    pList->doItemsLayout();
+    return true;
 }
 
 // A stylesheet can only take a picture from a file or a resource, and neither

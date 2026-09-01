@@ -125,13 +125,14 @@ static const char* cButtonBaseColor = "baseColor";
 // that pasting can import and place each one
 static const QString cMultiItemPasteSeparator = qsl("\n<!--MUDLET_MULTI_ITEM_SEPARATOR-->\n");
 
-// The sidebar down the left of the editor, sharing the settings dialog's
-// measurements - see dlgProfilePreferences::buildSidebar()
+// The sidebar down the left of the editor, drawn by uiDesign::sidebarStyleSheet()
+// from the settings dialog's rules and these measurements of its own
 static constexpr int scmEditorSidebarPadding = 12;
+static constexpr int scmEditorSidebarVerticalPadding = 12;
 static constexpr int scmEditorSidebarMaximumWidth = 180;
 static constexpr int scmEditorSidebarRailWidth = 46;
 static constexpr int scmEditorSidebarRailPadding = 6;
-static constexpr int scmEditorSidebarAccentBarWidth = 3;
+static constexpr int scmEditorSidebarSeparatorInset = 12;
 static constexpr int scmEditorSidebarRowHeight = 36;
 static constexpr int scmEditorSidebarIconSize = 18;
 // What a row costs beside its name: the pill's accent bar and padding, the icon
@@ -140,6 +141,19 @@ static constexpr int scmEditorSidebarRowChrome = 40;
 // The narrowest the editor is worth showing its names beside - a floor for the
 // breakpoint, not a width anything is held to
 static constexpr int scmEditorContentColumnWidth = 640;
+
+// The one measurement of that sidebar which is not a constant is what it is
+// drawn at with the names showing, since that is the longest of the names -
+// see editorSidebarWidths()
+static uiDesign::SidebarMetrics editorSidebarMetrics(const int expandedWidth)
+{
+    return {.expandedWidth = expandedWidth,
+            .railWidth = scmEditorSidebarRailWidth,
+            .padding = scmEditorSidebarPadding,
+            .railPadding = scmEditorSidebarRailPadding,
+            .verticalPadding = scmEditorSidebarVerticalPadding,
+            .separatorInset = scmEditorSidebarSeparatorInset};
+}
 
 // A match row is stepped in from the heading naming the item it was found in -
 // far enough to read as belonging to it, and no further, because the panel is
@@ -15381,7 +15395,7 @@ void dlgTriggerEditor::buildEditorSidebar()
     mpWidget_editorSidebarPane->setObjectName(qsl("editorSidebarPane"));
     mpWidget_editorSidebarPane->setFixedWidth(scmEditorSidebarRailWidth);
     auto* pSidebarLayout = new QVBoxLayout(mpWidget_editorSidebarPane);
-    pSidebarLayout->setContentsMargins(scmEditorSidebarPadding, 12, scmEditorSidebarPadding, 12);
+    pSidebarLayout->setContentsMargins(scmEditorSidebarPadding, scmEditorSidebarVerticalPadding, scmEditorSidebarPadding, scmEditorSidebarVerticalPadding);
     pSidebarLayout->setSpacing(4);
 
     mpListWidget_editorSidebar = new QListWidget(mpWidget_editorSidebarPane);
@@ -15571,29 +15585,7 @@ void dlgTriggerEditor::updateEditorSidebarMode()
     // The window's width rather than the space left over: the threshold is what
     // the *expanded* sidebar needs, so collapsing cannot flip the test that
     // collapsed it and start it oscillating
-    setEditorSidebarCollapsed(width() < widths.collapseBelow, widths.expanded);
-}
-
-void dlgTriggerEditor::setEditorSidebarCollapsed(const bool collapsed, const int expandedWidth)
-{
-    const int wanted = collapsed ? scmEditorSidebarRailWidth : expandedWidth;
-    if (collapsed == mEditorSidebarCollapsed && mpWidget_editorSidebarPane->width() == wanted) {
-        return;
-    }
-    mEditorSidebarCollapsed = collapsed;
-    const int padding = collapsed ? scmEditorSidebarRailPadding : scmEditorSidebarPadding;
-    mpWidget_editorSidebarPane->setFixedWidth(wanted);
-    mpWidget_editorSidebarPane->layout()->setContentsMargins(padding, 12, padding, 12);
-    // What the shared delegate leaves the names out by, and the stylesheet draws
-    // the narrower selection pill from - the property name is the one the
-    // settings dialog established, as it is the delegate's contract
-    mpListWidget_editorSidebar->setProperty(uiDesign::scmProp_rail, collapsed);
-    uiDesign::repolish(mpListWidget_editorSidebar);
-    for (auto* pSeparator : mpListWidget_editorSidebar->findChildren<QFrame*>(qsl("editorSidebarSeparator"))) {
-        pSeparator->setProperty(uiDesign::scmProp_rail, collapsed);
-        uiDesign::repolish(pSeparator);
-    }
-    mpListWidget_editorSidebar->doItemsLayout();
+    uiDesign::setSidebarCollapsed(mpWidget_editorSidebarPane, mpListWidget_editorSidebar, qsl("editorSidebarSeparator"), width() < widths.collapseBelow, editorSidebarMetrics(widths.expanded));
 }
 
 // Called from applyEditorShellStyle() alone, which is both where the colours
@@ -16161,41 +16153,13 @@ void dlgTriggerEditor::applyEditorShellStyle()
     if (!mpWidget_editorSidebarPane) {
         return;
     }
-    // A border-left accent bar is drawn as an arc where the pill's corner radius
-    // is, pinching the bar to nothing at both ends. A gradient is clipped by the
-    // radius instead, so the bar keeps its width and the pill's rounded corners.
     const EditorSidebarWidths widths = editorSidebarWidths();
-    const qreal accentBarStop = static_cast<qreal>(scmEditorSidebarAccentBarWidth) / std::max(1, widths.expanded - 2 * scmEditorSidebarPadding);
-    // ...and the same bar on a collapsed sidebar's narrower row is a different
-    // fraction of a different width
-    const qreal railAccentBarStop = static_cast<qreal>(scmEditorSidebarAccentBarWidth) / (scmEditorSidebarRailWidth - 2 * scmEditorSidebarRailPadding);
-
-    mpWidget_editorSidebarPane->setStyleSheet(
-            qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %7; }"
-                // Or the platform style draws its own selection as a square box
-                // inside the rounded pill the rules below draw
-                "#editorSidebar { background: transparent; border: none; outline: none; show-decoration-selected: 1;"
-                " selection-background-color: transparent; selection-color: %6; }"
-                // The transparent left border keeps a chosen row's name from
-                // stepping sideways under its accent bar; outline:none drops a
-                // focus rectangle drawn square inside a round pill
-                "#editorSidebar::item { border-radius: 8px; border-left: 3px solid transparent; padding-left: 7px; color: %2; outline: none; }"
-                "#editorSidebar::item:hover { background-color: %3; }"
-                "#editorSidebar::item:selected { color: %6; font-weight: bold; background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-                " stop:0 %5, stop:%8 %5, stop:%9 %4, stop:1 %4); }"
-                // Keyboard focus is otherwise indistinguishable from the
-                // selection; eventFilter() puts the property on
-                "#editorSidebar[settingsFocused=\"true\"]::item:selected { border: 1px solid %5; border-left: 3px solid %5; padding-left: 5px; }"
-                // On a rail the row is only as wide as its icon, so the padding
-                // goes and the bar is a different fraction
-                "#editorSidebar[settingsRail=\"true\"]::item { padding-left: 0px; }"
-                "#editorSidebar[settingsRail=\"true\"]::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-                " stop:0 %5, stop:%10 %5, stop:%11 %4, stop:1 %4); }"
-                "#editorSidebarSeparator { border: none; background-color: %7; margin: 8px 12px; }"
-                "#editorSidebarSeparator[settingsRail=\"true\"] { margin: 8px 2px; }")
-                    .arg(pageColor.name(), mutedText.name(), hoverSoft, accentSoft, accentColor.name(), accentText.name(), borderColor.name(), QString::number(accentBarStop, 'f', 5))
-                    .arg(QString::number(accentBarStop + 0.0001, 'f', 5), QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5))
-            + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens));
+    mpWidget_editorSidebarPane->setStyleSheet(qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %2; }").arg(pageColor.name(), borderColor.name())
+                                              // The list itself is the settings dialog's sidebar, drawn from the
+                                              // same rules; the names are quieter here, as the rest of the
+                                              // editor's chrome is
+                                              + uiDesign::sidebarStyleSheet(qsl("editorSidebar"), qsl("editorSidebarSeparator"), mutedText, editorSidebarMetrics(widths.expanded), tokens)
+                                              + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens));
 
     // A different font is a different width for the names, so the breakpoint is
     // re-measured with the look it belongs to

@@ -74,6 +74,30 @@ forms, the settings dialog passes `#settingsStack` so the rules stop at the
 pages. Unscoped it would take the search field, the sidebar's editors and every
 tree's inline editor with it.
 
+### One sidebar for both windows
+
+The panel down the left is one component, not two that resemble each other.
+`sidebarStyleSheet(listName, separatorName, itemColor, metrics, tokens)` draws
+all of it: the pill per item, the hover wash, the chosen item's gradient and its
+accent bar, the ring that says the list holds the keyboard
+(`[settingsFocused="true"]`), the collapsed variants (`[settingsRail="true"]`)
+and the divider rows. `setSidebarCollapsed(pane, list, separatorName, collapsed,
+metrics)` is the other half - the pane's width and margins, the `settingsRail`
+property that both those rules and `SidebarItemDelegate` read the mode off, and
+the re-polish that makes it take. It answers whether anything moved, so a window
+with more to do at that moment can skip it too: the settings dialog hides its
+wordmark and offers the hidden names as tooltips, the editor's rows already
+carry a tooltip naming their shortcut.
+
+`SidebarMetrics` is the whole of what the two windows differ by - the two
+widths, the padding at each, the vertical padding and the divider inset - plus
+the colour an unchosen name is written in, which is muted in the editor where
+all the chrome is and full strength in the settings dialog where the sidebar is
+the navigation. The accent bar is a gradient stop rather than a `border-left`,
+which would be drawn as an arc where the pill's corner radius is and pinched to
+nothing at both ends; a stop is a *fraction* of the item, which is why those
+widths have to be known numbers.
+
 ### Radius follows control size
 
 How round a corner is says how big the thing behind it is. The same 8px that
@@ -127,6 +151,10 @@ is `sidebarWidths()` / `updateSidebarMode()` in
   between its expanded and rail modes on a one-pixel drag.
 - The test is against the window's own width, not the space left over, so
   collapsing cannot flip the condition that caused it.
+- The measurement is the per-window half. What is done with its answer is
+  `uiDesign::setSidebarCollapsed()`, shared with `editorSidebarWidths()` /
+  `updateEditorSidebarMode()` in `src/dlgTriggerEditor.cpp`, which measures the
+  longest row name where the settings dialog knows its width outright.
 
 ### Shell over .ui
 
@@ -206,6 +234,9 @@ Stylesheets select on these; setting one after the widget is shown needs an
 
 The editor redesign follows the same scheme with an `editor*` prefix:
 `editorShell`, `editorSidebar`, `editorPage_<key>`, `editorCard`, and so on.
+`settingsRail` and `settingsFocused` are the two exceptions and keep these names
+in both windows: they are the contract `SidebarItemDelegate` and
+`sidebarStyleSheet()` are written against.
 
 ## 4. Search over a widget tree
 
