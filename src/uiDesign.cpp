@@ -23,6 +23,7 @@
 #include "utils.h"
 
 #include <QAbstractButton>
+#include <QAction>
 #include <QApplication>
 #include <QBoxLayout>
 #include <QBuffer>
@@ -691,6 +692,41 @@ QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
     painter.fillRect(glyph.rect(), color);
     painter.end();
     return glyph;
+}
+
+QIcon tintedIcon(const QString& glyphOff, const QString& glyphOn, const ThemeTokens& tokens)
+{
+    const QPixmap sourceOff(glyphOff);
+    const QPixmap sourceOn(glyphOn == glyphOff ? sourceOff : QPixmap(glyphOn));
+
+    QIcon icon;
+    icon.addPixmap(tintedGlyph(sourceOff, tokens.mutedText), QIcon::Normal, QIcon::Off);
+    const QPixmap accentOff = tintedGlyph(sourceOff, tokens.accentText);
+    icon.addPixmap(accentOff, QIcon::Active, QIcon::Off);
+    icon.addPixmap(accentOff, QIcon::Selected, QIcon::Off);
+    const QPixmap accentOn = glyphOn == glyphOff ? accentOff : tintedGlyph(sourceOn, tokens.accentText);
+    icon.addPixmap(accentOn, QIcon::Normal, QIcon::On);
+    icon.addPixmap(accentOn, QIcon::Active, QIcon::On);
+    icon.addPixmap(accentOn, QIcon::Selected, QIcon::On);
+    const QPixmap disabledOff = tintedGlyph(sourceOff, tokens.disabledText);
+    icon.addPixmap(disabledOff, QIcon::Disabled, QIcon::Off);
+    icon.addPixmap(glyphOn == glyphOff ? disabledOff : tintedGlyph(sourceOn, tokens.disabledText), QIcon::Disabled, QIcon::On);
+    return icon;
+}
+
+QIcon tintedIcon(const QString& glyph, const ThemeTokens& tokens)
+{
+    return tintedIcon(glyph, glyph, tokens);
+}
+
+void restyleActionGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens)
+{
+    for (const ActionGlyph& glyph : glyphs) {
+        if (!glyph.pAction) {
+            continue;
+        }
+        glyph.pAction->setIcon(glyph.glyphOn.isEmpty() ? tintedIcon(glyph.glyphOff, tokens) : tintedIcon(glyph.glyphOff, glyph.glyphOn, tokens));
+    }
 }
 
 QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens)

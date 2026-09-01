@@ -890,7 +890,6 @@ void TDetachedWindow::createToolBar()
 
     //: This is a sub-item of the "Connect" item in the toolbar of a detached Mudlet window.
     mpActionConnect = new QAction(tr("Connect"), this);
-    mpActionConnect->setIcon(QIcon(qsl(":/icons/preferences-web-browser-cache.png")));
     mpActionConnect->setIconText(tr("Connect"));
     mpActionConnect->setObjectName(qsl("connect"));
 
@@ -917,44 +916,45 @@ void TDetachedWindow::createToolBar()
     mpButtonConnect->setDefaultAction(mpActionConnect);
 
     // Script Editor Actions
-    mpActionTriggers = new QAction(QIcon(qsl(":/icons/tools-wizard.png")), tr("Triggers"), this);
+    mpActionTriggers = new QAction(tr("Triggers"), this);
     mpActionTriggers->setToolTip(utils::richText(tr("Show and edit triggers")));
     mpToolBar->addAction(mpActionTriggers);
     mpActionTriggers->setObjectName(qsl("triggers_action"));
 
-    mpActionAliases = new QAction(QIcon(qsl(":/icons/system-users.png")), tr("Aliases"), this);
+    mpActionAliases = new QAction(tr("Aliases"), this);
     mpActionAliases->setToolTip(utils::richText(tr("Show and edit aliases")));
     mpToolBar->addAction(mpActionAliases);
     mpActionAliases->setObjectName(qsl("aliases_action"));
 
-    mpActionTimers = new QAction(QIcon(qsl(":/icons/chronometer.png")), tr("Timers"), this);
+    mpActionTimers = new QAction(tr("Timers"), this);
     mpActionTimers->setToolTip(utils::richText(tr("Show and edit timers")));
     mpToolBar->addAction(mpActionTimers);
     mpActionTimers->setObjectName(qsl("timers_action"));
 
-    mpActionButtons = new QAction(QIcon(qsl(":/icons/bookmarks.png")), tr("Buttons"), this);
+    mpActionButtons = new QAction(tr("Buttons"), this);
     mpActionButtons->setToolTip(utils::richText(tr("Show and edit easy buttons")));
     mpToolBar->addAction(mpActionButtons);
     mpActionButtons->setObjectName(qsl("buttons_action"));
 
-    mpActionScripts = new QAction(QIcon(qsl(":/icons/document-properties.png")), tr("Scripts"), this);
+    mpActionScripts = new QAction(tr("Scripts"), this);
     mpActionScripts->setToolTip(utils::richText(tr("Show and edit scripts")));
     mpToolBar->addAction(mpActionScripts);
     mpActionScripts->setObjectName(qsl("scripts_action"));
 
-    mpActionKeys = new QAction(QIcon(qsl(":/icons/preferences-desktop-keyboard.png")), tr("Keys"), this);
+    mpActionKeys = new QAction(tr("Keys"), this);
     mpActionKeys->setToolTip(utils::richText(tr("Show and edit keys")));
     mpToolBar->addAction(mpActionKeys);
     mpActionKeys->setObjectName(qsl("keys_action"));
 
-    mpActionVariables = new QAction(QIcon(qsl(":/icons/variables.png")), tr("Variables"), this);
+    mpActionVariables = new QAction(tr("Variables"), this);
     mpActionVariables->setToolTip(utils::richText(tr("Show and edit Lua variables")));
     mpToolBar->addAction(mpActionVariables);
     mpActionVariables->setObjectName(qsl("variables_action"));
 
     // Mute button with dropdown
     mpButtonMute = new QToolButton(this);
-    mpButtonMute->setText(tr("Mute"));
+    //: Label under the toolbar button of a detached Mudlet window that mutes and unmutes all media; the button's icon shows the current state
+    mpButtonMute->setText(tr("Sound"));
     mpButtonMute->setObjectName(qsl("mute"));
     mpButtonMute->setContextMenuPolicy(Qt::ActionsContextMenu);
     mpButtonMute->setPopupMode(QToolButton::MenuButtonPopup);
@@ -962,19 +962,17 @@ void TDetachedWindow::createToolBar()
     mpToolBar->addWidget(mpButtonMute);
 
     mpActionMuteMedia = new QAction(tr("Mute all media"), this);
-    mpActionMuteMedia->setIcon(QIcon(qsl(":/icons/mute.png")));
-    mpActionMuteMedia->setIconText(tr("Mute all media"));
+    //: Label under the toolbar button of a detached Mudlet window that mutes and unmutes all media; the button's icon shows the current state
+    mpActionMuteMedia->setIconText(tr("Sound"));
     mpActionMuteMedia->setObjectName(qsl("muteMedia"));
     mpActionMuteMedia->setCheckable(true);
 
     mpActionMuteAPI = new QAction(tr("Mute sounds from Mudlet (triggers, scripts, etc.)"), this);
-    mpActionMuteAPI->setIcon(QIcon(qsl(":/icons/mute.png")));
     mpActionMuteAPI->setIconText(tr("Mute sounds from Mudlet (triggers, scripts, etc.)"));
     mpActionMuteAPI->setObjectName(qsl("muteAPI"));
     mpActionMuteAPI->setCheckable(true);
 
     mpActionMuteGame = new QAction(tr("Mute sounds from the game (MCMP, MSP)"), this);
-    mpActionMuteGame->setIcon(QIcon(qsl(":/icons/mute.png")));
     mpActionMuteGame->setIconText(tr("Mute sounds from the game (MCMP, MSP)"));
     mpActionMuteGame->setObjectName(qsl("muteGame"));
     mpActionMuteGame->setCheckable(true);
@@ -993,11 +991,10 @@ void TDetachedWindow::createToolBar()
     mpToolBar->addWidget(mpButtonDiscord);
 
     mpActionDiscord = new QAction(tr("Open Discord"), this);
-    mpActionDiscord->setIcon(QIcon(qsl(":/icons/Discord-Logo-Color.png")));
     mpActionDiscord->setIconText(qsl("Discord"));
     mpActionDiscord->setObjectName(qsl("openDiscord"));
 
-    mpActionMudletDiscord = new QAction(QIcon(qsl(":/icons/mudlet_discord.png")), tr("Mudlet chat"), this);
+    mpActionMudletDiscord = new QAction(tr("Mudlet chat"), this);
     mpActionMudletDiscord->setToolTip(utils::richText(tr("Open a link to the Mudlet server on Discord")));
     mpToolBar->addAction(mpActionMudletDiscord);
     mpActionMudletDiscord->setObjectName(qsl("mudlet_discord"));
@@ -1009,22 +1006,22 @@ void TDetachedWindow::createToolBar()
     mpButtonDiscord->setDefaultAction(mpActionDiscord);
 
     // Map and other tools
-    mpActionMapper = new QAction(QIcon(qsl(":/icons/applications-internet.png")), tr("Map"), this);
+    mpActionMapper = new QAction(tr("Map"), this);
     mpActionMapper->setToolTip(utils::richText(tr("Show/hide the map")));
     mpToolBar->addAction(mpActionMapper);
     mpActionMapper->setObjectName(qsl("map_action"));
 
-    mpActionHelp = new QAction(QIcon(qsl(":/icons/help-hint.png")), tr("Manual"), this);
+    mpActionHelp = new QAction(tr("Manual"), this);
     mpActionHelp->setToolTip(utils::richText(tr("Browse reference material and documentation")));
     mpToolBar->addAction(mpActionHelp);
     mpActionHelp->setObjectName(qsl("manual_action"));
 
-    mpActionOptions = new QAction(QIcon(qsl(":/icons/configure.png")), tr("Settings"), this);
+    mpActionOptions = new QAction(tr("Settings"), this);
     mpActionOptions->setToolTip(utils::richText(tr("See and edit profile preferences")));
     mpToolBar->addAction(mpActionOptions);
     mpActionOptions->setObjectName(qsl("settings_action"));
 
-    mpActionNotes = new QAction(QIcon(qsl(":/icons/applications-accessories.png")), tr("Notepad"), this);
+    mpActionNotes = new QAction(tr("Notepad"), this);
     mpActionNotes->setToolTip(utils::richText(tr("Open a notepad that you can store your notes in")));
     mpToolBar->addAction(mpActionNotes);
     mpActionNotes->setObjectName(qsl("notepad_action"));
@@ -1039,16 +1036,13 @@ void TDetachedWindow::createToolBar()
     mpToolBar->addWidget(mpButtonPackageManagers);
 
     mpActionPackageManager = new QAction(tr("Package Manager"), this);
-    mpActionPackageManager->setIcon(QIcon(qsl(":/icons/package-manager.png")));
     mpActionPackageManager->setIconText(tr("Packages"));
     mpActionPackageManager->setObjectName(qsl("package_manager"));
 
     mpActionModuleManager = new QAction(tr("Module Manager"), this);
-    mpActionModuleManager->setIcon(QIcon(qsl(":/icons/module-manager.png")));
     mpActionModuleManager->setObjectName(qsl("module_manager"));
 
     mpActionPackageExporter = new QAction(tr("Package Exporter"), this);
-    mpActionPackageExporter->setIcon(QIcon(qsl(":/icons/package-exporter.png")));
     mpActionPackageExporter->setObjectName(qsl("package_exporter"));
 
     mpButtonPackageManagers->addAction(mpActionPackageManager);
@@ -1056,32 +1050,58 @@ void TDetachedWindow::createToolBar()
     mpButtonPackageManagers->addAction(mpActionPackageExporter);
     mpButtonPackageManagers->setDefaultAction(mpActionPackageManager);
 
-    mpActionReplay = new QAction(QIcon(qsl(":/icons/media-optical.png")), tr("Replay"), this);
+    mpActionReplay = new QAction(tr("Replay"), this);
     mpActionReplay->setObjectName(qsl("replay_action"));
     mpToolBar->addAction(mpActionReplay);
 
     // Standalone Reconnect action (like main window)
-    mpActionReconnectStandalone = new QAction(QIcon(qsl(":/icons/system-restart.png")), tr("Reconnect"), this);
+    mpActionReconnectStandalone = new QAction(tr("Reconnect"), this);
     mpActionReconnectStandalone->setToolTip(utils::richText(tr("Disconnects you from the game and connects once again")));
     mpActionReconnectStandalone->setObjectName(qsl("reconnect_standalone"));
     mpToolBar->addAction(mpActionReconnectStandalone);
 
     // About action (like main window)
-    mpActionAbout = new QAction(QIcon(qsl(":/icons/mudlet_information.png")), tr("About"), this);
+    mpActionAbout = new QAction(tr("About"), this);
     //: Tooltip for About Mudlet toolbar button (Used in multiple places - please ensure all have the same translation).
     mpActionAbout->setToolTip(utils::richText(tr("About Mudlet version, creators, and license.")));
     mpActionAbout->setObjectName(qsl("about_action"));
     mpToolBar->addAction(mpActionAbout);
 
     // Full screen toggle
-    QIcon fullScreenIcon;
-    fullScreenIcon.addPixmap(qsl(":/icons/view-fullscreen.png"), QIcon::Normal, QIcon::Off);
-    fullScreenIcon.addPixmap(qsl(":/icons/view-restore.png"), QIcon::Normal, QIcon::On);
-    mpActionFullScreenView = new QAction(fullScreenIcon, tr("Full Screen"), this);
+    mpActionFullScreenView = new QAction(tr("Full Screen"), this);
     mpActionFullScreenView->setToolTip(utils::richText(tr("Toggle Full Screen View")));
     mpActionFullScreenView->setCheckable(true);
     mpActionFullScreenView->setObjectName(qsl("fullscreen_action"));
     mpToolBar->addAction(mpActionFullScreenView);
+
+    // The same ledger the main window keeps, for the same reason: every picture
+    // on this bar is a monochrome glyph inked from the palette, and
+    // restyleToolBarIcons() redoes all of them when the theme moves
+    mToolBarGlyphs = {{mpActionConnect, qsl(":/icons/toolbar-connect.png"), QString()},
+                      {mpActionTriggers, qsl(":/icons/editor-triggers.png"), QString()},
+                      {mpActionAliases, qsl(":/icons/editor-aliases.png"), QString()},
+                      {mpActionTimers, qsl(":/icons/editor-timers.png"), QString()},
+                      {mpActionButtons, qsl(":/icons/editor-buttons.png"), QString()},
+                      {mpActionScripts, qsl(":/icons/editor-scripts.png"), QString()},
+                      {mpActionKeys, qsl(":/icons/editor-keys.png"), QString()},
+                      {mpActionVariables, qsl(":/icons/editor-variables.png"), QString()},
+                      {mpActionMuteMedia, qsl(":/icons/toolbar-sound-on.png"), qsl(":/icons/toolbar-sound-off.png")},
+                      {mpActionMuteAPI, qsl(":/icons/toolbar-sound-on.png"), qsl(":/icons/toolbar-sound-off.png")},
+                      {mpActionMuteGame, qsl(":/icons/toolbar-sound-on.png"), qsl(":/icons/toolbar-sound-off.png")},
+                      {mpActionDiscord, qsl(":/icons/toolbar-discord.png"), QString()},
+                      {mpActionMudletDiscord, qsl(":/icons/toolbar-discord.png"), QString()},
+                      {mpActionMapper, qsl(":/icons/toolbar-map.png"), QString()},
+                      {mpActionHelp, qsl(":/icons/toolbar-manual.png"), QString()},
+                      {mpActionOptions, qsl(":/icons/toolbar-settings.png"), QString()},
+                      {mpActionNotes, qsl(":/icons/toolbar-notepad.png"), QString()},
+                      {mpActionPackageManager, qsl(":/icons/toolbar-packages.png"), QString()},
+                      {mpActionModuleManager, qsl(":/icons/editor-module.png"), QString()},
+                      {mpActionPackageExporter, qsl(":/icons/toolbar-export.png"), QString()},
+                      {mpActionReplay, qsl(":/icons/toolbar-replay.png"), QString()},
+                      {mpActionReconnectStandalone, qsl(":/icons/toolbar-reconnect.png"), QString()},
+                      {mpActionAbout, qsl(":/icons/toolbar-about.png"), QString()},
+                      {mpActionFullScreenView, qsl(":/icons/toolbar-fullscreen.png"), qsl(":/icons/toolbar-fullscreen-exit.png")}};
+    restyleToolBarIcons();
 
     // Setup context menu for the toolbar
     mpToolBar->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -3158,12 +3178,23 @@ void TDetachedWindow::slot_muteGame()
     });
 }
 
+// The size the glyphs are drawn at is QToolBar's business, taken from the 128px
+// source: this is only ever about the colour they are inked in
+void TDetachedWindow::restyleToolBarIcons()
+{
+    uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
+}
+
 void TDetachedWindow::changeEvent(QEvent* event)
 {
     // Don't process events if the window is being destroyed
     if (mIsBeingDestroyed) {
         QMainWindow::changeEvent(event);
         return;
+    }
+
+    if (event->type() == QEvent::StyleChange || event->type() == QEvent::PaletteChange) {
+        restyleToolBarIcons();
     }
 
     if (event->type() == QEvent::WindowStateChange) {

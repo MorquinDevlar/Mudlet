@@ -258,6 +258,24 @@ so a redesign costs no translation churn and no `.ui` merge conflicts.
 - Re-tinting on a theme change happens in one place, `restyleSidebarIcons()`,
   called from `applyShellStyle()`.
 
+The main window toolbar is the third consumer, and the detached profile window
+builds the same bar from the same list (`src/mudlet.cpp`,
+`src/TDetachedWindow.cpp`). Its own glyphs are named `toolbar-*.png`. The seven
+editor concepts - Triggers, Aliases, Timers, Buttons, Scripts, Keys, Variables -
+take the editor's `editor-*.png` files rather than copies of them, so that a
+trigger is the same picture wherever it is offered; the module manager takes
+`editor-module.png` for the same reason. One glyph comes from outside Lucide: the
+Discord mark, from [Simple Icons](https://simpleicons.org) under CC0 1.0.
+
+Each window keeps a `QList<uiDesign::ActionGlyph>` of action to file and a
+`restyleToolBarIcons()` that re-inks every entry through
+`tintedIcon(glyphOff, glyphOn, tokens)`. That builds all eight mode/state
+pairs - `Normal`/Off in `mutedText`, `Normal`/On and every `Active` and
+`Selected` in `accentText`, `Disabled` in `disabledText` - so a checkable action
+that is currently doing something reads as lit. Full Screen and the Sound family
+pass a second file for their On state. The split buttons keep Qt's own
+`MenuButtonPopup` arrow and hover frame; nothing is drawn over the glyphs.
+
 ## 3. Naming
 
 ### Object names

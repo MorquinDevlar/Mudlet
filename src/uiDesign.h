@@ -22,6 +22,7 @@
 
 #include <QColor>
 #include <QHash>
+#include <QIcon>
 #include <QKeySequence>
 #include <QList>
 #include <QMap>
@@ -32,6 +33,7 @@
 #include <QVariant>
 
 class QAbstractButton;
+class QAction;
 class QBoxLayout;
 class QGridLayout;
 class QLayout;
@@ -316,6 +318,36 @@ QString rgba(const QColor& color, const qreal alpha);
 // The shape lives in the alpha channel: filling through it keeps the
 // antialiased edges that recolouring the pixels would harden into a staircase
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color);
+
+// One glyph inked for every mode a control asks a QIcon for, so that a toolbar
+// action carries the same picture in the same four inks wherever it is drawn:
+//
+// | Mode | Ink | Why |
+// | Normal, Off | mutedText | Quieter than the word under it, the way the editor's toolbar and the settings sidebar are drawn |
+// | Normal, On | accentText | A checkable action that is currently doing something reads as lit rather than as merely pressed |
+// | Active | accentText | What a QToolButton asks for while the pointer is on it - and the one mode a hover has to change |
+// | Selected | accentText | What a view washes a chosen row with, which it would otherwise do itself in the highlight colour |
+// | Disabled | disabledText | The tone the words of an unavailable action are set in |
+//
+// Two files where the two states are different pictures - full screen and its
+// way back out, sound on and sound off - and one where they are the same.
+QIcon tintedIcon(const QString& glyphOff, const QString& glyphOn, const ThemeTokens& tokens);
+QIcon tintedIcon(const QString& glyph, const ThemeTokens& tokens);
+
+// Which glyph a toolbar action carries. A window keeps a list of these because
+// it is the only thing that knows which of its actions have one; what the
+// tinting is, is the same everywhere.
+struct ActionGlyph
+{
+    QPointer<QAction> pAction;
+    QString glyphOff;
+    // Left empty where both states are the same picture
+    QString glyphOn;
+};
+
+// Re-inks every action in a window's list. Cheap enough to run whole rather than
+// per action: a theme change is the only thing that calls it.
+void restyleActionGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens);
 
 // The measurements one window's cards differ from the other's by. Everything in
 // neither - the surface, the hairline, the corner, the title placed as the first

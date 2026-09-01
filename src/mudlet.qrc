@@ -248,6 +248,24 @@
         <file>icons/tag_checkbox.png</file>
         <file>icons/tag_checkbox_checked.png</file>
         <file>icons/tag_checkbox_checked_grey.png</file>
+        <file>icons/toolbar-about.png</file>
+        <file>icons/toolbar-connect.png</file>
+        <file>icons/toolbar-discord.png</file>
+        <file>icons/toolbar-export.png</file>
+        <file>icons/toolbar-fullscreen-exit.png</file>
+        <file>icons/toolbar-fullscreen.png</file>
+        <file>icons/toolbar-manual.png</file>
+        <file>icons/toolbar-map.png</file>
+        <file>icons/toolbar-multiview.png</file>
+        <file>icons/toolbar-notepad.png</file>
+        <file>icons/toolbar-packages.png</file>
+        <file>icons/toolbar-reconnect.png</file>
+        <file>icons/toolbar-replay-faster.png</file>
+        <file>icons/toolbar-replay-slower.png</file>
+        <file>icons/toolbar-replay.png</file>
+        <file>icons/toolbar-settings.png</file>
+        <file>icons/toolbar-sound-off.png</file>
+        <file>icons/toolbar-sound-on.png</file>
         <file>icons/tools-report-bug.png</file>
         <file>icons/tools-wizard.png</file>
         <file>icons/unmute.png</file>

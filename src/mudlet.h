@@ -30,6 +30,7 @@
 #include "FontManager.h"
 #include "HostManager.h"
 #include "ShortcutsManager.h"
+#include "uiDesign.h"
 #include "utils.h"
 #include <memory>
 
@@ -320,6 +321,8 @@ public:
     void setShowTabConnectionIndicators(const bool);
     void setupPreInstallPackages(const QString&, const QString&);
     void setToolBarIconSize(int);
+    // Re-inks every glyph on the main toolbar from the palette as it now stands
+    void restyleToolBarIcons();
     void setToolBarVisibility(enums::controlsVisibility);
     void showChangelogIfUpdated();
     void slot_showConnectionDialog();
@@ -397,6 +400,10 @@ public:
     // Flag to prevent connection dialog from opening during telnet:// URI processing
     bool mProcessingTelnetUri = false;
     QToolBar* mpMainToolBar = nullptr;
+    // Which glyph each of the toolbar's actions carries, so that a theme change
+    // can re-ink all of them from one place. The replay bar's pair joins it when
+    // that bar is built.
+    QList<uiDesign::ActionGlyph> mToolBarGlyphs;
     QPointer<QSettings> mpSettings;
     QPointer<ShortcutsManager> mpShortcutsManager;
     TTabBar* mpTabBar = nullptr;
