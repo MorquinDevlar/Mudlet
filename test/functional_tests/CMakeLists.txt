@@ -116,6 +116,8 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorBannerViewSwitchTest.cpp
     EditorMinimumSizeTest.cpp
     EditorPlacementPersistenceTest.cpp
+    EditorSplitterRestoreTest.cpp
+    EditorSurfaceToneTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp
     VariableEditorWriteBackTest.cpp
@@ -161,6 +163,7 @@ set(STARTERUI_GROUP_TEST_SOURCES
 # The settings dialog: its sidebar-and-cards shell, the deep links into it, how
 # a change reaches the Host, and what it does with no profile loaded
 set(SETTINGS_GROUP_TEST_SOURCES
+    EditorThemePairTest.cpp
     SettingsAppearanceTest.cpp
     SettingsBannerTest.cpp
     SettingsDeepLinkTest.cpp

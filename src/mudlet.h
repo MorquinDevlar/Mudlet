@@ -117,6 +117,10 @@ public:
     // From https://stackoverflow.com/a/14678964/4805858 an answer to:
     // "How to find and replace string?" by "Czarek Tomczak":
     static bool loadEdbeeTheme(const QString& themeName, const QString& themeFile);
+    // Brings a theme a profile saved before the bundled theme became half of a
+    // light/dark pair forward to the name and file it goes by now; leaves every
+    // other theme alone
+    static void migrateBundledEditorTheme(QString& themeName, QString& themeFile);
     static bool loadLuaFunctionList();
     static std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
     static mudlet* self();
@@ -175,6 +179,20 @@ public:
     // translations done high enough will get a gold star to hide the last few percent
     // as well as encourage translators to maintain it
     static const int scmTranslationGoldStar = 95;
+    // The two editor themes Mudlet carries in its own resource file rather than
+    // downloading into the theme cache. They are named as a light/dark pair so
+    // that the counterpart lookup in the preferences carries a profile from one
+    // to the other when the application appearance changes, the same way it
+    // does for every downloaded theme that comes as a pair.
+    static constexpr QLatin1String scmEditorThemeNameLight{"Mudlet Light"};
+    static constexpr QLatin1String scmEditorThemeFileLight{"Mudlet Light.tmTheme"};
+    static constexpr QLatin1String scmEditorThemeNameDark{"Mudlet Dark"};
+    static constexpr QLatin1String scmEditorThemeFileDark{"Mudlet Dark.tmTheme"};
+    // What the light theme was called while it was the only one Mudlet shipped.
+    // Profiles saved by those versions still carry these two, so both forms have
+    // to keep resolving.
+    static constexpr QLatin1String scmEditorThemeNameLegacy{"Mudlet"};
+    static constexpr QLatin1String scmEditorThemeFileLegacy{"Mudlet.tmTheme"};
     QString scmVersion;
     QString confPath;
     // These have to be "inline" to satisfy the ODR (One Definition Rule):

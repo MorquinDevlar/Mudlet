@@ -856,11 +856,15 @@ void XMLimport::readHost(Host* pHost)
     pHost->mEditorTheme = attributes().value(QLatin1String("mEditorTheme")).toString();
     pHost->mEditorThemeFile = attributes().value(QLatin1String("mEditorThemeFile")).toString();
     if (pHost->mEditorTheme.isEmpty() || pHost->mEditorThemeFile.isEmpty()) {
-        pHost->mEditorTheme = qsl("Mudlet");
-        pHost->mEditorThemeFile = qsl("Mudlet.tmTheme");
+        pHost->mEditorTheme = mudlet::scmEditorThemeNameLight;
+        pHost->mEditorThemeFile = mudlet::scmEditorThemeFileLight;
     }
     pHost->mEditorThemeDark = attributes().value(QLatin1String("mEditorThemeDark")).toString();
     pHost->mEditorThemeFileDark = attributes().value(QLatin1String("mEditorThemeFileDark")).toString();
+    // Both halves, because a profile that was in dark mode when it last picked a
+    // theme could have picked the bundled one there too
+    mudlet::migrateBundledEditorTheme(pHost->mEditorTheme, pHost->mEditorThemeFile);
+    mudlet::migrateBundledEditorTheme(pHost->mEditorThemeDark, pHost->mEditorThemeFileDark);
     pHost->mThemePreviewItemID = attributes().value(QLatin1String("mThemePreviewItemID")).toInt();
     pHost->mThemePreviewType = attributes().value(QLatin1String("mThemePreviewType")).toString();
     pHost->setHaveColorSpaceId(attributes().value(QLatin1String("mSGRCodeHasColSpaceId")).toString() == QLatin1String("yes"));

@@ -1769,11 +1769,19 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpScrollArea->viewport()->setAutoFillBackground(false);
     mpWidget_triggerItems = new QWidget;
     mpWidget_triggerItems->setObjectName(qsl("editorPatternList"));
-    mpWidget_triggerItems->setAutoFillBackground(false);
     auto lay1 = new QVBoxLayout(mpWidget_triggerItems);
     lay1->setContentsMargins(0, 0, 0, 0);
     lay1->setSpacing(0);
     mpScrollArea->setWidget(mpWidget_triggerItems);
+    // After setWidget(), which turns the fill back on for whatever it is handed.
+    // The widget takes QPalette::Base as its background role off the viewport it
+    // is reparented into, so left filled it would carry the field colour. The
+    // named rule below holds it off as things stand - a styled background is
+    // painted in place of the palette brush, not over it - but that rule is
+    // written by applyEditorShellStyle(), which the first paint can beat and a
+    // guarded early return can skip. The one line the options column already
+    // does this with is at the foot of buildTriggerOptionsPanel().
+    mpWidget_triggerItems->setAutoFillBackground(false);
 
     lay1->addStretch();
 
@@ -11116,6 +11124,18 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     }
 }
 
+// The height the form column is asking for, kept inside what the two panes have
+// between them: however much the form wants, the code pane keeps its floor.
+int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
+{
+    // The form's height changes without a view switch - the trigger options
+    // panel opens inside it - and showing a widget only invalidates the layout
+    // of its immediate parent, so the chain up to the column is told first or
+    // this measures the form as it was before the panel appeared
+    uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
+    return std::clamp(mpNonCodeWidgets->sizeHint().height(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+}
+
 // Each view keeps its own sizes for the right hand splitter and puts them back
 // on the way in. That also ends any loan the trigger options panel had taken out
 // of the code pane: what it borrowed was measured against the geometry this
@@ -11129,6 +11149,31 @@ void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
         // would leave the code pane's heading, and every grip under it, drawn
         // at a thickness nothing else in the editor uses
         splitter_right->setHandleWidth(uiDesign::GripSplitter::scmHandleThickness);
+
+        // A saved split is only the user's up to what the form can fill. One
+        // saved while the form was taller - a view with more fields, or the
+        // trigger options panel open - hands this view a form pane of mostly
+        // nothing and starts the code editor that far down the window; a
+        // profile carrying 630px of form above 220px of code is what this was
+        // written for. Anything over what the form asks for now goes to the
+        // code pane, and the error console keeps its own height.
+        //
+        // The restore is the only thing clamped. Dragging the handle afterwards
+        // is the user asking for a taller form and nothing here runs then, and
+        // the measurement is of the form as it stands at this moment, so a view
+        // entered with the options panel open is left the room to show it -
+        // which is also what keeps refitSplitterForTriggerOptions() from having
+        // anything to borrow straight after.
+        QList<int> sizes = splitter_right->sizes();
+        const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
+        if (paneTotal > 0) {
+            const int wanted = formPaneHeightForItsContents(paneTotal);
+            if (sizes.at(0) > wanted) {
+                sizes[1] += sizes.at(0) - wanted;
+                sizes[0] = wanted;
+                splitter_right->setSizes(sizes);
+            }
+        }
     } else {
         // The user has not sized this view's panes themselves, so the form takes
         // the height its fields need and the code takes everything left. Sizes
@@ -11145,7 +11190,7 @@ void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
         QList<int> sizes = splitter_right->sizes();
         const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
         if (paneTotal > 0) {
-            sizes[0] = std::clamp(mpNonCodeWidgets->sizeHint().height(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+            sizes[0] = formPaneHeightForItsContents(paneTotal);
             sizes[1] = paneTotal - sizes.at(0);
             splitter_right->setSizes(sizes);
         } else {
@@ -16060,6 +16105,25 @@ void dlgTriggerEditor::applyEditorShellStyle()
     toolBar->setStyleSheet(shellStyleSheet);
     if (QStatusBar* pStatusBar = QMainWindow::statusBar()) {
         pStatusBar->setStyleSheet(shellStyleSheet);
+    }
+
+    // The window's own surface, painted rather than left to fall back on
+    // QPalette::Window. The toolbar, the status bar, the panel down the left
+    // and the trees on it all name the page colour, while everything from the
+    // frame an item is edited in down to the seven forms inside it is
+    // transparent - so without this the two halves of the window agree only for
+    // as long as the page colour and QPalette::Window do, which is not the case
+    // on a palette that answers the same thing to Window and to Base, macOS in
+    // light appearance among them: themeTokens() steps the page down from Window
+    // there to keep the cards above it, and the edit column would be left a
+    // shade lighter than the panel beside it.
+    //
+    // On the shell rather than on the window, whose stylesheet
+    // Host::setProfileStyleSheet() assigns the profile's Lua one to, and named
+    // outright rather than written as a bare QWidget rule, which would paint
+    // every widget in the window over the top of what draws it.
+    if (QWidget* pShell = QMainWindow::centralWidget()) {
+        pShell->setStyleSheet(qsl("#editorShell { background-color: %1; }").arg(pageColor.name()));
     }
 
     // The panel down the left. No colour is named for an unselected row: what a

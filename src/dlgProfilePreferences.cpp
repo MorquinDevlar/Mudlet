@@ -6246,8 +6246,12 @@ void dlgProfilePreferences::applyAll()
         if (pHost->mpEditorDialog
             && mSnapshot.anyDirty({code_editor_theme_selection_combobox, checkBox_showSpacesAndTabs, checkBox_showLineFeedsAndParagraphs, checkBox_autocompleteLuaCode, checkBox_showBidi})) {
             // The write above settled the choice into the Host, so the name comes
-            // from there rather than a box a script may have moved on from
-            pHost->mpEditorDialog->setThemeAndOtherSettings(pMudlet->inDarkMode() ? pHost->mEditorThemeDark : pHost->mEditorTheme);
+            // from there rather than a box a script may have moved on from - and
+            // through the getter, which is what falls back to the light choice
+            // for a profile that has never picked a theme in dark mode. Reading
+            // the dark one directly handed edbee an empty name, and an empty name
+            // is its own default theme rather than the profile's.
+            pHost->mpEditorDialog->setThemeAndOtherSettings(pHost->getEditorTheme());
         }
 
         if (mSnapshot.dirty(script_preview_combobox)) {
@@ -6841,7 +6845,13 @@ void dlgProfilePreferences::populateThemesList()
             }
         }
     }
-    sortedThemes << std::make_pair(qsl("Mudlet"), qsl("Mudlet.tmTheme"));
+    // The two Mudlet carries itself rather than downloading. Naming them as a
+    // light/dark pair is all it takes for findThemeCounterpart() to carry a
+    // profile from one to the other on an appearance change - and for the user
+    // to say no to that by picking anything else, which is then remembered as
+    // that appearance's choice.
+    sortedThemes << std::make_pair(QString(mudlet::scmEditorThemeNameLight), QString(mudlet::scmEditorThemeFileLight));
+    sortedThemes << std::make_pair(QString(mudlet::scmEditorThemeNameDark), QString(mudlet::scmEditorThemeFileDark));
 
     std::sort(sortedThemes.begin(), sortedThemes.end(), [](const auto& a, const auto& b) {
         return QString::localeAwareCompare(a.first, b.first) < 0;

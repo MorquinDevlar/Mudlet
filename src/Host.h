@@ -724,9 +724,9 @@ public:
     bool mEditorAutoComplete = true;
 
     // code editor theme for light mode (human-friendly name)
-    QString mEditorTheme = QLatin1String("Mudlet");
+    QString mEditorTheme = QLatin1String("Mudlet Light");
     // code editor theme file for light mode on disk for edbee to load
-    QString mEditorThemeFile = QLatin1String("Mudlet.tmTheme");
+    QString mEditorThemeFile = QLatin1String("Mudlet Light.tmTheme");
     // code editor theme for dark mode (human-friendly name), auto-populated on first dark mode switch
     QString mEditorThemeDark;
     // code editor theme file for dark mode on disk for edbee to load

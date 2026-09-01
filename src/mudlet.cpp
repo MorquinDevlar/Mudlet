@@ -979,7 +979,7 @@ void mudlet::initEdbee()
     //QFile file(fileName);
     //if( file.exists() && file.open(QIODevice::ReadOnly) ) {
 
-    loadEdbeeTheme(qsl("Mudlet"), qsl("Mudlet.tmTheme"));
+    loadEdbeeTheme(scmEditorThemeNameLight, scmEditorThemeFileLight);
 }
 
 void mudlet::loadMaps()
@@ -5850,6 +5850,22 @@ bool mudlet::loadLuaFunctionList()
     return true;
 }
 
+// The theme Mudlet ships was called "Mudlet" until a dark one joined it and the
+// two became a light/dark pair, and a profile saved before then still asks for
+// it by that name and file name. The file still resolves either way, but the
+// name no longer matches an entry in the theme list - which would leave the
+// preferences showing no theme at all - so a profile's stored choice is brought
+// forward once, on the way in, rather than translated at every read.
+void mudlet::migrateBundledEditorTheme(QString& themeName, QString& themeFile)
+{
+    if (!themeName.compare(scmEditorThemeNameLegacy, Qt::CaseSensitive)) {
+        themeName = scmEditorThemeNameLight;
+    }
+    if (!themeFile.compare(scmEditorThemeFileLegacy, Qt::CaseSensitive)) {
+        themeFile = scmEditorThemeFileLight;
+    }
+}
+
 // loads the needed edbee theme from disk for use
 bool mudlet::loadEdbeeTheme(const QString& themeName, const QString& themeFile)
 {
@@ -5955,16 +5971,20 @@ QString mudlet::getMudletPath(const enums::mudletPathType mode, const QString& e
         // map is loaded:
         return qsl("%1/profiles/%2/log/errors.txt").arg(confPath, extra1);
     case enums::editorWidgetThemePathFile:
-        // Takes two extra arguments (profile name, theme name) that returns the
-        // pathFileName of the theme file used by the edbee editor - also
-        // handles the special case of the default theme "mudlet.tmTheme" that
-        // is carried internally in the resource file:
-        if (extra1.compare(qsl("Mudlet.tmTheme"), Qt::CaseSensitive)) {
-            // No match
-            return qsl("%1/edbee/Colorsublime-Themes-master/themes/%2").arg(confPath, extra1);
+        // Takes one extra argument (theme file name) and returns the
+        // pathFileName of the theme file used by the edbee editor. Every theme
+        // but Mudlet's own two is downloaded into the cache; those two are
+        // carried internally in the resource file. The light one also answers
+        // to the file name it had while it was the only theme Mudlet shipped,
+        // so a profile saved by one of those versions still finds it whether or
+        // not its stored value has been brought forward yet.
+        if (!extra1.compare(scmEditorThemeFileLight, Qt::CaseSensitive) || !extra1.compare(scmEditorThemeFileLegacy, Qt::CaseSensitive)) {
+            return qsl(":/edbee_defaults/%1").arg(scmEditorThemeFileLight);
         }
-        // Match - return path to copy held in resource file
-        return qsl(":/edbee_defaults/Mudlet.tmTheme");
+        if (!extra1.compare(scmEditorThemeFileDark, Qt::CaseSensitive)) {
+            return qsl(":/edbee_defaults/%1").arg(scmEditorThemeFileDark);
+        }
+        return qsl("%1/edbee/Colorsublime-Themes-master/themes/%2").arg(confPath, extra1);
     case enums::editorWidgetThemeJsonFile:
         // Returns the pathFileName to the external JSON file needed to process
         // an edbee editor widget theme:
