@@ -1600,6 +1600,38 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     treeWidget_keys->hide();
     treeWidget_variables->hide();
 
+    // Hiding a widget invalidates the layout measurement Qt caches for it, but
+    // that invalidation only travels up to its containers while the widget is
+    // still visible. Everything hidden just above therefore leaves the
+    // containers still holding a minimum height measured while all seven main
+    // areas were on screen at once - their heights stacked, around 1600px. No
+    // event loop runs between here and readSettings(), so that stale figure is
+    // the one the first layout pass hands the window as its minimum height, and
+    // the editor opens at screen height however small the geometry the user
+    // left behind. Re-measuring the containers makes the minimum honest.
+    const QList<QWidget*> justHidden{mpTriggersMainArea,
+                                     mpTimersMainArea,
+                                     mpScriptsMainArea,
+                                     mpAliasMainArea,
+                                     mpActionsMainArea,
+                                     mpKeysMainArea,
+                                     mpVarsMainArea,
+                                     mpSourceEditorArea,
+                                     treeWidget_aliases,
+                                     treeWidget_actions,
+                                     treeWidget_timers,
+                                     treeWidget_scripts,
+                                     treeWidget_keys,
+                                     treeWidget_variables};
+    for (const QWidget* pWidget : justHidden) {
+        for (QWidget* pContainer = pWidget->parentWidget(); pContainer; pContainer = pContainer->parentWidget()) {
+            pContainer->updateGeometry();
+            if (pContainer == this) {
+                break;
+            }
+        }
+    }
+
     readSettings();
     slot_showAllTriggerControls(mShowAllTriggerControls);
 
@@ -1667,7 +1699,17 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     });
 
     mpScrollArea = mpTriggersMainArea->scrollArea;
+    // The pattern rows are part of the form, not a well sunk into it. A
+    // QAbstractScrollArea fills its viewport with QPalette::Base - the colour a
+    // field is filled with - which drew the whole edit column as a darker box
+    // laid over the page. Nothing here is typed into, so it carries the surface
+    // it sits on instead, and loses the frame that outlined it as separate.
+    mpScrollArea->setObjectName(qsl("editorPatternScroll"));
+    mpScrollArea->setFrameShape(QFrame::NoFrame);
+    mpScrollArea->viewport()->setAutoFillBackground(false);
     mpWidget_triggerItems = new QWidget;
+    mpWidget_triggerItems->setObjectName(qsl("editorPatternList"));
+    mpWidget_triggerItems->setAutoFillBackground(false);
     auto lay1 = new QVBoxLayout(mpWidget_triggerItems);
     lay1->setContentsMargins(0, 0, 0, 0);
     lay1->setSpacing(0);
@@ -15792,14 +15834,23 @@ QString dlgTriggerEditor::patternRowStyleSheet() const
                " margin: %6px 0px %7px 0px; background: transparent; }"
                "#editorAddPattern:hover { color: %3; }"
                "#editorAddPattern:disabled { color: %1; }"
-               "#editorPatternDropIndicator { background-color: %4; border: none; border-radius: 1px; }")
-            .arg(quietestText.name(),
-                 tokens.mutedText.name(),
-                 tokens.text.name(),
-                 tokens.accent.name(),
-                 uiDesign::rgba(tokens.text, 0.14),
-                 QString::number(scmEditorAddPatternMarginTop),
-                 QString::number(scmEditorAddPatternMarginBottom));
+               "#editorPatternDropIndicator { background-color: %4; border: none; border-radius: 1px; }"
+               // Named outright, so that a profile stylesheet cannot put the
+               // field colour back under the rows: the scroll area, the
+               // viewport Qt gives it, and the widget scrolled inside it. Named
+               // rather than "> QWidget", which would take the scroll bars too.
+               "#editorPatternScroll, #editorPatternScroll > #qt_scrollarea_viewport, #editorPatternList"
+               " { background: transparent; border: none; }")
+                   .arg(quietestText.name(),
+                        tokens.mutedText.name(),
+                        tokens.text.name(),
+                        tokens.accent.name(),
+                        uiDesign::rgba(tokens.text, 0.14),
+                        QString::number(scmEditorAddPatternMarginTop),
+                        QString::number(scmEditorAddPatternMarginBottom))
+           // Styling the scroll area at all takes its scroll bar with it, so
+           // the bar is given the same one the trees use
+           + uiDesign::scrollBarStyleSheet(qsl("#editorPatternScroll"), tokens);
 }
 
 // What a row is washed with while the mouse is on it. Painted by the row rather
@@ -15977,6 +16028,28 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                           + cardIndicatorRules + cardTitleRule + patternRowStyleSheet());
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();
+    }
+
+    if (mpScriptsMainArea) {
+        // The other list in the editor that shows what is there rather than
+        // taking something typed: the handlers a script is registered for, added
+        // and removed with the controls beside it. Left to itself it is filled
+        // with QPalette::Base like a field, which reads as a sunken box on the
+        // form; it takes the trees' treatment instead, keeping only the hairline
+        // that says where the list ends.
+        QListWidget* pHandlerList = mpScriptsMainArea->listWidget_script_registered_event_handlers;
+        pHandlerList->setObjectName(qsl("editorScriptHandlers"));
+        pHandlerList->setFrameShape(QFrame::NoFrame);
+        pHandlerList->viewport()->setAutoFillBackground(false);
+        mpScriptsMainArea->setStyleSheet(qsl("#editorScriptHandlers { background: transparent; border: 1px solid %1; border-radius: 6px; outline: none; }"
+                                             // The frame is the list's own, so the viewport inside it draws none
+                                             "#editorScriptHandlers > #qt_scrollarea_viewport { background: transparent; border: none; }"
+                                             "#editorScriptHandlers::item { border-radius: 4px; padding: 2px 4px; }"
+                                             "#editorScriptHandlers::item:hover { background-color: %2; }"
+                                             "#editorScriptHandlers::item:selected { color: %5;"
+                                             " background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
+                                                 .arg(borderColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
+                                         + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens));
     }
 
     if (mpSystemMessageArea) {
