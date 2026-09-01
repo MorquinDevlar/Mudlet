@@ -32,6 +32,7 @@
 #include <QVariant>
 
 class QAbstractButton;
+class QBoxLayout;
 class QGridLayout;
 class QLayout;
 class QLineEdit;
@@ -259,6 +260,14 @@ void markAsShellSurface(QWidget* pWidget);
 // back one row lower, carrying its row properties. The columns are untouched,
 // which keeps a .ui file's column stretches meaning what they said.
 void insertGridRowAtTop(QGridLayout* pGrid, QWidget* pWidget);
+
+// A control that sits inside a sentence - "Keep firing for [3] more lines" -
+// laid out from one translatable string with a %1 where the control goes, so a
+// language that reads the number first or last only moves the placeholder.
+// Whatever is either side of it becomes a label; the gaps are the row's own
+// spacing, so each half is trimmed. A translation that lost its %1 still reads
+// as a sentence: all of it leads, and the control follows.
+void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, QWidget* pControl);
 
 // A row that leads somewhere rather than setting something; the chevron at its
 // right edge is drawn by the shell stylesheet from the property this puts on.

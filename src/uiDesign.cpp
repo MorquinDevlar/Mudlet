@@ -24,6 +24,7 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QBoxLayout>
 #include <QBuffer>
 #include <QCheckBox>
 #include <QComboBox>
@@ -226,6 +227,29 @@ void insertGridRowAtTop(QGridLayout* pGrid, QWidget* pWidget)
     for (int row = 0; row < rows; ++row) {
         pGrid->setRowStretch(row + 1, rowProperties.at(row).first);
         pGrid->setRowMinimumHeight(row + 1, rowProperties.at(row).second);
+    }
+}
+
+void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, QWidget* pControl)
+{
+    // Null while the row is a bare layout waiting to be added to another one,
+    // and Qt reparents everything in it at that point
+    QWidget* pParent = pRow->parentWidget();
+
+    const qsizetype placeholder = translatedSentence.indexOf(qsl("%1"));
+    const QString before = (placeholder < 0 ? translatedSentence : translatedSentence.left(placeholder)).trimmed();
+    const QString after = placeholder < 0 ? QString() : translatedSentence.mid(placeholder + 2).trimmed();
+
+    // A screen reader announces a field by its own name and not by the labels
+    // beside it, so the control is given the whole sentence it sits in
+    pControl->setAccessibleName(QString(translatedSentence).remove(qsl("%1")).simplified());
+
+    if (!before.isEmpty()) {
+        pRow->addWidget(new QLabel(before, pParent));
+    }
+    pRow->addWidget(pControl);
+    if (!after.isEmpty()) {
+        pRow->addWidget(new QLabel(after, pParent));
     }
 }
 

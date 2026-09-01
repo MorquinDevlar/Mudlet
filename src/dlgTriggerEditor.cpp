@@ -14960,8 +14960,8 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     mpRadioButton_matchAny->setText(tr("Any pattern fires the trigger"));
     mpRadioButton_matchAll = new QRadioButton(mpWidget_matchModeRows);
     mpRadioButton_matchAll->setObjectName(qsl("editorMatchAll"));
-    //: The other matching mode: the trigger fires only once every pattern has matched. The line under it holds how many lines they have to match within.
-    mpRadioButton_matchAll->setText(tr("All patterns within"));
+    //: The other matching mode: the trigger fires only once every pattern has matched. The row under it says within how many lines.
+    mpRadioButton_matchAll->setText(tr("All patterns must match"));
     // What each mode does, said in full: the chip beside a row is two or three
     // letters, and the row itself is only a little longer
     //: Tooltip on the OR chip and on the "any pattern" choice beside it, saying what that matching mode does
@@ -14998,10 +14998,8 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     mpSpinBox_matchWithinLines->setAlignment(Qt::AlignCenter);
     mpSpinBox_matchWithinLines->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
     mpSpinBox_matchWithinLines->setToolTip(pForm->spinBox_lineMargin->toolTip());
-    //: Follows the number of lines all of a trigger's patterns have to match within
-    auto* pLabel_withinLines = new QLabel(tr("lines"), mpWidget_matchWithinRow);
-    pWithinLayout->addWidget(mpSpinBox_matchWithinLines);
-    pWithinLayout->addWidget(pLabel_withinLines);
+    //: Completes the matching mode chosen above it - all patterns must match - by saying how many lines they have to match within. %1 is replaced by a number box, and the words around it may be reordered to put it wherever the language needs it.
+    uiDesign::buildControlSentenceRow(pWithinLayout, tr("within %1 lines"), mpSpinBox_matchWithinLines);
     pWithinLayout->addStretch(1);
     pModeLayout->addWidget(mpWidget_matchWithinRow);
     pMatchingLayout->addWidget(mpWidget_matchModeRows);
@@ -15027,14 +15025,11 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
 
     auto* pStayOpenRow = new QHBoxLayout();
     pStayOpenRow->setSpacing(scmEditorModeChipGap);
-    //: Precedes the number of extra lines a trigger goes on firing for
-    pStayOpenRow->addWidget(new QLabel(tr("Keep firing for"), pCard_firing));
     // The one control that is nested deeper than the column just emptied
     uiDesign::detachFromLayout(pForm->spinBox_stayOpen);
     pForm->spinBox_stayOpen->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
-    pStayOpenRow->addWidget(pForm->spinBox_stayOpen);
-    //: Follows the number of extra lines a trigger goes on firing for
-    pStayOpenRow->addWidget(new QLabel(tr("more lines"), pCard_firing));
+    //: %1 is replaced by a number box holding how many extra lines the trigger keeps firing for, past the one it matched on. The words around it may be reordered to put it wherever the language needs it.
+    uiDesign::buildControlSentenceRow(pStayOpenRow, tr("Keep firing for %1 more lines"), pForm->spinBox_stayOpen);
     pStayOpenRow->addStretch(1);
     pFiringLayout->addLayout(pStayOpenRow);
 
