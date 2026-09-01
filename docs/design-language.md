@@ -276,6 +276,26 @@ that is currently doing something reads as lit. Full Screen and the Sound family
 pass a second file for their On state. The split buttons keep Qt's own
 `MenuButtonPopup` arrow and hover frame; nothing is drawn over the glyphs.
 
+### One mark, one size, on every row of an editor tree
+
+A row in the editor's six item trees leads with a state dot, and beside it a
+mark for what the dot cannot say: `editor-folder.png` for a group,
+`editor-filter.png` for a trigger other triggers are matched inside of,
+`editor-offset-timer.png` for a timer armed by the one above it,
+`editor-errors.png` for an item that will not compile - the same glyph the
+Errors view carries in the sidebar - and `editor-new-folder.png` /
+`editor-new-item.png` for something the editor has made and nobody has saved.
+`EditorTreeDelegate` resolves which from the item the row's id names and draws
+it; a row's own `QIcon` is never consulted, so no call site sets one.
+
+Every mark is drawn at 16px, the size `SearchResultDelegate` gives the glyphs in
+the results list, and a row leaves that much room whether it carries a mark or
+not - so a tree's heading, a folder and a plain item are one height and the
+hover fill on one row is the same shape as the selection pill on the next.
+The ink is `mutedText`, or the colour the trees' stylesheet writes a chosen row's
+name in (`accentText`) while the row is selected, so a mark and the name beside
+it are always the one colour.
+
 ## 3. Naming
 
 ### Object names

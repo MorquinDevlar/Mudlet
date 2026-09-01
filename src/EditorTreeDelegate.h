@@ -43,9 +43,12 @@ namespace uiDesign {
 //
 // The dot is drawn into the row's decoration rather than over the top of it, so
 // the view reserves room for it by itself and no measurement has to be repeated
-// here. An item whose picture says something a dot cannot - a folder's colour, a
-// filter chain, an offset timer, an error, an unsaved addition - keeps that
-// picture beside the dot; everything else loses it.
+// here. What a dot cannot say - that the row is a folder, a filter chain, an
+// offset timer, a broken item, an addition nobody has saved yet - is said by a
+// mark beside it, drawn from the same monochrome set the rest of the window is
+// and inked from the same palette. Every mark is drawn at one size, so a row
+// carrying one is exactly as tall as a row carrying none and a tree of them is
+// one ladder of evenly spaced rows.
 //
 // The room a row is held in by its depth, and the chevron that folds a group
 // away, are drawn into that same decoration - so the view is asked for no
@@ -67,17 +70,12 @@ public:
     void restyle();
 
     // What the editor writes into a row's accessible description while the item
-    // it stands for has never been saved. The only record of it there is for any
-    // of the six types: TTrigger, TAlias and TScript keep an mIsNew as well, but
-    // it is set on construction and cleared only by a save from this editor, so
-    // everything loaded out of the profile carries it for the whole session.
-    void setNewItemDescription(const QString& description) { mNewItemDescription = description; }
-
-    // The row at the top of a tree stands for the same thing as the row beside
-    // it in the sidebar and carries the same glyph, so it is drawn at the size
-    // the sidebar draws it rather than at the size the tree gives the pictures
-    // on the rows under it. Zero leaves the tree's own size in force.
-    void setHeadingIconSize(const int size);
+    // it stands for has never been saved - one string for an item and one for a
+    // group. The only record of it there is for any of the six types: TTrigger,
+    // TAlias and TScript keep an mIsNew as well, but it is set on construction
+    // and cleared only by a save from this editor, so everything loaded out of
+    // the profile carries it for the whole session.
+    void setNewDescriptions(const QString& item, const QString& folder);
 
     void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override;
 
@@ -127,32 +125,28 @@ private:
     // undecorated root and the one row at that depth is the tree's own heading.
     enum class ChevronState { None = 0, Closed = 1, Open = 2 };
 
-    // What a row is drawn from, resolved from the item its id names rather than
-    // from the picture the row happens to be carrying
+    // What the row is, where the dot does not say it. Resolved from the item the
+    // row's id names rather than from the picture the row happens to be
+    // carrying, which is no longer looked at.
+    enum class RowMark { None = 0, Folder = 1, Filter = 2, OffsetTimer = 3, Error = 4, NewFolder = 5, NewItem = 6 };
+    static constexpr int scmRowMarkCount = 7;
+
+    // What a row is drawn from, all of it read off the item its id names
     struct ItemState
     {
         bool known = false;
         DotState dot = DotState::Off;
-        // Whether the row's own picture is worth keeping beside the dot
-        bool keepIcon = false;
+        RowMark mark = RowMark::None;
     };
 
     // What a row's decoration ends up being: the room its depth holds it in and
     // the chevron standing in the last step of that room, then the dot, then the
-    // picture the row kept beside it - however many of those the row has
+    // mark - however many of those the row has
     struct Decoration
     {
         QIcon icon;
         QSize size;
     };
-    // Keyed on everything the leading edge is composed from - the dot's reading,
-    // the chevron's, the depth - and on the identity of the *pixmap* the row's
-    // picture was drawn from rather than of the QIcon holding it: every row
-    // built from one resource file has a QIcon of its own, and those all have
-    // different cache keys, while the pixmaps they hand out are the one cached
-    // pixmap that file loaded as. A tree of folders is then one composed
-    // picture rather than one per row.
-    using DecorationKey = QPair<int, qint64>;
 
     // Where a row's dot can be clicked, in viewport coordinates; a null
     // rectangle for a row that has no dot. The dot's own square grown by a
@@ -177,7 +171,11 @@ private:
     [[nodiscard]] ChevronState chevronOf(const QModelIndex& index, const int level) const;
     [[nodiscard]] QPixmap dotGlyph(const DotState state) const;
     [[nodiscard]] QPixmap chevronGlyph(const ChevronState state) const;
-    [[nodiscard]] Decoration decorationFor(const ItemState& state, const int level, const ChevronState chevron, const QPixmap& keptGlyph, const QSize& keptSize) const;
+    // The mark's glyph, tinted and cut to the one size every row's is drawn at.
+    // A chosen row's is inked in the colour its name is written in, which the
+    // tree's stylesheet names and this is handed by restyle().
+    [[nodiscard]] QPixmap markGlyph(const RowMark mark, const bool selected) const;
+    [[nodiscard]] Decoration decorationFor(const ItemState& state, const int level, const ChevronState chevron, const bool selected) const;
 
     TTreeWidget* mpTree = nullptr;
     TreeType mTreeType = TreeType::None;
@@ -189,10 +187,12 @@ private:
     QColor mRunningDot;
     QColor mQuietDot;
     QColor mChevronInk;
+    QColor mMarkInk;
+    // What the tree's stylesheet writes a chosen row's name in, so that the mark
+    // beside that name is the one colour with it
+    QColor mSelectedMarkInk;
     QString mNewItemDescription;
-    // What a tree's heading row draws its glyph at, which is the sidebar's size
-    // rather than the tree's - the two rows carry the same picture
-    int mHeadingIconSize = 0;
+    QString mNewFolderDescription;
     // Set by a press the dot or the chevron answered and cleared by the release
     // that closes it, wherever that release lands - and by the next press either
     // way, so that a press whose release never arrived cannot leave this saying
@@ -209,19 +209,16 @@ private:
     // ...and two for the chevron, kept in the same order the state is numbered
     // in with the leading slot for the row that has none left unused
     mutable QPixmap mChevronGlyphs[3];
+    // ...and one mark per reading in each of the two inks, which is every
+    // picture a tree of any size can ask for
+    mutable QPixmap mMarkGlyphs[2 * scmRowMarkCount];
     mutable qreal mDotGlyphRatio = 0.0;
-    // ...and the finished decorations built from them, so that a row carrying a
-    // picture is composed once rather than once per paint and once per measure.
-    // A row with no picture of its own is a leading edge and nothing else, of
-    // which there are only as many as there are depths - kept apart from the
-    // rest so that a tree wide enough to overflow the composed ones cannot throw
-    // those few away with them.
-    mutable QHash<DecorationKey, Decoration> mPlainDecorations;
-    mutable QHash<DecorationKey, Decoration> mDecorations;
-    // The size the view asks its pictures to be drawn at is a preference, and
-    // one the composed decorations are measured against - so it is kept out of
-    // their key by emptying them when it moves
-    mutable QSize mDecorationBaseSize;
+    // ...and the finished decorations built from them, so that a row is composed
+    // once rather than once per paint and once per measure. Keyed on everything
+    // the leading edge is composed from and nothing else - the dot's reading,
+    // the chevron's, the mark, whether the row is chosen, how far in it is held
+    // - so a tree of any size fills this with a handful of entries.
+    mutable QHash<int, Decoration> mDecorations;
 };
 
 } // namespace uiDesign

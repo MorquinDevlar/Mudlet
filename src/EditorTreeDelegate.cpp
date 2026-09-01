@@ -39,7 +39,7 @@ namespace uiDesign {
 
 namespace {
 constexpr int scmDotDiameter = 9;
-// Between the dot and whatever picture a row has earned the right to keep
+// Between the dot and the mark that follows it
 constexpr int scmDotGap = 6;
 constexpr qreal scmHollowDotPenWidth = 1.5;
 // How far past the dot a click still counts as one on it
@@ -50,11 +50,18 @@ constexpr int scmChevronBox = 9;
 // Half the height of the chevron's stroke inside that square
 constexpr qreal scmChevronArm = 2.6;
 constexpr qreal scmChevronPenWidth = 1.4;
+// The square every mark is drawn in - a folder's, an error's, a tree's own
+// heading - which is the size the panel's other list draws its glyphs at
+// (scmGlyphSize in SearchResultDelegate.cpp)
+constexpr int scmMarkSize = 16;
+// ...and the room every row leaves for the mark, which is the same room whether
+// the row has one or not. That is what makes the hover fill on a tree's heading
+// and the selection pill on an item under it the one height.
+constexpr int scmSlotHeight = std::max({scmMarkSize, scmDotDiameter, scmChevronBox});
 // What each level is held in by if the view had none to report, which it always
 // does have - a style with no metric for it is what this stands in for
 constexpr int scmFallbackIndentStep = 20;
-// A profile keeps its rows' pictures as one QIcon each, so a tree of nothing but
-// folders would otherwise have the cache grow a row at a time
+// A tree indented deeply enough would otherwise grow the cache a depth at a time
 constexpr int scmDecorationCacheLimit = 256;
 // A click carrying one of these is the selection being worked on rather than a
 // row being switched on or off
@@ -103,31 +110,29 @@ void EditorTreeDelegate::restyle()
     // Chrome the reader reaches for rather than reads, so it is drawn in the
     // tone the rest of the editor's chrome is
     mChevronInk = tokens.mutedText;
+    mMarkInk = tokens.mutedText;
+    // The colour the trees' stylesheet writes a chosen row's name in
+    mSelectedMarkInk = tokens.accentText;
     for (auto& cached : mDotGlyphs) {
         cached = QPixmap();
     }
     for (auto& cached : mChevronGlyphs) {
         cached = QPixmap();
     }
+    for (auto& cached : mMarkGlyphs) {
+        cached = QPixmap();
+    }
     clearDecorations();
 }
 
-void EditorTreeDelegate::setHeadingIconSize(const int size)
+void EditorTreeDelegate::setNewDescriptions(const QString& item, const QString& folder)
 {
-    if (size == mHeadingIconSize) {
-        return;
-    }
-    mHeadingIconSize = size;
-    if (mpTree) {
-        // A heading row's height is measured from its decoration, so the rows
-        // have to be asked for their size again
-        mpTree->doItemsLayout();
-    }
+    mNewItemDescription = item;
+    mNewFolderDescription = folder;
 }
 
 void EditorTreeDelegate::clearDecorations() const
 {
-    mPlainDecorations.clear();
     mDecorations.clear();
 }
 
@@ -146,19 +151,36 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
     }
     const int id = idData.toInt();
 
-    // An item the editor has made but nobody has saved yet keeps the picture
-    // that says so, and the description the add sites wrote is what says which
-    // those are. TTrigger, TAlias and TScript have a checkIfNew() of their own,
-    // but it answers the wrong question here: mIsNew starts true and is only
-    // ever cleared by a save made from this editor, so an item read back out of
-    // the profile - which is every item, every time the editor is opened -
-    // reports itself as new for the whole session. Reading the description
-    // instead is also what the other three types already do.
-    const bool newByDescription = !mNewItemDescription.isEmpty() && index.data(Qt::AccessibleDescriptionRole).toString() == mNewItemDescription;
+    // An item the editor has made but nobody has saved yet is marked as such,
+    // and the description the add sites wrote is what says which those are.
+    // TTrigger, TAlias and TScript have a checkIfNew() of their own, but it
+    // answers the wrong question here: mIsNew starts true and is only ever
+    // cleared by a save made from this editor, so an item read back out of the
+    // profile - which is every item, every time the editor is opened - reports
+    // itself as new for the whole session. Reading the description instead is
+    // also what the other three types already do.
+    const QString description = index.data(Qt::AccessibleDescriptionRole).toString();
+    const bool newByDescription = !description.isEmpty() && (description == mNewItemDescription || description == mNewFolderDescription);
+
+    // One reading per row, in the order the pictures they replace took
+    // precedence: a broken item says so before anything else, then one nobody
+    // has saved, then whatever the item is
+    const auto markFor = [newByDescription](const bool compiles, const bool folder, const RowMark kind) {
+        if (!compiles) {
+            return RowMark::Error;
+        }
+        if (newByDescription) {
+            return folder ? RowMark::NewFolder : RowMark::NewItem;
+        }
+        if (kind != RowMark::None) {
+            return kind;
+        }
+        return folder ? RowMark::Folder : RowMark::None;
+    };
 
     bool wantedOn = false;
     bool running = false;
-    bool distinctive = false;
+    RowMark mark = RowMark::None;
     switch (mTreeType) {
     case TreeType::Trigger: {
         TTrigger* pT = mpHost->getTriggerUnit()->getTrigger(id);
@@ -168,8 +190,8 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
         // A filter chain is a trigger that other triggers are matched inside of,
-        // and its picture is the only thing that says so
-        distinctive = pT->isFolder() || pT->isFilterChain() || newByDescription || !pT->state();
+        // and the mark is the only thing that says so
+        mark = markFor(pT->state(), pT->isFolder(), pT->isFilterChain() ? RowMark::Filter : RowMark::None);
         break;
     }
     case TreeType::Alias: {
@@ -179,7 +201,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        distinctive = pT->isFolder() || newByDescription || !pT->state();
+        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
         break;
     }
     case TreeType::Timer: {
@@ -196,8 +218,8 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         // reads for an offset timer.
         running = pT->isOffsetTimer() ? (pT->shouldBeActive() && pT->shouldAncestorsBeActive()) : (pT->isActive() && pT->ancestorsActive());
         // An offset timer runs from another timer firing rather than from a
-        // clock, which its own picture is what tells the reader
-        distinctive = pT->isFolder() || pT->isOffsetTimer() || newByDescription || !pT->state();
+        // clock, which the mark is what tells the reader
+        mark = markFor(pT->state(), pT->isFolder(), pT->isOffsetTimer() ? RowMark::OffsetTimer : RowMark::None);
         break;
     }
     case TreeType::Script: {
@@ -207,7 +229,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        distinctive = pT->isFolder() || newByDescription || !pT->state();
+        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
         break;
     }
     case TreeType::Action: {
@@ -217,7 +239,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        distinctive = pT->isFolder() || newByDescription || !pT->state();
+        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
         break;
     }
     case TreeType::Key: {
@@ -227,7 +249,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        distinctive = pT->isFolder() || newByDescription || !pT->state();
+        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
         break;
     }
     default:
@@ -236,7 +258,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
 
     state.known = true;
     state.dot = running ? DotState::Running : (wantedOn ? DotState::WantedOn : DotState::Off);
-    state.keepIcon = distinctive;
+    state.mark = mark;
     return state;
 }
 
@@ -272,6 +294,9 @@ void EditorTreeDelegate::syncGlyphRatio() const
         cached = QPixmap();
     }
     for (auto& cached : mChevronGlyphs) {
+        cached = QPixmap();
+    }
+    for (auto& cached : mMarkGlyphs) {
         cached = QPixmap();
     }
     // Which is also what the ratio is kept out of the decoration key by
@@ -352,55 +377,91 @@ QPixmap EditorTreeDelegate::chevronGlyph(const ChevronState state) const
     return glyph;
 }
 
-EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState& state, const int level, const ChevronState chevron, const QPixmap& keptGlyph, const QSize& keptSize) const
+QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) const
+{
+    QPixmap& glyph = mMarkGlyphs[2 * static_cast<int>(mark) + (selected ? 1 : 0)];
+    if (!glyph.isNull()) {
+        return glyph;
+    }
+
+    QString file;
+    switch (mark) {
+    case RowMark::Folder:
+        file = qsl(":/icons/editor-folder.png");
+        break;
+    case RowMark::Filter:
+        file = qsl(":/icons/editor-filter.png");
+        break;
+    case RowMark::OffsetTimer:
+        file = qsl(":/icons/editor-offset-timer.png");
+        break;
+    case RowMark::Error:
+        // The glyph the Errors view carries in the sidebar, so the row and the
+        // place it sends the reader are the one picture
+        file = qsl(":/icons/editor-errors.png");
+        break;
+    case RowMark::NewFolder:
+        file = qsl(":/icons/editor-new-folder.png");
+        break;
+    case RowMark::NewItem:
+        file = qsl(":/icons/editor-new-item.png");
+        break;
+    case RowMark::None:
+        return glyph;
+    }
+
+    const qreal ratio = mDotGlyphRatio;
+    glyph = tintedGlyph(QPixmap(file), selected ? mSelectedMarkInk : mMarkInk).scaled(QSize(scmMarkSize, scmMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph.setDevicePixelRatio(ratio);
+    return glyph;
+}
+
+EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState& state, const int level, const ChevronState chevron, const bool selected) const
 {
     syncGlyphRatio();
-    const QPixmap dot = state.known ? dotGlyph(state.dot) : QPixmap();
 
     // Everything the leading edge is composed from, in one number: what the dot
-    // is reading, which way the chevron points, and how far in the row is held
-    const int shape = (state.known ? 1 + static_cast<int>(state.dot) : 0) | (static_cast<int>(chevron) << 2) | (level << 4);
-    const bool plain = keptSize.isEmpty();
-    QHash<DecorationKey, Decoration>& cache = plain ? mPlainDecorations : mDecorations;
-    const DecorationKey key{shape, plain ? -1 : keptGlyph.cacheKey()};
-    if (const auto cached = cache.constFind(key); cached != cache.constEnd()) {
+    // is reading, which way the chevron points, which mark the row carries,
+    // whether the row is chosen, and how far in it is held
+    const int key = (state.known ? 1 + static_cast<int>(state.dot) : 0) | (static_cast<int>(chevron) << 2) | (static_cast<int>(state.mark) << 4) | ((selected ? 1 : 0) << 7) | (level << 8);
+    if (const auto cached = mDecorations.constFind(key); cached != mDecorations.constEnd()) {
         return cached.value();
     }
-    if (cache.size() >= scmDecorationCacheLimit) {
-        cache.clear();
+    if (mDecorations.size() >= scmDecorationCacheLimit) {
+        mDecorations.clear();
     }
 
     // The room the row's depth holds it in comes first, with the chevron
     // standing in the last step of it - where the view used to draw its branch
-    // arrow. Then the dot, then the picture the row has earned the right to keep
-    // - all of them centred on whichever is the taller, so that rows with and
-    // without a picture stay the same height.
+    // arrow. Then the dot, then the mark. The slot is the same height whichever
+    // of those the row has, which is what makes every row in the tree one
+    // height; only its width follows what is actually in it.
     const int lead = level * mIndentStep;
     const int dotWidth = state.known ? scmDotDiameter : 0;
-    const int gap = (dotWidth > 0 && !plain) ? scmDotGap : 0;
-    const int slotWidth = lead + dotWidth + gap + keptSize.width();
-    const int slotHeight = std::max({keptSize.height(), dotWidth, chevron == ChevronState::None ? 0 : scmChevronBox, 1});
+    const int markWidth = state.mark == RowMark::None ? 0 : scmMarkSize;
+    const int gap = (dotWidth > 0 && markWidth > 0) ? scmDotGap : 0;
+    const int slotWidth = std::max(lead + dotWidth + gap + markWidth, 1);
 
     const qreal ratio = mDotGlyphRatio;
-    QPixmap composed(qRound(slotWidth * ratio), qRound(slotHeight * ratio));
+    QPixmap composed(qRound(slotWidth * ratio), qRound(scmSlotHeight * ratio));
     composed.setDevicePixelRatio(ratio);
     composed.fill(Qt::transparent);
     QPainter painter(&composed);
     if (chevron != ChevronState::None) {
-        painter.drawPixmap(QPointF(lead - mIndentStep + (mIndentStep - scmChevronBox) / 2.0, (slotHeight - scmChevronBox) / 2.0), chevronGlyph(chevron));
+        painter.drawPixmap(QPointF(lead - mIndentStep + (mIndentStep - scmChevronBox) / 2.0, (scmSlotHeight - scmChevronBox) / 2.0), chevronGlyph(chevron));
     }
     if (state.known) {
-        painter.drawPixmap(QPointF(lead, (slotHeight - scmDotDiameter) / 2.0), dot);
+        painter.drawPixmap(QPointF(lead, (scmSlotHeight - scmDotDiameter) / 2.0), dotGlyph(state.dot));
     }
-    if (!plain) {
-        painter.drawPixmap(QPointF(lead + dotWidth + gap, (slotHeight - keptSize.height()) / 2.0), keptGlyph);
+    if (markWidth > 0) {
+        painter.drawPixmap(QPointF(lead + dotWidth + gap, (scmSlotHeight - scmMarkSize) / 2.0), markGlyph(state.mark, selected));
     }
     painter.end();
 
     Decoration decoration;
     decoration.icon = QIcon(composed);
-    decoration.size = QSize(slotWidth, slotHeight);
-    cache.insert(key, decoration);
+    decoration.size = QSize(slotWidth, scmSlotHeight);
+    mDecorations.insert(key, decoration);
     return decoration;
 }
 
@@ -408,36 +469,20 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
 {
     QStyledItemDelegate::initStyleOption(pOption, index);
 
-    if (pOption->decorationSize != mDecorationBaseSize) {
-        mDecorationBaseSize = pOption->decorationSize;
-        clearDecorations();
-    }
-
     const ItemState state = stateOf(index);
     const int level = levelOf(index);
     const ChevronState chevron = chevronOf(index, level);
     // Nothing to lead the row with: no dot, no room to hold it in and nothing
-    // folded inside it, which is what a tree's own heading row is. It carries
-    // the same glyph as the row beside it in the sidebar, so it is drawn at the
-    // size the sidebar draws it rather than at the tree's own - which is a
-    // preference, and a third again as large at its default.
+    // folded inside it, which is what a tree's own heading row is. It keeps the
+    // glyph restyleEditorTreeHeadingIcons() put on it - the same one the row
+    // beside it in the sidebar carries - drawn at the size every mark under it
+    // is drawn at, so the heading is exactly as tall as the rows it heads.
     if (!state.known && level < 1 && chevron == ChevronState::None) {
-        if (mHeadingIconSize > 0) {
-            pOption->decorationSize = QSize(mHeadingIconSize, mHeadingIconSize);
-        }
+        pOption->decorationSize = QSize(scmMarkSize, scmMarkSize);
         return;
     }
 
-    const QIcon rowIcon = pOption->icon;
-    // A row the dot says nothing about keeps whatever picture it was given: it
-    // is the picture that says what the row is
-    const bool keepIcon = state.known ? state.keepIcon : true;
-    const QSize keptSize = (keepIcon && !rowIcon.isNull()) ? rowIcon.actualSize(pOption->decorationSize) : QSize();
-    // Asked for before the lookup rather than inside the miss: this is what the
-    // composed decoration is keyed on, and QIcon hands back one shared pixmap
-    // for every row drawn from the same file
-    const QPixmap keptGlyph = keptSize.isEmpty() ? QPixmap() : rowIcon.pixmap(keptSize, glyphRatio(), QIcon::Normal, QIcon::Off);
-    const Decoration decoration = decorationFor(state, level, chevron, keptGlyph, keptSize);
+    const Decoration decoration = decorationFor(state, level, chevron, pOption->state & QStyle::State_Selected);
 
     // The decoration is the whole of the row's leading edge: the view lays room
     // out for it and the style draws it, so nothing here has to work out where a
@@ -471,7 +516,7 @@ QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const Q
     }
 
     // The decoration leads with the room the row's depth holds it in, and the
-    // dot is the square that follows it - then whatever picture the row kept.
+    // dot is the square that follows it - then the row's mark, if it has one.
     // The rest of the row's leading edge is left to start a drag from.
     const int lead = levelOf(index) * mIndentStep;
     const QRect dotRect(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmDotDiameter) / 2, scmDotDiameter, scmDotDiameter);

@@ -127,6 +127,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorSurfaceToneTest.cpp
     EditorTreeDotClickTest.cpp
     EditorTreeHeadingIconTest.cpp
+    EditorTreeRowHeightTest.cpp
     EditorTreeSelectionPillTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp

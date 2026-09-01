@@ -92,9 +92,14 @@
         <file>icons/editor-delete.png</file>
         <file>icons/editor-errors.png</file>
         <file>icons/editor-export.png</file>
+        <file>icons/editor-filter.png</file>
+        <file>icons/editor-folder.png</file>
         <file>icons/editor-import.png</file>
         <file>icons/editor-keys.png</file>
         <file>icons/editor-module.png</file>
+        <file>icons/editor-new-folder.png</file>
+        <file>icons/editor-new-item.png</file>
+        <file>icons/editor-offset-timer.png</file>
         <file>icons/editor-options.png</file>
         <file>icons/editor-paste.png</file>
         <file>icons/editor-redo.png</file>

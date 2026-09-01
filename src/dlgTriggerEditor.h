@@ -129,6 +129,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorSurfaceToneTest;
     friend class EditorTreeDotClickTest;
     friend class EditorTreeHeadingIconTest;
+    friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
@@ -532,8 +533,8 @@ private:
     EditorViewType resolveCurrentView();
     void saveTrigger();
     void saveAlias();
-    void computeAliasIcon(TAlias* pT, QIcon& icon, QString& itemDescription) const;
-    void setAliasNormalIcon(QTreeWidgetItem* pItem, TAlias* pT);
+    void computeAliasDescription(TAlias* pT, QString& itemDescription) const;
+    void setAliasNormalState(QTreeWidgetItem* pItem, TAlias* pT);
     void showAliasError(QTreeWidgetItem* pItem, const QString& name, const QString& error);
     void showAliasLoopWarning(QTreeWidgetItem* pItem, const QString& name);
     void applyAliasState(QTreeWidgetItem* pItem, TAlias* pT);
