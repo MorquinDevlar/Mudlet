@@ -148,6 +148,20 @@ property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
 16px padding - 12px in the editor's narrower options column. Pages are a single
 column of cards with 16px spacing (`createScrollPage()`, `buildPage()`).
 
+The card is one component for both windows, the way the sidebar is.
+`cardStyleSheet(metrics, tokens)` draws the frame and the title inside it, and
+`cardIndicatorStyleSheet(cardProperty, tokens)` the check indicator a checkable
+card's title begins with - a sheet of its own, because the title height the
+frame reserves room for has to be measured with those rules already in force.
+`CardMetrics` carries what the two windows differ by: the property the rules
+select on (`scmProp_settingsCard` or `scmProp_editorCard`, interpolated into the
+selectors rather than spelled out again), the padding, that measured title
+height, and the two variants only the settings dialog has so far - a plain
+property (`scmProp_settingsCardPlain`) and the flattening of a group box the
+`.ui` file nested inside a card. Everything else - the surface, the hairline, the
+corner, where the title goes, what the indicator is drawn as - is the same in
+both and comes out of those metrics and the tokens.
+
 The title is the card's first line **inside** the frame, not a heading above it:
 `subcontrol-origin: padding` with `left` and `top` set to the card's own
 padding, so the title starts on the same left edge as the controls under it. A

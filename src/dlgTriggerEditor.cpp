@@ -230,13 +230,22 @@ static constexpr int scmEditorOptionsSpinBoxWidth = 72;
 // into have to agree on it, or the hidden one clamps what was typed and echoes
 // the clamped value straight back, eating keystrokes.
 static constexpr int scmEditorMatchWithinLinesMax = 999;
-// A styled check indicator has no size of its own to fall back on
-static constexpr int scmEditorCardIndicatorSize = 13;
 // What a card leaves round what it holds - tighter than the settings dialog's
 // 16, as the options column is a third of the width a settings page is - and,
 // since the title is the first line inside the frame rather than a heading
 // above it, how far in from the frame the title starts as well
 static constexpr int scmEditorCardPadding = 12;
+
+// ...which, with the property the rules select on, is the whole of what the
+// editor's cards differ from the settings dialog's by; everything else about
+// them is drawn by uiDesign::cardStyleSheet(). This column has no card without
+// a title, and none holding a group box of the .ui file's own. The height of
+// the title's own line is measured under the font the window is running at, so
+// it is the one runtime number here.
+static uiDesign::CardMetrics cardMetrics(const int titleHeight)
+{
+    return {.cardProperty = uiDesign::scmProp_editorCard, .padding = scmEditorCardPadding, .titleHeight = titleHeight};
+}
 // The least the code pane is left with when the options panel borrows height
 // from it: below this the editor stops being one anything can be typed into
 static constexpr int scmEditorSourcePaneFloor = 120;
@@ -14795,7 +14804,7 @@ static int styleEditorIdChip(dlgTriggersMainArea* pForm)
 static QGroupBox* makeEditorCard(QWidget* pParent, const QString& title)
 {
     auto* pCard = new QGroupBox(title, pParent);
-    pCard->setProperty("editorCard", true);
+    pCard->setProperty(uiDesign::scmProp_editorCard, true);
     pCard->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     return pCard;
 }
@@ -15036,7 +15045,7 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // The last two cards are the group boxes themselves: their check box is the
     // switch the card is titled with, which is what a checkable card is
     auto* pCard_sound = pForm->groupBox_soundTrigger;
-    pCard_sound->setProperty("editorCard", true);
+    pCard_sound->setProperty(uiDesign::scmProp_editorCard, true);
     pCard_sound->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     //: Title of the card that plays a sound when a trigger fires; it is also the switch that turns the sound on
     pCard_sound->setTitle(tr("Play a sound"));
@@ -15059,7 +15068,7 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     pForm->lineEdit_soundFile->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto* pCard_highlight = pForm->groupBox_triggerColorizer;
-    pCard_highlight->setProperty("editorCard", true);
+    pCard_highlight->setProperty(uiDesign::scmProp_editorCard, true);
     pCard_highlight->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     //: Title of the card that recolours what a trigger matched; it is also the switch that turns the recolouring on
     pCard_highlight->setTitle(tr("Highlight matches"));
@@ -16090,7 +16099,6 @@ void dlgTriggerEditor::applyEditorShellStyle()
     mEditorShellStyleInputs = styleInputs;
     mEditorShellStyleApplied = true;
 
-    const bool darkPage = tokens.darkPage;
     const QColor pageColor = tokens.page;
     // The panel of items is a pane of its own between two columns drawn on the
     // page, and what parts one pane from the next is a groove rather than a
@@ -16221,18 +16229,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
     }
 
     if (mpTriggersMainArea) {
-        // Fusion draws a group box's check indicator from palette(window)
-        // darkened by 40%, which on a dark card is a 1.1:1 outline; a styled
-        // indicator gets no check mark of its own, so the checked state has to
-        // be drawn out in full. The outline is mixed over the card the box sits
-        // on, while the box itself is filled like every other control the user
-        // sets something with.
-        const QColor indicatorOutline = uiDesign::blend(cardColor, textColor, darkPage ? 0.55 : 0.45);
-        const QString cardIndicatorRules = qsl("QGroupBox[editorCard=\"true\"]::indicator"
-                                               " { width: %1px; height: %1px; border: 1px solid %2; border-radius: 3px; background-color: %3; }"
-                                               "QGroupBox[editorCard=\"true\"]::indicator:hover { border: 1px solid %4; }"
-                                               "QGroupBox[editorCard=\"true\"]::indicator:checked { border: 1px solid %4; image: url(:/icons/dialog-ok-apply_small.png); }")
-                                                   .arg(QString::number(scmEditorCardIndicatorSize), indicatorOutline.name(), fieldColor.name(), accentColor.name());
+        // The check indicator a checkable card's title begins with, drawn the
+        // one way the settings dialog's cards draw theirs
+        const QString cardIndicatorRules = uiDesign::cardIndicatorStyleSheet(uiDesign::scmProp_editorCard, tokens);
         // How much of the card's top padding is the title's rather than the gap
         // under it is a line of the type the title is drawn in - and the box
         // measured against the rules above has to be one they select on
@@ -16254,58 +16253,48 @@ void dlgTriggerEditor::applyEditorShellStyle()
         const QColor hoveredButton = uiDesign::blend(cardColor, textColor, scmEditorRaisedHoverWeight);
         const QColor hoveredBorder = uiDesign::blend(borderColor, textColor, scmEditorHoveredBorderWeight);
 
-        mpTriggersMainArea->setStyleSheet(qsl(
-                                                  // The title is the card's first line, inside the frame: the top
-                                                  // padding is what leaves room for it, and the same padding sets
-                                                  // it in from the left edge as the controls under it
-                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %8px;"
-                                                  " padding: %16px %17px %17px %17px; font-weight: bold; }"
-                                                  "QGroupBox[editorCard=\"true\"]::title { subcontrol-origin: padding; subcontrol-position: top left;"
-                                                  " left: %17px; top: %17px; padding: 0px; }"
-                                                  // ...but only the title is bold, not everything the card holds:
-                                                  "QGroupBox[editorCard=\"true\"] > * { font-weight: normal; }"
-                                                  // The rows the cards are built out of show the card through them,
-                                                  // named outright so a profile stylesheet cannot paint a band across one
-                                                  "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
-                                                  "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
-                                                  // What a field on the form's own row is, as against what a card's
-                                                  // rows hold: read at the size the rest of the row is read at
-                                                  "QLabel[editorRowLabel=\"true\"] { color: %3; background: transparent; }"
-                                                  // The box naming a matching mode; the chosen one carries the accent
-                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %9px; padding: 1px 0px;"
-                                                  " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
-                                                  "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                  // The button the options are opened from is one to press, so it is
-                                                  // lifted off the row the way a card is lifted off the page; the
-                                                  // strip that stands in for them while they are away is a line of
-                                                  // readings to click, so it is only outlined
-                                                  "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %11px;"
-                                                  " padding: %14px %15px; background-color: %1; }"
-                                                  "#toolButton_toggleExtraControls:hover { color: %7; background-color: %12; }"
-                                                  "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                  "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
-                                                  " background: transparent; text-align: left; }"
-                                                  "#editorOptionsSummary:hover { color: %7; border: 1px solid %13; }"
-                                                  // The ID reads as a label on the trigger, not as a second field: a
-                                                  // pill, whose corner is half the height its own type comes to.
-                                                  // Anything larger is clamped into an ellipse rather than rounded
-                                                  // further, which is why the number is measured rather than named.
-                                                  "#frameId { border: 1px solid %2; border-radius: %10px; background: transparent; }"
-                                                  "#frameId QLabel { color: %3; background: transparent; }"
-                                                  // The cards are what is drawn in the options column: the scroll
-                                                  // area holding them and the viewport Qt gives it show the page
-                                                  // through. Named outright, as the pattern rows are, so that a
-                                                  // profile stylesheet cannot put the field colour back behind them.
-                                                  "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
-                                                  " { background: transparent; border: none; }")
-                                                  .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
-                                                  .arg(QString::number(uiDesign::scmRadiusPanel), QString::number(uiDesign::scmRadiusChip))
-                                                  .arg(QString::number(idChipHeight / 2), QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
-                                                  .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
-                                                  // The card's top padding carries the title and the gap under it;
-                                                  // %17 is the padding the other three sides are given, which is
-                                                  // also what the title is set in by
-                                                  .arg(QString::number(scmEditorCardPadding + cardTitleHeight + uiDesign::scmCardTitleGap), QString::number(scmEditorCardPadding))
+        // The cards the options column is laid out in, drawn the one way the
+        // settings dialog's pages draw theirs
+        mpTriggersMainArea->setStyleSheet(uiDesign::cardStyleSheet(cardMetrics(cardTitleHeight), tokens)
+                                          + qsl(
+                                                    // The rows the cards are built out of show the card through them,
+                                                    // named outright so a profile stylesheet cannot paint a band across one
+                                                    "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
+                                                    "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
+                                                    // What a field on the form's own row is, as against what a card's
+                                                    // rows hold: read at the size the rest of the row is read at
+                                                    "QLabel[editorRowLabel=\"true\"] { color: %3; background: transparent; }"
+                                                    // The box naming a matching mode; the chosen one carries the accent
+                                                    "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %8px; padding: 1px 0px;"
+                                                    " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
+                                                    "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
+                                                    // The button the options are opened from is one to press, so it is
+                                                    // lifted off the row the way a card is lifted off the page; the
+                                                    // strip that stands in for them while they are away is a line of
+                                                    // readings to click, so it is only outlined
+                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %10px;"
+                                                    " padding: %13px %14px; background-color: %1; }"
+                                                    "#toolButton_toggleExtraControls:hover { color: %7; background-color: %11; }"
+                                                    "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
+                                                    "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
+                                                    " background: transparent; text-align: left; }"
+                                                    "#editorOptionsSummary:hover { color: %7; border: 1px solid %12; }"
+                                                    // The ID reads as a label on the trigger, not as a second field: a
+                                                    // pill, whose corner is half the height its own type comes to.
+                                                    // Anything larger is clamped into an ellipse rather than rounded
+                                                    // further, which is why the number is measured rather than named.
+                                                    "#frameId { border: 1px solid %2; border-radius: %9px; background: transparent; }"
+                                                    "#frameId QLabel { color: %3; background: transparent; }"
+                                                    // The cards are what is drawn in the options column: the scroll
+                                                    // area holding them and the viewport Qt gives it show the page
+                                                    // through. Named outright, as the pattern rows are, so that a
+                                                    // profile stylesheet cannot put the field colour back behind them.
+                                                    "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
+                                                    " { background: transparent; border: none; }")
+                                                    .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
+                                                    .arg(QString::number(uiDesign::scmRadiusChip), QString::number(idChipHeight / 2))
+                                                    .arg(QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
+                                                    .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
                                           + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();

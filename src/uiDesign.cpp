@@ -110,6 +110,16 @@ constexpr int scmSidebarItemGutter = 10;
 // out of the item rather than added to it, a pixel off either side, so the
 // padding gives both back and the name stays where it was.
 constexpr int scmSidebarFocusRingWidth = 1;
+// A styled check indicator has no size of its own to fall back on. How far right
+// of the frame edge this leaves a checkable card's title is not a constant to go
+// with it: styles disagree on the room after an indicator, which is between the
+// box and the words rather than before both.
+constexpr int scmCardIndicatorSize = 13;
+// How far that indicator's outline is taken from the card towards the words on
+// it. A dark card needs more of the step than a light one, which has the page's
+// own contrast to fall back on.
+constexpr qreal scmCardIndicatorOutlineOnDark = 0.55;
+constexpr qreal scmCardIndicatorOutlineOnLight = 0.45;
 
 // One channel of a colour, straightened out of the curve a display applies to it
 qreal linearised(const qreal channel)
@@ -639,6 +649,49 @@ QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
     painter.fillRect(glyph.rect(), color);
     painter.end();
     return glyph;
+}
+
+QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens)
+{
+    const QString cardProperty = QLatin1StringView(metrics.cardProperty);
+    const QString padding = QString::number(metrics.padding);
+    // The title is the card's first line, inside the frame: the top padding is
+    // what leaves room for it, and the same padding sets it in from the left
+    // edge as the controls under it
+    QString rules =
+            qsl("QGroupBox[%1=\"true\"] { background-color: %2; border: 1px solid %3; border-radius: %4px;"
+                " padding: %5px %6px %6px %6px; font-weight: bold; }"
+                "QGroupBox[%1=\"true\"]::title { subcontrol-origin: padding; subcontrol-position: top left;"
+                " left: %6px; top: %6px; padding: 0px; }"
+                // ...but only the title is bold, not everything the card holds:
+                "QGroupBox[%1=\"true\"] > * { font-weight: normal; }")
+                    .arg(cardProperty, tokens.card.name(), tokens.border.name(), QString::number(scmRadiusPanel), QString::number(metrics.padding + metrics.titleHeight + scmCardTitleGap), padding);
+    if (metrics.plainProperty) {
+        // A card carrying a single option needs no heading, nor room inside for one
+        rules += qsl("QGroupBox[%1=\"true\"] { padding-top: %2px; }").arg(QLatin1StringView(metrics.plainProperty), padding);
+    }
+    if (metrics.flattenNestedGroupBoxes) {
+        // A group box the .ui file nests inside what is now a card would draw a
+        // second frame; a heading alone divides them
+        rules += qsl("QGroupBox[%1=\"true\"] QGroupBox { border: none; background: transparent; margin-top: 20px; padding: 0px 0px 0px 8px; font-weight: bold; }"
+                     "QGroupBox[%1=\"true\"] QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }")
+                         .arg(cardProperty);
+    }
+    return rules;
+}
+
+QString cardIndicatorStyleSheet(const char* cardProperty, const ThemeTokens& tokens)
+{
+    // Mixed over the card the box sits on, while the box itself is filled like
+    // every other control the user sets something with
+    const QColor indicatorOutline = blend(tokens.card, tokens.text, tokens.darkPage ? scmCardIndicatorOutlineOnDark : scmCardIndicatorOutlineOnLight);
+    return qsl("QGroupBox[%1=\"true\"]::indicator { width: %2px; height: %2px; border: 1px solid %3; border-radius: 3px; background-color: %4; }"
+               "QGroupBox[%1=\"true\"]::indicator:hover { border: 1px solid %5; }"
+               // A fixed green check mark, so the fill under it is the field
+               // colour every other control is set from rather than an accent
+               // that could be orange
+               "QGroupBox[%1=\"true\"]::indicator:checked { border: 1px solid %5; image: url(:/icons/dialog-ok-apply_small.png); }")
+            .arg(QLatin1StringView(cardProperty), QString::number(scmCardIndicatorSize), indicatorOutline.name(), tokens.field.name(), tokens.accent.name());
 }
 
 // Where the style puts a card's title, on a throwaway box laid out under the

@@ -45,9 +45,11 @@ class TKeySequenceEdit;
 // look rather than a setting, so another dialog can be given the same one.
 namespace uiDesign {
 
-// Synonyms a control is searchable by that it does not show anywhere. The
-// property names the shell stylesheet selects on stay literals beside it: a
-// constant cannot be interpolated into a QStringLiteral.
+// Synonyms a control is searchable by that it does not show anywhere. A property
+// earns a constant here once something outside one window's own rules reads it -
+// a shared builder, or a delegate. The rest stay literals where they are
+// selected on: a constant cannot be interpolated into a QStringLiteral, and a
+// rule written out in one place has nothing to drift from.
 inline constexpr char scmProp_searchKeywords[] = "searchKeywords";
 // The sidebar is collapsed to icons only. Named for the dialog it started in
 // and kept that way in the editor, since it is the shared delegate's contract.
@@ -55,10 +57,14 @@ inline constexpr char scmProp_rail[] = "settingsRail";
 // ...and likewise the list holding the keyboard focus, which a QSS rule cannot
 // ask about on its own
 inline constexpr char scmProp_focused[] = "settingsFocused";
-// This group box is a card. The two windows draw the same card from their own
-// rules, so which property says so is the one thing that differs.
+// This group box is a card. Both windows draw their cards from cardStyleSheet()
+// below, so which property says so is the first of the few things that differ.
 inline constexpr char scmProp_settingsCard[] = "settingsCard";
 inline constexpr char scmProp_editorCard[] = "editorCard";
+// ...and a card carrying a single option, which needs no heading and so no room
+// inside for one. Only the settings dialog has such a card so far, but the
+// builder takes the name rather than assuming it.
+inline constexpr char scmProp_settingsCardPlain[] = "settingsCardPlain";
 
 // Every surface in either window is mixed from four palette colours and nothing
 // else, so that a theme change moves all of them together. The recipes live
@@ -294,6 +300,47 @@ QString rgba(const QColor& color, const qreal alpha);
 // The shape lives in the alpha channel: filling through it keeps the
 // antialiased edges that recolouring the pixels would harden into a staircase
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color);
+
+// The measurements one window's cards differ from the other's by. Everything in
+// neither - the surface, the hairline, the corner, the title placed as the first
+// line inside the frame, the weight it is set in - is the same in both and is
+// drawn out of these and the tokens.
+struct CardMetrics
+{
+    // Which of the two windows' cards the rules select. The frame itself is one
+    // recipe, so the property is the whole of what says whose cards are being
+    // drawn - and it is interpolated into the selectors rather than spelled out
+    // a second time.
+    const char* cardProperty = scmProp_settingsCard;
+    // ...and the property a card carrying a single option is marked with, which
+    // gives back the room a title would have taken. Left null by a window whose
+    // cards all carry one.
+    const char* plainProperty = nullptr;
+    // What the card leaves round what it holds - and, since the title is the
+    // first line inside the frame rather than a heading above it, how far in
+    // from the frame the title starts as well
+    int padding = 0;
+    // A line of the bold type that title is set in, which is the font the window
+    // is running at rather than a number a stylesheet could name: see
+    // measuredCardTitleHeight(), whose answer this is
+    int titleHeight = 0;
+    // Whether a card of this window's can hold a group box the .ui file nested
+    // inside it, which would otherwise draw a second frame within the card
+    bool flattenNestedGroupBoxes = false;
+};
+
+// The card the two windows lay their options out in: the frame, and the title
+// drawn as its first line inside it. The check indicator a checkable card's
+// title begins with is a sheet of its own, below, because the title height
+// asked for above has to be measured with those rules already in force.
+QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens);
+
+// Fusion draws a group box's check indicator from palette(window) darkened by
+// 40%, which on a dark card is a 1.1:1 outline - and the palette pass a window
+// makes afterwards cannot rescue it, as that role also carries the card's title
+// band. A styled indicator gets no check mark of its own, so the checked state
+// has to be drawn out in full.
+QString cardIndicatorStyleSheet(const char* cardProperty, const ThemeTokens& tokens);
 
 // A card's title is the first line inside its frame, so the card has to leave
 // room for it above the first control: how much is a line of the bold type the
