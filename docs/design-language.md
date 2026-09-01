@@ -23,16 +23,42 @@ never written as a hex literal. See `applyShellStyle()`
   text, scrollbar handles.
 - `rgba(color, alpha)` - a stylesheet colour string with an alpha component.
 
-Three palette roles carry the design: `QPalette::Base` (card),
-`QPalette::WindowText` (text), `QPalette::Highlight` (accent). Light and dark
-treatments are chosen from the measured lightness of the base colour
-(`darkPage`), not from `mudlet::inDarkMode()`, so a dark system theme under
-"follow the system" is handled too.
+Four palette roles carry the design: `QPalette::Window` (page),
+`QPalette::Base` (field), `QPalette::WindowText` (text), `QPalette::Highlight`
+(accent). Light and dark treatments are chosen from the measured lightness of the
+page colour (`darkPage`), not from `mudlet::inDarkMode()`, so a dark system theme
+under "follow the system" is handled too.
 
 This is correctness, not taste: a profile's Lua stylesheet can retheme the whole
 application, and a hardcoded colour becomes unreadable the moment it does. Read
 `qApp`'s palette rather than the dialog's own - assigning a stylesheet to a
 widget freezes that widget's palette.
+
+### Three tones of depth
+
+`themeTokens()` mixes three surfaces, and which one a rule reaches for is the
+whole of what says how deep the thing it draws sits. Pick by what the widget
+*is*, never by what colour looks right:
+
+| Token | Recipe | Use it for |
+| --- | --- | --- |
+| `page` | `QPalette::Window` | The window itself and every piece of it: toolbar, status bar, sidebar pane, tree and list viewports, scroll areas, the row a search field sits in, splitter handles |
+| `card` | `page` lifted towards white (6% on dark, 55% on light) | A panel raised off the page: the options cards, popup and menu surfaces |
+| `field` | `QPalette::Base` | Anything the user types into or picks a value in: line edits, combo boxes, spin boxes, the search field, a check indicator's fill |
+
+The order is fixed - `field` is sunk into `card`, `card` is lifted off `page` -
+and it is what makes the windows read as having depth rather than as flat
+collapsing to black. Deriving the page from `QPalette::Base` gets this exactly
+backwards: Base is the *input field* colour, near-black on a dark theme, so a
+page mixed off it ends up darker than the fields lying on it.
+
+Anything mixed to sit *on* a surface takes that surface as its `from`:
+`border`, `mutedText` and `disabledText` are blends over `page`; a card's check
+indicator outline is a blend over `card`; placeholder text is a blend over
+`field`. The three tones can collapse where a palette leaves no room - macOS
+answers white to `Window` and `Base` alike on its light appearance - so
+`themeTokens()` steps the page down instead of the card up when the lift would
+be under six levels of lightness. Neither window does that arithmetic itself.
 
 ### Font sizes are relative
 

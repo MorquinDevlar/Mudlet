@@ -58,8 +58,10 @@ public:
     void restyle();
 
     // What the editor writes into a row's accessible description while the item
-    // it stands for has never been saved - which for a timer, a button or a key
-    // is the only record that it is new, as none of the three has a checkIfNew()
+    // it stands for has never been saved. The only record of it there is for any
+    // of the six types: TTrigger, TAlias and TScript keep an mIsNew as well, but
+    // it is set on construction and cleared only by a save from this editor, so
+    // everything loaded out of the profile carries it for the whole session.
     void setNewItemDescription(const QString& description) { mNewItemDescription = description; }
 
     // Where a row's dot can be clicked, in viewport coordinates; a null

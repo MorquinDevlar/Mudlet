@@ -44,7 +44,7 @@
       <cursorShape>OpenHandCursor</cursorShape>
      </property>
      <property name="text">
-      <string notr="true">⋮⋮</string>
+      <string notr="true"/>
      </property>
      <property name="textFormat">
       <enum>Qt::PlainText</enum>

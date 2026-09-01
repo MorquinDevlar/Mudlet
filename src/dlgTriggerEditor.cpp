@@ -53,6 +53,7 @@
 #include "EditorItemXMLHelpers.h"
 #include "EditorModifyPropertyCommand.h"
 #include "EditorMoveItemCommand.h"
+#include "EditorPlaceholderButton.h"
 #include "EditorToggleActiveCommand.h"
 #include "EditorTreeDelegate.h"
 #include "GripSplitter.h"
@@ -82,9 +83,13 @@
 #include <QMessageBox>
 #include <QMetaEnum>
 #include <QMouseEvent>
+#include <QMoveEvent>
+#include <QPainter>
 #include <QPalette>
+#include <QPen>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScreen>
 #include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
@@ -198,6 +203,28 @@ static constexpr int scmEditorPatternDropIndicatorHeight = 2;
 static constexpr int scmEditorPatternDragThreshold = 4;
 // As many patterns as one trigger is allowed to hold
 static constexpr int scmEditorPatternRowLimit = 50;
+// The swatch each pattern type is named beside: a small rounded square, drawn at
+// the weight the rest of the row is drawn at
+static constexpr int scmEditorPatternSwatchSize = 12;
+static constexpr qreal scmEditorPatternSwatchRadius = 3.0;
+static constexpr qreal scmEditorPatternSwatchSaturation = 0.55;
+// Off the page the swatch lies on, the way every other coloured mark in the two
+// windows is: a hue says which type, the page says how light it is drawn
+static constexpr qreal scmEditorPatternSwatchLightnessOnDark = 0.58;
+static constexpr qreal scmEditorPatternSwatchLightnessOnLight = 0.45;
+// The grip at the left of a pattern row: two columns of three dots
+static constexpr qreal scmEditorPatternGripDotDiameter = 2.0;
+static constexpr qreal scmEditorPatternGripPitch = 3.0;
+static constexpr int scmEditorPatternGripColumns = 2;
+static constexpr int scmEditorPatternGripRows = 3;
+// The dots are a target of five pixels across; what the pointer has to hit is
+// the column they are centred in
+static constexpr int scmEditorPatternGripWidth = 12;
+// What the dashed frame of the button adding a pattern is held away from the row
+// above it and the edge below by. Named rather than written into the sheet
+// alone, because the button paints its own frame and has to inset by the same.
+static constexpr int scmEditorAddPatternMarginTop = 4;
+static constexpr int scmEditorAddPatternMarginBottom = 2;
 // Carrying a row up or down without the mouse. Not Ctrl+Shift+Up/Down, which is
 // already how the first and the last pattern are jumped to.
 static constexpr auto scmEditorPatternMoveUpKeys = Qt::CTRL | Qt::ALT | Qt::Key_Up;
@@ -208,6 +235,72 @@ static constexpr auto scmEditorPatternMoveDownKeys = Qt::CTRL | Qt::ALT | Qt::Ke
 // rows that run a one-off action instead of changing the view)
 static constexpr int scmRole_editorSidebarAction = Qt::UserRole;
 static constexpr int scmRole_editorSidebarView = Qt::UserRole + 1;
+
+// One swatch per entry of mPatternList, in that order, and the hues are the ones
+// the eight types have always been told apart by. A hue below zero is a type
+// with no colour of its own - the plain substring and the colour trigger, whose
+// own two wells say what it matches - and those are mixed off the page instead,
+// at the weight that keeps the pair apart from each other.
+struct EditorPatternSwatch
+{
+    qreal hue;
+    qreal neutralWeight;
+};
+
+static constexpr EditorPatternSwatch scmEditorPatternSwatches[]{
+        {-1.0, 0.72}, // substring
+        {0.58, 0.0},  // perl regex
+        {0.02, 0.0},  // start of line
+        {0.34, 0.0},  // exact match
+        {0.50, 0.0},  // lua function
+        {0.83, 0.0},  // line spacer
+        {-1.0, 0.40}, // color trigger
+        {0.13, 0.0},  // prompt
+};
+
+// Drawn at the screen's own ratio, so the rounded corners stay corners rather
+// than becoming steps on a retina display
+static QIcon editorPatternSwatchIcon(const QColor& fill, const QColor& outline, const qreal ratio)
+{
+    QPixmap swatch(qRound(scmEditorPatternSwatchSize * ratio), qRound(scmEditorPatternSwatchSize * ratio));
+    swatch.setDevicePixelRatio(ratio);
+    swatch.fill(Qt::transparent);
+
+    QPainter painter(&swatch);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    // Half a pen in on every side: a rectangle stroked on its own path would
+    // otherwise lose half the line off the edge of the pixmap
+    const QRectF body(0.5, 0.5, scmEditorPatternSwatchSize - 1.0, scmEditorPatternSwatchSize - 1.0);
+    painter.setPen(QPen(outline, 1.0));
+    painter.setBrush(fill);
+    painter.drawRoundedRect(body, scmEditorPatternSwatchRadius, scmEditorPatternSwatchRadius);
+    painter.end();
+    return QIcon(swatch);
+}
+
+// The grip a pattern row is dragged by. Painted rather than written as U+22EE
+// twice over: a grid of dots is what the rest of the editor's chrome is drawn
+// at, and no interface font has to be asked whether it has the character.
+static QPixmap editorPatternGripGlyph(const QColor& color, const qreal ratio)
+{
+    const qreal width = (scmEditorPatternGripColumns - 1) * scmEditorPatternGripPitch + scmEditorPatternGripDotDiameter;
+    const qreal height = (scmEditorPatternGripRows - 1) * scmEditorPatternGripPitch + scmEditorPatternGripDotDiameter;
+    QPixmap grip(qRound(width * ratio), qRound(height * ratio));
+    grip.setDevicePixelRatio(ratio);
+    grip.fill(Qt::transparent);
+
+    QPainter painter(&grip);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(color);
+    for (int column = 0; column < scmEditorPatternGripColumns; ++column) {
+        for (int row = 0; row < scmEditorPatternGripRows; ++row) {
+            painter.drawEllipse(QRectF(column * scmEditorPatternGripPitch, row * scmEditorPatternGripPitch, scmEditorPatternGripDotDiameter, scmEditorPatternGripDotDiameter));
+        }
+    }
+    painter.end();
+    return grip;
+}
 
 // Track whether the shared auto-complete provider has been initialized
 bool dlgTriggerEditor::smAutoCompleteInitialized = false;
@@ -1427,6 +1520,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // empty field is what puts the results away - see the textChanged() below
     comboBox_searchTerms->lineEdit()->setClearButtonEnabled(true);
     auto pLineEdit_searchTerm = comboBox_searchTerms->lineEdit();
+    //: Placeholder in the editor's search field, which searches the profile's own triggers, aliases, scripts and the rest
+    pLineEdit_searchTerm->setPlaceholderText(tr("Search items..."));
 
     mpAction_searchOptions = new QAction(tr("Search Options"), this);
     mpAction_searchOptions->setObjectName(qsl("mpAction_searchOptions"));
@@ -1465,6 +1560,22 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpAction_searchOptions->setMenu(pMenu_searchOptions);
 
     pLineEdit_searchTerm->addAction(mpAction_searchOptions, QLineEdit::LeadingPosition);
+
+    // The box's own drop-down is given no width by the shell stylesheet, so that
+    // the row reads as a field rather than as a list to pick from. The searches
+    // already run are still in it, and Alt+Down still opens them - this is the
+    // same door for the mouse, and it is only there once there is a search to go
+    // back to.
+    mpAction_searchHistory = pLineEdit_searchTerm->addAction(QIcon(), QLineEdit::TrailingPosition);
+    mpAction_searchHistory->setObjectName(qsl("mpAction_searchHistory"));
+    //: Tooltip on the small chevron at the right of the editor's search field, which reopens what was searched for before
+    mpAction_searchHistory->setToolTip(utils::richText(tr("Recent searches")));
+    connect(mpAction_searchHistory, &QAction::triggered, this, [this]() {
+        comboBox_searchTerms->showPopup();
+    });
+    connect(comboBox_searchTerms->model(), &QAbstractItemModel::rowsInserted, this, &dlgTriggerEditor::updateSearchHistoryAction);
+    connect(comboBox_searchTerms->model(), &QAbstractItemModel::rowsRemoved, this, &dlgTriggerEditor::updateSearchHistoryAction);
+    updateSearchHistoryAction();
 
     connect(mpScriptsMainArea->toolButton_script_add_event_handler, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_scriptMainAreaAddHandler);
     connect(mpScriptsMainArea->toolButton_script_remove_event_handler, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_scriptMainAreaDeleteHandler);
@@ -1564,41 +1675,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     lay1->addStretch();
 
-    QPixmap pixMap_subString(256, 256);
-    pixMap_subString.fill(Qt::black);
-    const QIcon icon_subString(pixMap_subString);
-
-    QPixmap pixMap_perl_regex(256, 256);
-    pixMap_perl_regex.fill(Qt::blue);
-    const QIcon icon_perl_regex(pixMap_perl_regex);
-
-    QPixmap pixMap_begin_of_line_substring(256, 256);
-    pixMap_begin_of_line_substring.fill(Qt::red);
-    const QIcon icon_begin_of_line_substring(pixMap_begin_of_line_substring);
-
-    QPixmap pixMap_exact_match(256, 256);
-    pixMap_exact_match.fill(Qt::green);
-    const QIcon icon_exact_match(pixMap_exact_match);
-
-    QPixmap pixMap_lua_function(256, 256);
-    pixMap_lua_function.fill(Qt::cyan);
-    const QIcon icon_lua_function(pixMap_lua_function);
-
-    QPixmap pixMap_line_spacer(256, 256);
-    pixMap_line_spacer.fill(Qt::magenta);
-    const QIcon icon_line_spacer(pixMap_line_spacer);
-
-    QPixmap pixMap_color_trigger(256, 256);
-    pixMap_color_trigger.fill(Qt::lightGray);
-    const QIcon icon_color_trigger(pixMap_color_trigger);
-
-    QPixmap pixMap_prompt(256, 256);
-    pixMap_prompt.fill(Qt::yellow);
-    const QIcon icon_prompt(pixMap_prompt);
-
     mPatternList << tr("substring") << tr("perl regex") << tr("start of line") << tr("exact match") << tr("lua function") << tr("line spacer") << tr("color trigger") << tr("prompt");
 
-    mPatternIcons = {icon_subString, icon_perl_regex, icon_begin_of_line_substring, icon_exact_match, icon_lua_function, icon_line_spacer, icon_color_trigger, icon_prompt};
+    // No row exists yet, so this only cuts the eight swatches; restyleEditorIcons()
+    // is what re-cuts them and hands them round once there are rows
+    restylePatternTypeIcons();
 
     setupAddPatternButton();
 
@@ -1895,15 +1976,69 @@ QIcon dlgTriggerEditor::patternDeleteIcon() const
     return deleteGlyph;
 }
 
+// The eight swatches, and the grip every row draws, cut once for the theme in
+// force and handed to every row - a trigger can hold fifty of them, and mixing
+// either per row is fifty times the same answer
+void dlgTriggerEditor::restylePatternTypeIcons()
+{
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    const qreal ratio = devicePixelRatioF();
+    // Enough of a hairline to hold a pale swatch against a light page without
+    // reading as a second colour
+    const QColor outline = uiDesign::blend(tokens.page, tokens.text, 0.35);
+    const qreal lightness = tokens.darkPage ? scmEditorPatternSwatchLightnessOnDark : scmEditorPatternSwatchLightnessOnLight;
+
+    mPatternIcons.clear();
+    mPatternIcons.reserve(static_cast<int>(std::size(scmEditorPatternSwatches)));
+    for (const auto& recipe : scmEditorPatternSwatches) {
+        const QColor fill = (recipe.hue < 0.0) ? uiDesign::blend(tokens.page, tokens.text, recipe.neutralWeight) : QColor::fromHslF(recipe.hue, scmEditorPatternSwatchSaturation, lightness);
+        mPatternIcons.append(editorPatternSwatchIcon(fill, outline, ratio));
+    }
+
+    mPatternGripGlyph = editorPatternGripGlyph(tokens.mutedText, ratio);
+
+    for (auto* patternEdit : std::as_const(mTriggerPatternEdit)) {
+        if (!patternEdit) {
+            continue;
+        }
+        applyPatternTypeIcons(patternEdit->comboBox_patternType);
+        applyPatternGripGlyph(patternEdit->label_dragHandle);
+    }
+}
+
+// At the size they were cut at rather than blown up to whatever a platform
+// style's default icon size happens to be
+void dlgTriggerEditor::applyPatternTypeIcons(QComboBox* pBox) const
+{
+    if (!pBox) {
+        return;
+    }
+    pBox->setIconSize(QSize(scmEditorPatternSwatchSize, scmEditorPatternSwatchSize));
+    for (int i = 0; i < mPatternIcons.size() && i < pBox->count(); ++i) {
+        pBox->setItemIcon(i, mPatternIcons.at(i));
+    }
+}
+
+void dlgTriggerEditor::applyPatternGripGlyph(QLabel* pHandle) const
+{
+    if (!pHandle) {
+        return;
+    }
+    // The dots are the whole of what the label shows: the .ui file's text is
+    // cleared rather than drawn under them
+    pHandle->setText(QString());
+    pHandle->setPixmap(mPatternGripGlyph);
+    pHandle->setFixedWidth(scmEditorPatternGripWidth);
+}
+
 void dlgTriggerEditor::createPatternItem(int index)
 {
     auto* pItem = new dlgTriggerPatternEdit(mpWidget_triggerItems);
     QComboBox* pBox = pItem->comboBox_patternType;
     pBox->addItems(mPatternList);
     pBox->setItemData(0, QVariant(index));
-    for (int i = 0; i < mPatternIcons.size(); ++i) {
-        pBox->setItemIcon(i, mPatternIcons.at(i));
-    }
+    applyPatternTypeIcons(pBox);
+    applyPatternGripGlyph(pItem->label_dragHandle);
     connect(pBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &dlgTriggerEditor::slot_setupPatternControls);
     connect(pItem->pushButton_fgColor, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_colorTriggerFg);
     connect(pItem->pushButton_bgColor, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_colorTriggerBg);
@@ -2144,15 +2279,16 @@ void dlgTriggerEditor::movePatternRowByKeyboard(const int offset)
 // keyboard without having typed in the one before it
 void dlgTriggerEditor::setupAddPatternButton()
 {
-    mpButton_addPattern = new QToolButton(mpWidget_triggerItems);
+    mpButton_addPattern = new uiDesign::PlaceholderButton(mpWidget_triggerItems);
     mpButton_addPattern->setObjectName(qsl("editorAddPattern"));
     mpButton_addPattern->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     //: Button under a trigger's patterns that gives it one more
     mpButton_addPattern->setText(tr("Add pattern"));
     mpButton_addPattern->setCursor(Qt::PointingHandCursor);
-    // The stylesheet draws the dashed frame the button is read as a placeholder
-    // by, which auto-raise would take away again
+    // The button paints the dashed frame it is read as a placeholder by, and
+    // auto-raise would have the style draw a second one over it under the mouse
     mpButton_addPattern->setAutoRaise(false);
+    mpButton_addPattern->setFrameMargins(QMargins(0, scmEditorAddPatternMarginTop, 0, scmEditorAddPatternMarginBottom));
     mpButton_addPattern->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     connect(mpButton_addPattern, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_addPattern);
 
@@ -2188,6 +2324,15 @@ void dlgTriggerEditor::restyleAddPatternIcon()
     mpButton_addPattern->setIcon(addGlyph);
     const int addGlyphSize = qRound(mpButton_addPattern->fontMetrics().height() * 0.9);
     mpButton_addPattern->setIconSize(QSize(addGlyphSize, addGlyphSize));
+
+    // The dashed frame is the only thing saying that one more pattern goes
+    // there, so it is held to what a control needs rather than to the hairline a
+    // card border gets away with; the card border it used to borrow is 1.3:1.
+    const QColor restingFrame = uiDesign::blend(tokens.card, tokens.text, 0.45);
+    // ...and once the trigger holds as many patterns as it can, the frame drops
+    // back to the hairline a card is edged with: there is nothing to click
+    const QColor disabledFrame = uiDesign::blend(tokens.card, tokens.text, 0.22);
+    mpButton_addPattern->setFrameColors(restingFrame, tokens.accent, disabledFrame);
 }
 
 void dlgTriggerEditor::updateAddPatternButton()
@@ -2528,16 +2673,106 @@ void dlgTriggerEditor::closeEvent(QCloseEvent* event)
     event->accept();
 }
 
+// The strip along the top of a window that can be grabbed with the mouse: as
+// long as enough of it lands on a screen that is attached now, the window can
+// be reached and moved, whatever the rest of it hangs over
+static bool windowPlacementReachable(const QPoint& topLeft, const QSize& windowSize)
+{
+    constexpr int titleBarHeight = 30;
+    constexpr int minimumGrabWidth = 120;
+
+    const QRect grabStrip(topLeft, QSize(windowSize.width(), titleBarHeight));
+    for (const QScreen* pScreen : QGuiApplication::screens()) {
+        const QRect reachable = pScreen->availableGeometry().intersected(grabStrip);
+        if (reachable.width() >= qMin(minimumGrabWidth, windowSize.width()) && reachable.height() >= titleBarHeight / 2) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QSize dlgTriggerEditor::defaultEditorSize(const QRect& availableArea) const
+{
+    // With nothing stored, the editor opens as a companion to the profile
+    // window rather than at a size fixed long before the screens it runs on
+    // now: the profile window, a step inside it so both are visible at once
+    QSize base;
+    if (mpHost && mpHost->mpConsole && mpHost->mpConsole->window()) {
+        base = mpHost->mpConsole->window()->size();
+    }
+    if (base.isEmpty()) {
+        base = availableArea.size();
+    }
+    return QSize(qRound(base.width() * 0.9), qRound(base.height() * 0.9));
+}
+
+void dlgTriggerEditor::repositionOnProfileScreen()
+{
+    mRepositioningEditorWindow = true;
+    if (mpHost && mpHost->mpConsole) {
+        utils::positionDialogOnActiveProfileScreen(this, nullptr, mpHost->mpConsole);
+    } else {
+        utils::centerDialogOnScreen(this, QGuiApplication::primaryScreen());
+    }
+    mRepositioningEditorWindow = false;
+}
+
+bool dlgTriggerEditor::onSameScreenAsProfile() const
+{
+    if (!mpHost || !mpHost->mpConsole) {
+        return true;
+    }
+
+    const QScreen* pProfileScreen = QApplication::screenAt(mpHost->mpConsole->mapToGlobal(mpHost->mpConsole->rect().center()));
+    if (!pProfileScreen) {
+        pProfileScreen = mpHost->mpConsole->screen();
+    }
+    const QScreen* pEditorScreen = QApplication::screenAt(mapToGlobal(rect().center()));
+    if (!pProfileScreen || !pEditorScreen) {
+        return true;
+    }
+    return pProfileScreen == pEditorScreen;
+}
+
+void dlgTriggerEditor::restoreWindowGeometry()
+{
+    QSettings& settings = *mudlet::getQSettings();
+
+    const QScreen* pScreen = (mpHost && mpHost->mpConsole) ? mpHost->mpConsole->screen() : nullptr;
+    if (!pScreen) {
+        pScreen = QGuiApplication::primaryScreen();
+    }
+    const QRect availableArea = pScreen ? pScreen->availableGeometry() : QRect(0, 0, 1024, 768);
+
+    const QSize storedSize = settings.value(qsl("script_editor_size")).toSize();
+    QSize targetSize = (storedSize.isValid() && !storedSize.isEmpty()) ? storedSize : defaultEditorSize(availableArea);
+    // A size stored before this layout existed, or on a screen that is no
+    // longer attached, is bigger than the desktop it is about to open on -
+    // bring it back inside that desktop rather than open off the bottom of it
+    targetSize = targetSize.boundedTo(availableArea.size()).expandedTo(minimumSizeHint().boundedTo(availableArea.size()));
+    resize(targetSize);
+
+    if (settings.contains(qsl("script_editor_pos"))) {
+        const QPoint storedPos = settings.value(qsl("script_editor_pos")).toPoint();
+        if (windowPlacementReachable(storedPos, targetSize)) {
+            mRepositioningEditorWindow = true;
+            move(storedPos);
+            mRepositioningEditorWindow = false;
+            mEditorPlacementChosen = true;
+            return;
+        }
+    }
+
+    // Nothing stored, or what was stored points at a screen that has gone:
+    // open with the profile the editor belongs to instead
+    repositionOnProfileScreen();
+}
+
 void dlgTriggerEditor::readSettings()
 {
     QSettings& settings = *mudlet::getQSettings();
 
-    const QSize size = settings.value("script_editor_size", QSize(600, 400)).toSize();
-    resize(size);
-
-    // Use smart positioning instead of blindly restoring saved position
-    // This ensures the dialog opens on the same screen as the active profile
-    utils::positionDialogOnActiveProfileScreen(this, nullptr, mpHost->mpConsole);
+    restoreWindowGeometry();
 
     mAutosaveInterval = settings.value("autosaveIntervalMinutes", 2).toInt();
 
@@ -2555,8 +2790,13 @@ void dlgTriggerEditor::readSettings()
 void dlgTriggerEditor::writeSettings()
 {
     QSettings& settings = *mudlet::getQSettings();
-    settings.setValue("script_editor_pos", pos());
-    settings.setValue("script_editor_size", size());
+    // A maximized or full-screen window would otherwise store the size of the
+    // whole screen and reopen at it for good, so what is stored is the geometry
+    // it would return to
+    const QRect normalArea = normalGeometry();
+    const QRect storedArea = ((isMaximized() || isFullScreen()) && normalArea.isValid()) ? normalArea : QRect(pos(), size());
+    settings.setValue(qsl("script_editor_pos"), storedArea.topLeft());
+    settings.setValue(qsl("script_editor_size"), storedArea.size());
     settings.setValue("autosaveIntervalMinutes", mAutosaveInterval);
 
     settings.setValue("mTriggerEditorSplitterState", mTriggerEditorSplitterState);
@@ -8251,8 +8491,10 @@ void dlgTriggerEditor::updatePatternTabOrder()
         previous = next;
     };
 
-    addToChain(mpTriggersMainArea->toolButton_toggleExtraControls);
+    // The order the row reads in: the Options button sits at its far end, past
+    // the command and the ID
     addToChain(mpTriggersMainArea->lineEdit_trigger_command);
+    addToChain(mpTriggersMainArea->toolButton_toggleExtraControls);
     // Only there while the options are away, and addToChain() drops whatever is
     // not on show
     addToChain(mpButton_triggerOptionsSummary);
@@ -10653,9 +10895,26 @@ void dlgTriggerEditor::showEvent(QShowEvent* event)
         updateEditorSidebarMode();
     }
 
-    // Always reposition the dialog to the correct screen when shown
-    // This ensures it follows the active profile, especially after reattachment
-    utils::positionDialogOnActiveProfileScreen(this, nullptr, mpHost->mpConsole);
+    // A placement the user chose is theirs to keep, so the editor is only moved
+    // when it could not be used where it is - its screen unplugged, or the
+    // desktop it was left on resized away from underneath it - or when it has
+    // no chosen placement yet and the profile it belongs to is on another
+    // screen, which is the reattachment case this used to re-centre for on
+    // every single show
+    if (!windowPlacementReachable(pos(), size()) || (!mEditorPlacementChosen && !onSameScreenAsProfile())) {
+        repositionOnProfileScreen();
+    }
+}
+
+void dlgTriggerEditor::moveEvent(QMoveEvent* event)
+{
+    QMainWindow::moveEvent(event);
+
+    // Where the user drags the window to is a placement to keep; a move the
+    // editor made itself is not one
+    if (isVisible() && !mRepositioningEditorWindow) {
+        mEditorPlacementChosen = true;
+    }
 }
 
 void dlgTriggerEditor::changeView(EditorViewType view)
@@ -14031,56 +14290,62 @@ void dlgTriggerEditor::setThemeAndOtherSettings(const QString& theme)
     localConfig->endChanges();
 }
 
+// The glyph at the leading edge of the search field, which is also the button
+// the options menu drops from. One magnifier in two colours rather than the nine
+// bitmaps a combination of options used to be spelled out in: those said which
+// options were on by the colour of three letters, which is a reading no theme
+// could be made to keep. The menu behind the glyph is where the options are
+// read now - each is a checkable item - and the accent says that any of them is
+// in force, so a search that is quietly narrower than it looks still shows it.
 void dlgTriggerEditor::createSearchOptionIcon()
 {
-    // When we add new search options we must create icons for each combination
-    // beforehand - which is simpler than having to do code to combine the
-    // QPixMaps...
-    QIcon newIcon;
-    switch (mSearchOptions) {
-    // Each combination must be handled here
-    case SearchOptionCaseSensitive | SearchOptionIncludeVariables | SearchOptionWholeWord:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-caseSensitive+withVariables+wholeWords.png"));
-        break;
-
-    case SearchOptionIncludeVariables | SearchOptionWholeWord:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-withVariables+wholeWords.png"));
-        break;
-
-    case SearchOptionCaseSensitive | SearchOptionWholeWord:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-caseSensitive+wholeWords.png"));
-        break;
-
-    case SearchOptionWholeWord:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-wholeWords.png"));
-        break;
-
-    case SearchOptionCaseSensitive | SearchOptionIncludeVariables:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-caseSensitive+withVariables.png"));
-        break;
-
-    case SearchOptionIncludeVariables:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-withVariables.png"));
-        break;
-
-    case SearchOptionCaseSensitive:
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-caseSensitive.png"));
-        break;
-
-    case SearchOptionNone:
-        // Use the grey icon as that is appropriate for the "No options set" case
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-none.png"));
-        break;
-
-    default:
-        // Don't grey out this one - is a diagnositic for an uncoded combination
-        newIcon.addPixmap(QPixmap(":/icons/searchOptions-unspecified.png"));
+    // The shell is styled once before the search row is built, and a restyle is
+    // what calls this outside of the options changing
+    if (!mpAction_searchOptions) {
+        return;
     }
+
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    const QPixmap source(qsl(":/icons/settings-search.png"));
+    const QIcon newIcon(uiDesign::tintedGlyph(source, (mSearchOptions == SearchOptionNone) ? tokens.mutedText : tokens.accentText));
 
     // Store the current setting icon - may need to copy it into the grandparent QComboBox items
     mIcon_searchOptions = newIcon;
     // Applied it to the QLineEdit for display purposes
     mpAction_searchOptions->setIcon(newIcon);
+
+    QStringList activeOptions;
+    if (mSearchOptions & SearchOptionCaseSensitive) {
+        activeOptions << mpAction_searchCaseSensitive->text();
+    }
+    if (mSearchOptions & SearchOptionIncludeVariables) {
+        activeOptions << mpAction_searchIncludeVariables->text();
+    }
+    if (mSearchOptions & SearchOptionWholeWord) {
+        activeOptions << mpAction_searchWholeWord->text();
+    }
+    if (activeOptions.isEmpty()) {
+        //: Tooltip on the magnifier at the left of the editor's search field while no search option is set
+        mpAction_searchOptions->setToolTip(utils::richText(tr("Search options")));
+    } else {
+        //: Tooltip on that magnifier once options are set. %1 is the list of them, already in the reader's language.
+        mpAction_searchOptions->setToolTip(utils::richText(tr("Search options: %1").arg(activeOptions.join(qsl(", ")))));
+    }
+}
+
+// Quiet enough that an empty-looking field stays empty-looking, and gone
+// altogether while there is nothing behind it
+void dlgTriggerEditor::updateSearchHistoryAction()
+{
+    if (!mpAction_searchHistory) {
+        return;
+    }
+
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    QIcon chevron(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/arrow-down.png")), tokens.mutedText));
+    chevron.addPixmap(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/arrow-down.png")), tokens.text), QIcon::Active);
+    mpAction_searchHistory->setIcon(chevron);
+    mpAction_searchHistory->setVisible(comboBox_searchTerms->count() > 0);
 }
 
 int dlgTriggerEditor::findSearchMatch(const QString& haystack, const QString& needle, int from) const
@@ -14374,13 +14639,19 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // grid the panel shares, and a strip the width of the form belongs under it.
     mpButton_triggerOptionsSummary = new QToolButton(pForm->widget_left);
     mpButton_triggerOptionsSummary->setObjectName(qsl("editorOptionsSummary"));
-    mpButton_triggerOptionsSummary->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    mpButton_triggerOptionsSummary->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    // Led by the same sliders glyph the Options button carries, so the strip and
+    // the button it stands in for are read as the one thing
+    mpButton_triggerOptionsSummary->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    // As wide as what it says rather than as wide as the form: a row of readings
+    // stretched across the whole width reads as a bar, which it is not
+    mpButton_triggerOptionsSummary->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     mpButton_triggerOptionsSummary->setFocusPolicy(Qt::StrongFocus);
     mpButton_triggerOptionsSummary->setCursor(Qt::PointingHandCursor);
     //: Tooltip on the strip that stands in for a trigger's options while they are hidden
     mpButton_triggerOptionsSummary->setToolTip(utils::richText(tr("The trigger's options, put away. Click to show them.")));
-    pForm->verticalLayout_left->insertWidget(0, mpButton_triggerOptionsSummary);
+    const int summaryGlyphSize = qRound(mpButton_triggerOptionsSummary->fontMetrics().height() * 0.9);
+    mpButton_triggerOptionsSummary->setIconSize(QSize(summaryGlyphSize, summaryGlyphSize));
+    pForm->verticalLayout_left->insertWidget(0, mpButton_triggerOptionsSummary, 0, Qt::AlignLeft);
 
     // The button beside the name says what it opens, rather than being an arrow
     // with nothing on it
@@ -15269,7 +15540,16 @@ void dlgTriggerEditor::restyleEditorIcons()
     // than one of the toolbar's actions
     updateExtraControlsToggleIcon();
 
+    // The magnifier on the search field, which is also the button its options
+    // drop from, and the chevron that reopens what was searched for before
+    createSearchOptionIcon();
+    updateSearchHistoryAction();
+
     restyleAddPatternIcon();
+
+    // The eight type swatches and the grip every row is dragged by, both mixed
+    // from the page they lie on
+    restylePatternTypeIcons();
 
     // ...and the same for the picture on every pattern row and the tint the row
     // itself is washed with under the mouse - both kept here rather than mixed
@@ -15317,9 +15597,9 @@ void dlgTriggerEditor::setupEditorPanel()
                                                          {treeWidget_keys, TreeType::Key}};
     for (const auto& itemTree : itemTrees) {
         auto* pDelegate = new uiDesign::EditorTreeDelegate(itemTree.first, itemTree.second, mpHost);
-        // A timer, a button and a key have no checkIfNew() of their own, so
-        // this is what the delegate has to go on to keep the picture that says
-        // the item has never been saved
+        // What the delegate goes on to keep the picture that says the item has
+        // never been saved - see setNewItemDescription() for why the three types
+        // that also have a checkIfNew() are not asked it
         pDelegate->setNewItemDescription(descNewItem);
         itemTree.first->setItemDelegate(pDelegate);
         mEditorTreeDelegates.append(pDelegate);
@@ -15493,28 +15773,33 @@ void dlgTriggerEditor::applyEditorToolbarButtonStyles()
 QString dlgTriggerEditor::patternRowStyleSheet() const
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    // The grip is quiet but it is still a control, so it is held to the 3:1 one
-    // needs rather than to the hairline a card border gets away with: mixed 0.4
-    // of the way to the text it came out at about 2.8:1 on a light theme.
+    // The colour a button with nothing left to add is drawn in - and, for the
+    // frame that button paints, the one restyleAddPatternIcon() hands it
     const QColor quietestText = uiDesign::blend(tokens.card, tokens.text, 0.55);
-    // Likewise the dashed frame, which is the only thing saying that one more
-    // pattern goes there. The card border it used to borrow is about 1.3:1.
-    const QColor placeholderBorder = uiDesign::blend(tokens.card, tokens.text, 0.45);
 
-    return qsl("#label_dragHandle { color: %1; background: transparent; }"
+    return qsl("#label_dragHandle { background: transparent; }"
                "#label_patternNumber { color: %2; background: transparent; }"
                // Its own tint over the row's, or the button would be no more
                // than the row it is already sitting on
                "#toolButton_deletePattern { border: none; border-radius: 4px; background: transparent; }"
-               "#toolButton_deletePattern:hover { background-color: %6; }"
-               // A dashed frame is the one place in the form that is not a
-               // control but a place one more of them would go
-               "#editorAddPattern { color: %2; border: 1px dashed %3; border-radius: 6px; padding: 4px 10px;"
-               " margin: 4px 0px 2px 0px; background: transparent; }"
-               "#editorAddPattern:hover { color: %4; border: 1px dashed %5; }"
-               "#editorAddPattern:disabled { color: %1; border: 1px dashed %1; }"
-               "#editorPatternDropIndicator { background-color: %5; border: none; border-radius: 1px; }")
-            .arg(quietestText.name(), tokens.mutedText.name(), placeholderBorder.name(), tokens.text.name(), tokens.accent.name(), uiDesign::rgba(tokens.text, 0.14));
+               "#toolButton_deletePattern:hover { background-color: %5; }"
+               // The one place in the form that is not a control but a place one
+               // more of them would go. The dashed frame round it is the button's
+               // own painting - see uiDesign::PlaceholderButton - so nothing here
+               // draws a border; the margins it insets that frame by are the ones
+               // named below, and both come from the same two constants.
+               "#editorAddPattern { color: %2; border: none; padding: 4px 10px;"
+               " margin: %6px 0px %7px 0px; background: transparent; }"
+               "#editorAddPattern:hover { color: %3; }"
+               "#editorAddPattern:disabled { color: %1; }"
+               "#editorPatternDropIndicator { background-color: %4; border: none; border-radius: 1px; }")
+            .arg(quietestText.name(),
+                 tokens.mutedText.name(),
+                 tokens.text.name(),
+                 tokens.accent.name(),
+                 uiDesign::rgba(tokens.text, 0.14),
+                 QString::number(scmEditorAddPatternMarginTop),
+                 QString::number(scmEditorAddPatternMarginBottom));
 }
 
 // What a row is washed with while the mouse is on it. Painted by the row rather
@@ -15535,15 +15820,16 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     const QColor cardColor = tokens.card;
+    const QColor fieldColor = tokens.field;
     const QColor textColor = tokens.text;
     const QColor accentColor = tokens.accent;
 
     // Every rule below, and every glyph restyleEditorIcons() tints, is mixed
-    // from these three and nothing else - so a change event that leaves all
-    // three where they were has nothing to redo. One setProfileStyleSheet()
+    // from these four and nothing else - so a change event that leaves all
+    // four where they were has nothing to redo. One setProfileStyleSheet()
     // from Lua sends both a StyleChange and a PaletteChange, which is what this
     // stops from restyling the whole editor twice over.
-    const EditorShellStyleInputs styleInputs{cardColor.rgb(), textColor.rgb(), accentColor.rgb()};
+    const EditorShellStyleInputs styleInputs{tokens.page.rgb(), fieldColor.rgb(), textColor.rgb(), accentColor.rgb()};
     if (mEditorShellStyleApplied && styleInputs == mEditorShellStyleInputs) {
         return;
     }
@@ -15616,14 +15902,22 @@ void dlgTriggerEditor::applyEditorShellStyle()
         mpSearchResultDelegate->restyle();
     }
 
-    // Only the field is drawn: the row around it is the panel it sits on
+    // Only the field is drawn: the row around it is the panel it sits on, so
+    // the box is the one thing here that carries the sunken colour
     widget_searchTerm->setStyleSheet(qsl("#editorSearchRow { background: transparent; }"
                                          "#editorSearchRow QComboBox { background-color: %1; border: 1px solid %2; border-radius: 6px; min-height: 32px; padding: 0px 6px; color: %3; }"
                                          "#editorSearchRow QComboBox:focus { border: 1px solid %4; }"
+                                         // A field to type into rather than a list to pick from:
+                                         // what the box holds is the searches already run, which
+                                         // the down arrow key and the field's own completer both
+                                         // still open. The drop-down is given no width at all, so
+                                         // the room goes to the term instead.
+                                         "#editorSearchRow QComboBox::drop-down { width: 0px; border: none; background: transparent; }"
+                                         "#editorSearchRow QComboBox::down-arrow { width: 0px; height: 0px; image: none; }"
                                          // Or the field is drawn a second time, in
                                          // its own frame, inside the one above
                                          "#editorSearchRow QComboBox QLineEdit { background: transparent; border: none; }")
-                                             .arg(pageColor.name(), borderColor.name(), textColor.name(), accentColor.name()));
+                                             .arg(fieldColor.name(), borderColor.name(), textColor.name(), accentColor.name()));
 
     if (mpWidget_editorCodeHeader) {
         // Only what the strip holds is drawn: the bar behind it is painted by
@@ -15638,13 +15932,15 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // Fusion draws a group box's check indicator from palette(window)
         // darkened by 40%, which on a dark card is a 1.1:1 outline; a styled
         // indicator gets no check mark of its own, so the checked state has to
-        // be drawn out in full.
+        // be drawn out in full. The outline is mixed over the card the box sits
+        // on, while the box itself is filled like every other control the user
+        // sets something with.
         const QColor indicatorOutline = uiDesign::blend(cardColor, textColor, darkPage ? 0.55 : 0.45);
         const QString cardIndicatorRules = qsl("QGroupBox[editorCard=\"true\"]::indicator"
                                                " { width: %1px; height: %1px; border: 1px solid %2; border-radius: 3px; background-color: %3; }"
                                                "QGroupBox[editorCard=\"true\"]::indicator:hover { border: 1px solid %4; }"
                                                "QGroupBox[editorCard=\"true\"]::indicator:checked { border: 1px solid %4; image: url(:/icons/dialog-ok-apply_small.png); }")
-                                                   .arg(QString::number(scmEditorCardIndicatorSize), indicatorOutline.name(), cardColor.name(), accentColor.name());
+                                                   .arg(QString::number(scmEditorCardIndicatorSize), indicatorOutline.name(), fieldColor.name(), accentColor.name());
         // Where a checkable card's title starts is only known once the rules
         // above are the ones being laid out under - and the box measured against
         // them has to be one they select on
@@ -15881,6 +16177,12 @@ void dlgTriggerEditor::updateExtraControlsToggleIcon()
     icon.addPixmap(uiDesign::tintedGlyph(source, tokens.mutedText), QIcon::Normal, QIcon::Off);
     icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Normal, QIcon::On);
     mpTriggersMainArea->toolButton_toggleExtraControls->setIcon(icon);
+
+    // The strip that stands in for the options is led by the same glyph, so that
+    // the row and the button it reopens are read as the one thing
+    if (mpButton_triggerOptionsSummary) {
+        mpButton_triggerOptionsSummary->setIcon(icon);
+    }
 }
 
 // In case the profile was reset while the editor was out of focus, checks for any script loading errors and displays them

@@ -47,12 +47,14 @@
 #include "dlgTriggersMainArea.h"
 #include "dlgVarsMainArea.h"
 #include "SingleLineTextEdit.h"
+#include "EditorPlaceholderButton.h"
 #include "EditorUndoStack.h"
 
 #include <QDialog>
 #include <QDockWidget>
 #include <QFlag>
 #include <QIcon>
+#include <QPixmap>
 #include <QListWidgetItem>
 #include <QScrollArea>
 #include <QTreeWidget>
@@ -91,6 +93,7 @@ class dlgAliasMainArea;
 class dlgScriptsMainArea;
 class dlgKeysMainArea;
 class dlgTriggerPatternEdit;
+class QComboBox;
 class QLabel;
 class QFrame;
 class QListWidget;
@@ -193,6 +196,7 @@ public:
     void focusInEvent(QFocusEvent*) override;
     void focusOutEvent(QFocusEvent*) override;
     void showEvent(QShowEvent* event) override;
+    void moveEvent(QMoveEvent* event) override;
     void enterEvent(TEnterEvent* event) override;
     bool eventFilter(QObject*, QEvent* event) override;
     bool event(QEvent* event) override;
@@ -515,6 +519,13 @@ private:
     void saveAction();
     void readSettings();
     void writeSettings();
+    // Where and how big the editor opens: the stored geometry when it is still
+    // usable on the screens attached now, a size taken off the profile window
+    // when there is nothing stored yet
+    void restoreWindowGeometry();
+    QSize defaultEditorSize(const QRect& availableArea) const;
+    void repositionOnProfileScreen();
+    bool onSameScreenAsProfile() const;
     void addScript(bool);
     void addAlias(bool);
     void addTimer(bool);
@@ -650,6 +661,9 @@ private:
     emitScriptSearchMatches(const QString& scriptText, const QString& searchText, const QString& name, int objectId, const QString& parentLabel, EditorViewType viewType, QTreeWidgetItem*& parent);
 
     void createSearchOptionIcon();
+    // The chevron that reopens the searches already run, which stands in for the
+    // combo box's own drop-down - the shell stylesheet gives that no width
+    void updateSearchHistoryAction();
     int findSearchMatch(const QString& haystack, const QString& needle, int from = 0) const;
     bool containsSearchMatch(const QString& haystack, const QString& needle) const;
     void clearEditorNotification();
@@ -703,6 +717,11 @@ private:
     void endPatternRowDrag(const bool dropped);
     bool handlePatternHandleEvent(QObject* watched, QEvent* event);
     [[nodiscard]] QString patternRowStyleSheet() const;
+    // The eight type swatches and the grip, cut for the theme in force and
+    // handed to every row that exists
+    void restylePatternTypeIcons();
+    void applyPatternTypeIcons(QComboBox* pBox) const;
+    void applyPatternGripGlyph(QLabel* pHandle) const;
     [[nodiscard]] QIcon patternDeleteIcon() const;
     [[nodiscard]] QColor patternHoverTint() const;
     [[nodiscard]] int patternTypeColumnWidth(const QFont& typeFont) const;
@@ -822,12 +841,21 @@ private:
     // layout that has never been run, and the breakpoint is measured off that -
     // so the answer taken before the first show is one to throw away
     bool mEditorFirstShown = false;
+    // A placement the user picked - restored from settings, or dragged to - is
+    // the editor's to keep, so it is only moved when it cannot be reached where
+    // it is. Until there is one, the editor still follows the profile window
+    bool mEditorPlacementChosen = false;
+    // Set while the editor moves itself, so its own move is not mistaken for
+    // one the user made
+    bool mRepositioningEditorWindow = false;
 
-    // The three palette colours every rule and every tinted glyph in the
-    // editor's own look is mixed from
+    // The four palette colours every rule and every tinted glyph in the
+    // editor's own look is mixed from - the surfaces rather than the tokens
+    // taken off them, since a card and a border move only when a page does
     struct EditorShellStyleInputs
     {
-        QRgb card = 0;
+        QRgb page = 0;
+        QRgb field = 0;
         QRgb text = 0;
         QRgb accent = 0;
         bool operator==(const EditorShellStyleInputs&) const = default;
@@ -890,8 +918,9 @@ private:
     QColor mPatternHoverTint;
     mutable int mPatternTypeColumnWidth = 0;
     int mVisiblePatternCount = 0;
-    // Sits in the same column the rows are in, under the last one on show
-    QToolButton* mpButton_addPattern = nullptr;
+    // Sits in the same column the rows are in, under the last one on show, and
+    // paints its own dashed frame
+    uiDesign::PlaceholderButton* mpButton_addPattern = nullptr;
     // The line drawn where a dragged row would land. A tracked grab rather than
     // QDrag: the rows are a pool, so what moves is the contents, not a widget.
     QFrame* mpFrame_patternDropIndicator = nullptr;
@@ -904,6 +933,7 @@ private:
     bool mPatternBulkEdit = false;
     QStringList mPatternList;
     QVector<QIcon> mPatternIcons;
+    QPixmap mPatternGripGlyph;
 
     QShortcut* mFirstPatternShortcut = nullptr;
     QShortcut* mLastPatternShortcut = nullptr;
@@ -935,6 +965,7 @@ private:
 
     // This has a menu which the following QActions are inserted into:
     QAction* mpAction_searchOptions = nullptr;
+    QAction* mpAction_searchHistory = nullptr;
     QIcon mIcon_searchOptions;
 
     QAction* mpAction_searchCaseSensitive = nullptr;

@@ -61,6 +61,17 @@ constexpr qreal scmMarkerHue = 0.13;
 constexpr qreal scmMarkerSaturation = 0.9;
 constexpr qreal scmMarkerLightnessOnDark = 0.34;
 constexpr qreal scmMarkerLightnessOnLight = 0.72;
+// How far a card is lifted off the page it lies on. A dark page takes a fraction
+// of the light one: the same step in absolute lightness reads as a much larger
+// one where there is less light to begin with.
+constexpr qreal scmCardLiftOnDark = 0.06;
+constexpr qreal scmCardLiftOnLight = 0.55;
+// ...and what a card has to gain over its page to read as lifted at all, before
+// the page is the one that has to move. macOS answers white to Window and Base
+// alike on its light appearance, and a card lightened off a white page lands
+// back on it.
+constexpr int scmMinimumCardLift = 6;
+constexpr qreal scmPageDropUnderCard = 0.05;
 } // namespace
 
 bool alignInLayoutTree(QLayout* pLayout, const QWidget* pWidget, const Qt::Alignment alignment)
@@ -309,14 +320,25 @@ ThemeTokens themeTokens()
     // mudlet::setAppearance(), so it is already the new one.
     const QPalette themePalette = QApplication::palette();
     ThemeTokens tokens;
-    tokens.card = themePalette.color(QPalette::Base);
     tokens.text = themePalette.color(QPalette::WindowText);
     tokens.accent = themePalette.color(QPalette::Highlight);
-    tokens.darkPage = tokens.card.lightness() < 128;
-    tokens.page = blend(tokens.card, QColor(Qt::black), tokens.darkPage ? 0.35 : 0.04);
-    tokens.border = blend(tokens.card, tokens.text, tokens.darkPage ? 0.28 : 0.16);
-    tokens.mutedText = blend(tokens.card, tokens.text, 0.7);
-    tokens.disabledText = blend(tokens.card, tokens.text, 0.32);
+    // The window's own colour, not the colour of an input field: a page mixed
+    // off Base is a page darker than the fields lying on it, which is the one
+    // way round three surfaces cannot be read as depth.
+    tokens.page = themePalette.color(QPalette::Window);
+    tokens.darkPage = tokens.page.lightness() < 128;
+    tokens.field = themePalette.color(QPalette::Base);
+    tokens.card = blend(tokens.page, QColor(Qt::white), tokens.darkPage ? scmCardLiftOnDark : scmCardLiftOnLight);
+    // Where a palette leaves no room above the page - a white Window under a
+    // white Base - the card keeps the window's colour and the page steps down
+    // instead, so that the pair still reads in the order it means
+    if (tokens.card.lightness() - tokens.page.lightness() < scmMinimumCardLift) {
+        tokens.card = tokens.page;
+        tokens.page = blend(tokens.page, QColor(Qt::black), scmPageDropUnderCard);
+    }
+    tokens.border = blend(tokens.page, tokens.text, tokens.darkPage ? 0.22 : 0.18);
+    tokens.mutedText = blend(tokens.page, tokens.text, 0.70);
+    tokens.disabledText = blend(tokens.page, tokens.text, 0.32);
     tokens.accentText = tokens.darkPage ? blend(tokens.accent, QColor(Qt::white), 0.45) : blend(tokens.accent, QColor(Qt::black), 0.2);
     tokens.marker = QColor::fromHslF(scmMarkerHue, scmMarkerSaturation, tokens.darkPage ? scmMarkerLightnessOnDark : scmMarkerLightnessOnLight);
     tokens.hoverSoft = rgba(tokens.text, 0.07);

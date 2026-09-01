@@ -93,9 +93,13 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
     const int id = idData.toInt();
 
     // An item the editor has made but nobody has saved yet keeps the picture
-    // that says so. A trigger, an alias and a script are asked outright;
-    // a timer, a button and a key have no such question to answer, so the
-    // answer is read back off the description the add sites wrote.
+    // that says so, and the description the add sites wrote is what says which
+    // those are. TTrigger, TAlias and TScript have a checkIfNew() of their own,
+    // but it answers the wrong question here: mIsNew starts true and is only
+    // ever cleared by a save made from this editor, so an item read back out of
+    // the profile - which is every item, every time the editor is opened -
+    // reports itself as new for the whole session. Reading the description
+    // instead is also what the other three types already do.
     const bool newByDescription = !mNewItemDescription.isEmpty() && index.data(Qt::AccessibleDescriptionRole).toString() == mNewItemDescription;
 
     bool wantedOn = false;
@@ -111,7 +115,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         running = pT->isActive() && pT->ancestorsActive();
         // A filter chain is a trigger that other triggers are matched inside of,
         // and its picture is the only thing that says so
-        distinctive = pT->isFolder() || pT->isFilterChain() || pT->checkIfNew() || !pT->state();
+        distinctive = pT->isFolder() || pT->isFilterChain() || newByDescription || !pT->state();
         break;
     }
     case TreeType::Alias: {
@@ -121,7 +125,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        distinctive = pT->isFolder() || pT->checkIfNew() || !pT->state();
+        distinctive = pT->isFolder() || newByDescription || !pT->state();
         break;
     }
     case TreeType::Timer: {
@@ -149,7 +153,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        distinctive = pT->isFolder() || pT->checkIfNew() || !pT->state();
+        distinctive = pT->isFolder() || newByDescription || !pT->state();
         break;
     }
     case TreeType::Action: {

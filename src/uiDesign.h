@@ -59,25 +59,41 @@ inline constexpr char scmProp_focused[] = "settingsFocused";
 inline constexpr char scmProp_settingsCard[] = "settingsCard";
 inline constexpr char scmProp_editorCard[] = "editorCard";
 
-// Every surface in either window is mixed from three palette colours and
-// nothing else, so that a theme change moves all of them together. The recipes
-// live here rather than in each window: two windows deriving a border by eye is
-// how they drift apart.
+// Every surface in either window is mixed from four palette colours and nothing
+// else, so that a theme change moves all of them together. The recipes live
+// here rather than in each window: two windows deriving a border by eye is how
+// they drift apart.
+//
+// Three tones carry the depth, and which one a rule reaches for is the whole of
+// what says how deep the thing it draws sits:
+//   page  - the window itself, and anything that is a piece of the window: the
+//           toolbar, the status bar, the panel down the left, a tree's viewport,
+//           the row a search field sits in
+//   card  - a panel lifted off the page: the options cards, a popup surface
+//   field - sunk into whatever holds it, because the user types into it or
+//           picks a value in it: line edits, combo boxes, spin boxes, the code
+//           pane, a check indicator
 struct ThemeTokens
 {
-    // Straight off the palette: the card a control sits on, the words on it,
-    // and the colour the theme points with
-    QColor card;
+    // Straight off the palette: the words on the page and the colour the theme
+    // points with
     QColor text;
     QColor accent;
     // Off the palette rather than mudlet::inDarkMode(), so a dark system theme
     // under "follow the system" gets the dark treatment too
     bool darkPage = false;
-    // The surface the cards are laid on, and the hairline round one. Measured
-    // from the card and text colours, the one pair a palette must keep apart to
-    // be usable at all: Mudlet's light appearance has window, base and mid
-    // within three levels, so a border mixed from those is invisible.
+    // The window's own surface, QPalette::Window itself - every other surface is
+    // measured from it, and every muted ink is mixed over it
     QColor page;
+    // Lifted off the page, so that a card reads as nearer than what carries it
+    QColor card;
+    // QPalette::Base: what Qt paints an editable control with, and the one
+    // surface a platform style already agrees with us about
+    QColor field;
+    // The hairline round a card. Measured from the page and text colours, the
+    // one pair a palette must keep apart to be usable at all: Mudlet's light
+    // appearance has window, base and mid within three levels, so a border mixed
+    // from those is invisible.
     QColor border;
     QColor mutedText;
     QColor disabledText;

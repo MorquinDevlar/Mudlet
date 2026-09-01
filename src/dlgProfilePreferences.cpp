@@ -2686,6 +2686,7 @@ void dlgProfilePreferences::applyShellStyle()
     // for why it is that one and not this dialog's own
     const ThemeTokens tokens = themeTokens();
     const QColor cardColor = tokens.card;
+    const QColor fieldColor = tokens.field;
     const QColor textColor = tokens.text;
     const QColor accentColor = tokens.accent;
     const bool darkPage = tokens.darkPage;
@@ -2722,9 +2723,10 @@ void dlgProfilePreferences::applyShellStyle()
     const QString cardIndicatorRules = qsl("QGroupBox[settingsCard=\"true\"]::indicator { width: %1px; height: %1px; border: 1px solid %2; border-radius: 3px; background-color: %3; }"
                                            "QGroupBox[settingsCard=\"true\"]::indicator:hover { border: 1px solid %4; }"
                                            // A fixed green check mark, so the fill under it is the
-                                           // card rather than an accent that could be orange
+                                           // field colour every other control is set from rather
+                                           // than an accent that could be orange
                                            "QGroupBox[settingsCard=\"true\"]::indicator:checked { border: 1px solid %4; image: url(:/icons/dialog-ok-apply_small.png); }")
-                                               .arg(QString::number(scmCardIndicatorSize), indicatorOutline.name(), cardColor.name(), accentColor.name());
+                                               .arg(QString::number(scmCardIndicatorSize), indicatorOutline.name(), fieldColor.name(), accentColor.name());
     // Where a checkable card's title starts is only known once the rules above
     // are the ones being laid out under
     const QString cardTitleRule = qsl("QGroupBox[settingsCardTitleInset=\"true\"]::title { left: %1px; }").arg(QString::number(measuredCardTitleInset(mpWidget_shell, cardIndicatorRules)));
@@ -2759,7 +2761,7 @@ void dlgProfilePreferences::applyShellStyle()
                                       "QWidget[settingsSurface=\"true\"] { background-color: %1; border: none; }"
                                       "#settingsWordmark { font-weight: bold; font-size: 125%; }"
                                       "#settingsPageTitle { font-weight: bold; font-size: 145%; }"
-                                      "#settingsSearchField { border: 1px solid %7; border-radius: 8px; padding-left: 6px; background-color: %8; }"
+                                      "#settingsSearchField { border: 1px solid %7; border-radius: 8px; padding-left: 6px; background-color: %15; }"
                                       "#settingsSearchField:focus { border: 1px solid %5; }"
                                       // The top margin lifts the title clear of the frame, rather
                                       // than leaving it cutting through the card's border
@@ -2806,6 +2808,9 @@ void dlgProfilePreferences::applyShellStyle()
                                           .arg(pageColor.name(), textColor.name(), hoverSoft, accentSoft, accentColor.name(), accentText.name(), borderColor.name(), cardColor.name(), mutedText.name())
                                           .arg(markerSoft, QString::number(accentBarStop, 'f', 5), QString::number(accentBarStop + 0.0001, 'f', 5))
                                           .arg(QString::number(railAccentBarStop, 'f', 5), QString::number(railAccentBarStop + 0.0001, 'f', 5))
+                                          // %15, the surface the search box is sunk into - %8 above
+                                          // is the card the rest of the shell is laid out on
+                                          .arg(fieldColor.name())
                                   + cardIndicatorRules
                                   + cardTitleRule
                                   // A scroll area's bars answer only to a descendant selector
@@ -2817,8 +2822,10 @@ void dlgProfilePreferences::applyShellStyle()
     // nothing. Per control, because a stylesheet freezes the palette of every
     // widget it polishes - and after the stylesheet, because assigning one
     // re-polishes the subtree back to the palette it was first polished with.
-    const QColor controlOutlineSource = darkPage ? blend(cardColor, textColor, 0.55) : QApplication::palette().color(QPalette::Window);
-    const QColor placeholderText = blend(cardColor, textColor, 0.45);
+    const QColor controlOutlineSource = darkPage ? blend(cardColor, textColor, 0.55) : pageColor;
+    // Mixed over the field rather than the card: what a placeholder is read
+    // against is the inside of the control it stands in
+    const QColor placeholderText = blend(fieldColor, textColor, 0.45);
     for (auto* pControl : mpWidget_shell->findChildren<QWidget*>()) {
         if (!qobject_cast<QAbstractButton*>(pControl) && !qobject_cast<QLineEdit*>(pControl) && !qobject_cast<QAbstractSpinBox*>(pControl) && !qobject_cast<QComboBox*>(pControl)) {
             continue;
