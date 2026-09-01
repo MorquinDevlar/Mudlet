@@ -120,8 +120,11 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     // Allow QTest-based test classes to access private members
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
-    friend class EditorTreeDotClickTest;
+    friend class EditorColumnAlignmentTest;
     friend class EditorMinimumSizeTest;
+    friend class EditorSplitterRestoreTest;
+    friend class EditorSurfaceToneTest;
+    friend class EditorTreeDotClickTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
 
@@ -239,6 +242,9 @@ public:
     // Opening the panel where the form has no room for it borrows the height
     // from the code pane, and closing it hands that height back
     void refitSplitterForTriggerOptions(const bool shown);
+    // What the form column asks for as it stands, floored so the code pane
+    // keeps its own minimum whatever the form wants
+    int formPaneHeightForItsContents(const int paneTotal) const;
     // Every view puts the right hand splitter back to the sizes it was last left
     // at, which is also the one thing that can take the geometry the trigger
     // options panel borrowed against out from under it

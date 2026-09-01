@@ -42,7 +42,7 @@ whole of what says how deep the thing it draws sits. Pick by what the widget
 
 | Token | Recipe | Use it for |
 | --- | --- | --- |
-| `page` | `QPalette::Window` | The window itself and every piece of it: toolbar, status bar, sidebar pane, tree and list viewports, scroll areas, the row a search field sits in, splitter handles |
+| `page` | `QPalette::Window` | The window itself and every piece of it: toolbar, status bar, sidebar pane, the column an item is edited in, scroll areas |
 | `card` | `page` lifted towards white (6% on dark, 55% on light) | A panel raised off the page: the options cards, popup and menu surfaces |
 | `field` | `QPalette::Base` | Anything the user types into or picks a value in: line edits, combo boxes, spin boxes, the search field, a check indicator's fill |
 
@@ -59,6 +59,21 @@ indicator outline is a blend over `card`; placeholder text is a blend over
 answers white to `Window` and `Base` alike on its light appearance - so
 `themeTokens()` steps the page down instead of the card up when the lift would
 be under six levels of lightness. Neither window does that arithmetic itself.
+
+Two more tones say where one column of a window ends and the next begins. They
+are not a fourth and fifth level of depth - `pane` is the *smallest* step the
+model has, and `separator` is a line rather than a surface:
+
+| Token | Recipe | Use it for |
+| --- | --- | --- |
+| `pane` | a fifth of the way from `page` to `card` | A column that is a surface of its own rather than a piece of the page, taken as one thing from the row heading it to the trees under it: the editor's panel of items (`#editorItemPane`, its trees and their scroll bars). Two levels of lightness on a dark theme - enough to be told apart from the page beside it, and far short of reading as a panel laid on top of it |
+| `separator` | `page` taken towards black (36% on dark, 10% on light) | The seam between two panes, drawn where the handle that resizes them is (`GripSplitterHandle`, including the one carrying the code pane's heading) and along the sidebar's right edge. A groove cut into the window, as against `border`, which is a hairline drawn on it |
+
+The separator's drop is the smaller one on a light theme on purpose: a light page
+is near enough to white that a dark-theme drop would draw a grey rule across the
+window rather than a seam between two panes. Measure a pane against the page it
+lies beside, never against a card: a pane a card's distance off the page stops
+reading as part of the window.
 
 ### One treatment for every input
 
@@ -130,8 +145,19 @@ interface font.
 
 Content is grouped into cards: a `QGroupBox` carrying the `settingsCard` dynamic
 property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
-16px padding. Pages are a single column of cards with 16px spacing
-(`createScrollPage()`, `buildPage()`).
+16px padding - 12px in the editor's narrower options column. Pages are a single
+column of cards with 16px spacing (`createScrollPage()`, `buildPage()`).
+
+The title is the card's first line **inside** the frame, not a heading above it:
+`subcontrol-origin: padding` with `left` and `top` set to the card's own
+padding, so the title starts on the same left edge as the controls under it. A
+stylesheet reserves no room for a title placed that way, so the card's top
+padding does it - `padding + measuredCardTitleHeight() + scmCardTitleGap` -
+and getting that number wrong draws the first control over the title. A
+checkable card's title line begins with its check indicator on that same left
+edge and the words after it, which is where the style puts them; nothing insets
+a plain card's title to match, because on a card whose controls all start at the
+padding edge that would indent the heading away from what it heads.
 
 ### Human copy
 
@@ -224,8 +250,7 @@ Stylesheets select on these; setting one after the widget is shown needs an
 | --- | --- |
 | `settingsSurface` | Shell scaffolding a profile's Lua stylesheet must not colour |
 | `settingsCard` | This group box is a card |
-| `settingsCardPlain` | A card without the top margin its title would need |
-| `settingsCardTitleInset` | Non-checkable card - title starts at the frame edge, so checkable and plain titles line up |
+| `settingsCardPlain` | A card without the top padding its title would need |
 | `settingsHero` | The prominent lead card of a page |
 | `settingsChevronRow` | A button that reads as a navigation row into a subpage |
 | `settingsRail` | The sidebar is collapsed to icons only |

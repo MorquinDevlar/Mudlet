@@ -70,6 +70,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -125,10 +126,30 @@ static const char* cButtonBaseColor = "baseColor";
 // that pasting can import and place each one
 static const QString cMultiItemPasteSeparator = qsl("\n<!--MUDLET_MULTI_ITEM_SEPARATOR-->\n");
 
+// The column an item is edited in - the form, the strip that heads the code
+// pane and the pane itself - is one surface, held away from the window's edges
+// by this and by nothing else. Set on the frame that carries all three rather
+// than on each of them, so that everything down the column lines up by
+// construction.
+static constexpr int scmEditorColumnPaddingHorizontal = 14;
+// Where the first thing in every one of the window's three columns starts: the
+// sidebar's first row, the search field heading the panel of items, and
+// whatever leads the column an item is edited in - the notice when one is
+// showing, the name row when it is not. One number rather than three that agree
+// today, because three drift apart the next time one column's margins are
+// touched. The settings dialog's columns start further down (16px, 24px inside
+// a page), so this is the editor's own measurement rather than the design
+// language's.
+static constexpr int scmEditorColumnTopInset = 12;
+// ...and what one piece of that column is held away from the next by
+static constexpr int scmEditorColumnSpacing = 12;
+
 // The sidebar down the left of the editor, drawn by uiDesign::sidebarStyleSheet()
 // from the settings dialog's rules and these measurements of its own
 static constexpr int scmEditorSidebarPadding = 12;
-static constexpr int scmEditorSidebarVerticalPadding = 12;
+// Above and below its rows, which is where the first of them starts - the same
+// line the other two columns start on
+static constexpr int scmEditorSidebarVerticalPadding = scmEditorColumnTopInset;
 static constexpr int scmEditorSidebarMaximumWidth = 180;
 static constexpr int scmEditorSidebarRailWidth = 46;
 static constexpr int scmEditorSidebarRailPadding = 6;
@@ -141,6 +162,24 @@ static constexpr int scmEditorSidebarRowChrome = 40;
 // The narrowest the editor is worth showing its names beside - a floor for the
 // breakpoint, not a width anything is held to
 static constexpr int scmEditorContentColumnWidth = 640;
+
+// The ID beside an item's name, drawn as a pill: a monospace word a size down
+// from the form around it, in a box whose corner is half its height
+static constexpr qreal scmEditorIdChipFontScale = 0.85;
+static constexpr int scmEditorIdChipPaddingVertical = 3;
+
+// What is left round the word on the button the trigger's options are opened
+// from. Its height is not left to these: a min-height in a stylesheet is what a
+// tool button's contents are given, and the style then adds its own margins on
+// top - so the button is set to the fields' height outright instead.
+static constexpr int scmEditorRowButtonPaddingVertical = 5;
+static constexpr int scmEditorRowButtonPaddingHorizontal = 12;
+
+// How far a control the reader can press is taken while the pointer is on it:
+// a raised one lifts a shade further off what carries it, while an outlined one
+// draws its hairline a shade nearer the words instead
+static constexpr qreal scmEditorRaisedHoverWeight = 0.08;
+static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 
 // The one measurement of that sidebar which is not a constant is what it is
 // drawn at with the names showing, since that is the longest of the names -
@@ -162,6 +201,8 @@ static constexpr int scmEditorSearchResultIndent = 14;
 
 // The heading strip the Lua editor sits under, which is the splitter's handle
 static constexpr int scmEditorCodeHeaderGlyphSize = 13;
+// What the heading is set in from the code pane's own left edge
+static constexpr int scmEditorCodeHeaderInset = 4;
 // Kept clear in the middle of the strip for the grip the handle draws there
 static constexpr int scmEditorCodeHeaderGripGap = 56;
 static constexpr int scmEditorCompileDotDiameter = 8;
@@ -179,7 +220,8 @@ static constexpr int scmEditorColorWellHeight = 26;
 // The boxes the two matching modes are named in, and the gap after them, which
 // is also what the rows of the panel are spaced by
 static constexpr int scmEditorModeChipPadding = 7;
-static constexpr int scmEditorModeChipGap = 6;
+static constexpr int scmEditorCardRowGap = 8;
+static constexpr int scmEditorModeChipGap = scmEditorCardRowGap;
 // Three digits and a pair of arrows; the rest of the row is the words around it
 static constexpr int scmEditorOptionsSpinBoxWidth = 72;
 // How many lines the AND mode can be asked to match within. Nothing in TTrigger
@@ -190,6 +232,11 @@ static constexpr int scmEditorOptionsSpinBoxWidth = 72;
 static constexpr int scmEditorMatchWithinLinesMax = 999;
 // A styled check indicator has no size of its own to fall back on
 static constexpr int scmEditorCardIndicatorSize = 13;
+// What a card leaves round what it holds - tighter than the settings dialog's
+// 16, as the options column is a third of the width a settings page is - and,
+// since the title is the first line inside the frame rather than a heading
+// above it, how far in from the frame the title starts as well
+static constexpr int scmEditorCardPadding = 12;
 // The least the code pane is left with when the options panel borrows height
 // from it: below this the editor stops being one anything can be typed into
 static constexpr int scmEditorSourcePaneFloor = 120;
@@ -201,10 +248,12 @@ static constexpr int scmEditorBannerGlyphSize = 20;
 // for, since that is the font the pattern itself is read in - but never shorter
 // than a field elsewhere on the form plus what the row's layout insets its
 // controls by, or the pattern and the type beside it would be the two controls
-// in the window drawn a size down from the rest
-static constexpr int scmEditorPatternRowMargins = 2;
+// in the window drawn a size down from the rest. This is what the row's layout
+// leaves above and below its controls together, and has to stay the sum of
+// trigger_pattern_edit.ui's top and bottom margins.
+static constexpr int scmEditorPatternRowMargins = 8;
 static constexpr int scmEditorPatternRowMinimumHeight = uiDesign::scmInputHeight + scmEditorPatternRowMargins;
-static constexpr int scmEditorPatternRowPadding = 8;
+static constexpr int scmEditorPatternRowPadding = scmEditorPatternRowMargins;
 // How far the row is taken towards the text on it while the mouse is there -
 // the same wash every other hovered row in the two windows gets
 static constexpr qreal scmEditorPatternHoverStrength = 0.07;
@@ -574,14 +623,32 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpTimer_statusCounts->setInterval(200ms);
     connect(mpTimer_statusCounts, &QTimer::timeout, this, &dlgTriggerEditor::updateEditorItemCounts);
 
+    // The column an item is edited in is inset once, on the frame that carries
+    // the form, the code pane and the strip between them - so the name at the
+    // top of the form, the patterns under it and the first character of the
+    // Lua all start at the same place. Everything inside is flush with it.
+    if (QLayout* pColumnLayout = frame_right->layout()) {
+        pColumnLayout->setContentsMargins(scmEditorColumnPaddingHorizontal, scmEditorColumnTopInset, scmEditorColumnPaddingHorizontal, 0);
+    }
+
     mpNonCodeWidgets = new QWidget(this);
     auto* layoutColumn = new QVBoxLayout(mpNonCodeWidgets);
+    layoutColumn->setContentsMargins(0, 0, 0, 0);
+    layoutColumn->setSpacing(scmEditorColumnSpacing);
     splitter_right->addWidget(mpNonCodeWidgets);
 
     // system message area
     mpSystemMessageArea = new dlgSystemMessageArea(this);
     mpSystemMessageArea->setObjectName(qsl("mpSystemMessageArea"));
     mpSystemMessageArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+    // The notice is the first thing in the column when it is showing, so it
+    // starts on the same line as the sidebar's first row and the search field.
+    // Its own .ui file leaves the style's default margin round it, which is what
+    // used to push it below both; the column it is in is what holds it off the
+    // window's edges, as it does for the form that leads the column otherwise.
+    if (QLayout* pMessageAreaLayout = mpSystemMessageArea->layout()) {
+        pMessageAreaLayout->setContentsMargins(0, 0, 0, 0);
+    }
     // set the stretch factor of the message area to 0 and everything else to 1,
     // so our errors box doesn't stretch to produce a grey area
     layoutColumn->addWidget(mpSystemMessageArea, 0);
@@ -1674,6 +1741,13 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // untouched.
     verticalLayout_frame_left->removeWidget(widget_searchTerm);
     verticalLayout_frame_left->insertWidget(0, widget_searchTerm);
+    // ...and being the first thing in its column, it starts on the line the
+    // other two columns start on. The row's own layout is what holds it down,
+    // since the pane behind it is painted to the top of the window.
+    if (QLayout* pSearchRowLayout = widget_searchTerm->layout()) {
+        const QMargins searchRowMargins = pSearchRowLayout->contentsMargins();
+        pSearchRowLayout->setContentsMargins(searchRowMargins.left(), scmEditorColumnTopInset, searchRowMargins.right(), searchRowMargins.bottom());
+    }
 
     // Which variables are listed narrows what a search of them turns up, so it
     // stays reachable while the results are the thing on show: it sits with the
@@ -1734,11 +1808,19 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpScrollArea->viewport()->setAutoFillBackground(false);
     mpWidget_triggerItems = new QWidget;
     mpWidget_triggerItems->setObjectName(qsl("editorPatternList"));
-    mpWidget_triggerItems->setAutoFillBackground(false);
     auto lay1 = new QVBoxLayout(mpWidget_triggerItems);
     lay1->setContentsMargins(0, 0, 0, 0);
     lay1->setSpacing(0);
     mpScrollArea->setWidget(mpWidget_triggerItems);
+    // After setWidget(), which turns the fill back on for whatever it is handed.
+    // The widget takes QPalette::Base as its background role off the viewport it
+    // is reparented into, so left filled it would carry the field colour. The
+    // named rule below holds it off as things stand - a styled background is
+    // painted in place of the palette brush, not over it - but that rule is
+    // written by applyEditorShellStyle(), which the first paint can beat and a
+    // guarded early return can skip. The one line the options column already
+    // does this with is at the foot of buildTriggerOptionsPanel().
+    mpWidget_triggerItems->setAutoFillBackground(false);
 
     lay1->addStretch();
 
@@ -11081,6 +11163,18 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     }
 }
 
+// The height the form column is asking for, kept inside what the two panes have
+// between them: however much the form wants, the code pane keeps its floor.
+int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
+{
+    // The form's height changes without a view switch - the trigger options
+    // panel opens inside it - and showing a widget only invalidates the layout
+    // of its immediate parent, so the chain up to the column is told first or
+    // this measures the form as it was before the panel appeared
+    uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
+    return std::clamp(mpNonCodeWidgets->sizeHint().height(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+}
+
 // Each view keeps its own sizes for the right hand splitter and puts them back
 // on the way in. That also ends any loan the trigger options panel had taken out
 // of the code pane: what it borrowed was measured against the geometry this
@@ -11094,6 +11188,31 @@ void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
         // would leave the code pane's heading, and every grip under it, drawn
         // at a thickness nothing else in the editor uses
         splitter_right->setHandleWidth(uiDesign::GripSplitter::scmHandleThickness);
+
+        // A saved split is only the user's up to what the form can fill. One
+        // saved while the form was taller - a view with more fields, or the
+        // trigger options panel open - hands this view a form pane of mostly
+        // nothing and starts the code editor that far down the window; a
+        // profile carrying 630px of form above 220px of code is what this was
+        // written for. Anything over what the form asks for now goes to the
+        // code pane, and the error console keeps its own height.
+        //
+        // The restore is the only thing clamped. Dragging the handle afterwards
+        // is the user asking for a taller form and nothing here runs then, and
+        // the measurement is of the form as it stands at this moment, so a view
+        // entered with the options panel open is left the room to show it -
+        // which is also what keeps refitSplitterForTriggerOptions() from having
+        // anything to borrow straight after.
+        QList<int> sizes = splitter_right->sizes();
+        const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
+        if (paneTotal > 0) {
+            const int wanted = formPaneHeightForItsContents(paneTotal);
+            if (sizes.at(0) > wanted) {
+                sizes[1] += sizes.at(0) - wanted;
+                sizes[0] = wanted;
+                splitter_right->setSizes(sizes);
+            }
+        }
     } else {
         // The user has not sized this view's panes themselves, so the form takes
         // the height its fields need and the code takes everything left. Sizes
@@ -11110,7 +11229,7 @@ void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
         QList<int> sizes = splitter_right->sizes();
         const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
         if (paneTotal > 0) {
-            sizes[0] = std::clamp(mpNonCodeWidgets->sizeHint().height(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+            sizes[0] = formPaneHeightForItsContents(paneTotal);
             sizes[1] = paneTotal - sizes.at(0);
             splitter_right->setSizes(sizes);
         } else {
@@ -14646,14 +14765,37 @@ void dlgTriggerEditor::slot_clearSoundFile()
     mpTriggersMainArea->lineEdit_soundFile->setToolTip(utils::richText(tr("Sound file to play when the trigger fires.")));
 }
 
+// The ID beside a trigger's name, drawn as a pill. The type is set on the two
+// labels here rather than named in the form's stylesheet, because the radius
+// that makes the box a pill is half the height these metrics come to: a size
+// the sheet applied would only be measurable after it had been applied, and a
+// radius named any larger than half the height is clamped into an ellipse
+// rather than rounded further. Answers that height.
+static int styleEditorIdChip(dlgTriggersMainArea* pForm)
+{
+    QFont chipFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QFont formFont = pForm->font();
+    if (formFont.pointSizeF() > 0.0) {
+        chipFont.setPointSizeF(formFont.pointSizeF() * scmEditorIdChipFontScale);
+    } else {
+        chipFont.setPixelSize(std::max(1, qRound(formFont.pixelSize() * scmEditorIdChipFontScale)));
+    }
+
+    for (QLabel* pLabel : {pForm->label_idLabel, pForm->label_idNumber}) {
+        pLabel->setFont(chipFont);
+    }
+
+    const int chipHeight = QFontMetrics(chipFont).height() + 2 * (scmEditorIdChipPaddingVertical + uiDesign::scmInputBorderWidth);
+    pForm->frameId->setFixedHeight(chipHeight);
+    return chipHeight;
+}
+
 // A card in the settings dialog's language. What makes a group box one is the
-// property the shell stylesheet selects on, so nothing else is set here; the
-// inset lines a card without a check box up with the title of one that has one.
+// property the shell stylesheet selects on, so nothing else is set here.
 static QGroupBox* makeEditorCard(QWidget* pParent, const QString& title)
 {
     auto* pCard = new QGroupBox(title, pParent);
     pCard->setProperty("editorCard", true);
-    pCard->setProperty("editorCardTitleInset", true);
     pCard->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     return pCard;
 }
@@ -14718,12 +14860,18 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // The stylesheet draws the frame the checked state is read from, which
     // auto-raise would otherwise take away again
     pToggle->setAutoRaise(false);
+    // ...and it stands on the row at the height of the fields beside it
+    pToggle->setFixedHeight(uiDesign::scmInputHeight);
+
+    // What the two fields on the row are, said quietly: the words are the
+    // form's scaffolding and the name typed beside them is its content, so
+    // only one of the two is drawn at full strength
+    pForm->label_trigger_name->setProperty("editorRowLabel", true);
+    pForm->label_trigger_command->setProperty("editorRowLabel", true);
 
     // The ID reads as a quiet label on the trigger rather than a second field.
     // showIDLabels() still decides whether it is there at all.
     pForm->frameId->setProperty("editorIdChip", true);
-    pForm->label_idLabel->setProperty("editorFieldLabel", true);
-    pForm->label_idNumber->setProperty("editorFieldLabel", true);
     // The .ui file greys the pair out to make them quiet; the chip is quiet
     // enough on its own, and a disabled label cannot be selected from
     pForm->label_idLabel->setEnabled(true);
@@ -14740,8 +14888,10 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // The cards keep this width whether or not a scroll bar has appeared beside
     // them: the scroll area is the wider of the two by exactly that bar
     pForm->widget_right->setFixedWidth(scmEditorTriggerOptionsWidth);
-    pPanelLayout->setContentsMargins(12, 0, 0, 0);
-    pPanelLayout->setSpacing(12);
+    // The gap between the patterns and the cards is the grid's, so the cards
+    // themselves have the whole width the column was measured for
+    pPanelLayout->setContentsMargins(0, 0, 0, 0);
+    pPanelLayout->setSpacing(scmEditorColumnSpacing);
 
     // Four cards are taller than a short window, and a column that reports that
     // height as a minimum drags the whole window open to fit and will not let it
@@ -14776,13 +14926,13 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     auto* pCard_matching = makeEditorCard(pForm->widget_right, tr("Matching"));
     auto* pMatchingLayout = new QVBoxLayout(pCard_matching);
     pMatchingLayout->setContentsMargins(0, 0, 0, 0);
-    pMatchingLayout->setSpacing(6);
+    pMatchingLayout->setSpacing(scmEditorCardRowGap);
 
     mpWidget_matchModeRows = new QWidget(pCard_matching);
     mpWidget_matchModeRows->setProperty("editorPanelSurface", true);
     auto* pModeLayout = new QVBoxLayout(mpWidget_matchModeRows);
     pModeLayout->setContentsMargins(0, 0, 0, 0);
-    pModeLayout->setSpacing(6);
+    pModeLayout->setSpacing(scmEditorCardRowGap);
 
     mpLabel_matchAnyChip = new QLabel(mpWidget_matchModeRows);
     mpLabel_matchAnyChip->setObjectName(qsl("editorModeChip"));
@@ -14864,7 +15014,7 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     auto* pCard_firing = makeEditorCard(pForm->widget_right, tr("Firing"));
     auto* pFiringLayout = new QVBoxLayout(pCard_firing);
     pFiringLayout->setContentsMargins(0, 0, 0, 0);
-    pFiringLayout->setSpacing(6);
+    pFiringLayout->setSpacing(scmEditorCardRowGap);
 
     auto* pStayOpenRow = new QHBoxLayout();
     pStayOpenRow->setSpacing(scmEditorModeChipGap);
@@ -15721,6 +15871,12 @@ void dlgTriggerEditor::setupEditorPanel()
     // The .ui file's name for the search row says which control it holds; the
     // shell stylesheet selects on it as one of the editor's own surfaces
     widget_searchTerm->setObjectName(qsl("editorSearchRow"));
+
+    // The panel of items is one pane from the search row at its head to the
+    // trees under it, so it is named as one thing and painted once - everything
+    // it holds shows it through. The .ui file's name says where the frame is;
+    // this one says what it is.
+    frame_left->setObjectName(qsl("editorItemPane"));
 }
 
 // The gap above the Lua editor is the only chrome that pane has, so it is what
@@ -15732,7 +15888,9 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     mpWidget_editorCodeHeader = new QWidget(this);
     mpWidget_editorCodeHeader->setObjectName(qsl("editorCodeHeader"));
     auto* pHeaderLayout = new QHBoxLayout(mpWidget_editorCodeHeader);
-    pHeaderLayout->setContentsMargins(10, 0, 10, 0);
+    // The column the strip lies in is already held off the window's edge, so
+    // this is only what the heading is set in from the code under it
+    pHeaderLayout->setContentsMargins(scmEditorCodeHeaderInset, 0, scmEditorCodeHeaderInset, 0);
     pHeaderLayout->setSpacing(6);
 
     mpLabel_editorCodeHeaderIcon = new QLabel(mpWidget_editorCodeHeader);
@@ -15934,6 +16092,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     const bool darkPage = tokens.darkPage;
     const QColor pageColor = tokens.page;
+    // The panel of items is a pane of its own between two columns drawn on the
+    // page, and what parts one pane from the next is a groove rather than a
+    // hairline
+    const QColor paneColor = tokens.pane;
+    const QColor separatorColor = tokens.separator;
     const QColor borderColor = tokens.border;
     const QColor mutedText = tokens.mutedText;
     const QColor disabledText = tokens.disabledText;
@@ -15975,15 +16138,41 @@ void dlgTriggerEditor::applyEditorShellStyle()
         pStatusBar->setStyleSheet(shellStyleSheet);
     }
 
-    // The panel down the left. No colour is named for an unselected row: what a
+    // The window's own surface, painted rather than left to fall back on
+    // QPalette::Window. The toolbar, the status bar, the panel down the left
+    // and the trees on it all name the page colour, while everything from the
+    // frame an item is edited in down to the seven forms inside it is
+    // transparent - so without this the two halves of the window agree only for
+    // as long as the page colour and QPalette::Window do, which is not the case
+    // on a palette that answers the same thing to Window and to Base, macOS in
+    // light appearance among them: themeTokens() steps the page down from Window
+    // there to keep the cards above it, and the edit column would be left a
+    // shade lighter than the panel beside it.
+    //
+    // On the shell rather than on the window, whose stylesheet
+    // Host::setProfileStyleSheet() assigns the profile's Lua one to, and named
+    // outright rather than written as a bare QWidget rule, which would paint
+    // every widget in the window over the top of what draws it.
+    if (QWidget* pShell = QMainWindow::centralWidget()) {
+        pShell->setStyleSheet(qsl("#editorShell { background-color: %1; }").arg(pageColor.name()));
+    }
+
+    // The panel of items, painted once for the whole column: the search row at
+    // its head shows this through, and the trees under it name the same tone.
+    // A pane rather than the page, so that the panel reads as a column of its
+    // own between the sidebar and the column an item is edited in, both of
+    // which are the page.
+    frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }").arg(paneColor.name()));
+
+    // The trees on that pane. No colour is named for an unselected row: what a
     // row is drawn in says whether the thing it stands for is running, and
     // EditorTreeDelegate is what knows that.
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
                                   "QTreeWidget::item { border-radius: 6px; padding: 2px 4px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
                                   "QTreeWidget::item:selected { color: %5; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
-                                      .arg(pageColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
-                              + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens);
+                                      .arg(paneColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
+                              + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
@@ -16044,50 +16233,80 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                "QGroupBox[editorCard=\"true\"]::indicator:hover { border: 1px solid %4; }"
                                                "QGroupBox[editorCard=\"true\"]::indicator:checked { border: 1px solid %4; image: url(:/icons/dialog-ok-apply_small.png); }")
                                                    .arg(QString::number(scmEditorCardIndicatorSize), indicatorOutline.name(), fieldColor.name(), accentColor.name());
-        // Where a checkable card's title starts is only known once the rules
-        // above are the ones being laid out under - and the box measured against
-        // them has to be one they select on
-        const QString cardTitleRule = qsl("QGroupBox[editorCardTitleInset=\"true\"]::title { left: %1px; }")
-                                              .arg(QString::number(uiDesign::measuredCardTitleInset(mpTriggersMainArea, cardIndicatorRules, uiDesign::scmProp_editorCard)));
+        // How much of the card's top padding is the title's rather than the gap
+        // under it is a line of the type the title is drawn in - and the box
+        // measured against the rules above has to be one they select on
+        const int cardTitleHeight = uiDesign::measuredCardTitleHeight(mpTriggersMainArea, cardIndicatorRules, uiDesign::scmProp_editorCard);
         // Styling the options column's scroll area takes its scroll bar with
         // it, the same way the pattern list's does
         const QString optionsScrollBarRules = uiDesign::scrollBarStyleSheet(qsl("#editorTriggerOptionsScroll"), tokens);
 
+        // The two words in the ID pill are given their type here rather than in
+        // the sheet, because the pill's corner is half the height those metrics
+        // come to: a font-size the sheet applied would only be known after it
+        // had been, and a corner named larger than half the height is clamped
+        // into an ellipse rather than drawn rounder.
+        const int idChipHeight = styleEditorIdChip(mpTriggersMainArea);
+
+        // A control pressed rather than a surface: the button lifts a shade
+        // further off the row while the pointer is on it, and the outlined strip
+        // under it draws its hairline a shade nearer the words instead
+        const QColor hoveredButton = uiDesign::blend(cardColor, textColor, scmEditorRaisedHoverWeight);
+        const QColor hoveredBorder = uiDesign::blend(borderColor, textColor, scmEditorHoveredBorderWeight);
+
         mpTriggersMainArea->setStyleSheet(qsl(
-                                                  // The top margin lifts the title clear of the frame, rather than
-                                                  // leaving it cutting through the card's border
-                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %9px;"
-                                                  " margin-top: 20px; padding: 12px; font-weight: bold; }"
-                                                  "QGroupBox[editorCard=\"true\"]::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }"
+                                                  // The title is the card's first line, inside the frame: the top
+                                                  // padding is what leaves room for it, and the same padding sets
+                                                  // it in from the left edge as the controls under it
+                                                  "QGroupBox[editorCard=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %8px;"
+                                                  " padding: %16px %17px %17px %17px; font-weight: bold; }"
+                                                  "QGroupBox[editorCard=\"true\"]::title { subcontrol-origin: padding; subcontrol-position: top left;"
+                                                  " left: %17px; top: %17px; padding: 0px; }"
                                                   // ...but only the title is bold, not everything the card holds:
                                                   "QGroupBox[editorCard=\"true\"] > * { font-weight: normal; }"
                                                   // The rows the cards are built out of show the card through them,
                                                   // named outright so a profile stylesheet cannot paint a band across one
                                                   "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
                                                   "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
+                                                  // What a field on the form's own row is, as against what a card's
+                                                  // rows hold: read at the size the rest of the row is read at
+                                                  "QLabel[editorRowLabel=\"true\"] { color: %3; background: transparent; }"
                                                   // The box naming a matching mode; the chosen one carries the accent
-                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %10px; padding: 1px 0px;"
+                                                  "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %9px; padding: 1px 0px;"
                                                   " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
                                                   "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                  // The button the options are opened from, and the strip that stands
-                                                  // in for them while they are away
-                                                  "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: 6px; padding: 3px 8px; background: transparent; }"
-                                                  "#toolButton_toggleExtraControls:hover { color: %7; background-color: %8; }"
+                                                  // The button the options are opened from is one to press, so it is
+                                                  // lifted off the row the way a card is lifted off the page; the
+                                                  // strip that stands in for them while they are away is a line of
+                                                  // readings to click, so it is only outlined
+                                                  "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %11px;"
+                                                  " padding: %14px %15px; background-color: %1; }"
+                                                  "#toolButton_toggleExtraControls:hover { color: %7; background-color: %12; }"
                                                   "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                  "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 5px 10px;"
+                                                  "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
                                                   " background: transparent; text-align: left; }"
-                                                  "#editorOptionsSummary:hover { color: %7; background-color: %8; }"
-                                                  // The ID reads as a label on the trigger, not as a second field
+                                                  "#editorOptionsSummary:hover { color: %7; border: 1px solid %13; }"
+                                                  // The ID reads as a label on the trigger, not as a second field: a
+                                                  // pill, whose corner is half the height its own type comes to.
+                                                  // Anything larger is clamped into an ellipse rather than rounded
+                                                  // further, which is why the number is measured rather than named.
                                                   "#frameId { border: 1px solid %2; border-radius: %10px; background: transparent; }"
+                                                  "#frameId QLabel { color: %3; background: transparent; }"
                                                   // The cards are what is drawn in the options column: the scroll
                                                   // area holding them and the viewport Qt gives it show the page
                                                   // through. Named outright, as the pattern rows are, so that a
                                                   // profile stylesheet cannot put the field colour back behind them.
                                                   "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
                                                   " { background: transparent; border: none; }")
-                                                  .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name(), hoverSoft)
+                                                  .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
                                                   .arg(QString::number(uiDesign::scmRadiusPanel), QString::number(uiDesign::scmRadiusChip))
-                                          + cardIndicatorRules + cardTitleRule + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
+                                                  .arg(QString::number(idChipHeight / 2), QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
+                                                  .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
+                                                  // The card's top padding carries the title and the gap under it;
+                                                  // %17 is the padding the other three sides are given, which is
+                                                  // also what the title is set in by
+                                                  .arg(QString::number(scmEditorCardPadding + cardTitleHeight + uiDesign::scmCardTitleGap), QString::number(scmEditorCardPadding))
+                                          + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();
         // ...and the options column against the bar it just sized, so that the
@@ -16154,7 +16373,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
         return;
     }
     const EditorSidebarWidths widths = editorSidebarWidths();
-    mpWidget_editorSidebarPane->setStyleSheet(qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %2; }").arg(pageColor.name(), borderColor.name())
+    mpWidget_editorSidebarPane->setStyleSheet(qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %2; }").arg(pageColor.name(), separatorColor.name())
                                               // The list itself is the settings dialog's sidebar, drawn from the
                                               // same rules; the names are quieter here, as the rest of the
                                               // editor's chrome is

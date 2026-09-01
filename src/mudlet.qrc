@@ -9,7 +9,8 @@
         <file>packages/mpkg/mpkg.mpackage</file>
         <file>packages/MedBootstrap/MedBootstrap.mpackage</file>
         <file>edbee_defaults/Lua.tmLanguage</file>
-        <file>edbee_defaults/Mudlet.tmTheme</file>
+        <file>edbee_defaults/Mudlet Dark.tmTheme</file>
+        <file>edbee_defaults/Mudlet Light.tmTheme</file>
         <file>icons/120x30RoDLogo.png</file>
         <file>icons/3Kingdoms.png</file>
         <file>icons/3Scapes.png</file>

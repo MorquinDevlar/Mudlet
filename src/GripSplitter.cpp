@@ -117,18 +117,11 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    if (mpContent) {
-        // A bar of its own, rather than a strip of whichever pane it is nearer
-        painter.fillRect(rect(), tokens.page);
-        painter.setPen(tokens.border);
-        if (orientation() == Qt::Vertical) {
-            painter.drawLine(0, 0, width(), 0);
-            painter.drawLine(0, height() - 1, width(), height() - 1);
-        } else {
-            painter.drawLine(0, 0, 0, height());
-            painter.drawLine(width() - 1, 0, width() - 1, height());
-        }
-    }
+    // The seam between the two panes, whether or not it is carrying anything:
+    // one groove darker than either of them, rather than a strip of whichever
+    // pane it is nearer bounded by hairlines. A handle given a heading to carry
+    // is the same seam, only deep enough to read the heading in.
+    painter.fillRect(rect(), tokens.separator);
 
     // Halfway from the hairline a border gets away with to the words beside it:
     // a grip is small and has to be findable without being a rule across the pane

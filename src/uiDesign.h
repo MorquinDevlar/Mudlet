@@ -68,12 +68,18 @@ inline constexpr char scmProp_editorCard[] = "editorCard";
 // Three tones carry the depth, and which one a rule reaches for is the whole of
 // what says how deep the thing it draws sits:
 //   page  - the window itself, and anything that is a piece of the window: the
-//           toolbar, the status bar, the panel down the left, a tree's viewport,
-//           the row a search field sits in
+//           toolbar, the status bar, the sidebar, the column an item is edited
+//           in
+//   pane  - a column of the window that is a surface of its own rather than a
+//           piece of the page: the editor's panel of items, taken as one thing
+//           from the search row at its head to the trees under it
 //   card  - a panel lifted off the page: the options cards, a popup surface
 //   field - sunk into whatever holds it, because the user types into it or
 //           picks a value in it: line edits, combo boxes, spin boxes, the code
 //           pane, a check indicator
+// ...and one tone is a line rather than a surface:
+//   separator - the seam between two panes, drawn where the handle that resizes
+//           them is
 struct ThemeTokens
 {
     // Straight off the palette: the words on the page and the colour the theme
@@ -88,6 +94,9 @@ struct ThemeTokens
     QColor page;
     // Lifted off the page, so that a card reads as nearer than what carries it
     QColor card;
+    // A fifth of that lift: enough for a column to be told apart from the page
+    // beside it, and far short of what would read as a panel laid on top of it
+    QColor pane;
     // QPalette::Base: what Qt paints an editable control with, and the one
     // surface a platform style already agrees with us about
     QColor field;
@@ -96,6 +105,12 @@ struct ThemeTokens
     // appearance has window, base and mid within three levels, so a border mixed
     // from those is invisible.
     QColor border;
+    // The seam between two panes: the page taken towards black, so it reads as a
+    // groove cut into the window rather than as a hairline drawn on it - which
+    // is what the border tone is for. A light page is near enough to white that
+    // the drop has to be the smaller one, or the seam becomes a grey rule across
+    // the window.
+    QColor separator;
     QColor mutedText;
     QColor disabledText;
     // A saturated highlight colour rarely holds its own against both pages
@@ -122,8 +137,9 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // A scroll bar is chrome the reader is not meant to notice until they reach for
 // it, and one window's idea of that is every window's. The prefix is what the
 // rules are scoped by - a scroll area's own bars answer only to a descendant
-// selector.
-QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens);
+// selector. The groove is the surface the bar is set into, which is the page
+// unless the caller names the one it is actually drawing over.
+QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens, const QColor& surface = QColor());
 
 // The measurements one window's sidebar differs from the other's by; the colour
 // an unchosen name is written in is the only other difference, and travels
@@ -279,11 +295,21 @@ QString rgba(const QColor& color, const qreal alpha);
 // antialiased edges that recolouring the pixels would harden into a staircase
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color);
 
-// Measured off a throwaway pair rather than added up from the indicator's
-// width, because what a style leaves after an indicator is the style's business:
-// Fusion allows 6px and the macOS style 8. The throwaway box carries whichever
-// card property the rules being measured under select on.
-int measuredCardTitleInset(QWidget* pParent, const QString& indicatorRules, const char* cardProperty = scmProp_settingsCard);
+// A card's title is the first line inside its frame, so the card has to leave
+// room for it above the first control: how much is a line of the bold type the
+// title is set in, which is the font the window is running at rather than a
+// number a stylesheet could name. Measured off a throwaway box rather than
+// added up, because what a style leaves round a title - and round the check
+// indicator a checkable card's title begins with - is the style's business.
+// The throwaway box carries whichever card property the rules being measured
+// under select on.
+int measuredCardTitleHeight(QWidget* pParent, const QString& indicatorRules, const char* cardProperty = scmProp_settingsCard);
+
+// What is left between a card's title and the first control under it. The
+// padding round the card is the window's own - 16px in the settings dialog, 12
+// in the editor's narrower column - but the gap under the title is the same in
+// both, because it separates two lines rather than a box from its frame.
+inline constexpr int scmCardTitleGap = 8;
 
 // A QLabel's rich text reaches a picture only through a URL, and a glyph tinted
 // at runtime has no path - so it travels inline

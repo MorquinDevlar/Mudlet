@@ -979,7 +979,7 @@ void mudlet::initEdbee()
     //QFile file(fileName);
     //if( file.exists() && file.open(QIODevice::ReadOnly) ) {
 
-    loadEdbeeTheme(qsl("Mudlet"), qsl("Mudlet.tmTheme"));
+    loadEdbeeTheme(scmEditorThemeNameLight, scmEditorThemeFileLight);
 }
 
 void mudlet::loadMaps()
@@ -3552,12 +3552,12 @@ void mudlet::slot_showEditorDialog()
     showEditorRestoringWindowState(pEditor);
     pEditor->activateWindow();
 
-    // Force reposition after showing, since script editor is a singleton
-    // that may restore its position after being shown
-    Host* activeHost = getActiveHost();
-    QWidget* activeConsole = activeHost ? activeHost->mpConsole : nullptr;
-    QWidget* referenceWidget = activeConsole ? activeConsole : this;
-    utils::forceRepositionDialogOnParentScreen(pEditor, referenceWidget);
+    // No repositioning here: the editor places itself in dlgTriggerEditor::showEvent().
+    // This used to force the singleton editor back to the centre of the profile's
+    // screen on every show, which also threw away wherever the user had dragged it.
+    // The editor now moves itself only in the two cases that call for it - a window
+    // left somewhere it can no longer be grabbed, and an editor with no placement of
+    // the user's own whose profile is on another screen.
 }
 
 void mudlet::slot_showTriggerDialog()
@@ -3590,9 +3590,10 @@ void mudlet::slot_showTriggerDialog()
         });
     });
 
-    // Position dialog on the same screen as the main window for better multi-monitor UX
-    utils::positionDialogOnParentScreen(pEditor, this);
-
+    // As in slot_showEditorDialog(), placement is the editor's own. This ran while
+    // the singleton was still hidden, and positionDialogOnParentScreen() re-centres
+    // any dialog that is not currently visible, so it moved the editor on every show
+    // just as the forced version did.
     pEditor->slot_showTriggers();
     pEditor->raise();
     showEditorRestoringWindowState(pEditor);
@@ -5849,6 +5850,22 @@ bool mudlet::loadLuaFunctionList()
     return true;
 }
 
+// The theme Mudlet ships was called "Mudlet" until a dark one joined it and the
+// two became a light/dark pair, and a profile saved before then still asks for
+// it by that name and file name. The file still resolves either way, but the
+// name no longer matches an entry in the theme list - which would leave the
+// preferences showing no theme at all - so a profile's stored choice is brought
+// forward once, on the way in, rather than translated at every read.
+void mudlet::migrateBundledEditorTheme(QString& themeName, QString& themeFile)
+{
+    if (!themeName.compare(scmEditorThemeNameLegacy, Qt::CaseSensitive)) {
+        themeName = scmEditorThemeNameLight;
+    }
+    if (!themeFile.compare(scmEditorThemeFileLegacy, Qt::CaseSensitive)) {
+        themeFile = scmEditorThemeFileLight;
+    }
+}
+
 // loads the needed edbee theme from disk for use
 bool mudlet::loadEdbeeTheme(const QString& themeName, const QString& themeFile)
 {
@@ -5954,16 +5971,20 @@ QString mudlet::getMudletPath(const enums::mudletPathType mode, const QString& e
         // map is loaded:
         return qsl("%1/profiles/%2/log/errors.txt").arg(confPath, extra1);
     case enums::editorWidgetThemePathFile:
-        // Takes two extra arguments (profile name, theme name) that returns the
-        // pathFileName of the theme file used by the edbee editor - also
-        // handles the special case of the default theme "mudlet.tmTheme" that
-        // is carried internally in the resource file:
-        if (extra1.compare(qsl("Mudlet.tmTheme"), Qt::CaseSensitive)) {
-            // No match
-            return qsl("%1/edbee/Colorsublime-Themes-master/themes/%2").arg(confPath, extra1);
+        // Takes one extra argument (theme file name) and returns the
+        // pathFileName of the theme file used by the edbee editor. Every theme
+        // but Mudlet's own two is downloaded into the cache; those two are
+        // carried internally in the resource file. The light one also answers
+        // to the file name it had while it was the only theme Mudlet shipped,
+        // so a profile saved by one of those versions still finds it whether or
+        // not its stored value has been brought forward yet.
+        if (!extra1.compare(scmEditorThemeFileLight, Qt::CaseSensitive) || !extra1.compare(scmEditorThemeFileLegacy, Qt::CaseSensitive)) {
+            return qsl(":/edbee_defaults/%1").arg(scmEditorThemeFileLight);
         }
-        // Match - return path to copy held in resource file
-        return qsl(":/edbee_defaults/Mudlet.tmTheme");
+        if (!extra1.compare(scmEditorThemeFileDark, Qt::CaseSensitive)) {
+            return qsl(":/edbee_defaults/%1").arg(scmEditorThemeFileDark);
+        }
+        return qsl("%1/edbee/Colorsublime-Themes-master/themes/%2").arg(confPath, extra1);
     case enums::editorWidgetThemeJsonFile:
         // Returns the pathFileName to the external JSON file needed to process
         // an edbee editor widget theme:
