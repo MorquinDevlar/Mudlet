@@ -181,6 +181,11 @@ static constexpr int scmEditorRowButtonPaddingHorizontal = 12;
 static constexpr qreal scmEditorRaisedHoverWeight = 0.08;
 static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 
+// How much of the accent a chosen row in the panel of items is filled with. A
+// tone rather than a wash, so that the pill reads as one colour the whole way
+// along however wide the panel is dragged.
+static constexpr qreal scmEditorTreeSelectionWeight = 0.24;
+
 // The one measurement of that sidebar which is not a constant is what it is
 // drawn at with the names showing, since that is the longest of the names -
 // see editorSidebarWidths()
@@ -1059,7 +1064,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // The trigger form's own options, and the strip that stands in for them
     buildTriggerOptionsPanel();
 
-    // Only explicit clicks change the persisted preference - the space-driven
+    // Only explicit clicks change what the session is holding - the space-driven
     // auto-collapse in slot_rightSplitterMoved must stay transient:
     connect(mpTriggersMainArea->toolButton_toggleExtraControls, &QAbstractButton::clicked, this, &dlgTriggerEditor::setTriggerOptionsShown);
     connect(mpButton_triggerOptionsSummary, &QAbstractButton::clicked, this, [this]() {
@@ -1734,7 +1739,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
 
     readSettings();
-    slot_showAllTriggerControls(mShowAllTriggerControls);
+    // The options panel is a disclosure rather than a preference: the editor
+    // opens with it closed however the last session left it, and the summary
+    // strip stands in for it until the reader asks for it back
+    slot_showAllTriggerControls(false);
 
     comboBox_searchTerms->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
@@ -2949,8 +2957,6 @@ void dlgTriggerEditor::readSettings()
     mKeyEditorSplitterState = settings.value("mKeyEditorSplitterState", QByteArray()).toByteArray();
     mTimerEditorSplitterState = settings.value("mTimerEditorSplitterState", QByteArray()).toByteArray();
     mVarEditorSplitterState = settings.value("mVarEditorSplitterState", QByteArray()).toByteArray();
-
-    mShowAllTriggerControls = settings.value("showAllTriggerControls", false).toBool();
 }
 
 void dlgTriggerEditor::writeSettings()
@@ -2973,7 +2979,11 @@ void dlgTriggerEditor::writeSettings()
     settings.setValue("mTimerEditorSplitterState", mTimerEditorSplitterState);
     settings.setValue("mVarEditorSplitterState", mVarEditorSplitterState);
 
-    settings.setValue("showAllTriggerControls", mShowAllTriggerControls);
+    // The trigger options panel used to be a stored preference and is now a
+    // disclosure the editor opens closed - so the key is cleared rather than
+    // left behind in every configuration that has one, saying something nothing
+    // reads any more
+    settings.remove(qsl("showAllTriggerControls"));
 }
 
 void dlgTriggerEditor::slot_itemSelectedInSearchResults(QTreeWidgetItem* pItem)
@@ -15220,7 +15230,8 @@ void dlgTriggerEditor::updateTriggerOptionsSummary()
 }
 
 // The one way the panel is opened or closed on purpose, so that the Options
-// button and the summary strip mean the same thing and persist the same way
+// button and the summary strip mean the same thing and leave the session
+// holding the same answer
 void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
 {
     mShowAllTriggerControls = shown;
@@ -16170,13 +16181,27 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // The trees on that pane. No colour is named for an unselected row: what a
     // row is drawn in says whether the thing it stands for is running, and
     // EditorTreeDelegate is what knows that.
+    //
+    // A chosen row is one pill in one tone, cornered like the sidebar's items
+    // and the search field above it. One tone because a wash that fades along
+    // the row reads as two of them at the width a panel this narrow gives it;
+    // one pill because the six item trees are indented by that delegate rather
+    // than by the view, so a row is a single rectangle from edge to edge with
+    // the chevron inside it - where the view's own indentation would have left
+    // the column the chevron stands in painted by the style, in the platform's
+    // saturated selection colour, with the row's pill stuck to the side of it.
+    const QColor selectedRow = uiDesign::blend(paneColor, accentColor, scmEditorTreeSelectionWeight);
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
-                                  "QTreeWidget::item { border-radius: 6px; padding: 2px 4px; }"
+                                  "QTreeWidget::item { border-radius: %5px; padding: 2px 4px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
-                                  "QTreeWidget::item:selected { color: %5; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
-                                      .arg(paneColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
+                                  "QTreeWidget::item:selected { color: %4; background-color: %3; }")
+                                      .arg(paneColor.name(), hoverSoft, selectedRow.name(), accentText.name(), QString::number(uiDesign::scmRadiusPanel))
                               + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
+    // The tree of Lua variables takes the same rules and is drawn by no delegate
+    // of ours: it is a view of what the interpreter holds rather than of what
+    // the profile is made of, so it keeps the view's indentation and the arrows
+    // the style draws in it
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
         pTreeWidget->setStyleSheet(treeRules);
@@ -16188,8 +16213,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // The results take the trees' hover and selection so that one panel reads as
     // one thing; what a row holds is drawn by SearchResultDelegate, which is
     // where the rest of the look comes from - the heading rows' larger type
-    // among it. The branch column is left to the style: a heading is a group the
-    // reader can fold away.
+    // among it. The branch column is left to the style here rather than drawn by
+    // the delegate as it is in the item trees: a results list is read and left
+    // rather than lived in, and the arrow the style draws in that column is the
+    // one thing that says a heading is a group the reader can fold away.
     treeWidget_searchResults->setStyleSheet(treeRules + qsl("QTreeWidget#editorSearchResults::item { padding: 0px 2px; }"));
     if (mpSearchResultDelegate) {
         mpSearchResultDelegate->restyle();

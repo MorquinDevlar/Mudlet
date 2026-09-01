@@ -122,9 +122,11 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorBannerViewSwitchTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorMinimumSizeTest;
+    friend class EditorOptionsPanelDefaultTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorSurfaceToneTest;
     friend class EditorTreeDotClickTest;
+    friend class EditorTreeSelectionPillTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
 
@@ -1043,9 +1045,13 @@ private:
     // determined the first time the area is shrunk down by the user:
     int mTriggerMainAreaMinimumHeightToShowAll = 0;
 
-    // Persisted preference for showing the extra trigger controls; only
-    // changed by explicit clicks on the toggle button, not by the transient
-    // space-driven auto-collapse:
+    // Whether the reader has asked for the extra trigger controls in this
+    // session. Not stored: the editor opens with the panel closed every time,
+    // and the summary strip says what it would have said. Only changed by
+    // explicit clicks on the toggle button, not by the transient space-driven
+    // auto-collapse - which is what this is read for, since a panel that was
+    // folded away for want of room is one to unfold again when the room comes
+    // back, and one the reader closed is not:
     bool mShowAllTriggerControls = false;
 
     // tracks location of the splitter in the trigger editor for each tab

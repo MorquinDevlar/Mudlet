@@ -121,6 +121,24 @@ private:
 
     QRect dotRect(QTreeWidgetItem* pItem) const { return dotDelegate()->dotHitRect(indexOf(pItem)); }
 
+    QRect chevronRect(QTreeWidgetItem* pItem) const { return dotDelegate()->chevronHitRect(indexOf(pItem)); }
+
+    // A group with a trigger inside it, made the way the editor makes one: a new
+    // item goes inside whichever folder is chosen, and what has just been added
+    // is what is chosen next
+    QTreeWidgetItem* aGroupHoldingATrigger()
+    {
+        tree()->setCurrentItem(baseItem());
+        mpEditor->addTrigger(true);
+        QTreeWidgetItem* pGroup = tree()->currentItem();
+        mpEditor->addTrigger(false);
+        // Opening the group is animated, and a view part-way through one of
+        // those answers a press itself rather than passing it on to whatever
+        // was pressed - the same guard the view's own arrow used to sit behind
+        QTest::qWait(400ms);
+        return pGroup;
+    }
+
     // Both ways the editor can be asked to switch a row: the delegate's own
     // request, and the view's activated() that a double click on a row reaches.
     // They arrive at one slot, so their sum is how many times the switch was
@@ -370,6 +388,97 @@ private slots:
 
         const QList<QTreeWidgetItem*> selected = tree()->selectedItems();
         QVERIFY2(selected.contains(pFirst) && selected.contains(pSecond), qPrintable(qsl("A drag-select across both rows should have selected both, but selected %1 item(s)").arg(selected.size())));
+    }
+
+    // The chevron is drawn by the same delegate, in the cell the view used to
+    // draw its branch arrow in, and answers its presses the same way - so what
+    // the view did with a click there has to go on happening: the row folds, and
+    // nothing else about it moves.
+    void testClickOnChevronFoldsTheRowAndLeavesTheSelectionAlone()
+    {
+        QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
+        QTreeWidgetItem* pChosen = tree()->currentItem();
+        QVERIFY2(pGroup && pGroup->childCount() == 1, "The group this case folds was not made");
+        QVERIFY2(pGroup->isExpanded(), "The editor leaves a group it has just added to open");
+
+        const QRect chevron = chevronRect(pGroup);
+        QVERIFY2(!chevron.isEmpty(), "A group with something inside it should report a chevron to click");
+
+        ToggleCounter toggles(dotDelegate(), tree());
+        QTest::mouseClick(viewport(), Qt::LeftButton, Qt::NoModifier, chevron.center());
+        QCoreApplication::processEvents();
+        QVERIFY2(!pGroup->isExpanded(), "A click on the chevron did not fold the group away");
+
+        // ...and the folding is animated in its turn
+        QTest::qWait(400ms);
+        QTest::mouseClick(viewport(), Qt::LeftButton, Qt::NoModifier, chevronRect(pGroup).center());
+        QCoreApplication::processEvents();
+        QVERIFY2(pGroup->isExpanded(), "A second click on the chevron did not open the group again");
+
+        QCOMPARE(toggles.count(), 0);
+        QCOMPARE(tree()->currentItem(), pChosen);
+    }
+
+    // The keyboard reaches the same folding, and never went through the arrow
+    // the view drew - so it has to be unaffected by the arrow having moved into
+    // the row
+    void testArrowKeysStillFoldTheRow()
+    {
+        QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
+        tree()->setCurrentItem(pGroup);
+        tree()->setFocus();
+        QCoreApplication::processEvents();
+        QVERIFY(pGroup->isExpanded());
+
+        QTest::keyClick(tree(), Qt::Key_Left);
+        QCoreApplication::processEvents();
+        QVERIFY2(!pGroup->isExpanded(), "The left arrow key did not fold the group away");
+
+        QTest::keyClick(tree(), Qt::Key_Right);
+        QCoreApplication::processEvents();
+        QVERIFY2(pGroup->isExpanded(), "The right arrow key did not open the group again");
+    }
+
+    // A double click on the chevron folds the row once and switches nothing: the
+    // pair's first press has already folded it, and the second handed on would
+    // reach the view's activated() and switch the group on or off
+    void testDoubleClickOnChevronFoldsOnceAndSwitchesNothing()
+    {
+        QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
+        const QRect chevron = chevronRect(pGroup);
+        QVERIFY(!chevron.isEmpty());
+        QVERIFY(pGroup->isExpanded());
+
+        ToggleCounter toggles(dotDelegate(), tree());
+        QTest::mousePress(viewport(), Qt::LeftButton, Qt::NoModifier, chevron.center());
+        QTest::mouseRelease(viewport(), Qt::LeftButton, Qt::NoModifier, chevron.center());
+        QTest::mouseDClick(viewport(), Qt::LeftButton, Qt::NoModifier, chevron.center());
+        QTest::mouseRelease(viewport(), Qt::LeftButton, Qt::NoModifier, chevron.center());
+        QCoreApplication::processEvents();
+
+        QCOMPARE(toggles.count(), 0);
+        QVERIFY2(!pGroup->isExpanded(), "A double click on the chevron should leave the group folded, having folded it once");
+    }
+
+    // A double click on the row itself is the editor's way of switching an item
+    // on or off, and the view folds the row under it at the same time. Neither
+    // half went through the chevron, and neither may be swallowed by it.
+    void testDoubleClickOnTheRowStillSwitchesIt()
+    {
+        QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
+        const QRect row = tree()->visualItemRect(pGroup);
+        const QRect chevron = chevronRect(pGroup);
+        const QPoint onTheName(row.right() - 6, row.center().y());
+        QVERIFY2(!chevron.contains(onTheName) && !dotRect(pGroup).contains(onTheName), "The point this case double clicks has to be clear of both marks the delegate answers for");
+
+        ToggleCounter toggles(dotDelegate(), tree());
+        QTest::mousePress(viewport(), Qt::LeftButton, Qt::NoModifier, onTheName);
+        QTest::mouseRelease(viewport(), Qt::LeftButton, Qt::NoModifier, onTheName);
+        QTest::mouseDClick(viewport(), Qt::LeftButton, Qt::NoModifier, onTheName);
+        QTest::mouseRelease(viewport(), Qt::LeftButton, Qt::NoModifier, onTheName);
+        QCoreApplication::processEvents();
+
+        QCOMPARE(toggles.count(), 1);
     }
 };
 

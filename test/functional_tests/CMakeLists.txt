@@ -117,10 +117,12 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorBannerViewSwitchTest.cpp
     EditorColumnAlignmentTest.cpp
     EditorMinimumSizeTest.cpp
+    EditorOptionsPanelDefaultTest.cpp
     EditorPlacementPersistenceTest.cpp
     EditorSplitterRestoreTest.cpp
     EditorSurfaceToneTest.cpp
     EditorTreeDotClickTest.cpp
+    EditorTreeSelectionPillTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp
     VariableEditorWriteBackTest.cpp
