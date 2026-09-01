@@ -786,9 +786,9 @@ private:
 
     QToolBar* toolBar = nullptr;
 
-    // Every toolbar picture is a monochrome glyph tinted from the palette, so
+    // Every action picture is a monochrome glyph tinted from the palette, so
     // each action is kept beside the resource its picture is drawn from
-    QList<QPair<QAction*, QString>> mEditorToolbarGlyphs;
+    QList<QPair<QAction*, QString>> mEditorActionGlyphs;
 
     // One per item tree, kept so that a theme change can be handed on to the
     // state dots they draw

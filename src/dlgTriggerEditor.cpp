@@ -1088,7 +1088,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
             utils::richText(tr("Show/Hide Debug Console (%1) -> system will be <b><i>slower</i></b>.").arg(QKeySequence(Qt::CTRL | Qt::Key_0).toString(QKeySequence::NativeText))));
     connect(showDebugAreaAction, &QAction::triggered, this, &dlgTriggerEditor::slot_toggleCentralDebugConsole);
 
-    mpAction_toggleActive = new QAction(QIcon(qsl(":/icons/document-encrypt.png")), tr("Activate"), this);
+    mpAction_toggleActive = new QAction(tr("Activate"), this);
     mpAction_toggleActive->setStatusTip(tr("Toggle Active or Non-Active Mode for Triggers, Scripts etc."));
     connect(mpAction_toggleActive, &QAction::triggered, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
     connect(treeWidget_triggers, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
@@ -1198,11 +1198,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         widget->addAction(mpAction_toggleActive);
     }
 
-    if (!qApp->testAttribute(Qt::AA_DontShowIconsInMenus)) {
-        copyAction->setIcon(QIcon::fromTheme(qsl("edit-copy"), QIcon(qsl(":/icons/edit-copy.png"))));
-        pasteAction->setIcon(QIcon::fromTheme(qsl("edit-paste"), QIcon(qsl(":/icons/edit-paste.png"))));
-    }
-
     QAction* importAction = new QAction(QIcon(qsl(":/icons/import.png")), tr("Import"), this);
     importAction->setEnabled(true);
     connect(importAction, &QAction::triggered, this, &dlgTriggerEditor::slot_import);
@@ -1293,19 +1288,24 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     toolBar->addSeparator();
     toolBar->addAction(mProfileSaveAction);
 
-    // Each toolbar picture is drawn from a monochrome glyph tinted to the
-    // palette, which restyleEditorIcons() redoes whenever the theme changes
-    mEditorToolbarGlyphs = {{mAddItem, qsl(":/icons/editor-add.png")},
-                            {mAddGroup, qsl(":/icons/editor-add-group.png")},
-                            {mSaveItem, qsl(":/icons/editor-save-item.png")},
-                            {mDeleteItem, qsl(":/icons/editor-delete.png")},
-                            {mpUndoAction, qsl(":/icons/editor-undo.png")},
-                            {mpRedoAction, qsl(":/icons/editor-redo.png")},
-                            {importAction, qsl(":/icons/editor-import.png")},
-                            {mpExportAction, qsl(":/icons/editor-export.png")},
-                            {mpCreateModuleAction, qsl(":/icons/editor-module.png")},
-                            {mProfileSaveAction, qsl(":/icons/editor-save-profile.png")},
-                            {mProfileSaveAsAction, qsl(":/icons/editor-save-profile.png")}};
+    // Every picture an action carries, on the toolbar and in the trees' context
+    // menu alike, is drawn from a monochrome glyph tinted to the palette, which
+    // restyleEditorIcons() redoes whenever the theme changes
+    mEditorActionGlyphs = {{mAddItem, qsl(":/icons/editor-add.png")},
+                           {mAddGroup, qsl(":/icons/editor-add-group.png")},
+                           {mSaveItem, qsl(":/icons/editor-save-item.png")},
+                           {mDeleteItem, qsl(":/icons/editor-delete.png")},
+                           {mpUndoAction, qsl(":/icons/editor-undo.png")},
+                           {mpRedoAction, qsl(":/icons/editor-redo.png")},
+                           {importAction, qsl(":/icons/editor-import.png")},
+                           {mpExportAction, qsl(":/icons/editor-export.png")},
+                           {mpCreateModuleAction, qsl(":/icons/editor-module.png")},
+                           {mProfileSaveAction, qsl(":/icons/editor-save-profile.png")},
+                           {mProfileSaveAsAction, qsl(":/icons/editor-save-profile.png")},
+                           // Menu-only, and reached from the trees rather than the toolbar
+                           {mpAction_toggleActive, qsl(":/icons/editor-activate.png")},
+                           {copyAction, qsl(":/icons/editor-copy.png")},
+                           {pasteAction, qsl(":/icons/editor-paste.png")}};
 
     // Saving the profile under another name is the rarer of the pair, so it
     // hangs off the button beside it rather than taking a place of its own
@@ -15604,7 +15604,7 @@ void dlgTriggerEditor::restyleEditorIcons()
     const QColor quietColor = tokens.mutedText;
     const QColor accentText = tokens.accentText;
 
-    for (const auto& glyph : std::as_const(mEditorToolbarGlyphs)) {
+    for (const auto& glyph : std::as_const(mEditorActionGlyphs)) {
         if (!glyph.first) {
             continue;
         }
