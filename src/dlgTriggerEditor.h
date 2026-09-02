@@ -125,6 +125,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     // Allow QTest-based test classes to access private members
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
+    friend class EditorCaretReadingTest;
     friend class EditorChromeInkTest;
     friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
@@ -487,7 +488,7 @@ public slots:
     void slot_setTreeWidgetIconSize(int);
     void slot_colorTriggerFg();
     void slot_colorTriggerBg();
-    void slot_updateStatusBar(const QString& statusText); // For the source code editor
+    void slot_updateCaretPosition(const QString& statusText); // For the source code editor
     void slot_profileSaveStarted();
     void slot_profileSaveFinished();
     void slot_editorThemeChanged();
@@ -905,6 +906,10 @@ private:
     // ...and the word on it, which the variables view changes: the pane there
     // holds a value rather than a script
     QPointer<QLabel> mpLabel_editorCodeHeaderTitle;
+    // Where the caret is, at the trailing end of the strip. It belongs to the
+    // code pane rather than to the window, so it comes and goes with the pane
+    // the way the strip carrying it does.
+    QPointer<QLabel> mpLabel_editorCaretPosition;
     QPointer<QWidget> mpWidget_editorCompileChip;
     QPointer<QLabel> mpLabel_editorCompileDot;
     QPointer<QLabel> mpLabel_editorCompileState;
@@ -1108,7 +1113,7 @@ private:
     edbee::TextDocument* mpSourceEditorEdbeeDocument = nullptr;
     edbee::TextSearcher* mpSourceEditorSearcher = nullptr;
 
-    inline static const QRegularExpression csmSimplifyStatusBarRegex{qsl(R"(^(?:\[\*\] )?(.+?) \|)")};
+    inline static const QRegularExpression csmSimplifyCaretReportRegex{qsl(R"(^(?:\[\*\] )?(.+?) \|)")};
 
     QAction* mAddItem = nullptr;
     QAction* mDeleteItem = nullptr;

@@ -879,7 +879,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpSourceEditorEdbeeDocument = mpSourceEditorEdbee->textDocument();
 
     // Update the status bar on changes
-    connect(mpSourceEditorEdbee->controller(), &edbee::TextEditorController::updateStatusTextSignal, this, &dlgTriggerEditor::slot_updateStatusBar);
+    connect(mpSourceEditorEdbee->controller(), &edbee::TextEditorController::updateStatusTextSignal, this, &dlgTriggerEditor::slot_updateCaretPosition);
     // The caret readout speaks for the code pane, so it goes when the pane does
     // - a table, a function or a root row leaves nothing under it to have a
     // caret in - and is asked for again when the pane comes back
@@ -1713,6 +1713,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     config->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     config->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     config->setAutocompleteMinimalCharacters(3);
+    // A byte offset is a debugging reading rather than one a script author
+    // uses, and every document the pane is handed brings a configuration of
+    // its own - so it is turned off per document rather than once
+    config->setShowCaretOffset(false);
     config->endChanges();
 
     connect(comboBox_searchTerms, qOverload<int>(&QComboBox::activated), this, &dlgTriggerEditor::slot_searchMudletItems);
@@ -13941,7 +13945,7 @@ void dlgTriggerEditor::slot_colorTriggerBg()
     }
 }
 
-void dlgTriggerEditor::slot_updateStatusBar(const QString& statusText)
+void dlgTriggerEditor::slot_updateCaretPosition(const QString& statusText)
 {
     // Loading a document into a pane that is not on show still moves the caret,
     // and a reading of where it is would outlive the pane it belongs to.
@@ -13953,7 +13957,7 @@ void dlgTriggerEditor::slot_updateStatusBar(const QString& statusText)
 
     // edbee adds the scope and last command which is rather technical debugging information,
     // so strip it away by removing the first pipe and everything after it
-    const QRegularExpressionMatch match = csmSimplifyStatusBarRegex.match(statusText, 0, QRegularExpression::PartialPreferFirstMatch);
+    const QRegularExpressionMatch match = csmSimplifyCaretReportRegex.match(statusText, 0, QRegularExpression::PartialPreferFirstMatch);
     QString stripped;
     if (match.hasPartialMatch() || match.hasMatch()) {
         stripped = match.captured(1);
@@ -13961,7 +13965,13 @@ void dlgTriggerEditor::slot_updateStatusBar(const QString& statusText)
         stripped = statusText;
     }
 
-    QMainWindow::statusBar()->showMessage(stripped);
+    // Not through QStatusBar::showMessage(): a message with no timeout never
+    // comes down, and hideOrShow() only hides the counts widget for a message
+    // if that widget is already visible - the first caret report arrives before
+    // the window is shown, so the counts stayed up and were painted over.
+    if (mpLabel_editorCaretPosition) {
+        mpLabel_editorCaretPosition->setText(stripped);
+    }
 }
 
 void dlgTriggerEditor::slot_profileSaveStarted()
@@ -14037,6 +14047,10 @@ void dlgTriggerEditor::clearDocument(edbee::TextEditorWidget* pEditorWidget, con
     config->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     config->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     config->setAutocompleteMinimalCharacters(3);
+    // A byte offset is a debugging reading rather than one a script author
+    // uses, and every document the pane is handed brings a configuration of
+    // its own - so it is turned off per document rather than once
+    config->setShowCaretOffset(false);
     config->endChanges();
 
     // If undo is not disabled when setting the initial text, the
@@ -14144,6 +14158,10 @@ void dlgTriggerEditor::setThemeAndOtherSettings(const QString& theme)
     localConfig->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     localConfig->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     localConfig->setAutocompleteMinimalCharacters(3);
+    // A byte offset is a debugging reading rather than one a script author
+    // uses, and every document the pane is handed brings a configuration of
+    // its own - so it is turned off per document rather than once
+    localConfig->setShowCaretOffset(false);
     localConfig->endChanges();
 }
 
@@ -16356,6 +16374,12 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     // and below it is what says the chip is on the bar rather than being it.
     pHeaderLayout->addWidget(mpWidget_editorCompileChip, 0, Qt::AlignVCenter);
 
+    mpLabel_editorCaretPosition = new QLabel(mpWidget_editorCodeHeader);
+    mpLabel_editorCaretPosition->setObjectName(qsl("editorCodeCaret"));
+    // Asks for what it says and no more, so the words to its left keep the rest
+    mpLabel_editorCaretPosition->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    pHeaderLayout->addWidget(mpLabel_editorCaretPosition, 0, Qt::AlignVCenter);
+
     // Index 1 is the handle over mpSourceEditorArea, which is the second of the
     // three panes the right hand splitter stacks
     splitter_right->setHeaderHandle(1, mpWidget_editorCodeHeader);
@@ -17002,7 +17026,8 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // Only what the strip holds is drawn: the bar behind it is painted by
         // the handle carrying it, which is where the grip comes from too
         mpWidget_editorCodeHeader->setStyleSheet(qsl("#editorCodeHeader { background: transparent; }"
-                                                     "#editorCodeHeaderTitle { color: %1; font-size: 92%; }")
+                                                     "#editorCodeHeaderTitle { color: %1; font-size: 92%; }"
+                                                     "#editorCodeCaret { color: %1; font-size: 92%; }")
                                                          .arg(mutedText.name()));
         updateEditorCompileChip();
     }
