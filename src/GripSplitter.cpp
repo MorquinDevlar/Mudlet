@@ -21,19 +21,19 @@
 
 #include "uiDesign.h"
 
+#include <QApplication>
+#include <QCursor>
+#include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 
 #include <algorithm>
 
 namespace uiDesign {
 
 namespace {
-constexpr int scmGripLength = 36;
-constexpr int scmGripThickness = 3;
-// What a handle carrying content is at least as tall as. Room enough that the
-// chip on the code pane's heading is a chip on a bar rather than the bar
-// itself: what is left above and below it is what says the two are different
-// things.
+// What a handle carrying content is at least as tall as: room enough to read a
+// line of words in without them being up against either pane
 constexpr int scmHeaderThickness = 32;
 // Room left around that content, so a larger font is not up against either pane
 constexpr int scmHeaderPadding = 2;
@@ -59,6 +59,10 @@ QColor paneTone(const QWidget* pPane, const QColor& fallback)
 GripSplitterHandle::GripSplitterHandle(const Qt::Orientation orientation, QSplitter* pParent)
 : QSplitterHandle(orientation, pParent)
 {
+    // QSplitterHandle acts on the hover events but leaves asking for them to
+    // the style, and a handle that has to know where on itself the pointer is
+    // cannot wait to be asked
+    setAttribute(Qt::WA_Hover);
 }
 
 void GripSplitterHandle::setContent(QWidget* pContent)
@@ -88,6 +92,91 @@ void GripSplitterHandle::setContent(QWidget* pContent)
     mpContent->show();
     updateGeometry();
     update();
+}
+
+void GripSplitterHandle::setClickable(QWidget* pPiece)
+{
+    if (mpClickable == pPiece) {
+        return;
+    }
+    if (mpClickable) {
+        mpClickable->removeEventFilter(this);
+    }
+    mpClickable = pPiece;
+    if (mpClickable) {
+        mpClickable->installEventFilter(this);
+    }
+}
+
+bool GripSplitterHandle::overClickable(const QPoint& point) const
+{
+    if (!mpClickable || !mpClickable->isVisible()) {
+        return false;
+    }
+    return QRect(mpClickable->mapTo(this, QPoint(0, 0)), mpClickable->size()).contains(point);
+}
+
+void GripSplitterHandle::placeCursor(const QPoint& point)
+{
+    // Over the piece the strip is a link, and everywhere else it is still the
+    // edge the two panes are dragged apart by
+    const Qt::CursorShape wanted = overClickable(point) ? Qt::PointingHandCursor : (orientation() == Qt::Vertical ? Qt::SplitVCursor : Qt::SplitHCursor);
+    if (cursor().shape() != wanted) {
+        setCursor(wanted);
+    }
+}
+
+bool GripSplitterHandle::event(QEvent* event)
+{
+    // The movement that first crosses into the handle arrives as a HoverEnter
+    // and only what follows it as a HoverMove, so a pointer that comes to rest
+    // on the piece in one movement is answered by the first of the two
+    if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove) {
+        placeCursor(static_cast<QHoverEvent*>(event)->position().toPoint());
+    }
+    return QSplitterHandle::event(event);
+}
+
+bool GripSplitterHandle::eventFilter(QObject* watched, QEvent* event)
+{
+    // A piece that is shown or taken away under a pointer that is not moving
+    // leaves the cursor saying what used to be there
+    if (watched == mpClickable && (event->type() == QEvent::Show || event->type() == QEvent::Hide) && underMouse()) {
+        placeCursor(mapFromGlobal(QCursor::pos()));
+    }
+    return QSplitterHandle::eventFilter(watched, event);
+}
+
+void GripSplitterHandle::mousePressEvent(QMouseEvent* event)
+{
+    QSplitterHandle::mousePressEvent(event);
+    // Only the button a drag and a click are made with: another button's press
+    // must not be paired with a later release of this one
+    if (event->button() == Qt::LeftButton) {
+        mPressedAt = event->globalPosition().toPoint();
+        mDragged = false;
+    }
+}
+
+void GripSplitterHandle::mouseMoveEvent(QMouseEvent* event)
+{
+    QSplitterHandle::mouseMoveEvent(event);
+    // Measured on the screen: the handle has just followed the pointer, so
+    // against itself the pointer is where it was pressed
+    if ((event->buttons() & Qt::LeftButton) && (event->globalPosition().toPoint() - mPressedAt).manhattanLength() >= QApplication::startDragDistance()) {
+        mDragged = true;
+    }
+}
+
+void GripSplitterHandle::mouseReleaseEvent(QMouseEvent* event)
+{
+    QSplitterHandle::mouseReleaseEvent(event);
+    if (event->button() != Qt::LeftButton || mDragged) {
+        return;
+    }
+    if (overClickable(event->position().toPoint())) {
+        emit clicked(mpClickable);
+    }
 }
 
 QSize GripSplitterHandle::sizeHint() const
@@ -190,17 +279,21 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
     }
     painter.drawRoundedRect(strip, scmRadiusPanel, scmRadiusPanel);
 
-    // Halfway from the hairline a border gets away with to the words beside it:
-    // a grip is small and has to be findable without being a rule across the pane
-    const QColor gripColor = mHovered ? tokens.accent : blend(tokens.border, tokens.mutedText, 0.5);
-    QRectF gripRect;
-    if (orientation() == Qt::Vertical) {
-        gripRect = QRectF((width() - scmGripLength) / 2.0, (height() - scmGripThickness) / 2.0, scmGripLength, scmGripThickness);
-    } else {
-        gripRect = QRectF((width() - scmGripThickness) / 2.0, (height() - scmGripLength) / 2.0, scmGripThickness, scmGripLength);
+    if (!mHovered) {
+        return;
     }
-    painter.setBrush(gripColor);
-    painter.drawRoundedRect(gripRect, scmGripThickness / 2.0, scmGripThickness / 2.0);
+    // What a plain seam says with the accent, said along the edge this handle is
+    // dragged by - and clipped to the strip, so the band follows the cut corners
+    // instead of crossing them. The strip already carries words, which is why
+    // there is nothing else on it to say the same thing twice.
+    QPainterPath stripPath;
+    stripPath.addRoundedRect(strip, scmRadiusPanel, scmRadiusPanel);
+    painter.setClipPath(stripPath);
+    if (orientation() == Qt::Vertical) {
+        painter.fillRect(QRect(0, 0, width(), scmSeamHoveredThickness), tokens.accent);
+    } else {
+        painter.fillRect(QRect(0, 0, scmSeamHoveredThickness, height()), tokens.accent);
+    }
 }
 
 GripSplitter::GripSplitter(QWidget* pParent)

@@ -261,7 +261,8 @@ private slots:
 
         QSplitterHandle* pPanelHandle = mpEditor->splitter_main->handle(1);
         QVERIFY2(pPanelHandle && pPanelHandle->width() > 4 && pPanelHandle->height() > 80, "the handle between the panel and the edit column is missing or too small to read a pixel out of");
-        // Clear of the grip, which is drawn across the middle of the handle
+        // Down the seam the handle draws, and taken clear of the middle of its
+        // length so that anything a splitter puts there is not what is read
         const QColor panelSeam = pixelOfWindowUnder(pPanelHandle, QPoint(pPanelHandle->width() / 2, 6));
 
         QSplitterHandle* pCodeHandle = mpEditor->splitter_right->handle(1);

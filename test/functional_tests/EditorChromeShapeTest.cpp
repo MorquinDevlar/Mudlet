@@ -21,23 +21,21 @@
  * The shapes the editor's own chrome is cut to, read off a shot of the window
  * rather than off the rules that draw them.
  *
- * Three of them, all of which were a rectangle of the wrong tone before:
+ * Two of them, both of which were a rectangle of the wrong tone before:
  *
  * - The gap between two panes. A splitter handle has to be nine pixels wide to
  *   be aimed at with a mouse, and it used to be nine pixels of the separator
  *   tone - a groove across the window wherever two panes met. It is now a one
  *   pixel seam with each pane's own tone carried up to it, so the width the
  *   mouse needs is not a width the reader sees; hovered, the seam widens to
- *   three and takes the accent, which is what says it can be dragged.
+ *   three and takes the accent, which is what says it can be dragged. A handle
+ *   carrying a heading says it the same way, along the top edge of its strip -
+ *   it used to draw a short grip bar across its middle instead, which is a
+ *   second thing on a strip that already has words on it.
  *
  * - The heading over the code pane, which is the handle above it. The pane
  *   under it is a panel, so the heading takes a panel's corner at the top and
  *   the page shows through outside the arc.
- *
- * - The chip on that heading. A widget a row lays out with no alignment of its
- *   own is given the whole height of the row, so the chip was the strip rather
- *   than a chip on it. It is now given its own height, with room above and
- *   below it.
  *
  * ...and one that is not chrome but is cut the same way: a button showing a
  * colour, which the design draws as a well - the input corner and a hairline
@@ -86,9 +84,6 @@ private:
     QString mPort;
     const QString mLocalhost = qsl("localhost");
 
-    // The least the strip has to leave above and below the chip for the two to
-    // read as different things
-    static constexpr int scmChipAir = 4;
     // What the actions toolbar holds its contents off its own leading edge by,
     // which the handle sits inside - see the rules in applyEditorShellStyle()
     static constexpr int scmToolBarPadding = 6;
@@ -217,7 +212,6 @@ private slots:
 
         QVERIFY2(paneSeam() != nullptr, "The main splitter has no handle between its two panes");
         QVERIFY2(codeHeading() != nullptr, "The right hand splitter has no handle over the code pane");
-        QVERIFY2(mpEditor->mpWidget_editorCompileChip != nullptr, "The code pane's heading carries no chip");
     }
 
     void cleanupTestCase()
@@ -322,41 +316,58 @@ private slots:
         QVERIFY2(bottomCorner.rgb() == tokens.separator.rgb(), qPrintable(qsl("the heading's bottom corner is cut away as well, at %1 - only its top meets the page").arg(bottomCorner.name())));
     }
 
-    // ...and the chip on it is a chip on a bar rather than the bar itself:
-    // measured off the window, there is room above and below it
-    void test_theCompileChipHasRoomAboveAndBelowIt()
+    // ...and nothing is drawn across the middle of it. The strip carries words,
+    // and a grip bar over them is a second thing saying what the strip already
+    // says by being a strip.
+    void test_theHeadingCarriesNoGrip()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = codeHeading();
-        QWidget* pChip = mpEditor->mpWidget_editorCompileChip;
-        const QImage shot = windowShot();
+        const QColor middle = windowShot().pixelColor(pHandle->mapTo(mpEditor, pHandle->rect().center()));
+        qInfo().noquote()
+                << qsl("  the middle of the %1x%2 strip is %3; the strip is %4").arg(QString::number(pHandle->width()), QString::number(pHandle->height()), middle.name(), tokens.separator.name());
+        QVERIFY2(middle.rgb() == tokens.separator.rgb(),
+                 qPrintable(qsl("something is drawn across the middle of the heading: it is %1 rather than the strip's own %2").arg(middle.name(), tokens.separator.name())));
+    }
 
-        // Down the middle of the chip, out to wherever the strip's own tone
-        // starts: what is painted there is the chip, whatever it is filled with
-        const int x = pChip->mapTo(pHandle, pChip->rect().center()).x();
-        const auto isStrip = [&](const int y) {
-            return shot.pixelColor(pHandle->mapTo(mpEditor, QPoint(x, y))).rgb() == tokens.separator.rgb();
+    // What says the heading can be dragged is what a plain seam says it with:
+    // the accent, along the edge the drag moves - which for the code pane's
+    // heading is the top of the strip
+    void test_hoveringTheHeadingLightsItsTopEdge()
+    {
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        QSplitterHandle* pHandle = codeHeading();
+        // The pointer may still be counted as inside the handle from the case
+        // above, and a hover that is already on lights nothing new
+        hover(pHandle, false);
+
+        const int x = pHandle->width() / 2;
+        const auto toneAt = [&](const QImage& shot, const int y) {
+            return shot.pixelColor(pHandle->mapTo(mpEditor, QPoint(x, y)));
         };
-        const int middle = pHandle->height() / 2;
-        QVERIFY2(!isStrip(middle), "The middle of the heading where the chip should be is the strip's own tone, so there is no chip to measure");
-        int top = middle;
-        int bottom = middle;
-        while (top > 0 && !isStrip(top - 1)) {
-            --top;
-        }
-        while (bottom < pHandle->height() - 1 && !isStrip(bottom + 1)) {
-            ++bottom;
-        }
 
-        const int painted = bottom - top + 1;
-        const int above = top;
-        const int below = pHandle->height() - 1 - bottom;
-        qInfo().noquote() << qsl("  the strip is %1px tall and the chip %2px, leaving %3px above it and %4px below")
-                                     .arg(QString::number(pHandle->height()), QString::number(painted), QString::number(above), QString::number(below));
+        hover(pHandle, true);
+        const QImage lit = windowShot();
+        QList<QColor> band;
+        for (int y = 0; y < 4; ++y) {
+            band << toneAt(lit, y);
+        }
+        hover(pHandle, false);
+        const QColor atRest = toneAt(windowShot(), 0);
 
-        QVERIFY2(above >= scmChipAir && below >= scmChipAir,
-                 qPrintable(qsl("the chip fills the heading: %1px of strip above it and %2px below, on a strip of %3px")
-                                    .arg(QString::number(above), QString::number(below), QString::number(pHandle->height()))));
+        qInfo().noquote() << qsl("  hovered, the first four rows are %1; at rest the top row is %2. The accent is %3 and the strip %4")
+                                     .arg(describe(band), atRest.name(), tokens.accent.name(), tokens.separator.name());
+
+        QStringList wrong;
+        for (int y = 0; y < 3; ++y) {
+            if (band.at(y).rgb() != tokens.accent.rgb()) {
+                wrong << qsl("row %1 is %2").arg(QString::number(y), band.at(y).name());
+            }
+        }
+        QVERIFY2(wrong.isEmpty(), qPrintable(qsl("the hovered heading is not three pixels of the accent along its top edge: %1").arg(wrong.join(qsl(", ")))));
+        QVERIFY2(band.at(3).rgb() == tokens.separator.rgb(),
+                 qPrintable(qsl("the lit band is deeper than three pixels: the fourth row is %1 rather than the strip's own %2").arg(band.at(3).name(), tokens.separator.name())));
+        QVERIFY2(atRest.rgb() == tokens.separator.rgb(), qPrintable(qsl("the top edge stayed lit after the pointer left it: it is %1").arg(atRest.name())));
     }
 
     // The bar the actions are on can be dragged to another edge of the window,

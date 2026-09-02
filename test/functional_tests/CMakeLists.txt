@@ -117,6 +117,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EdbeeReinitTest.cpp
     EditorBannerViewSwitchTest.cpp
     EditorChromeShapeTest.cpp
+    EditorCodeHeadingTest.cpp
     EditorColumnAlignmentTest.cpp
     EditorGeometryWriteGuardTest.cpp
     EditorIconScaleTest.cpp
@@ -125,6 +126,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorPlacementPersistenceTest.cpp
     EditorSidebarCollapseTest.cpp
     EditorSplitterRestoreTest.cpp
+    EditorStatusBarTest.cpp
     EditorSurfaceToneTest.cpp
     EditorTreeDotClickTest.cpp
     EditorTreeHeadingIconTest.cpp

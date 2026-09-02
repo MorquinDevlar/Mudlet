@@ -197,11 +197,6 @@ static constexpr int scmEditorRowButtonPaddingHorizontal = 12;
 static constexpr qreal scmEditorRaisedHoverWeight = 0.08;
 static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 
-// How far the chip over the code pane is washed with the colour of the state it
-// is reporting. What a chosen row in the panel of items is filled with is the
-// same idea at a different strength and is named in uiDesign.h, since the ink
-// written over it is measured against that one.
-static constexpr qreal scmEditorCompileChipWash = 0.14;
 // What a row of one of those trees holds its contents off its leading edge by.
 // The accent bar down a chosen row is a border cut out of this rather than a
 // gap added to it, so a row's contents sit where they did with or without one.
@@ -229,17 +224,7 @@ static constexpr int scmEditorSearchResultIndent = 14;
 static constexpr int scmEditorCodeHeaderGlyphSize = 13;
 // What the heading is set in from the code pane's own left edge
 static constexpr int scmEditorCodeHeaderInset = 4;
-// Kept clear in the middle of the strip for the grip the handle draws there
-static constexpr int scmEditorCodeHeaderGripGap = 56;
 static constexpr int scmEditorCompileDotDiameter = 8;
-// What is left round the words in the chip. Tight vertically: the strip it sits
-// on is what has to show above and below it, and the chip has its own fill to
-// hold the words apart from the bar.
-static constexpr int scmEditorCompileChipPaddingVertical = 1;
-static constexpr int scmEditorCompileChipPaddingHorizontal = 7;
-// A failure is named on the strip and spelled out in the tooltip: a compiler's
-// idea of a sentence does not fit next to a heading
-static constexpr int scmEditorCompileMessageWidth = 260;
 
 // The trigger form's options, as a column of cards beside its patterns. Wide
 // enough for the longest of the four card's rows without the cards having to
@@ -653,7 +638,9 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpLabel_statusCounts = new QLabel(statusBar);
     mpLabel_statusCounts->setObjectName(qsl("editorStatusCounts"));
     statusBar->addWidget(mpLabel_statusCounts);
-    // Permanent, which is the only thing that keeps it at the trailing edge
+    // The last save is the one permanent widget, which is the only thing that
+    // keeps it at the trailing edge: a status bar hides its plain widgets for as
+    // long as a message stands and leaves the permanent ones showing
     mpLabel_statusAutosave = new QLabel(statusBar);
     mpLabel_statusAutosave->setObjectName(qsl("editorStatusAutosave"));
     statusBar->addPermanentWidget(mpLabel_statusAutosave);
@@ -744,8 +731,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpSourceEditorEdbee->setPlaceholderText(tr("-- add your Lua code here"));
     mpSourceEditorEdbeeDocument = mpSourceEditorEdbee->textDocument();
 
-    // Update the status bar on changes
-    connect(mpSourceEditorEdbee->controller(), &edbee::TextEditorController::updateStatusTextSignal, this, &dlgTriggerEditor::slot_updateStatusBar);
+    // Update the heading over the code pane on changes
+    connect(mpSourceEditorEdbee->controller(), &edbee::TextEditorController::updateStatusTextSignal, this, &dlgTriggerEditor::slot_updateCaretPosition);
     mpSourceEditorEdbee->controller()->setAutoScrollToCaret(edbee::TextEditorController::AutoScrollWhenFocus);
 
     // Update the editor preferences
@@ -13086,6 +13073,30 @@ void dlgTriggerEditor::slot_profileSaveAsAction()
 
 bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
 {
+    // What the compile note has room for is whatever the strip has left over
+    // once the title and the caret reading have had theirs, and the reading
+    // takes more of it the moment a digit is added to what it says - so the
+    // words are cut again to the label's own width rather than to the strip's.
+    // This cannot come back round: QLabel::setText does nothing when the text
+    // is what it already was, and the label asks for no width of its own.
+    if (watched == mpLabel_editorCompileMessage && event->type() == QEvent::Resize) {
+        elideCompileNote();
+    }
+
+    // The note is a link, and a link the mouse can follow is one the keyboard
+    // has to reach as well
+    if (watched == mpWidget_editorCompileNote && event->type() == QEvent::KeyPress) {
+        switch (static_cast<QKeyEvent*>(event)->key()) {
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Space:
+            jumpToCompileErrorLine();
+            return true;
+        default:
+            break;
+        }
+    }
+
     if (mIsGrabKey) {
         if (event->type() == QEvent::KeyPress) {
             auto* keyEvent = static_cast<QKeyEvent*>(event);
@@ -13536,11 +13547,11 @@ void dlgTriggerEditor::slot_colorTriggerBg()
     }
 }
 
-void dlgTriggerEditor::slot_updateStatusBar(const QString& statusText)
+void dlgTriggerEditor::slot_updateCaretPosition(const QString& statusText)
 {
     // edbee adds the scope and last command which is rather technical debugging information,
     // so strip it away by removing the first pipe and everything after it
-    const QRegularExpressionMatch match = csmSimplifyStatusBarRegex.match(statusText, 0, QRegularExpression::PartialPreferFirstMatch);
+    const QRegularExpressionMatch match = csmSimplifyCaretReportRegex.match(statusText, 0, QRegularExpression::PartialPreferFirstMatch);
     QString stripped;
     if (match.hasPartialMatch() || match.hasMatch()) {
         stripped = match.captured(1);
@@ -13548,7 +13559,35 @@ void dlgTriggerEditor::slot_updateStatusBar(const QString& statusText)
         stripped = statusText;
     }
 
-    QMainWindow::statusBar()->showMessage(stripped);
+    if (mpLabel_editorCaretPosition) {
+        mpLabel_editorCaretPosition->setText(stripped);
+    }
+}
+
+void dlgTriggerEditor::slot_codeHeadingClicked(QWidget* pPiece)
+{
+    if (pPiece != mpWidget_editorCompileNote) {
+        return;
+    }
+    jumpToCompileErrorLine();
+}
+
+void dlgTriggerEditor::jumpToCompileErrorLine()
+{
+    if (mEditorCompileErrorLine <= 0 || !mpSourceEditorEdbee) {
+        return;
+    }
+    edbee::TextEditorController* pController = mpSourceEditorEdbee->controller();
+    if (!pController || !pController->textDocument()) {
+        return;
+    }
+    // Lua numbers the lines of what it was handed from one and edbee its own
+    // from zero - and an unclosed block is reported against the trailing "end"
+    // of the wrapper the item is compiled inside, which is a line past the last
+    // one the item has
+    const size_t line = qMin(static_cast<size_t>(mEditorCompileErrorLine - 1), pController->textDocument()->lineCount() - 1);
+    mpSourceEditorEdbee->setFocus();
+    pController->moveCaretTo(line, static_cast<size_t>(0), false);
 }
 
 void dlgTriggerEditor::slot_profileSaveStarted()
@@ -13583,7 +13622,7 @@ void dlgTriggerEditor::slot_changeEditorTextOptions(QTextOption::Flags state)
 // made or selected.
 void dlgTriggerEditor::clearDocument(edbee::TextEditorWidget* pEditorWidget, const QString& initialText)
 {
-    // Every item switch comes through here, and the chip over the code pane
+    // Every item switch comes through here, and the heading over the code pane
     // speaks for the last save of whatever the pane is holding - so a failure
     // reported against the item leaving it does not follow the one arriving
     clearCompileState();
@@ -13624,6 +13663,10 @@ void dlgTriggerEditor::clearDocument(edbee::TextEditorWidget* pEditorWidget, con
     config->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     config->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     config->setAutocompleteMinimalCharacters(3);
+    // A byte offset is a debugging reading rather than one a script author
+    // uses, and every document the pane is handed brings a configuration of its
+    // own - so it is turned off once per document rather than once
+    config->setShowCaretOffset(false);
     config->endChanges();
 
     // If undo is not disabled when setting the initial text, the
@@ -15313,9 +15356,9 @@ void dlgTriggerEditor::setupEditorPanel()
 }
 
 // The gap above the Lua editor is the only chrome that pane has, so it is what
-// says the pane is a Lua one and how the last save of it went. It stays the
-// splitter's handle: the strip is told not to take the mouse, so the heading is
-// also what the two panes are resized by.
+// says the pane is a Lua one, where the caret is in it and how the last save of
+// it went. It stays the splitter's handle: the strip is told not to take the
+// mouse, so the heading is also what the two panes are resized by.
 void dlgTriggerEditor::setupEditorCodeHeader()
 {
     mpWidget_editorCodeHeader = new QWidget(this);
@@ -15335,87 +15378,141 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     auto* pLabel_headerTitle = new QLabel(tr("Lua script"), mpWidget_editorCodeHeader);
     pLabel_headerTitle->setObjectName(qsl("editorCodeHeaderTitle"));
     pHeaderLayout->addWidget(pLabel_headerTitle);
-    // Between two equal stretches, so the room the grip is drawn in is left in
-    // the middle of the strip rather than wherever the heading happens to end
-    pHeaderLayout->addStretch(1);
-    pHeaderLayout->addSpacing(scmEditorCodeHeaderGripGap);
-    pHeaderLayout->addStretch(1);
 
-    mpWidget_editorCompileChip = new QWidget(mpWidget_editorCodeHeader);
-    mpWidget_editorCompileChip->setObjectName(qsl("editorCompileChip"));
-    auto* pChipLayout = new QHBoxLayout(mpWidget_editorCompileChip);
-    pChipLayout->setContentsMargins(scmEditorCompileChipPaddingHorizontal, scmEditorCompileChipPaddingVertical, scmEditorCompileChipPaddingHorizontal, scmEditorCompileChipPaddingVertical);
-    pChipLayout->setSpacing(5);
-    mpLabel_editorCompileDot = new QLabel(mpWidget_editorCompileChip);
+    mpWidget_editorCompileNote = new QWidget(mpWidget_editorCodeHeader);
+    mpWidget_editorCompileNote->setObjectName(qsl("editorCompileNote"));
+    // The note is a link, and the strip it is on takes no mouse events - so Tab
+    // is the whole of how a keyboard reaches it, and the keys it answers are
+    // heard through the filter below
+    mpWidget_editorCompileNote->setFocusPolicy(Qt::TabFocus);
+    mpWidget_editorCompileNote->installEventFilter(this);
+    auto* pNoteLayout = new QHBoxLayout(mpWidget_editorCompileNote);
+    pNoteLayout->setContentsMargins(0, 0, 0, 0);
+    pNoteLayout->setSpacing(5);
+    mpLabel_editorCompileDot = new QLabel(mpWidget_editorCompileNote);
     mpLabel_editorCompileDot->setObjectName(qsl("editorCompileDot"));
     mpLabel_editorCompileDot->setFixedSize(scmEditorCompileDotDiameter, scmEditorCompileDotDiameter);
-    pChipLayout->addWidget(mpLabel_editorCompileDot);
-    mpLabel_editorCompileState = new QLabel(mpWidget_editorCompileChip);
-    mpLabel_editorCompileState->setObjectName(qsl("editorCompileState"));
-    pChipLayout->addWidget(mpLabel_editorCompileState);
-    // Aligned rather than stretched: a widget a row lays out with no alignment
-    // of its own is given the whole height of the row, which is how the chip
-    // came to be the strip. Given its own height instead, what is left above
-    // and below it is what says the chip is on the bar rather than being it.
-    pHeaderLayout->addWidget(mpWidget_editorCompileChip, 0, Qt::AlignVCenter);
+    pNoteLayout->addWidget(mpLabel_editorCompileDot);
+    mpLabel_editorCompileMessage = new QLabel(mpWidget_editorCompileNote);
+    mpLabel_editorCompileMessage->setObjectName(qsl("editorCompileMessage"));
+    // Given whatever room is left rather than asking for the room the words
+    // want: a compiler's idea of a sentence is as long as it likes, and what
+    // does not fit is cut off in elideCompileNote()
+    mpLabel_editorCompileMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    // The words are cut to whatever this label ends up with, which the caret
+    // reading beside it takes from without the strip itself changing size
+    mpLabel_editorCompileMessage->installEventFilter(this);
+    pNoteLayout->addWidget(mpLabel_editorCompileMessage, 1);
+    pHeaderLayout->addWidget(mpWidget_editorCompileNote, 1);
+    // The note takes the middle of the strip while there is one to show and this
+    // holds that room when there is not, so the caret reading is at the trailing
+    // edge either way - see updateEditorCodeHeading(), which hands the stretch
+    // from one to the other
+    pHeaderLayout->addStretch(0);
+
+    mpLabel_editorCaretPosition = new QLabel(mpWidget_editorCodeHeader);
+    mpLabel_editorCaretPosition->setObjectName(qsl("editorCodeCaret"));
+    // Held at the width of its own words: where the caret is is short and always
+    // true, so what gives way when the strip runs out of room is the note
+    mpLabel_editorCaretPosition->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    pHeaderLayout->addWidget(mpLabel_editorCaretPosition);
 
     // Index 1 is the handle over mpSourceEditorArea, which is the second of the
     // three panes the right hand splitter stacks
     splitter_right->setHeaderHandle(1, mpWidget_editorCodeHeader);
-    updateEditorCompileChip();
+    // The strip takes no mouse events, so a click on the note is heard by the
+    // handle carrying it
+    if (auto* pHandle = qobject_cast<uiDesign::GripSplitterHandle*>(mpWidget_editorCodeHeader->parentWidget())) {
+        pHandle->setClickable(mpWidget_editorCompileNote);
+        connect(pHandle, &uiDesign::GripSplitterHandle::clicked, this, &dlgTriggerEditor::slot_codeHeadingClicked);
+    }
+    updateEditorCodeHeading();
 }
 
-// Both what the chip says and what it is drawn in, so a theme change and a
-// compile failure arrive at the same place
-void dlgTriggerEditor::updateEditorCompileChip()
+// Both what the heading says about the last save and what it is written in, so
+// a theme change and a compile failure arrive at the same place
+void dlgTriggerEditor::updateEditorCodeHeading()
 {
-    if (!mpWidget_editorCompileChip || !mpLabel_editorCompileDot || !mpLabel_editorCompileState) {
+    if (!mpWidget_editorCompileNote || !mpLabel_editorCompileDot || !mpLabel_editorCompileMessage) {
         return;
     }
 
-    // Nothing to report is the whole of what "it compiled" means here
+    // Nothing to report is the whole of what "it compiled" means here, and a
+    // heading with nothing to report says nothing
     const bool compiled = mEditorCompileMessage.isEmpty();
-    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QColor stateColor = uiDesign::stateColor(compiled ? uiDesign::scmStateHue_ok : uiDesign::scmStateHue_error, tokens.darkPage);
-
-    if (compiled) {
-        //: Chip on the heading over the editor's code pane, saying the last save of it compiled
-        mpLabel_editorCompileState->setText(tr("No errors"));
-        mpLabel_editorCompileState->setToolTip(QString());
-    } else {
-        // What showError() was given is rich text, and a heading has room for a
+    QString plainMessage;
+    mEditorCompileNoteText.clear();
+    mEditorCompileErrorLine = 0;
+    if (!compiled) {
+        // What showError() was given is rich text, and the strip has room for a
         // line of it at most - the whole of it goes to the tooltip
-        const QString plainMessage = QTextDocumentFragment::fromHtml(mEditorCompileMessage).toPlainText().simplified();
-        mpLabel_editorCompileState->setText(mpLabel_editorCompileState->fontMetrics().elidedText(plainMessage, Qt::ElideRight, scmEditorCompileMessageWidth));
-        mpLabel_editorCompileState->setToolTip(plainMessage);
+        plainMessage = QTextDocumentFragment::fromHtml(mEditorCompileMessage).toPlainText().simplified();
+        const QRegularExpressionMatch match = csmCompileErrorLineRegex.match(plainMessage);
+        if (match.hasMatch()) {
+            mEditorCompileErrorLine = match.captured(1).toInt();
+            //: Note on the heading over the editor's code pane after a save that did not compile. %1 is the line of the script the compiler stopped on, %2 what it said about that line.
+            mEditorCompileNoteText = tr("Line %1: %2").arg(match.captured(1), match.captured(2));
+        } else {
+            mEditorCompileNoteText = plainMessage;
+        }
     }
+
+    // The words sit on the strip rather than in a chip of their own, so the
+    // colour of the state they report is walked away from the strip until it can
+    // be read on it - the hue is what says which reading this is, and the
+    // lightness is the half there is room to spend
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    const QColor stateColor = uiDesign::stateColor(uiDesign::scmStateHue_error, tokens.darkPage);
+    const QColor noteInk = uiDesign::readableOn(tokens.separator, stateColor, tokens.text, uiDesign::scmTextMinimumRatio);
+    const QString dotRule = qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(stateColor.name(), QString::number(scmEditorCompileDotDiameter / 2));
+    // A border there is nothing to see of at rest, so that taking the focus
+    // paints it rather than moving the words along by a pixel
+    const QString noteRule = qsl("#editorCompileNote { background: transparent; border: 1px solid transparent; border-radius: %1px; }"
+                                 "#editorCompileNote:focus { border-color: %2; }"
+                                 "#editorCompileMessage { color: %3; }")
+                                     .arg(QString::number(uiDesign::scmRadiusChip), tokens.accent.name(), noteInk.name());
+    // Every item switch comes through here, and setting a stylesheet re-polishes
+    // everything under the widget whether or not the rules changed
+    if (mpLabel_editorCompileDot->styleSheet() != dotRule) {
+        mpLabel_editorCompileDot->setStyleSheet(dotRule);
+    }
+    if (mpWidget_editorCompileNote->styleSheet() != noteRule) {
+        mpWidget_editorCompileNote->setStyleSheet(noteRule);
+    }
+
+    mpWidget_editorCompileNote->setVisible(!compiled);
+    if (auto* pHeadingLayout = qobject_cast<QBoxLayout*>(mpWidget_editorCodeHeader ? mpWidget_editorCodeHeader->layout() : nullptr)) {
+        // The middle of the strip belongs to the note while there is one and to
+        // the spacer right after it while there is not
+        const int noteIndex = pHeadingLayout->indexOf(mpWidget_editorCompileNote);
+        pHeadingLayout->setStretch(noteIndex, compiled ? 0 : 1);
+        pHeadingLayout->setStretch(noteIndex + 1, compiled ? 1 : 0);
+        // How wide the words may be is the layout's answer, and it has just been
+        // asked a different question
+        pHeadingLayout->activate();
+    }
+    elideCompileNote();
+
     // The strip is transparent to the mouse, so that a drag anywhere on it still
     // resizes - which also puts a tooltip set on it out of the pointer's reach.
     // The handle carrying the strip is what hears the pointer instead.
     if (QWidget* pHandle = mpWidget_editorCodeHeader ? mpWidget_editorCodeHeader->parentWidget() : nullptr) {
-        pHandle->setToolTip(mpLabel_editorCompileState->toolTip());
+        pHandle->setToolTip(plainMessage);
     }
+}
 
-    // The chip is a wash of its own colour on the strip it sits on, so the words
-    // on it are that same colour walked away from the wash until they can be
-    // read on it - the hue is what says which reading this is, and the
-    // lightness is the half there is room to spend
-    const QColor chipFill = uiDesign::blend(tokens.separator, stateColor, scmEditorCompileChipWash);
-    const QColor chipInk = uiDesign::readableOn(chipFill, stateColor, tokens.text, uiDesign::scmTextMinimumRatio);
-    mpLabel_editorCompileDot->setStyleSheet(qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(stateColor.name(), QString::number(scmEditorCompileDotDiameter / 2)));
-    mpWidget_editorCompileChip->setStyleSheet(qsl("#editorCompileChip { background-color: %1; border-radius: %3px; }"
-                                                  // A step down from the heading beside it, which is
-                                                  // itself a step down from the window's own type: the
-                                                  // chip is a note on the strip rather than a second
-                                                  // heading on it
-                                                  "#editorCompileState { color: %2; font-size: 85%; }")
-                                                      .arg(uiDesign::rgba(stateColor, scmEditorCompileChipWash), chipInk.name(), QString::number(uiDesign::scmRadiusChip)));
+void dlgTriggerEditor::elideCompileNote()
+{
+    if (!mpLabel_editorCompileMessage) {
+        return;
+    }
+    mpLabel_editorCompileMessage->setText(mpLabel_editorCompileMessage->fontMetrics().elidedText(mEditorCompileNoteText, Qt::ElideRight, mpLabel_editorCompileMessage->width()));
 }
 
 void dlgTriggerEditor::clearCompileState()
 {
     mEditorCompileMessage.clear();
-    updateEditorCompileChip();
+    updateEditorCodeHeading();
 }
 
 void dlgTriggerEditor::beginSaveErrorCapture()
@@ -15428,7 +15525,7 @@ void dlgTriggerEditor::endSaveErrorCapture()
 {
     mEditorSaveErrorCaptureOpen = false;
     mEditorCompileMessage = mEditorSaveErrorCaptured;
-    updateEditorCompileChip();
+    updateEditorCodeHeading();
 }
 
 // A row of names beside pictures, whatever icon size the preferences ask for:
@@ -15760,11 +15857,13 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     if (mpWidget_editorCodeHeader) {
         // Only what the strip holds is drawn: the bar behind it is painted by
-        // the handle carrying it, which is where the grip comes from too
+        // the handle carrying it
         mpWidget_editorCodeHeader->setStyleSheet(qsl("#editorCodeHeader { background: transparent; }"
-                                                     "#editorCodeHeaderTitle { color: %1; font-size: 92%; }")
+                                                     "#editorCodeHeaderTitle { color: %1; font-size: 92%; }"
+                                                     // The same quiet ink as the title
+                                                     "#editorCodeCaret { color: %1; }")
                                                          .arg(mutedText.name()));
-        updateEditorCompileChip();
+        updateEditorCodeHeading();
     }
 
     if (mpTriggersMainArea) {
