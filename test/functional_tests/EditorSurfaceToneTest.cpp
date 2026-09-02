@@ -282,7 +282,10 @@ private slots:
         QVERIFY2(pName->height() > 8 && pName->width() > 40, "the trigger name field is too small to read a pixel out of");
 
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const QColor measured = pixelOfWindowUnder(pName, QPoint(pName->width() / 2, pName->height() / 2));
+        // Inside the field's own border and clear of whatever is typed in it,
+        // which is drawn from the leading edge - the middle of the field is a
+        // letter of the item's name as soon as the name is long enough for it
+        const QColor measured = pixelOfWindowUnder(pName, QPoint(pName->width() - 6, pName->height() / 2));
 
         QVERIFY2(distanceBetween(measured, tokens.field) < distanceBetween(measured, tokens.page),
                  qPrintable(qsl("the trigger name field is painted %1 - it has lost the sunken colour a field is filled with").arg(describe(measured, tokens))));

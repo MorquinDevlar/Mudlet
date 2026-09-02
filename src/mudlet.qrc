@@ -95,6 +95,9 @@
         <file>icons/editor-module.png</file>
         <file>icons/editor-new-folder.png</file>
         <file>icons/editor-new-item.png</file>
+        <file>icons/editor-notice-error.png</file>
+        <file>icons/editor-notice-info.png</file>
+        <file>icons/editor-notice-warning.png</file>
         <file>icons/editor-offset-timer.png</file>
         <file>icons/editor-options.png</file>
         <file>icons/editor-paste.png</file>

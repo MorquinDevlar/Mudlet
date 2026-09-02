@@ -123,8 +123,10 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorBannerViewSwitchTest;
     friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
+    friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
     friend class EditorMinimumSizeTest;
+    friend class EditorNoticeGlyphTest;
     friend class EditorOptionsPanelDefaultTest;
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
@@ -240,6 +242,15 @@ public:
     // and into a column of cards, with a strip that says what they hold while
     // they are put away
     void buildTriggerOptionsPanel();
+    // The five forms that are a fixed set of fields, shelled over their .ui
+    // grids: a head row of the name, whatever is typed beside it and the ID
+    // pill, with what is left of the grid under it
+    void buildEditorFormHeadRows();
+    [[nodiscard]] QList<QLabel*> editorFormRowLabels() const;
+    [[nodiscard]] QList<QLabel*> editorFormLeadLabels() const;
+    // One width for the words leading those forms' rows, so a field starts at
+    // the same place whichever row of whichever form it is on
+    void alignEditorFormLeadLabels();
     // The one way the panel is opened or closed on purpose, so that both the
     // Options button and the summary strip persist the preference
     void setTriggerOptionsShown(const bool shown);
@@ -255,6 +266,11 @@ public:
     // keeps its own minimum whatever the form wants
     int formPaneHeightForItsContents(const int paneTotal) const;
     void fitFormPaneToItsContents();
+    // Whether the code pane's heading drags the seam in this view, and the
+    // column's height when it does not
+    void applyFormPaneSeamPolicy();
+    void holdFormPaneToItsContents();
+    [[nodiscard]] QWidget* currentFormArea() const;
     // Every view puts the right hand splitter back to the sizes it was last left
     // at, which is also the one thing that can take the geometry the trigger
     // options panel borrowed against out from under it
@@ -856,6 +872,9 @@ private:
     // Height the panel borrowed from the code pane when it was opened, so that
     // closing it can hand back that much and no more
     int mTriggerOptionsBorrowedHeight = 0;
+    // Holding the form column to its contents changes the layout it was just
+    // measured from, so the pass is barred from re-entering itself
+    bool mHoldingFormPaneToItsContents = false;
     // The last sizes the user dragged the right hand splitter to while a
     // trigger was on show, restored when the panel is opened again
     QList<int> mTriggerRightSplitterSizes;

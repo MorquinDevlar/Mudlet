@@ -183,6 +183,24 @@ static constexpr int scmEditorContentColumnWidth = 640;
 // from the form around it, in a box whose corner is half its height
 static constexpr qreal scmEditorIdChipFontScale = 0.85;
 static constexpr int scmEditorIdChipPaddingVertical = 3;
+// What the pill leaves round the two words it holds. The .ui files that were
+// never redesigned hold them off by three pixels, which inside a drawn box
+// reads as the word touching it.
+static constexpr int scmEditorIdChipPaddingHorizontal = 9;
+static constexpr int scmEditorIdChipGap = 4;
+
+// The row an item's name is typed on, taken from the trigger form so that the
+// five forms shelled over their .ui grids come out at its measurements: the
+// gaps inside the head row, and the ones the grid under it lays its rows out
+// with.
+static constexpr int scmEditorFormHeadRowSpacing = 10;
+static constexpr int scmEditorFormGridSpacingHorizontal = 14;
+static constexpr int scmEditorFormGridSpacingVertical = 12;
+// A lead label is in the grid's first column while the name beside it is in the
+// head row, and the two are laid out with different gaps - so the name's label
+// is given this much over the lead labels' width and both fields start at the
+// same place.
+static constexpr int scmEditorFormNameLabelExtra = scmEditorFormGridSpacingHorizontal - scmEditorFormHeadRowSpacing;
 
 // What is left round the word on the button the trigger's options are opened
 // from. Its height is not left to these: a min-height in a stylesheet is what a
@@ -672,6 +690,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
 
     mpNonCodeWidgets = new QWidget(this);
+    // Anything changing the height of what the column holds asks the column to
+    // lay itself out again, which in the views held to their contents is also a
+    // different split - see applyFormPaneSeamPolicy()
+    mpNonCodeWidgets->installEventFilter(this);
     auto* layoutColumn = new QVBoxLayout(mpNonCodeWidgets);
     layoutColumn->setContentsMargins(0, 0, 0, 0);
     layoutColumn->setSpacing(scmEditorColumnSpacing);
@@ -1089,6 +1111,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // The trigger form's own options, and the strip that stands in for them
     buildTriggerOptionsPanel();
+
+    // ...and the row the other five forms lead with, shelled over the grids
+    // their .ui files lay them out in
+    buildEditorFormHeadRows();
 
     // Only explicit clicks change what the session is holding - the space-driven
     // auto-collapse in slot_rightSplitterMoved must stay transient:
@@ -8638,6 +8664,13 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
         mpKeysMainArea->label_idNumber->setText(QString::number(ID));
         const QString keyName = mpHost->getKeyUnit()->getKeyName(pT->getKeyCode(), pT->getKeyModifiers());
         mpKeysMainArea->lineEdit_key_binding->setText(keyName);
+        // TKey::match() never matches a group, so a keystroke on one is a
+        // setting that cannot do anything: the row goes away for a group and
+        // comes back for a key
+        const bool keyBindable = !pT->isFolder();
+        mpKeysMainArea->label_key_binding->setVisible(keyBindable);
+        mpKeysMainArea->lineEdit_key_binding->setVisible(keyBindable);
+        mpKeysMainArea->pushButton_key_grabKey->setVisible(keyBindable);
 
         clearDocument(mpSourceEditorEdbee, pT->getScript());
         restoreEditorState(EditorViewType::cmKeysView, ID);
@@ -10380,6 +10413,10 @@ void dlgTriggerEditor::changeView(EditorViewType view)
         qDebug() << "ERROR: dlgTriggerEditor::changeView() undefined view";
     }
 
+    // Which of the two the code pane's heading is in this view - a heading that
+    // also drags, or only a heading - and the column's own height either way
+    applyFormPaneSeamPolicy();
+
     // Update undo/redo button states when changing views
     slot_updateUndoRedoButtonStates();
 
@@ -10400,6 +10437,117 @@ void dlgTriggerEditor::changeView(EditorViewType view)
             }
         });
     }
+}
+
+// Whether the heading over the code pane is a handle as well as a heading. The
+// trigger form holds a list of patterns and the button form a stylesheet
+// editor, and both can use whatever room the reader is willing to give them.
+// The other five are a fixed set of fields: a column dragged taller than those
+// is empty space under them, so the heading there resizes nothing and the
+// column is exactly as tall as what it holds.
+static bool formPaneResizes(const EditorViewType view)
+{
+    switch (view) {
+    case EditorViewType::cmAliasView:
+    case EditorViewType::cmTimerView:
+    case EditorViewType::cmKeysView:
+    case EditorViewType::cmScriptView:
+    case EditorViewType::cmVarsView:
+        return false;
+    case EditorViewType::cmTriggerView:
+    case EditorViewType::cmActionView:
+    case EditorViewType::cmUnknownView:
+        break;
+    }
+    // No view is no form to hold to a height, so the column is left alone
+    return true;
+}
+
+// The form column of a fixed view is held to the height its contents ask for,
+// which is the one place the "only ever grown" rule below does not hold: the
+// cap comes down as well as up, so an item with fewer rows than the last one
+// gives the room back rather than keeping it. The cap is on the column itself
+// rather than only in the sizes, because that is what a window resize is laid
+// out against - QSplitter shares its space out inside each pane's maximum.
+void dlgTriggerEditor::applyFormPaneSeamPolicy()
+{
+    if (!splitter_right || !mpNonCodeWidgets || mHoldingFormPaneToItsContents) {
+        return;
+    }
+    // Measuring the column delivers the layout requests it is waiting on, and
+    // the cap this puts on posts another - which is heard by the same filter
+    // that called this. Barred from re-entering itself, the pass settles in one
+    // go and the request it posted finds nothing left to change.
+    mHoldingFormPaneToItsContents = true;
+    holdFormPaneToItsContents();
+    mHoldingFormPaneToItsContents = false;
+}
+
+void dlgTriggerEditor::holdFormPaneToItsContents()
+{
+    // Index 1 is the handle over mpSourceEditorArea, which is the one carrying
+    // the code pane's heading
+    const bool resizes = formPaneResizes(mCurrentView);
+    splitter_right->setHandleResizes(1, resizes);
+    if (resizes) {
+        mpNonCodeWidgets->setMaximumHeight(QWIDGETSIZE_MAX);
+        return;
+    }
+
+    // A row shown or hidden posts a layout request rather than sending one, so
+    // the column is measured after that request has been delivered - the same
+    // order fitFormPaneToItsContents() reads its own answer in
+    uiDesign::invalidateLayoutsUpTo(currentFormArea(), mpNonCodeWidgets);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+    if (QLayout* pLayout = mpNonCodeWidgets->layout()) {
+        pLayout->activate();
+    }
+    const int wanted = std::max(mpNonCodeWidgets->sizeHint().height(), mpNonCodeWidgets->minimumSizeHint().height());
+    if (wanted <= 0) {
+        // Everything in the column is hidden - a moment between two views, not
+        // a height to hold it to
+        return;
+    }
+    mpNonCodeWidgets->setMaximumHeight(wanted);
+
+    QList<int> sizes = splitter_right->sizes();
+    if (sizes.size() < 2) {
+        return;
+    }
+    const int paneTotal = sizes.at(0) + sizes.at(1);
+    const int paneHeight = std::clamp(wanted, 0, paneTotal);
+    if (paneTotal <= 0 || sizes.at(0) == paneHeight) {
+        return;
+    }
+    sizes[0] = paneHeight;
+    sizes[1] = paneTotal - paneHeight;
+    splitter_right->setSizes(sizes);
+}
+
+// Whichever of the seven forms the view being shown puts in the column, so that
+// a measurement of the column starts inside the form that is actually in it -
+// a row hidden deeper than the column tells only its own parent
+QWidget* dlgTriggerEditor::currentFormArea() const
+{
+    switch (mCurrentView) {
+    case EditorViewType::cmTriggerView:
+        return mpTriggersMainArea->widget_right;
+    case EditorViewType::cmTimerView:
+        return mpTimersMainArea;
+    case EditorViewType::cmAliasView:
+        return mpAliasMainArea;
+    case EditorViewType::cmScriptView:
+        return mpScriptsMainArea;
+    case EditorViewType::cmActionView:
+        return mpActionsMainArea;
+    case EditorViewType::cmKeysView:
+        return mpKeysMainArea;
+    case EditorViewType::cmVarsView:
+        return mpVarsMainArea;
+    case EditorViewType::cmUnknownView:
+        break;
+    }
+    return mpNonCodeWidgets;
 }
 
 // The height the form column is asking for, kept inside what the two panes have
@@ -10440,6 +10588,12 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     if (!splitter_right || !mpNonCodeWidgets || !mpNonCodeWidgets->isVisible()) {
         return;
     }
+    if (!formPaneResizes(mCurrentView)) {
+        // A view whose form cannot be dragged taller has no split of its own to
+        // keep: the column is its contents' height, up or down
+        applyFormPaneSeamPolicy();
+        return;
+    }
     QList<int> sizes = splitter_right->sizes();
     if (sizes.size() < 2) {
         return;
@@ -10474,6 +10628,14 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
 // throws away, so there would be nothing left to hand back on closing.
 void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
 {
+    if (!formPaneResizes(mCurrentView)) {
+        // Nothing this view saved is the user's own: its handle never moved
+        // anything. The column takes its contents' height and the code pane
+        // everything left, whatever a profile from before this carries.
+        applyFormPaneSeamPolicy();
+        mTriggerOptionsBorrowedHeight = 0;
+        return;
+    }
     if (!savedState.isEmpty()) {
         splitter_right->restoreState(savedState);
         // The handle width travels with the sizes, and a profile that last
@@ -13108,6 +13270,14 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         return true;
     }
 
+    // Whatever changed the column's height - a notice put up or taken down, an
+    // item chosen, a row of a form shown or hidden - says so by asking the
+    // column to lay itself out again. In the views whose column is held to its
+    // contents, that is also a different split.
+    if (watched == mpNonCodeWidgets && event->type() == QEvent::LayoutRequest) {
+        applyFormPaneSeamPolicy();
+    }
+
     // Styling the sidebar's rows takes its native focus rectangle away with
     // them; a property puts it back, since a QSS rule cannot ask whether the
     // widget a subcontrol belongs to has the focus
@@ -14068,22 +14238,33 @@ void dlgTriggerEditor::slot_clearSoundFile()
 // the sheet applied would only be measurable after it had been applied, and a
 // radius named any larger than half the height is clamped into an ellipse
 // rather than rounded further. Answers that height.
-static int styleEditorIdChip(dlgTriggersMainArea* pForm)
+static int styleEditorIdChip(QFrame* pFrameId, QLabel* pIdLabel, QLabel* pIdNumber)
 {
     QFont chipFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    const QFont formFont = pForm->font();
+    const QFont formFont = pFrameId->font();
     if (formFont.pointSizeF() > 0.0) {
         chipFont.setPointSizeF(formFont.pointSizeF() * scmEditorIdChipFontScale);
     } else {
         chipFont.setPixelSize(std::max(1, qRound(formFont.pixelSize() * scmEditorIdChipFontScale)));
     }
 
-    for (QLabel* pLabel : {pForm->label_idLabel, pForm->label_idNumber}) {
+    for (QLabel* pLabel : {pIdLabel, pIdNumber}) {
         pLabel->setFont(chipFont);
+        // The .ui files grey the pair out to make them quiet; the chip is quiet
+        // enough on its own, and a disabled label cannot be selected from
+        pLabel->setEnabled(true);
+    }
+
+    // The ID reads as a quiet label on the item rather than as a second field.
+    // showIDLabels() still decides whether it is there at all.
+    pFrameId->setProperty("editorIdChip", true);
+    if (QLayout* pChipLayout = pFrameId->layout()) {
+        pChipLayout->setContentsMargins(scmEditorIdChipPaddingHorizontal, scmEditorIdChipPaddingVertical, scmEditorIdChipPaddingHorizontal, scmEditorIdChipPaddingVertical);
+        pChipLayout->setSpacing(scmEditorIdChipGap);
     }
 
     const int chipHeight = QFontMetrics(chipFont).height() + 2 * (scmEditorIdChipPaddingVertical + uiDesign::scmInputBorderWidth);
-    pForm->frameId->setFixedHeight(chipHeight);
+    pFrameId->setFixedHeight(chipHeight);
     return chipHeight;
 }
 
@@ -14165,14 +14346,6 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     // only one of the two is drawn at full strength
     pForm->label_trigger_name->setProperty("editorRowLabel", true);
     pForm->label_trigger_command->setProperty("editorRowLabel", true);
-
-    // The ID reads as a quiet label on the trigger rather than a second field.
-    // showIDLabels() still decides whether it is there at all.
-    pForm->frameId->setProperty("editorIdChip", true);
-    // The .ui file greys the pair out to make them quiet; the chip is quiet
-    // enough on its own, and a disabled label cannot be selected from
-    pForm->label_idLabel->setEnabled(true);
-    pForm->label_idNumber->setEnabled(true);
 
     // Emptying the column takes every control the .ui file put in it out of a
     // layout in one go, so only what is nested deeper needs detaching by hand
@@ -14408,6 +14581,183 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
     connect(mpTriggersMainArea->groupBox_triggerColorizer, &QGroupBox::toggled, this, &dlgTriggerEditor::updateTriggerOptionsSummary);
 
     reflectTriggerMatchMode();
+}
+
+// The row an item's name is typed on, built out of the controls the .ui file
+// already holds: every object name, connection and translated string the move
+// does not touch survives it. What the row holds differs by form, which is the
+// whole of what the caller has to say.
+static QWidget* buildEditorFormHeadRow(QWidget* pForm, const QList<QPair<QWidget*, int>>& controls)
+{
+    auto* pHeadRow = new QWidget(pForm);
+    pHeadRow->setObjectName(qsl("widget_top"));
+    pHeadRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    auto* pRowLayout = new QHBoxLayout(pHeadRow);
+    pRowLayout->setContentsMargins(0, 0, 0, 0);
+    pRowLayout->setSpacing(scmEditorFormHeadRowSpacing);
+    for (const auto& [pControl, stretch] : controls) {
+        // The .ui grid still holds these, and a widget added to a second layout
+        // while a first one has it is a warning per widget on the console
+        uiDesign::detachFromLayout(pControl);
+        pRowLayout->addWidget(pControl, stretch);
+    }
+    return pHeadRow;
+}
+
+// The five forms that are a fixed set of fields are shelled over their .ui
+// grids the way the trigger form was rebuilt over its own: the name, whatever
+// is typed beside it and the ID pill are lifted onto one row at the top, and
+// what is left of the grid follows under it at the trigger form's measurements.
+void dlgTriggerEditor::buildEditorFormHeadRows()
+{
+    const QList<QPair<QWidget*, QList<QPair<QWidget*, int>>>> heads{
+            {mpAliasMainArea,
+             {{mpAliasMainArea->label_alias_name, 0},
+              {mpAliasMainArea->lineEdit_alias_name, 1},
+              {mpAliasMainArea->label_alias_command, 0},
+              {mpAliasMainArea->lineEdit_alias_command, 1},
+              {mpAliasMainArea->frameId, 0}}},
+            {mpTimersMainArea,
+             {{mpTimersMainArea->label_timer_name, 0},
+              {mpTimersMainArea->lineEdit_timer_name, 1},
+              {mpTimersMainArea->label_timer_command, 0},
+              {mpTimersMainArea->lineEdit_timer_command, 1},
+              {mpTimersMainArea->frameId, 0}}},
+            {mpKeysMainArea,
+             {{mpKeysMainArea->label_key_name, 0},
+              {mpKeysMainArea->lineEdit_key_name, 1},
+              {mpKeysMainArea->label_key_command, 0},
+              {mpKeysMainArea->lineEdit_key_command, 1},
+              {mpKeysMainArea->frameId, 0}}},
+            {mpScriptsMainArea, {{mpScriptsMainArea->label_script_name, 0}, {mpScriptsMainArea->lineEdit_script_name, 1}, {mpScriptsMainArea->frameId, 0}}},
+            {mpVarsMainArea, {{mpVarsMainArea->label_variable_name, 0}, {mpVarsMainArea->lineEdit_var_name, 1}}}};
+
+    for (const auto& [pForm, controls] : heads) {
+        QWidget* pHeadRow = buildEditorFormHeadRow(pForm, controls);
+        if (auto* pGrid = qobject_cast<QGridLayout*>(pForm->layout())) {
+            uiDesign::insertGridRowAtTop(pGrid, pHeadRow);
+        } else if (auto* pColumn = qobject_cast<QBoxLayout*>(pForm->layout())) {
+            // The variables form leads with a column rather than a grid, and the
+            // row belongs above everything that column holds
+            pColumn->insertWidget(0, pHeadRow);
+        }
+    }
+
+    // The column an item is edited in is inset once, on the frame that carries
+    // it, so a form of its own adds nothing to that - and what is left between
+    // its rows is the trigger form's, since the two are read as one design
+    const QList<QWidget*> laidOut{mpAliasMainArea,
+                                  mpTimersMainArea,
+                                  mpKeysMainArea,
+                                  mpScriptsMainArea,
+                                  mpVarsMainArea,
+                                  // The variables form nests its remaining controls in a
+                                  // frame, and that frame's grid is what lays them out
+                                  mpVarsMainArea->frame_vars_main_area};
+    for (QWidget* pWidget : laidOut) {
+        QLayout* pLayout = pWidget->layout();
+        pLayout->setContentsMargins(0, 0, 0, 0);
+        if (auto* pGrid = qobject_cast<QGridLayout*>(pLayout)) {
+            pGrid->setHorizontalSpacing(scmEditorFormGridSpacingHorizontal);
+            pGrid->setVerticalSpacing(scmEditorFormGridSpacingVertical);
+        } else {
+            pLayout->setSpacing(scmEditorFormGridSpacingVertical);
+        }
+    }
+    // The two controls this held are on the head row now, and an empty box in
+    // the grid's first cell would still take the column's width
+    mpVarsMainArea->widget_variable_name->hide();
+
+    // The words beside the fields are the form's scaffolding and what is typed
+    // into them is its content, so only one of the two is drawn at full strength
+    for (QLabel* pLabel : editorFormRowLabels()) {
+        pLabel->setProperty("editorRowLabel", true);
+        // Sized at style time rather than by their text, so the fields under one
+        // another start at the same place: a word set against the right hand
+        // edge of a box that wide would sit a long way from the label above it
+        pLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    }
+}
+
+// Every label naming a field on one of the five forms: the name at the head of
+// each, whatever is typed beside it, and the ones leading the rows under it.
+// All of them are drawn in the quiet ink a form's scaffolding is written in.
+QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
+{
+    return {mpAliasMainArea->label_alias_name,
+            mpTimersMainArea->label_timer_name,
+            mpKeysMainArea->label_key_name,
+            mpScriptsMainArea->label_script_name,
+            mpVarsMainArea->label_variable_name,
+            mpAliasMainArea->label_alias_command,
+            mpTimersMainArea->label_timer_command,
+            mpKeysMainArea->label_key_command,
+            mpAliasMainArea->label_alias_pattern,
+            mpTimersMainArea->label_timer_time,
+            mpKeysMainArea->label_key_binding,
+            mpScriptsMainArea->label_script_registered_event_handlers,
+            mpScriptsMainArea->label_script_event_handler_entry};
+}
+
+// The first label of every row under a head row, which is what the grid's first
+// column is as wide as
+QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
+{
+    return {mpAliasMainArea->label_alias_pattern,
+            mpTimersMainArea->label_timer_time,
+            mpKeysMainArea->label_key_binding,
+            mpScriptsMainArea->label_script_registered_event_handlers,
+            mpScriptsMainArea->label_script_event_handler_entry};
+}
+
+// A field has to start at the same place whichever row of whichever form it is
+// on, so the labels leading those rows are all one width - the widest of them,
+// and never narrower than the name above them needs. The name's own label is in
+// the head row rather than in the grid's first column, and the two are laid out
+// with different gaps, so it is given the difference on top and both fields
+// come out at the same x.
+//
+// Measured rather than named: what a word is wide is the font the window is
+// running at, which a stylesheet cannot answer for.
+void dlgTriggerEditor::alignEditorFormLeadLabels()
+{
+    if (!mpAliasMainArea) {
+        return;
+    }
+
+    int leadWidth = 0;
+    for (QLabel* pLabel : editorFormLeadLabels()) {
+        // The one row still carrying the wording it will lose in a later pass is
+        // held to the others' width rather than setting it: a lead label that
+        // long would push every field on every form in behind it
+        if (pLabel == mpScriptsMainArea->label_script_event_handler_entry) {
+            continue;
+        }
+        leadWidth = std::max(leadWidth, pLabel->fontMetrics().horizontalAdvance(pLabel->text()));
+    }
+
+    // The six forms all lead with the same word, so one measurement answers for
+    // all of them - and the trigger form is measured with them, since its name
+    // field has to start where the other five do
+    int nameWidth = 0;
+    const QList<QLabel*> nameLabels{mpTriggersMainArea->label_trigger_name,
+                                    mpAliasMainArea->label_alias_name,
+                                    mpTimersMainArea->label_timer_name,
+                                    mpKeysMainArea->label_key_name,
+                                    mpScriptsMainArea->label_script_name,
+                                    mpVarsMainArea->label_variable_name};
+    for (QLabel* pLabel : nameLabels) {
+        nameWidth = std::max(nameWidth, pLabel->fontMetrics().horizontalAdvance(pLabel->text()));
+    }
+    leadWidth = std::max(leadWidth, nameWidth - scmEditorFormNameLabelExtra);
+
+    for (QLabel* pLabel : editorFormLeadLabels()) {
+        pLabel->setFixedWidth(leadWidth);
+    }
+    for (QLabel* pLabel : nameLabels) {
+        pLabel->setFixedWidth(leadWidth + scmEditorFormNameLabelExtra);
+        pLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    }
 }
 
 // spinBox_lineMargin has changed - by a load, an undo, or the radios below -
@@ -14752,7 +15102,7 @@ void dlgTriggerEditor::clearTriggerForm()
 void dlgTriggerEditor::clearTimerForm()
 {
     mpTimersMainArea->hide();
-    mpTimersMainArea->hide();
+    mpSourceEditorArea->hide();
     if (mCurrentView != EditorViewType::cmUnknownView) {
         showIntro();
     }
@@ -15216,9 +15566,13 @@ void dlgTriggerEditor::restyleEditorIcons()
     if (mpSystemMessageArea) {
         const QColor warningColor = uiDesign::stateColor(uiDesign::scmStateHue_warning, tokens.darkPage);
         const QColor errorColor = uiDesign::stateColor(uiDesign::scmStateHue_error, tokens.darkPage);
-        const QList<std::tuple<QLabel*, QString, QColor>> bannerGlyphs{{mpSystemMessageArea->notificationAreaIconLabelError, qsl(":/icons/dialog-error.png"), errorColor},
-                                                                       {mpSystemMessageArea->notificationAreaIconLabelWarning, qsl(":/icons/dialog-warning.png"), warningColor},
-                                                                       {mpSystemMessageArea->notificationAreaIconLabelInformation, qsl(":/icons/dialog-information.png"), accentText}};
+        // Line glyphs rather than the old full-colour bitmaps: a picture tinted
+        // through its alpha channel keeps only the shape that channel carries,
+        // and those bitmaps' alpha is a solid disc or triangle - so the info
+        // notice came out as a filled circle with nothing readable in it
+        const QList<std::tuple<QLabel*, QString, QColor>> bannerGlyphs{{mpSystemMessageArea->notificationAreaIconLabelError, qsl(":/icons/editor-notice-error.png"), errorColor},
+                                                                       {mpSystemMessageArea->notificationAreaIconLabelWarning, qsl(":/icons/editor-notice-warning.png"), warningColor},
+                                                                       {mpSystemMessageArea->notificationAreaIconLabelInformation, qsl(":/icons/editor-notice-info.png"), accentText}};
         for (const auto& [pLabel, glyphFile, glyphColor] : bannerGlyphs) {
             const qreal glyphRatio = pLabel->devicePixelRatioF();
             QPixmap glyph =
@@ -15570,8 +15924,40 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // would reach the code pane's find bar and the trees' inline editors too;
     // the pattern rows keep a copy of the same rule for #label_prompt, since
     // that sheet is set on the row rather than on the form around it.
-    const QString formRules =
-            inputRules + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }").arg(disabledText.name());
+    //
+    // The two words in every ID pill are given their type here rather than in
+    // the sheet, because the pill's corner is half the height those metrics
+    // come to: a font-size the sheet applied would only be known after it had
+    // been, and a corner named larger than half the height is clamped into an
+    // ellipse rather than drawn rounder. Six forms carry a pill and the window
+    // has one font, so one measurement answers for all of them.
+    int idChipHeight = 0;
+    const QList<std::tuple<QFrame*, QLabel*, QLabel*>> idChips{{mpTriggersMainArea->frameId, mpTriggersMainArea->label_idLabel, mpTriggersMainArea->label_idNumber},
+                                                               {mpAliasMainArea->frameId, mpAliasMainArea->label_idLabel, mpAliasMainArea->label_idNumber},
+                                                               {mpTimersMainArea->frameId, mpTimersMainArea->label_idLabel, mpTimersMainArea->label_idNumber},
+                                                               {mpKeysMainArea->frameId, mpKeysMainArea->label_idLabel, mpKeysMainArea->label_idNumber},
+                                                               {mpScriptsMainArea->frameId, mpScriptsMainArea->label_idLabel, mpScriptsMainArea->label_idNumber},
+                                                               {mpActionsMainArea->frameId, mpActionsMainArea->label_idLabel, mpActionsMainArea->label_idNumber}};
+    for (const auto& [pFrameId, pIdLabel, pIdNumber] : idChips) {
+        idChipHeight = styleEditorIdChip(pFrameId, pIdLabel, pIdNumber);
+    }
+
+    const QString formRules = inputRules
+                              + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }"
+                                    // What a field on a form's own row is, as against what a card's rows
+                                    // hold: read at the size the rest of the row is read at
+                                    "QLabel[editorRowLabel=\"true\"] { color: %2; background: transparent; }"
+                                    // The ID reads as a label on the item, not as a second field: a pill,
+                                    // whose corner is half the height its own type comes to. Anything
+                                    // larger is clamped into an ellipse rather than rounded further,
+                                    // which is why the number is measured rather than named.
+                                    "#frameId { border: 1px solid %3; border-radius: %4px; background: transparent; }"
+                                    "#frameId QLabel { color: %2; background: transparent; }")
+                                        .arg(disabledText.name(), mutedText.name(), borderColor.name(), QString::number(idChipHeight / 2));
+
+    // The five forms that are a fixed set of fields keep their lead labels at
+    // one width, which is measured in the font the sheet is being written for
+    alignEditorFormLeadLabels();
 
     restyleEditorIcons();
 
@@ -15779,13 +16165,6 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // it, the same way the pattern list's does
         const QString optionsScrollBarRules = uiDesign::scrollBarStyleSheet(qsl("#editorTriggerOptionsScroll"), tokens);
 
-        // The two words in the ID pill are given their type here rather than in
-        // the sheet, because the pill's corner is half the height those metrics
-        // come to: a font-size the sheet applied would only be known after it
-        // had been, and a corner named larger than half the height is clamped
-        // into an ellipse rather than drawn rounder.
-        const int idChipHeight = styleEditorIdChip(mpTriggersMainArea);
-
         // A control pressed rather than a surface: the button lifts a shade
         // further off the row while the pointer is on it, and the outlined strip
         // under it draws its hairline a shade nearer the words instead
@@ -15800,9 +16179,6 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     // named outright so a profile stylesheet cannot paint a band across one
                                                     "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
                                                     "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
-                                                    // What a field on the form's own row is, as against what a card's
-                                                    // rows hold: read at the size the rest of the row is read at
-                                                    "QLabel[editorRowLabel=\"true\"] { color: %3; background: transparent; }"
                                                     // The box naming a matching mode; the chosen one carries the accent
                                                     "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %8px; padding: 1px 0px;"
                                                     " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
@@ -15811,24 +16187,18 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     // lifted off the row the way a card is lifted off the page; the
                                                     // strip that stands in for them while they are away is a line of
                                                     // readings to click, so it is only outlined
-                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %10px;"
-                                                    " padding: %13px %14px; background-color: %1; }"
-                                                    "#toolButton_toggleExtraControls:hover { color: %7; background-color: %11; }"
+                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %9px;"
+                                                    " padding: %12px %13px; background-color: %1; }"
+                                                    "#toolButton_toggleExtraControls:hover { color: %7; background-color: %10; }"
                                                     "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
                                                     "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
                                                     " background: transparent; text-align: left; }"
-                                                    "#editorOptionsSummary:hover { color: %7; border: 1px solid %12; }"
-                                                    // The ID reads as a label on the trigger, not as a second field: a
-                                                    // pill, whose corner is half the height its own type comes to.
-                                                    // Anything larger is clamped into an ellipse rather than rounded
-                                                    // further, which is why the number is measured rather than named.
-                                                    "#frameId { border: 1px solid %2; border-radius: %9px; background: transparent; }"
-                                                    "#frameId QLabel { color: %3; background: transparent; }"
+                                                    "#editorOptionsSummary:hover { color: %7; border: 1px solid %11; }"
                                                     // The button that empties the sound file field, drawn as
                                                     // the picture alone the way the toolbar's are: a frame
                                                     // round a glyph this small reads as a second control
                                                     "#toolButton_clearSoundFile { border: none; border-radius: %8px; background: transparent; padding: 2px; }"
-                                                    "#toolButton_clearSoundFile:hover { background-color: %11; }"
+                                                    "#toolButton_clearSoundFile:hover { background-color: %10; }"
                                                     // The cards are what is drawn in the options column: the scroll
                                                     // area holding them and the viewport Qt gives it show the page
                                                     // through. Named outright, as the pattern rows are, so that a
@@ -15836,7 +16206,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
                                                     " { background: transparent; border: none; }")
                                                     .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
-                                                    .arg(QString::number(uiDesign::scmRadiusChip), QString::number(idChipHeight / 2))
+                                                    .arg(QString::number(uiDesign::scmRadiusChip))
                                                     .arg(QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
                                                     .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
                                           + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + formRules);

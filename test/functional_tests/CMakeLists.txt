@@ -118,9 +118,11 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorBannerViewSwitchTest.cpp
     EditorChromeShapeTest.cpp
     EditorColumnAlignmentTest.cpp
+    EditorFormShellTest.cpp
     EditorGeometryWriteGuardTest.cpp
     EditorIconScaleTest.cpp
     EditorMinimumSizeTest.cpp
+    EditorNoticeGlyphTest.cpp
     EditorOptionsPanelDefaultTest.cpp
     EditorPlacementPersistenceTest.cpp
     EditorSidebarCollapseTest.cpp

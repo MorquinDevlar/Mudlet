@@ -20,7 +20,7 @@
    <item row="0" column="0">
     <widget class="QLabel" name="label_script_name">
      <property name="text">
-      <string>Name:</string>
+      <string>Name</string>
      </property>
      <property name="alignment">
       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -87,7 +87,7 @@
    <item row="1" column="0" alignment="Qt::AlignRight">
     <widget class="QLabel" name="label_script_registered_event_handlers">
      <property name="text">
-      <string>Registered Events:</string>
+      <string>Events</string>
      </property>
      <property name="alignment">
       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>

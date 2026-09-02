@@ -26,6 +26,7 @@
 #include <QSplitter>
 #include <QSplitterHandle>
 
+class QMouseEvent;
 class QPainter;
 
 namespace uiDesign {
@@ -52,10 +53,20 @@ public:
     // drag anywhere on it still resizes.
     void setContent(QWidget* pContent);
 
+    // Whether the panes either side of this handle can be resized through it.
+    // A heading over a pane whose height is its contents' is a heading and
+    // nothing else: it loses the grip that says otherwise, the cursor that
+    // offers the drag, and the drag itself.
+    void setResizes(const bool resizes);
+    [[nodiscard]] bool resizes() const { return mResizes; }
+
     [[nodiscard]] QSize sizeHint() const override;
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     // What a handle carrying nothing is drawn as: the seam, and each pane's own
     // tone carried up to it
     void paintSeam(QPainter& painter, const ThemeTokens& tokens) const;
@@ -66,6 +77,7 @@ protected:
 private:
     QPointer<QWidget> mpContent;
     bool mHovered = false;
+    bool mResizes = true;
 };
 
 // A splitter whose handles are the ones above, and which can hand one of them a
@@ -89,6 +101,12 @@ public:
     // The handle above the widget at `index`. A handle only exists once the
     // widget under it does, so call this after the panes have been added.
     void setHeaderHandle(const int index, QWidget* pContent);
+
+    // Whether the handle above the widget at `index` resizes anything; see
+    // GripSplitterHandle::setResizes(). Answers false where there is no such
+    // handle to tell.
+    bool setHandleResizes(const int index, const bool resizes);
+    [[nodiscard]] bool handleResizes(const int index) const;
 
 protected:
     QSplitterHandle* createHandle() override;

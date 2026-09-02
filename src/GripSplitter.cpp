@@ -21,6 +21,7 @@
 
 #include "uiDesign.h"
 
+#include <QMouseEvent>
 #include <QPainter>
 
 #include <algorithm>
@@ -90,6 +91,18 @@ void GripSplitterHandle::setContent(QWidget* pContent)
     update();
 }
 
+void GripSplitterHandle::setResizes(const bool resizes)
+{
+    if (mResizes == resizes) {
+        return;
+    }
+    mResizes = resizes;
+    // QSplitterHandle puts the split cursor on itself when it is given its
+    // orientation, so an inert handle has to say otherwise
+    setCursor(mResizes ? (orientation() == Qt::Vertical ? Qt::SplitVCursor : Qt::SplitHCursor) : Qt::ArrowCursor);
+    update();
+}
+
 QSize GripSplitterHandle::sizeHint() const
 {
     QSize hint = QSplitterHandle::sizeHint();
@@ -114,6 +127,36 @@ void GripSplitterHandle::resizeEvent(QResizeEvent* event)
     if (mpContent) {
         mpContent->setGeometry(rect());
     }
+}
+
+// An inert handle answers the mouse with nothing at all rather than with a drag
+// that goes nowhere: the base class would still start one, move the panes and
+// have the fit put them back, which reads as a heading that fights back.
+void GripSplitterHandle::mousePressEvent(QMouseEvent* event)
+{
+    if (!mResizes) {
+        event->ignore();
+        return;
+    }
+    QSplitterHandle::mousePressEvent(event);
+}
+
+void GripSplitterHandle::mouseMoveEvent(QMouseEvent* event)
+{
+    if (!mResizes) {
+        event->ignore();
+        return;
+    }
+    QSplitterHandle::mouseMoveEvent(event);
+}
+
+void GripSplitterHandle::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (!mResizes) {
+        event->ignore();
+        return;
+    }
+    QSplitterHandle::mouseReleaseEvent(event);
 }
 
 void GripSplitterHandle::enterEvent(TEnterEvent* event)
@@ -190,6 +233,12 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
     }
     painter.drawRoundedRect(strip, scmRadiusPanel, scmRadiusPanel);
 
+    // The grip is the whole of what says the strip can be dragged, so a handle
+    // that resizes nothing is left without one
+    if (!mResizes) {
+        return;
+    }
+
     // Halfway from the hairline a border gets away with to the words beside it:
     // a grip is small and has to be findable without being a rule across the pane
     const QColor gripColor = mHovered ? tokens.accent : blend(tokens.border, tokens.mutedText, 0.5);
@@ -230,6 +279,22 @@ void GripSplitter::setHeaderHandle(const int index, QWidget* pContent)
     // The splitter took the handle's thickness when it last laid itself out, and
     // that answer has just changed
     refresh();
+}
+
+bool GripSplitter::setHandleResizes(const int index, const bool resizes)
+{
+    auto* pHandle = qobject_cast<GripSplitterHandle*>(handle(index));
+    if (!pHandle) {
+        return false;
+    }
+    pHandle->setResizes(resizes);
+    return true;
+}
+
+bool GripSplitter::handleResizes(const int index) const
+{
+    auto* pHandle = qobject_cast<const GripSplitterHandle*>(handle(index));
+    return pHandle && pHandle->resizes();
 }
 
 } // namespace uiDesign

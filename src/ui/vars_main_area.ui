@@ -59,7 +59,7 @@
          <item>
           <widget class="QLabel" name="label_variable_name">
            <property name="text">
-            <string>Name:</string>
+            <string>Name</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
