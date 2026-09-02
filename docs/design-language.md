@@ -86,6 +86,54 @@ three: 5.6:1, 5.4:1 and 4.7:1 on dark, 6.2:1, 6.3:1 and 6.7:1 on light.
 `disabledText` is walked the same way to the 3:1 an inactive word is held to,
 over the three surfaces and the field as well.
 
+#### One ink for the editor's chrome
+
+In the script editor, `mutedText` is not one tone among several - it is *the*
+tone. Every word the window says outside a field is written in it: the toolbar's
+buttons, the sidebar's names, every row of all seven item trees and their
+headings, the search results' titles, a card's title and everything on the card,
+check boxes, radio buttons, group boxes, the pattern rows' numbers and prompt
+labels, the "Lua script" heading, the summary strip, the Options button and the
+status bar. The full `text` tone is what is *inside* a field - a line edit, a
+spin box, a combo box's displayed value, the code pane, the error console - and
+nothing else has it. Two greys in one window's chrome read as two windows.
+
+Three things keep an ink of their own, and each says a state rather than a tone:
+`accentText` for what is chosen or under the pointer, `disabledText` for what is
+unavailable, and the two state chips - the compile chip and the OR/AND mode chip
+- whose colour is walked against their own fill by `readableOn()`.
+
+One consequence is deliberate: a tree row that is switched off and one that is
+running are now the same tone, since `EditorTreeDelegate` already quietened the
+off rows to `mutedText`. The **dot** at the row's leading edge says whether the
+item is on, not the weight of its name.
+
+A `color:` rule cannot reach a view's rows - a stylesheet only gets at them
+through `::item`, and a `::item` rule reaches the widget's palette for some
+selectors and not others - nor a control that paints itself, such as the
+sidebar's collapse chevron. Those are told outright, through
+`inkAsChrome()` in `src/dlgTriggerEditor.cpp`, which writes the tone into
+`QPalette::Text`, `WindowText` and `ButtonText` and the accent into
+`HighlightedText`. It runs *after* anything that re-polishes the widget: a
+re-polish puts back the palette the rules were applied to.
+
+The settings dialog is not held to this. Its sidebar is the whole of that
+dialog's navigation and keeps the full tone (the `itemColor` argument to
+`sidebarStyleSheet()`), and `cardStyleSheet()` - shared by both windows - writes
+no title colour at all, so a settings card's title stays whatever the palette
+answers. The editor colours its own cards' titles from its own sheet;
+nothing about the shared builder changed.
+
+`test/functional_tests/EditorChromeInkTest.cpp` is the guard. It walks every
+visible, enabled thing in the editor that shows words - labels, buttons with
+text, group box titles, and each view once by its palette - skipping fields and
+everything under them, the two state chips by object name, and anything chosen,
+pressed or under the pointer, and compares each ink against `mutedText` on the
+dark appearance and then the light. It reports how many things it read and fails
+below a pinned floor, so a walk that stopped finding widgets cannot pass. One
+case reads pixels rather than palettes: the ink of the Triggers heading row, off
+a grab of the window, has to be that same tone to within two levels per channel.
+
 Anything mixed to sit *on* a surface takes that surface as its `from`:
 `border`, `mutedText` and `disabledText` are blends over `page`; a card's check
 indicator outline is a blend over `card`; placeholder text is a blend over
@@ -457,9 +505,10 @@ answered.
 
 ### Guards
 
-Two tests hold the line the rest of this document describes. Text that cannot
-be read in one of the two appearances now fails a run rather than waiting for
-somebody to switch theme and notice.
+Three tests hold the line the rest of this document describes. Text that cannot
+be read in one of the two appearances, or that is written in a tone the design
+does not use there, now fails a run rather than waiting for somebody to switch
+theme and notice.
 
 **`test/DesignColourLiteralTest.cpp`** reads the sources of every surface that
 has adopted the design language and fails on a colour written out rather than
@@ -522,6 +571,12 @@ clear their floor on every surface they can be drawn on - the three depths for
 the first two, and for `accentText` a wash of the accent at
 `scmAccentWashStrength`, which is what a chosen row, a sidebar pill and a lit
 chip all are.
+
+**`test/functional_tests/EditorChromeInkTest.cpp`** holds the editor to one ink
+for its chrome - see "One ink for the editor's chrome" above for what it walks,
+what it leaves out and why, and the painted probe it ends with. The audit asks
+whether a word can be read; this asks whether it is the right grey, which a
+readable-but-wrong tone would otherwise pass.
 
 **Adding a surface to the design language means adding it to both**: its files
 to `scannedFiles()` in the scan, and its window to the walk in the audit.

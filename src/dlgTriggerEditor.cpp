@@ -58,7 +58,6 @@
 #include "EditorSidebarToggle.h"
 #include "EditorToggleActiveCommand.h"
 #include "EditorTreeDelegate.h"
-#include "GripSplitter.h"
 #include "SearchResultDelegate.h"
 #include "VariableTreeDelegate.h"
 #include "mudlet.h"
@@ -296,6 +295,12 @@ static uiDesign::CardMetrics cardMetrics(const int titleHeight)
 {
     return {.cardProperty = uiDesign::scmProp_editorCard, .padding = scmEditorCardPadding, .titleHeight = titleHeight};
 }
+// How much further the form pane has to be dragged open, past where the options
+// panel stopped fitting in it, before that panel unfolds again. A band rather
+// than the same position back: the fold changes what the form is made of, so
+// re-opening at the position it folded at is re-opening at a position it does
+// not fit in - which is the flicker this is here to end.
+static constexpr int scmEditorOptionsRestoreBand = 24;
 // A banner's picture, beside a line of text rather than the 64px block the
 // .ui file sizes it as
 static constexpr int scmEditorBannerGlyphSize = 20;
@@ -3071,14 +3076,6 @@ void dlgTriggerEditor::readSettings()
     // toolbar's toggle starts with them on.
     mEditorSidebarLabelsShown = settings.value(qsl("editorSidebarLabelsShown"), true).toBool();
     updateEditorSidebarMode();
-
-    mTriggerEditorSplitterState = settings.value("mTriggerEditorSplitterState", QByteArray()).toByteArray();
-    mAliasEditorSplitterState = settings.value("mAliasEditorSplitterState", QByteArray()).toByteArray();
-    mScriptEditorSplitterState = settings.value("mScriptEditorSplitterState", QByteArray()).toByteArray();
-    mActionEditorSplitterState = settings.value("mActionEditorSplitterState", QByteArray()).toByteArray();
-    mKeyEditorSplitterState = settings.value("mKeyEditorSplitterState", QByteArray()).toByteArray();
-    mTimerEditorSplitterState = settings.value("mTimerEditorSplitterState", QByteArray()).toByteArray();
-    mVarEditorSplitterState = settings.value("mVarEditorSplitterState", QByteArray()).toByteArray();
 }
 
 void dlgTriggerEditor::writeSettings()
@@ -3106,13 +3103,20 @@ void dlgTriggerEditor::writeSettings()
     // decide what the next one opens with
     settings.setValue(qsl("editorSidebarLabelsShown"), mEditorSidebarLabelsShown);
 
-    settings.setValue("mTriggerEditorSplitterState", mTriggerEditorSplitterState);
-    settings.setValue("mAliasEditorSplitterState", mAliasEditorSplitterState);
-    settings.setValue("mScriptEditorSplitterState", mScriptEditorSplitterState);
-    settings.setValue("mActionEditorSplitterState", mActionEditorSplitterState);
-    settings.setValue("mKeyEditorSplitterState", mKeyEditorSplitterState);
-    settings.setValue("mTimerEditorSplitterState", mTimerEditorSplitterState);
-    settings.setValue("mVarEditorSplitterState", mVarEditorSplitterState);
+    // A dragged split is the reader's for as long as the session lasts and no
+    // longer - a form left tall for one item was the wrong height for the next
+    // one on the restart after - so the seven keys each view stored its own
+    // split under are cleared rather than left in every configuration that has
+    // one, saying something nothing reads any more
+    for (const QString& retired : {qsl("mTriggerEditorSplitterState"),
+                                   qsl("mAliasEditorSplitterState"),
+                                   qsl("mScriptEditorSplitterState"),
+                                   qsl("mActionEditorSplitterState"),
+                                   qsl("mKeyEditorSplitterState"),
+                                   qsl("mTimerEditorSplitterState"),
+                                   qsl("mVarEditorSplitterState")}) {
+        settings.remove(retired);
+    }
 
     // The trigger options panel used to be a stored preference and is now a
     // disclosure the editor opens closed - so the key is cleared rather than
@@ -8583,9 +8587,9 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -8653,9 +8657,9 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -8721,9 +8725,9 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9068,9 +9072,9 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
                        "Its value may show up blank for the same reason. A script can still change it.")
                             .arg(var->getName().toHtmlEscaped()));
     }
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9212,9 +9216,9 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9314,9 +9318,9 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9389,9 +9393,9 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
-    // The item just loaded is not the one this view's split was last sized
-    // for - the next one along can hold three pattern rows where the last held
-    // one - so the form is given the height its contents ask for
+    // The item just loaded is not the one the panes were last divided for -
+    // the next one along can hold eleven pattern rows where the last held
+    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -10298,6 +10302,18 @@ void dlgTriggerEditor::showEvent(QShowEvent* event)
         mEditorFirstShown = true;
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
+
+        // The first item goes into the form before the editor is put on screen -
+        // mudlet::slot_showEditorDialog() picks it, then shows the window - so
+        // the fit that ran with it was dividing up a splitter that had no
+        // height yet and did nothing. This is the first moment the panes have
+        // real ones. It is asked twice because the show may not have laid them
+        // out yet either, and the second answer costs nothing when the first
+        // one was already right.
+        fitFormPaneToItsContents();
+        QTimer::singleShot(0ms, this, [this]() {
+            fitFormPaneToItsContents();
+        });
     }
 
     // A placement the user chose is theirs to keep, so the editor is only moved
@@ -10693,15 +10709,16 @@ int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
     return std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
 }
 
-// A form is given the height its contents ask for whenever the item being
-// edited changes. A stored split is the user's idea of how tall this view's
-// form should be, but it was stored against whichever item was open then, and
-// the next one along can hold three pattern rows where that one held one - so
-// the form pane scrolls while the code pane under it sits nearly empty.
+// The form pane snaps to the height its contents ask for, shrinking as readily
+// as growing, whenever the item being edited changes, whenever a view is
+// entered, and once the window has been shown and the panes have real heights.
+// What it takes comes off the code pane, which formPaneHeightForItsContents()
+// has already left its floor.
 //
-// Only ever grown: a pane dragged taller than its contents is the user's own
-// and stays where it was put. What it grows by comes off the code pane, which
-// formPaneHeightForItsContents() has already left its floor.
+// The one exception is a view whose handle the user has dragged in this
+// session. Only a drag emits QSplitter::splitterMoved(), so only a drag records
+// a height here, and only the view it was made in keeps one: switching to a
+// view that was never dragged still snaps there.
 void dlgTriggerEditor::fitFormPaneToItsContents()
 {
     if (!splitter_right || !mpNonCodeWidgets || !mpNonCodeWidgets->isVisible()) {
@@ -10732,86 +10749,27 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     if (QLayout* pLayout = mpNonCodeWidgets->layout()) {
         pLayout->activate();
     }
-    const int wanted = formPaneHeightForItsContents(paneTotal);
-    if (wanted <= sizes.at(0)) {
-        return;
-    }
-    sizes[1] -= wanted - sizes.at(0);
-    sizes[0] = wanted;
-    splitter_right->setSizes(sizes);
-}
 
-// Each view keeps its own sizes for the right hand splitter and puts them back
-// on the way in. That also ends any loan the trigger options panel had taken out
-// of the code pane: what it borrowed was measured against the geometry this
-// throws away, so there would be nothing left to hand back on closing.
-void dlgTriggerEditor::restoreRightSplitterState(const QByteArray& savedState)
-{
-    if (!formPaneResizes(mCurrentView)) {
-        // Nothing this view saved is the user's own: its handle never moved
-        // anything. The column takes its contents' height and the code pane
-        // everything left, whatever a profile from before this carries.
-        applyFormPaneSeamPolicy();
-        mTriggerOptionsBorrowedHeight = 0;
-        return;
-    }
-    if (!savedState.isEmpty()) {
-        splitter_right->restoreState(savedState);
-        // The handle width travels with the sizes, and a profile that last
-        // saved this before the grips existed puts the old one back - which
-        // would leave the code pane's heading, and every grip under it, drawn
-        // at a thickness nothing else in the editor uses
-        splitter_right->setHandleWidth(uiDesign::GripSplitter::scmHandleThickness);
-
-        // A saved split is only the user's up to what the form can fill. One
-        // saved while the form was taller - a view with more fields, or the
-        // trigger options panel open - hands this view a form pane of mostly
-        // nothing and starts the code editor that far down the window; a
-        // profile carrying 630px of form above 220px of code is what this was
-        // written for. Anything over what the form asks for now goes to the
-        // code pane, and the error console keeps its own height.
-        //
-        // The restore is the only thing clamped. Dragging the handle afterwards
-        // is the user asking for a taller form and nothing here runs then, and
-        // the measurement is of the form as it stands at this moment, so a view
-        // entered with the options panel open is left the room to show it -
-        // which is also what keeps refitSplitterForTriggerOptions() from having
-        // anything to borrow straight after.
-        QList<int> sizes = splitter_right->sizes();
-        const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
-        if (paneTotal > 0) {
-            const int wanted = formPaneHeightForItsContents(paneTotal);
-            if (sizes.at(0) > wanted) {
-                sizes[1] += sizes.at(0) - wanted;
-                sizes[0] = wanted;
-                splitter_right->setSizes(sizes);
-            }
-        }
+    int wanted = 0;
+    const auto dragged = mDraggedFormPaneHeights.constFind(mCurrentView);
+    if (dragged != mDraggedFormPaneHeights.constEnd()) {
+        // The height the user put this view's handle at is the base, and
+        // whatever the trigger options panel borrowed on top of it stands - so
+        // an item change in a view with the panel open does not close the room
+        // the panel is being shown in
+        wanted = std::clamp(dragged.value() + mTriggerOptionsBorrowedHeight, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
     } else {
-        // The user has not sized this view's panes themselves, so the form takes
-        // the height its fields need and the code takes everything left. Sizes
-        // that do not add up to the space there is are shared out in proportion
-        // rather than met, which is how asking for 30 above 900 came out as half
-        // the window each: a code pane starting a long way down the window,
-        // under a form stretched past anything it had to show.
-        //
-        // Nothing is written back to savedState here. Until a handle is dragged
-        // there is no size to remember, and re-reading the form every time is
-        // what keeps the split following what the item actually holds - the
-        // first of these calls comes before any item has been picked, when the
-        // form has nothing to measure.
-        QList<int> sizes = splitter_right->sizes();
-        const int paneTotal = sizes.size() >= 2 ? sizes.at(0) + sizes.at(1) : 0;
-        if (paneTotal > 0) {
-            sizes[0] = formPaneHeightForItsContents(paneTotal);
-            sizes[1] = paneTotal - sizes.at(0);
-            splitter_right->setSizes(sizes);
-        } else {
-            // Asked for before there is any geometry to divide up
-            splitter_right->setSizes({30, 900, 30});
-        }
+        // Nothing is on loan in a view that snaps: what the options panel would
+        // have borrowed for is measured here as part of the form
+        mTriggerOptionsBorrowedHeight = 0;
+        wanted = formPaneHeightForItsContents(paneTotal);
     }
-    mTriggerOptionsBorrowedHeight = 0;
+    if (wanted == sizes.at(0)) {
+        return;
+    }
+    sizes[0] = wanted;
+    sizes[1] = paneTotal - wanted;
+    splitter_right->setSizes(sizes);
 }
 
 void dlgTriggerEditor::slot_showTimers()
@@ -10827,7 +10785,9 @@ void dlgTriggerEditor::slot_showTimers()
         mpSourceEditorArea->show();
         slot_timerSelected(treeWidget_timers->currentItem());
     }
-    restoreRightSplitterState(mTimerEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_timers);
 }
 
@@ -10863,7 +10823,9 @@ void dlgTriggerEditor::slot_showTriggers()
         mpSourceEditorArea->show();
         slot_triggerSelected(treeWidget_triggers->currentItem());
     }
-    restoreRightSplitterState(mTriggerEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_triggers);
 }
 
@@ -10880,7 +10842,9 @@ void dlgTriggerEditor::slot_showScripts()
         mpSourceEditorArea->show();
         slot_scriptsSelected(treeWidget_scripts->currentItem());
     }
-    restoreRightSplitterState(mScriptEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_scripts);
 }
 
@@ -10897,7 +10861,9 @@ void dlgTriggerEditor::slot_showKeys()
         mpSourceEditorArea->show();
         slot_keySelected(treeWidget_keys->currentItem());
     }
-    restoreRightSplitterState(mKeyEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_keys);
 }
 
@@ -10918,7 +10884,9 @@ void dlgTriggerEditor::slot_showVariables()
         mpSourceEditorArea->show();
         slot_variableSelected(treeWidget_variables->currentItem());
     }
-    restoreRightSplitterState(mVarEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_variables);
 }
 
@@ -10956,7 +10924,9 @@ void dlgTriggerEditor::slot_showAliases()
         mpSourceEditorArea->show();
         slot_aliasSelected(treeWidget_aliases->currentItem());
     }
-    restoreRightSplitterState(mAliasEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_aliases);
 }
 
@@ -11223,7 +11193,9 @@ void dlgTriggerEditor::slot_showActions()
         mpSourceEditorArea->show();
         slot_actionSelected(treeWidget_actions->currentItem());
     }
-    restoreRightSplitterState(mActionEditorSplitterState);
+    // The view being entered has an item in its form that the pane was not
+    // sized for - or no item at all, and a placeholder in its place
+    fitFormPaneToItsContents();
     focusPanelTree(treeWidget_actions);
 }
 
@@ -15308,19 +15280,32 @@ void dlgTriggerEditor::updateTriggerOptionsSummary()
 void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
 {
     mShowAllTriggerControls = shown;
+    // Whatever the drag left recorded is answered here instead: a panel opened
+    // or closed on purpose is no longer one the room decides about
+    mTriggerOptionsAutoHiddenAtPaneHeight = 0;
     slot_showAllTriggerControls(shown);
     refitSplitterForTriggerOptions(shown);
 }
 
 // The panel is as tall as its four cards, and the form holding it is one pane
-// of the right hand splitter. Opening it where that pane is too short takes the
-// difference off the code pane below, down to a floor; closing it hands back
-// what it took and no more. Only the deliberate open and close come through
+// of the right hand splitter. Only the deliberate open and close come through
 // here - the space-driven auto-collapse in slot_rightSplitterMoved happens
 // during a drag, and moving the splitter under the user would fight it.
+//
+// In a view the user has not dragged, an open or a close is only a change in
+// what the form holds, and the snap answers both directions on its own. It is
+// where they have dragged one that a height has to be borrowed: their height is
+// the base, so opening the panel where it does not fit takes the difference off
+// the code pane below, down to a floor, and closing it hands back what it took
+// and no more.
 void dlgTriggerEditor::refitSplitterForTriggerOptions(const bool shown)
 {
     if (mCurrentView != EditorViewType::cmTriggerView) {
+        return;
+    }
+    if (!mDraggedFormPaneHeights.contains(EditorViewType::cmTriggerView)) {
+        mTriggerOptionsBorrowedHeight = 0;
+        fitFormPaneToItsContents();
         return;
     }
     QList<int> sizes = splitter_right->sizes();
@@ -15347,12 +15332,6 @@ void dlgTriggerEditor::refitSplitterForTriggerOptions(const bool shown)
     uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
     const int wanted = mpNonCodeWidgets->sizeHint().height();
     if (sizes.at(0) >= wanted) {
-        return;
-    }
-    // The sizes the user last dragged to, when the panel fits in them
-    if (mTriggerRightSplitterSizes.size() == sizes.size() && mTriggerRightSplitterSizes.at(0) >= wanted) {
-        mTriggerOptionsBorrowedHeight = 0;
-        splitter_right->setSizes(mTriggerRightSplitterSizes);
         return;
     }
 
@@ -15411,14 +15390,18 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
      *--+----------------------+---------+
      */
     const int hysteresis = 10;
+    // splitterMoved() comes from a drag and never from setSizes(), so this is
+    // the one place the user's own height for a view is heard. From here on
+    // that view keeps it as items change, until Mudlet is restarted; every
+    // other view goes on snapping to what its item holds.
+    const QList<int> movedTo = splitter_right->sizes();
+    const int formPaneHeight = movedTo.isEmpty() ? 0 : movedTo.constFirst();
+    if (mCurrentView != EditorViewType::cmUnknownView && !movedTo.isEmpty()) {
+        mDraggedFormPaneHeights.insert(mCurrentView, formPaneHeight);
+    }
     if (mpTriggersMainArea->isVisible()) {
-        mTriggerEditorSplitterState = splitter_right->saveState();
-        // splitterMoved() only comes from a drag, so these are the sizes the
-        // user chose - what reopening the options panel goes back to when the
-        // panel fits in them. Whatever the panel borrowed from the code pane
-        // stops being ours to hand back the moment the user sizes the two panes
-        // themselves.
-        mTriggerRightSplitterSizes = splitter_right->sizes();
+        // Whatever the options panel borrowed from the code pane stops being
+        // ours to hand back the moment the user sizes the two panes themselves
         mTriggerOptionsBorrowedHeight = 0;
         // The triggersMainArea is visible
         if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked()) {
@@ -15427,33 +15410,26 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
                 // And it is not tall enough to show the right hand side - so
                 // hide them - we are using the spacer to detect if there is any
                 // space:
+                //
+                // Where the pane was when they stopped fitting, taken before
+                // the fold rather than after it - see the member's own note for
+                // why the form's height is the one number this cannot use
+                mTriggerOptionsAutoHiddenAtPaneHeight = formPaneHeight;
                 slot_showAllTriggerControls(false);
-                // And the first time note down the required height:
-                if (mTriggerMainAreaMinimumHeightToShowAll < 1) {
-                    mTriggerMainAreaMinimumHeightToShowAll = mpTriggersMainArea->widget_left->height();
-                }
             }
 
         } else {
             // And the extra controls are NOT visible. Only auto-restore them if
-            // the user's preference is to show them - if they explicitly hid the
-            // controls a later splitter expand must not bring them back:
-            if (mShowAllTriggerControls && mTriggerMainAreaMinimumHeightToShowAll > 0 && mpTriggersMainArea->widget_left->height() > mTriggerMainAreaMinimumHeightToShowAll) {
+            // the reader's preference is to show them - if they explicitly hid
+            // the controls a later splitter expand must not bring them back -
+            // and only once the pane is clearly taller than it was when they
+            // stopped fitting, so that the same position, or a jitter of a few
+            // pixels either side of it, never opens them again.
+            if (mShowAllTriggerControls && mTriggerOptionsAutoHiddenAtPaneHeight > 0 && formPaneHeight >= mTriggerOptionsAutoHiddenAtPaneHeight + scmEditorOptionsRestoreBand) {
+                mTriggerOptionsAutoHiddenAtPaneHeight = 0;
                 slot_showAllTriggerControls(true);
             }
         }
-    } else if (mpActionsMainArea->isVisible()) {
-        mActionEditorSplitterState = splitter_right->saveState();
-    } else if (mpAliasMainArea->isVisible()) {
-        mAliasEditorSplitterState = splitter_right->saveState();
-    } else if (mpKeysMainArea->isVisible()) {
-        mKeyEditorSplitterState = splitter_right->saveState();
-    } else if (mpScriptsMainArea->isVisible()) {
-        mScriptEditorSplitterState = splitter_right->saveState();
-    } else if (mpTimersMainArea->isVisible()) {
-        mTimerEditorSplitterState = splitter_right->saveState();
-    } else if (mpVarsMainArea->isVisible()) {
-        mVarEditorSplitterState = splitter_right->saveState();
     }
     if (mpSourceEditorFindArea->isVisible()) {
         slot_sourceFindMove();
@@ -16333,6 +16309,24 @@ QString dlgTriggerEditor::patternRowStyleSheet() const
            + uiDesign::scrollBarStyleSheet(qsl("#editorPatternScroll"), tokens);
 }
 
+// What a widget is drawn in, told to its palette outright, for the two kinds of
+// widget a "color:" rule cannot reach: a view, whose rows a stylesheet only
+// gets at through ::item - and a ::item rule reaches the palette for some
+// selectors and not others - and a control that paints itself, which a
+// stylesheet reaches not at all. The one quiet tone the rest of the chrome
+// takes, and the accent for what is chosen. Anything reading those colours off
+// the widget, an accessibility tool among them, is then told what is actually
+// painted.
+static void inkAsChrome(QWidget* pWidget, const QColor& chrome, const QColor& chosen)
+{
+    QPalette palette = pWidget->palette();
+    palette.setColor(QPalette::Text, chrome);
+    palette.setColor(QPalette::WindowText, chrome);
+    palette.setColor(QPalette::ButtonText, chrome);
+    palette.setColor(QPalette::HighlightedText, chosen);
+    pWidget->setPalette(palette);
+}
+
 // What a row is washed with while the mouse is on it. Painted by the row rather
 // than left to a stylesheet rule on a property: a property that has to be
 // re-polished re-runs the whole sheet over the row's controls for a tint.
@@ -16384,12 +16378,23 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // window: a rule naming QLineEdit on the window would reach the code pane's
     // find bar and the trees' editors as well as the fields it is meant for.
     const QString inputRules = uiDesign::inputStyleSheet(tokens);
+    // One ink for every word of the editor's chrome, which is the quiet tone
+    // the toolbar's buttons, the sidebar's names and the status bar are already
+    // written in: a label, a check box, a radio button, a card's title and a
+    // button all take it, and the full tone is left to what is typed into a
+    // field - which is the ink inputStyleSheet() writes and setFieldColors()
+    // hands the pattern fields.
+    //
+    // Named class by class rather than once on the form, because a stylesheet's
+    // colour does not pass from a widget down to its children the way CSS's
+    // does; and carried by every form rather than named on the window, which
+    // would reach the code pane's find bar and the trees' inline editors too.
+    const QString chromeInkRules = qsl("QLabel, QAbstractButton, QGroupBox { color: %1; }").arg(mutedText.name());
     // An unavailable word is written in the design's own quiet tone rather than
     // the platform's, which on a light theme is a shade off the card it is
-    // written on. Carried by every form rather than named on the window, which
-    // would reach the code pane's find bar and the trees' inline editors too;
-    // the pattern rows keep a copy of the same rule for #label_prompt, since
-    // that sheet is set on the row rather than on the form around it.
+    // written on. The pattern rows keep a copy of the same rule for
+    // #label_prompt, since that sheet is set on the row rather than on the form
+    // around it.
     //
     // The two words in every ID pill are given their type here rather than in
     // the sheet, because the pill's corner is half the height those metrics
@@ -16408,7 +16413,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
         idChipHeight = styleEditorIdChip(pFrameId, pIdLabel, pIdNumber);
     }
 
-    const QString formRules = inputRules
+    const QString formRules = inputRules + chromeInkRules
                               + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }"
                                     // What a field on a form's own row is, as against what a card's rows
                                     // hold: read at the size the rest of the row is read at
@@ -16445,6 +16450,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                      // The transparent border keeps the label from stepping
                                      // sideways when a hovered button gains one
                                      "QToolBar#editorActionsToolbar QToolButton { color: %3; border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; }"
+                                     // The accent rather than the words' full tone: the glyph beside
+                                     // the word is inked accentText for QIcon::Active, so the two
+                                     // halves of a hovered button light up as one
                                      "QToolBar#editorActionsToolbar QToolButton:hover { color: %4; background-color: %5; }"
                                      "QToolBar#editorActionsToolbar QToolButton:pressed { background-color: %6; }"
                                      "QToolBar#editorActionsToolbar QToolButton:disabled { color: %7; }"
@@ -16455,7 +16463,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                          .arg(pageColor.name(),
                                               borderColor.name(),
                                               mutedText.name(),
-                                              textColor.name(),
+                                              accentText.name(),
                                               hoverSoft,
                                               accentSoft,
                                               disabledText.name(),
@@ -16500,12 +16508,15 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // A pane rather than the page, so that the panel reads as a column of its
     // own between the sidebar and the column an item is edited in, both of
     // which are the page.
-    // ...and, on that same pane, the quiet reading of how many variables the
-    // switch above the tree would bring into it. A rule rather than a palette
-    // colour, since the pane's own sheet is what the label shows through.
+    // ...the two words on the panel that are not a row of a tree - the switch
+    // under the variables tree, and the quiet reading beside it of how many
+    // variables that switch would bring into the tree - written in the same
+    // tone as the rows above them. A rule rather than a palette colour, since
+    // the pane's own sheet is what they show through.
     frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }"
                                   "#editorHiddenVariablesCount { color: %2; background: transparent; }")
-                                      .arg(paneColor.name(), mutedText.name()));
+                                      .arg(paneColor.name(), mutedText.name())
+                              + chromeInkRules);
     if (mpLabel_hiddenVariablesCount) {
         // Measured off the row it lies on rather than off its own font: a rule
         // naming the label stops it inheriting anything from what it sits on
@@ -16563,14 +16574,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
         pTreeWidget->setStyleSheet(treeRules);
-        // The sheet writes a chosen row's name in the accent ink, and a
-        // ::item:selected rule reaches the widget's palette for some selectors
-        // and not others - so the palette is told outright. Anything reading a
-        // view's colours off it, an accessibility tool among them, is then told
-        // what is actually painted.
-        QPalette treePalette = pTreeWidget->palette();
-        treePalette.setColor(QPalette::HighlightedText, accentText);
-        pTreeWidget->setPalette(treePalette);
+        inkAsChrome(pTreeWidget, mutedText, accentText);
     }
 
     for (uiDesign::EditorTreeDelegate* pDelegate : std::as_const(mEditorTreeDelegates)) {
@@ -16585,6 +16589,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // rather than lived in, and the arrow the style draws in that column is the
     // one thing that says a heading is a group the reader can fold away.
     treeWidget_searchResults->setStyleSheet(treeRules + qsl("QTreeWidget#editorSearchResults::item { padding: 0px 2px; }"));
+    inkAsChrome(treeWidget_searchResults, mutedText, accentText);
     if (mpSearchResultDelegate) {
         mpSearchResultDelegate->restyle();
     }
@@ -16644,32 +16649,34 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
                                                     "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
                                                     // The box naming a matching mode; the chosen one carries the accent
-                                                    "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %8px; padding: 1px 0px;"
+                                                    "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %7px; padding: 1px 0px;"
                                                     " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
                                                     "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
                                                     // The button the options are opened from is one to press, so it is
                                                     // lifted off the row the way a card is lifted off the page; the
                                                     // strip that stands in for them while they are away is a line of
-                                                    // readings to click, so it is only outlined
-                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %9px;"
-                                                    " padding: %12px %13px; background-color: %1; }"
-                                                    "#toolButton_toggleExtraControls:hover { color: %7; background-color: %10; }"
+                                                    // readings to click, so it is only outlined. Both light up in the
+                                                    // accent under the pointer, which is the ink each of them is
+                                                    // already switched on in - the quiet tone is the resting one.
+                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %8px;"
+                                                    " padding: %11px %12px; background-color: %1; }"
+                                                    "#toolButton_toggleExtraControls:hover { color: %5; background-color: %9; }"
                                                     "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
                                                     "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
                                                     " background: transparent; text-align: left; }"
-                                                    "#editorOptionsSummary:hover { color: %7; border: 1px solid %11; }"
+                                                    "#editorOptionsSummary:hover { color: %5; border: 1px solid %10; }"
                                                     // The button that empties the sound file field, drawn as
                                                     // the picture alone the way the toolbar's are: a frame
                                                     // round a glyph this small reads as a second control
-                                                    "#toolButton_clearSoundFile { border: none; border-radius: %8px; background: transparent; padding: 2px; }"
-                                                    "#toolButton_clearSoundFile:hover { background-color: %10; }"
+                                                    "#toolButton_clearSoundFile { border: none; border-radius: %7px; background: transparent; padding: 2px; }"
+                                                    "#toolButton_clearSoundFile:hover { background-color: %9; }"
                                                     // The cards are what is drawn in the options column: the scroll
                                                     // area holding them and the viewport Qt gives it show the page
                                                     // through. Named outright, as the pattern rows are, so that a
                                                     // profile stylesheet cannot put the field colour back behind them.
                                                     "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
                                                     " { background: transparent; border: none; }")
-                                                    .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
+                                                    .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft)
                                                     .arg(QString::number(uiDesign::scmRadiusChip))
                                                     .arg(QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
                                                     .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
@@ -16721,7 +16728,13 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // says which of the three readings this one is
         mpSystemMessageArea->frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: %4px; }"
                                                                        "QFrame#frame_notificationArea QLabel { background: transparent; color: %3; }")
-                                                                           .arg(accentSoft, accentColor.name(), textColor.name(), QString::number(uiDesign::scmRadiusPanel)));
+                                                                           .arg(accentSoft, accentColor.name(), mutedText.name(), QString::number(uiDesign::scmRadiusPanel)));
+        // The words of the notice are named on the label itself rather than
+        // left to the descendant rule above, which does not reach them: the
+        // area is hidden when the editor is styled and polished only when a
+        // notice brings it out, and that polish writes the application's own
+        // ink into the label's palette. A sheet the label carries survives it.
+        mpSystemMessageArea->notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(mutedText.name()));
         // The .ui file sizes the area around a 64px picture; what it holds now
         // is a line of text beside a small one
         mpSystemMessageArea->setMinimumSize(0, 0);
@@ -16748,6 +16761,19 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // A different font is a different width for the names, so the breakpoint is
     // re-measured with the look it belongs to
     updateEditorSidebarMode();
+
+    // After that, not before: collapsing the sidebar re-polishes the list, and
+    // a re-polish puts back the palette the rules were applied to
+    if (mpListWidget_editorSidebar) {
+        inkAsChrome(mpListWidget_editorSidebar, mutedText, accentText);
+    }
+    // The chevron on the seam draws its own pill and its own stroke, in the
+    // same quiet tone, and what its text() holds is the name a screen reader is
+    // read rather than anything on show - so its palette is the only place the
+    // ink it is actually drawn in can be found
+    if (mpToggle_editorSidebar) {
+        inkAsChrome(mpToggle_editorSidebar, mutedText, accentText);
+    }
 }
 
 // A count is a walk of the whole tree, which filling one out would otherwise

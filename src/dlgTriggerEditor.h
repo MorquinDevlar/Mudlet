@@ -53,6 +53,7 @@
 #include <QDialog>
 #include <QDockWidget>
 #include <QFlag>
+#include <QHash>
 #include <QIcon>
 #include <QPixmap>
 #include <QListWidgetItem>
@@ -123,6 +124,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     // Allow QTest-based test classes to access private members
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
+    friend class EditorChromeInkTest;
     friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorEventChipRowTest;
@@ -311,16 +313,14 @@ public:
     // What the form column asks for as it stands, floored so the code pane
     // keeps its own minimum whatever the form wants
     int formPaneHeightForItsContents(const int paneTotal) const;
+    // The form pane takes the height its contents ask for, unless this view's
+    // splitter has been dragged in this session - then it takes that height
     void fitFormPaneToItsContents();
     // Whether the code pane's heading drags the seam in this view, and the
     // column's height when it does not
     void applyFormPaneSeamPolicy();
     void holdFormPaneToItsContents();
     [[nodiscard]] QWidget* currentFormArea() const;
-    // Every view puts the right hand splitter back to the sizes it was last left
-    // at, which is also the one thing that can take the geometry the trigger
-    // options panel borrowed against out from under it
-    void restoreRightSplitterState(const QByteArray& savedState);
     void updateEditorItemCounts();
     void scheduleEditorItemCountUpdate();
     // The list down the left that switches between what the editor is showing
@@ -949,14 +949,13 @@ private:
     // one for a key group so that the grid row goes with them
     QPointer<QWidget> mpWidget_keyBindingRow;
     // Height the panel borrowed from the code pane when it was opened, so that
-    // closing it can hand back that much and no more
+    // closing it can hand back that much and no more. Only a view whose
+    // splitter the user has dragged lends anything: everywhere else the open
+    // and the close are answered by measuring the form again.
     int mTriggerOptionsBorrowedHeight = 0;
     // Holding the form column to its contents changes the layout it was just
     // measured from, so the pass is barred from re-entering itself
     bool mHoldingFormPaneToItsContents = false;
-    // The last sizes the user dragged the right hand splitter to while a
-    // trigger was on show, restored when the panel is opened again
-    QList<int> mTriggerRightSplitterSizes;
 
     QWidget* mpWidget_editorSidebarPane = nullptr;
     QListWidget* mpListWidget_editorSidebar = nullptr;
@@ -1170,10 +1169,18 @@ private:
     // profile autosave interval in minutes
     int mAutosaveInterval = 2;
 
-    // The space recorded for the left side for "items" in the trigger area
-    // so as to be able to fit the right side with the extra controls,
-    // determined the first time the area is shrunk down by the user:
-    int mTriggerMainAreaMinimumHeightToShowAll = 0;
+    // The form pane's own height at the moment the options panel was folded
+    // away for want of room, and the mark that the fold was the space's doing
+    // rather than the reader's. Zero while the panel is on show, or while it is
+    // away because it was closed on purpose.
+    //
+    // The splitter's size rather than the form's: folding the panel away
+    // changes what the form is made of, so the form's height at the same
+    // splitter position is a different number the instant the fold happens -
+    // which is how the panel came to reappear on the next move event, fold
+    // again on the one after, and flicker on every pixel of a drag. A splitter
+    // size is what the reader is actually dragging and is unmoved by the fold.
+    int mTriggerOptionsAutoHiddenAtPaneHeight = 0;
 
     // Whether the reader has asked for the extra trigger controls in this
     // session. Not stored: the editor opens with the panel closed every time,
@@ -1184,14 +1191,12 @@ private:
     // back, and one the reader closed is not:
     bool mShowAllTriggerControls = false;
 
-    // tracks location of the splitter in the trigger editor for each tab
-    QByteArray mTriggerEditorSplitterState;
-    QByteArray mAliasEditorSplitterState;
-    QByteArray mScriptEditorSplitterState;
-    QByteArray mActionEditorSplitterState;
-    QByteArray mKeyEditorSplitterState;
-    QByteArray mTimerEditorSplitterState;
-    QByteArray mVarEditorSplitterState;
+    // The form pane height the user dragged the right hand splitter to, per
+    // view. A view named here keeps that height as the item in it changes; one
+    // that is not has its form snapped to whatever the item holds, which is
+    // what every view does until a handle is dragged in it. Not stored: a
+    // restart has every view snapping again.
+    QHash<EditorViewType, int> mDraggedFormPaneHeights;
 
     struct EditorState
     {
