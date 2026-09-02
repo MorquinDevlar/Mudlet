@@ -68,7 +68,8 @@ private:
     // of the sheet's own on one field
     const QString mFormSheet = qsl("QLineEdit { border: 1px solid red; } QLineEdit#lineEdit_alias_command { font-size: 7pt; }");
     static constexpr qreal scmSheetPointSize = 7.0;
-    // label_timer_hours in timers_main_area.ui
+    // pinned by this test on label_timer_time: the redesign left no widget
+    // carrying a font size of its own in the forms' .ui files
     static constexpr qreal scmPinnedPointSize = 8.0;
 
     void deleteProfileDirectory(const QString& profileName)
@@ -138,7 +139,7 @@ private:
                 {"lineEdit_alias_name", mpEditor->mpAliasMainArea->lineEdit_alias_name},
                 {"label_alias_command (bold only)", mpEditor->mpAliasMainArea->label_alias_command},
                 {"mpScriptsMainArea", mpEditor->mpScriptsMainArea},
-                {"lineEdit_script_event_handler_entry", mpEditor->mpScriptsMainArea->lineEdit_script_event_handler_entry},
+                {"lineEdit_script_name", mpEditor->mpScriptsMainArea->lineEdit_script_name},
         };
         QStringList wrong;
         for (const auto& probe : probes) {
@@ -197,7 +198,13 @@ private slots:
         QFont boldOnly;
         boldOnly.setBold(true);
         mpEditor->mpAliasMainArea->label_alias_command->setFont(boldOnly);
-        QCOMPARE(mpEditor->mpTimersMainArea->label_timer_hours->font().pointSizeF(), scmPinnedPointSize);
+
+        // A label given a size of its own: it has to keep that size while the
+        // column around it follows the window
+        QFont pinned = mpEditor->mpTimersMainArea->label_timer_time->font();
+        pinned.setPointSizeF(scmPinnedPointSize);
+        mpEditor->mpTimersMainArea->label_timer_time->setFont(pinned);
+        QCOMPARE(mpEditor->mpTimersMainArea->label_timer_time->font().pointSizeF(), scmPinnedPointSize);
     }
 
     void cleanupTestCase()
@@ -264,7 +271,7 @@ private slots:
 
         verifyColumnFollows(larger.pointSizeF());
         QVERIFY2(mpEditor->mpAliasMainArea->label_alias_command->font().bold(), "a label that was only bold has to stay bold");
-        QCOMPARE(mpEditor->mpTimersMainArea->label_timer_hours->font().pointSizeF(), scmPinnedPointSize);
+        QCOMPARE(mpEditor->mpTimersMainArea->label_timer_time->font().pointSizeF(), scmPinnedPointSize);
         // the field the sheet sizes keeps the sheet's size; with no sheet on it, it follows like the rest
         QCOMPARE(mpEditor->mpAliasMainArea->lineEdit_alias_command->font().pointSizeF(), sheet == qsl("form") ? scmSheetPointSize : larger.pointSizeF());
     }

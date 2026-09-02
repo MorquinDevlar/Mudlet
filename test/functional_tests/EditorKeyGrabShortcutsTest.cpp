@@ -96,7 +96,9 @@ private:
 
     void armTheGrab()
     {
-        QTest::mouseClick(mpEditor->mpKeysMainArea->pushButton_key_grabKey, Qt::LeftButton);
+        // The redesign replaced the Grab Key button with the binding field
+        // itself: a click on it is what arms the grab
+        QTest::mouseClick(mpEditor->mpKeysMainArea->lineEdit_key_binding, Qt::LeftButton);
         QCoreApplication::processEvents();
     }
 

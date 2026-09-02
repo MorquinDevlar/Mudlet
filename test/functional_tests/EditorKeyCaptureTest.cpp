@@ -137,10 +137,10 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 900);
 
-        // One the editor puts back afterwards: setShortcuts() restores an
-        // action from mButtonShortcuts, keyed by the word on it
-        for (QAction* pAction : mpEditor->toolBar->actions()) {
-            if (!pAction->shortcut().isEmpty() && mpEditor->mButtonShortcuts.contains(pAction->text())) {
+        // One the editor puts back afterwards: restoreShortcuts() puts back
+        // every shortcut the grab took, so any action carrying one will do
+        for (QAction* pAction : mpEditor->toolbarActions()) {
+            if (!pAction->shortcut().isEmpty()) {
                 mpShortcutAction = pAction;
                 mShortcut = pAction->shortcut();
                 break;
