@@ -61,10 +61,13 @@
 #include <QtTest/QtTest>
 #include <chrono>
 
+#include "ChipRow.h"
 #include "Host.h"
 #include "MudletInstanceCoordinator.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
+#include "ScriptUnit.h"
+#include "TScript.h"
 #include "TTrigger.h"
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
@@ -105,6 +108,10 @@ private:
     // which silently stopped finding widgets cannot pass as a clean one
     static constexpr int scmLeastAuditedInTheEditor = 30;
     static constexpr int scmLeastAuditedInTheSettings = 18;
+    // ...and on the scripts form, which is walked on its own below: the name,
+    // the ID pill's two words, the word leading the row of events, the two
+    // chips and the button that adds another
+    static constexpr int scmLeastAuditedOnTheScriptsForm = 6;
 
     // A button filled with the colour it stands for. Its fill is a value rather
     // than a surface of the design, and the words on it are chosen against that
@@ -454,6 +461,22 @@ private slots:
         mpEditor = mpHost->mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 800);
+
+        // A script listening for one of Mudlet's own events and one of its own,
+        // which is the only place the editor draws chips: the walk below shows
+        // that form as well, since the two names are inked differently and
+        // neither is the platform's doing. Made before the trigger, so that the
+        // trigger view is the one the editor is left settled in.
+        mpEditor->slot_showScripts();
+        mpEditor->addScript(false);
+        QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpCurrentScriptItem != nullptr, "addScript() left no current script item");
+        TScript* pScript = mpHost->getScriptUnit()->getScript(mpEditor->mpCurrentScriptItem->data(0, Qt::UserRole).toInt());
+        QVERIFY2(pScript != nullptr, "the new script is not in the script unit");
+        pScript->setEventHandlerList({qsl("sysConnectionEvent"), qsl("MyEvent")});
+        mpEditor->slot_scriptsSelected(mpEditor->mpCurrentScriptItem);
+        QTest::qWait(100ms);
+
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
@@ -508,6 +531,37 @@ private slots:
             QVERIFY2(inTheSettings >= scmLeastAuditedInTheSettings,
                      qPrintable(qsl("only %1 things were read in the settings dialog on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(inTheSettings), appearance.first, QString::number(scmLeastAuditedInTheSettings))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // Only one of the editor's seven forms is in the column at a time, so the
+    // case above reads the trigger one and this one the scripts form - which is
+    // where a script's events are drawn as chips, Mudlet's own events quieter
+    // than the script's. A case of its own rather than a switch inside that
+    // loop: showing another form leaves the one it replaced needing a repaint
+    // before its fields can be read off the screen again.
+    void test_theScriptsFormIsReadableInBothAppearances()
+    {
+        mpEditor->slot_showScripts();
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpChipRow_scriptEvents != nullptr && mpEditor->mpChipRow_scriptEvents->count() == 2, "the script this walks is not showing the two events it was given");
+
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int read = auditWindow(mpEditor, qsl("the editor's scripts form"), appearance.first, failures);
+            counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
+            QVERIFY2(read >= scmLeastAuditedOnTheScriptsForm,
+                     qPrintable(qsl("only %1 things were read on the scripts form on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheScriptsForm))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

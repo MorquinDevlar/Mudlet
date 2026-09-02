@@ -44,6 +44,7 @@
 #include <QtTest/QtTest>
 #include <chrono>
 
+#include "ChipRow.h"
 #include "GripSplitter.h"
 #include "Host.h"
 #include "MudletInstanceCoordinator.h"
@@ -179,7 +180,7 @@ private:
         case EditorViewType::cmKeysView:
             return mpEditor->mpKeysMainArea->lineEdit_key_binding;
         case EditorViewType::cmScriptView:
-            return mpEditor->mpScriptsMainArea->listWidget_script_registered_event_handlers;
+            return mpEditor->mpChipRow_scriptEvents;
         case EditorViewType::cmTimerView:
             return mpEditor->mpTimersMainArea->timeEdit_timer_hours;
         default:

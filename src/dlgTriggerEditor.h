@@ -108,6 +108,7 @@ class dlgVarsMainArea;
 class QShortcut;
 
 namespace uiDesign {
+class ChipRow;
 class EditorSidebarToggle;
 class EditorTreeDelegate;
 class SearchResultDelegate;
@@ -123,6 +124,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorBannerViewSwitchTest;
     friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
+    friend class EditorEventChipRowTest;
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
     friend class EditorMinimumSizeTest;
@@ -246,6 +248,9 @@ public:
     // grids: a head row of the name, whatever is typed beside it and the ID
     // pill, with what is left of the grid under it
     void buildEditorFormHeadRows();
+    // The events a script is registered for, as a row of chips in the cell
+    // beside the "Events" label the .ui file leaves there
+    void buildScriptEventRow();
     [[nodiscard]] QList<QLabel*> editorFormRowLabels() const;
     [[nodiscard]] QList<QLabel*> editorFormLeadLabels() const;
     // One width for the words leading those forms' rows, so a field starts at
@@ -415,10 +420,6 @@ public slots:
     // Not used:    void slot_choseActionIcon();
     void slot_showAllTriggerControls(const bool);
     void slot_rightSplitterMoved(const int pos, const int handle);
-    void slot_scriptMainAreaDeleteHandler();
-    void slot_scriptMainAreaAddHandler();
-    void slot_scriptMainAreaEditHandler();
-    void slot_scriptMainAreaClearHandlerSelection(QListWidgetItem*);
     void slot_keyGrab();
     void slot_profileSaveAction();
     void slot_profileSaveAsAction();
@@ -854,6 +855,12 @@ private:
     bool mEditorSaveErrorCaptureOpen = false;
     QString mEditorSaveErrorCaptured;
 
+    // The least the code pane is left with, whatever the form column would
+    // rather have: below this the editor stops being one anything can be typed
+    // into. On the class rather than in the .cpp so that a test can hold the
+    // floor to the same number the code keeps it at.
+    static constexpr int scmEditorSourcePaneFloor = 120;
+
     // The trigger form's options panel. The radio pair and the spin box beside
     // it are a view of spinBox_lineMargin, which stays where the trigger is
     // saved from and loaded into.
@@ -869,6 +876,9 @@ private:
     QLabel* mpLabel_matchModeHint = nullptr;
     // Shown in the panel's place, saying what it holds
     QToolButton* mpButton_triggerOptionsSummary = nullptr;
+    // The events a script is registered for, in the cell beside the "Events"
+    // label of the scripts form's grid
+    uiDesign::ChipRow* mpChipRow_scriptEvents = nullptr;
     // Height the panel borrowed from the code pane when it was opened, so that
     // closing it can hand back that much and no more
     int mTriggerOptionsBorrowedHeight = 0;
@@ -983,10 +993,6 @@ private:
     dlgSourceEditorFindArea* mpSourceEditorFindArea = nullptr;
     dlgSystemMessageArea* mpSystemMessageArea = nullptr;
 
-    bool mIsScriptsMainAreaEditHandler = false;
-    // Not owned, and does not outlive a
-    // listWidget_script_registered_event_handlers->clear()
-    QListWidgetItem* mpScriptsMainAreaEditHandlerItem = nullptr;
     bool mIsGrabKey = false;
     QPointer<Host> mpHost;
     QList<dlgTriggerPatternEdit*> mTriggerPatternEdit;

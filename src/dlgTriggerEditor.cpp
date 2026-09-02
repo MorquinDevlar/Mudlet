@@ -48,6 +48,7 @@
 #include "SidebarItemDelegate.h"
 #include "SingleLineTextEdit.h"
 #include "TrailingWhitespaceMarker.h"
+#include "ChipRow.h"
 #include "EditorAddItemCommand.h"
 #include "EditorDeleteItemCommand.h"
 #include "EditorItemXMLHelpers.h"
@@ -71,7 +72,6 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFont>
-#include <QFontDatabase>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -180,8 +180,8 @@ static constexpr int scmEditorToolbarGripExtent = 11;
 static constexpr int scmEditorContentColumnWidth = 640;
 
 // The ID beside an item's name, drawn as a pill: a monospace word a size down
-// from the form around it, in a box whose corner is half its height
-static constexpr qreal scmEditorIdChipFontScale = 0.85;
+// from the form around it - uiDesign::chipFont(), the same type the event chips
+// beside a script's name are set in - in a box whose corner is half its height
 static constexpr int scmEditorIdChipPaddingVertical = 3;
 // What the pill leaves round the two words it holds. The .ui files that were
 // never redesigned hold them off by three pixels, which inside a drawn box
@@ -295,9 +295,6 @@ static uiDesign::CardMetrics cardMetrics(const int titleHeight)
 {
     return {.cardProperty = uiDesign::scmProp_editorCard, .padding = scmEditorCardPadding, .titleHeight = titleHeight};
 }
-// The least the code pane is left with when the options panel borrows height
-// from it: below this the editor stops being one anything can be typed into
-static constexpr int scmEditorSourcePaneFloor = 120;
 // A banner's picture, beside a line of text rather than the 64px block the
 // .ui file sizes it as
 static constexpr int scmEditorBannerGlyphSize = 20;
@@ -751,11 +748,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpScriptsMainArea = new dlgScriptsMainArea(this);
     layoutColumn->addWidget(mpScriptsMainArea, 1);
 
-    connect(mpScriptsMainArea->lineEdit_script_event_handler_entry, &QLineEdit::returnPressed, this, &dlgTriggerEditor::slot_scriptMainAreaAddHandler);
-    connect(mpScriptsMainArea->listWidget_script_registered_event_handlers, &QListWidget::itemSelectionChanged, this, &dlgTriggerEditor::slot_scriptMainAreaEditHandler);
-    connect(mpScriptsMainArea->listWidget_script_registered_event_handlers, &QListWidget::itemActivated, this, &dlgTriggerEditor::slot_scriptMainAreaClearHandlerSelection);
-
-
     // source editor area
     mpSourceEditorArea = new dlgSourceEditorArea(this);
     splitter_right->addWidget(mpSourceEditorArea);
@@ -1111,6 +1103,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // The trigger form's own options, and the strip that stands in for them
     buildTriggerOptionsPanel();
+
+    // The events a script listens for, in the cell the .ui file leaves beside
+    // the "Events" label. Before the head rows, so that the row it goes into is
+    // carried down with the rest of the grid.
+    buildScriptEventRow();
 
     // ...and the row the other five forms lead with, shelled over the grids
     // their .ui files lay them out in
@@ -1642,7 +1639,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // scripts
     connect(mpScriptsMainArea->lineEdit_script_name, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
-    connect(mpScriptsMainArea->lineEdit_script_event_handler_entry, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
 
     // Per-property immediate saves for scripts
     connect(mpScriptsMainArea->lineEdit_script_name, &QLineEdit::editingFinished, this, &dlgTriggerEditor::slot_saveProperty_ScriptName);
@@ -1744,9 +1740,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(comboBox_searchTerms->model(), &QAbstractItemModel::rowsInserted, this, &dlgTriggerEditor::updateSearchHistoryAction);
     connect(comboBox_searchTerms->model(), &QAbstractItemModel::rowsRemoved, this, &dlgTriggerEditor::updateSearchHistoryAction);
     updateSearchHistoryAction();
-
-    connect(mpScriptsMainArea->toolButton_script_add_event_handler, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_scriptMainAreaAddHandler);
-    connect(mpScriptsMainArea->toolButton_script_remove_event_handler, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_scriptMainAreaDeleteHandler);
 
     mpTriggersMainArea->hide();
     mpTimersMainArea->hide();
@@ -3241,18 +3234,9 @@ void dlgTriggerEditor::slot_itemSelectedInSearchResults(QTreeWidgetItem* pItem)
                     mpScriptsMainArea->lineEdit_script_name->setCursorPosition(pItem->data(0, PositionRole).toInt());
                     break;
                 case SearchResultIsEventHandler:
-                    mpScriptsMainArea->listWidget_script_registered_event_handlers->setCurrentRow(pItem->data(0, PatternOrLineRole).toInt(), QItemSelectionModel::Clear);
-                    mpScriptsMainArea->listWidget_script_registered_event_handlers->scrollTo(mpScriptsMainArea->listWidget_script_registered_event_handlers->currentIndex());
-                    // Taken from slot_scriptMainAreaEditHandler():
-                    // Note the handler item being edited:
-                    mpScriptsMainAreaEditHandlerItem = mpScriptsMainArea->listWidget_script_registered_event_handlers->currentItem();
-                    if (!mpScriptsMainAreaEditHandlerItem) {
-                        break;
-                    }
-                    // Copy the event name to the entry widget:
-                    mpScriptsMainArea->lineEdit_script_event_handler_entry->setText(mpScriptsMainAreaEditHandlerItem->text());
-                    // Activate editing flag:
-                    mIsScriptsMainAreaEditHandler = true;
+                    // The row of chips does not scroll, so pointing at the one
+                    // that matched is the whole of the jump
+                    mpChipRow_scriptEvents->focusItem(pItem->data(0, PatternOrLineRole).toInt());
                     break;
                 default:
                     qDebug() << "dlgTriggerEditor::slot_item_selected_list(...) Called for a SCRIPT type item but handler for element of type:" << treeWidgetItem->data(0, TypeRole).toInt()
@@ -6541,7 +6525,7 @@ void dlgTriggerEditor::addScript(bool isFolder)
     // Reset UI
     mpScriptsMainArea->lineEdit_script_name->clear();
     mpScriptsMainArea->label_idNumber->clear();
-    mpScriptsMainArea->lineEdit_script_event_handler_entry->clear();
+    mpChipRow_scriptEvents->setItems({});
     clearDocument(mpSourceEditorEdbee, script);
 
     // Finalize selection
@@ -7427,19 +7411,7 @@ void dlgTriggerEditor::saveScript()
     mpScriptsMainArea->trimName();
     const QString name = mpScriptsMainArea->lineEdit_script_name->text();
     const QString script = mpSourceEditorEdbeeDocument->text();
-    mpScriptsMainAreaEditHandlerItem = nullptr;
-    QList<QListWidgetItem*> itemList;
-    for (int i = 0; i < mpScriptsMainArea->listWidget_script_registered_event_handlers->count(); i++) {
-        QListWidgetItem* pItem = mpScriptsMainArea->listWidget_script_registered_event_handlers->item(i);
-        itemList << pItem;
-    }
-    QStringList handlerList;
-    for (auto& listWidgetItem : itemList) {
-        if (listWidgetItem->text().isEmpty()) {
-            continue;
-        }
-        handlerList << listWidgetItem->text();
-    }
+    const QStringList handlerList = mpChipRow_scriptEvents->items();
 
     const int scriptID = pItem->data(0, Qt::UserRole).toInt();
     TScript* pT = mpHost->getScriptUnit()->getScript(scriptID);
@@ -9227,21 +9199,11 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
     clearDocument(mpSourceEditorEdbee); // Script Select
     mpScriptsMainArea->lineEdit_script_name->clear();
     mpScriptsMainArea->label_idNumber->clear();
-    mpScriptsMainArea->listWidget_script_registered_event_handlers->clear();
-    // Has to stay after that clear(): it drops the selection before deleting the items,
-    // and that selection change runs slot_scriptMainAreaEditHandler(), which notes an
-    // item about to be freed. saveScript()'s nulling of the note runs too early to help,
-    // and is skipped entirely when the same script is re-selected (#9835)
-    slot_scriptMainAreaClearHandlerSelection(nullptr);
+    mpChipRow_scriptEvents->setItems({});
 
     if (pT) {
         const QString name = pT->getName();
-        QStringList eventHandlerList = pT->getEventHandlerList();
-        for (const QString& handler : std::as_const(eventHandlerList)) {
-            auto pHandlerItem = new QListWidgetItem(mpScriptsMainArea->listWidget_script_registered_event_handlers);
-            pHandlerItem->setText(handler);
-            mpScriptsMainArea->listWidget_script_registered_event_handlers->addItem(pHandlerItem);
-        }
+        mpChipRow_scriptEvents->setItems(pT->getEventHandlerList());
         const QString script = pT->getScript();
         clearDocument(mpSourceEditorEdbee, script);
         restoreEditorState(EditorViewType::cmScriptView, ID);
@@ -10515,7 +10477,11 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
         return;
     }
     const int paneTotal = sizes.at(0) + sizes.at(1);
-    const int paneHeight = std::clamp(wanted, 0, paneTotal);
+    // The column takes what it asks for out of what the two panes have between
+    // them, and the code pane keeps its floor out of the rest - the way
+    // formPaneHeightForItsContents() shares the same pair out. Clamped to the
+    // total alone, a window too short for both left the code pane with nothing.
+    const int paneHeight = std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
     if (paneTotal <= 0 || sizes.at(0) == paneHeight) {
         return;
     }
@@ -11406,84 +11372,6 @@ void dlgTriggerEditor::slot_saveSelectedItem()
     }
 }
 
-
-// Should the functionality change in this method be sure to review the code
-// for "case SearchResultIsEventHandler" for "Scripts" in:
-// slot_itemSelectedInSearchResults(...), which notes the same item by hand, and where
-// that note is dropped in slot_scriptsSelected(...)
-void dlgTriggerEditor::slot_scriptMainAreaEditHandler()
-{
-    QListWidgetItem* pItem = mpScriptsMainArea->listWidget_script_registered_event_handlers->currentItem();
-    if (!pItem) {
-        return;
-    }
-
-    mIsScriptsMainAreaEditHandler = true;
-    mpScriptsMainAreaEditHandlerItem = pItem;
-    const QString regex = pItem->text();
-    if (regex.isEmpty()) {
-        mIsScriptsMainAreaEditHandler = false;
-        return;
-    }
-    mpScriptsMainArea->lineEdit_script_event_handler_entry->setText(regex);
-}
-
-void dlgTriggerEditor::slot_scriptMainAreaClearHandlerSelection(QListWidgetItem* item)
-{
-    Q_UNUSED(item)
-    mpScriptsMainArea->listWidget_script_registered_event_handlers->clearSelection();
-    mpScriptsMainArea->lineEdit_script_event_handler_entry->clear();
-    mIsScriptsMainAreaEditHandler = false;
-    mpScriptsMainAreaEditHandlerItem = nullptr;
-}
-
-void dlgTriggerEditor::slot_scriptMainAreaDeleteHandler()
-{
-    // takeItem() hands ownership of the row over to us
-    delete mpScriptsMainArea->listWidget_script_registered_event_handlers->takeItem(mpScriptsMainArea->listWidget_script_registered_event_handlers->currentRow());
-    slot_scriptMainAreaClearHandlerSelection(nullptr);
-}
-
-void dlgTriggerEditor::slot_scriptMainAreaAddHandler()
-{
-    auto addEventHandler = [&]() {
-        if (mpScriptsMainArea->lineEdit_script_event_handler_entry->text().isEmpty()) {
-            return;
-        }
-
-        // check for duplicate handlers
-        QString newHandlerText = mpScriptsMainArea->lineEdit_script_event_handler_entry->text();
-        QListWidget* list = mpScriptsMainArea->listWidget_script_registered_event_handlers;
-        for (int i = 0; i < list->count(); i++) {
-            if (list->item(i)->text() == newHandlerText) {
-                return;
-            }
-        }
-
-        auto pItem = new QListWidgetItem;
-        pItem->setText(newHandlerText);
-        mpScriptsMainArea->listWidget_script_registered_event_handlers->addItem(pItem);
-    };
-
-    mpScriptsMainArea->trimEventHandlerName();
-    if (mIsScriptsMainAreaEditHandler) {
-        if (!mpScriptsMainAreaEditHandlerItem) {
-            mIsScriptsMainAreaEditHandler = false;
-            addEventHandler();
-        } else {
-            if (mpScriptsMainAreaEditHandlerItem->text() == mpScriptsMainArea->lineEdit_script_event_handler_entry->text()
-                || mpScriptsMainArea->lineEdit_script_event_handler_entry->text().isEmpty()) {
-                return;
-            }
-            mpScriptsMainAreaEditHandlerItem->setText(mpScriptsMainArea->lineEdit_script_event_handler_entry->text());
-            mpScriptsMainArea->listWidget_script_registered_event_handlers->clearSelection();
-        }
-    } else {
-        addEventHandler();
-    }
-
-    slot_scriptMainAreaClearHandlerSelection(nullptr);
-}
 
 void dlgTriggerEditor::slot_toggleCentralDebugConsole()
 {
@@ -14240,13 +14128,7 @@ void dlgTriggerEditor::slot_clearSoundFile()
 // rather than rounded further. Answers that height.
 static int styleEditorIdChip(QFrame* pFrameId, QLabel* pIdLabel, QLabel* pIdNumber)
 {
-    QFont chipFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    const QFont formFont = pFrameId->font();
-    if (formFont.pointSizeF() > 0.0) {
-        chipFont.setPointSizeF(formFont.pointSizeF() * scmEditorIdChipFontScale);
-    } else {
-        chipFont.setPixelSize(std::max(1, qRound(formFont.pixelSize() * scmEditorIdChipFontScale)));
-    }
+    const QFont chipFont = uiDesign::chipFont(pFrameId);
 
     for (QLabel* pLabel : {pIdLabel, pIdNumber}) {
         pLabel->setFont(chipFont);
@@ -14679,6 +14561,38 @@ void dlgTriggerEditor::buildEditorFormHeadRows()
     }
 }
 
+// The events a script is registered for. The .ui file leaves the cell beside
+// the "Events" label empty, because what goes in it is built and thrown away as
+// the script on show changes - and because a row that wraps has to be able to
+// say how tall it has become, which no control Designer offers does.
+void dlgTriggerEditor::buildScriptEventRow()
+{
+    auto* pGrid = qobject_cast<QGridLayout*>(mpScriptsMainArea->layout());
+    if (!pGrid) {
+        return;
+    }
+
+    mpChipRow_scriptEvents = new uiDesign::ChipRow(mpScriptsMainArea);
+    mpChipRow_scriptEvents->setObjectName(qsl("editorScriptEvents"));
+    // The whole of the row apart from the word leading it, so the chips have
+    // the width the list they replace had and the one the "-" button took
+    pGrid->addWidget(mpChipRow_scriptEvents, 1, 1, 1, std::max(1, pGrid->columnCount() - 1));
+
+    // A row of one line or of three: the word leading it belongs level with the
+    // first of them rather than halfway down the lot, so it is pinned to the top
+    // of the cell and held to a single chip's height. alignEditorFormLeadLabels()
+    // sets that height, in the font the window turns out to be running at.
+    QLabel* pLabel = mpScriptsMainArea->label_script_registered_event_handlers;
+    pGrid->setAlignment(pLabel, Qt::AlignLeft | Qt::AlignTop);
+    // One word, held to the width of that word - and a line of it high, which
+    // leaves nowhere for a second line to be drawn
+    pLabel->setWordWrap(false);
+
+    // Adding, renaming or removing an event is an edit to the script, the way
+    // typing in the name field is
+    connect(mpChipRow_scriptEvents, &uiDesign::ChipRow::itemsChanged, this, &dlgTriggerEditor::slot_itemEdited);
+}
+
 // Every label naming a field on one of the five forms: the name at the head of
 // each, whatever is typed beside it, and the ones leading the rows under it.
 // All of them are drawn in the quiet ink a form's scaffolding is written in.
@@ -14695,19 +14609,14 @@ QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
             mpAliasMainArea->label_alias_pattern,
             mpTimersMainArea->label_timer_time,
             mpKeysMainArea->label_key_binding,
-            mpScriptsMainArea->label_script_registered_event_handlers,
-            mpScriptsMainArea->label_script_event_handler_entry};
+            mpScriptsMainArea->label_script_registered_event_handlers};
 }
 
 // The first label of every row under a head row, which is what the grid's first
 // column is as wide as
 QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
 {
-    return {mpAliasMainArea->label_alias_pattern,
-            mpTimersMainArea->label_timer_time,
-            mpKeysMainArea->label_key_binding,
-            mpScriptsMainArea->label_script_registered_event_handlers,
-            mpScriptsMainArea->label_script_event_handler_entry};
+    return {mpAliasMainArea->label_alias_pattern, mpTimersMainArea->label_timer_time, mpKeysMainArea->label_key_binding, mpScriptsMainArea->label_script_registered_event_handlers};
 }
 
 // A field has to start at the same place whichever row of whichever form it is
@@ -14727,12 +14636,6 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
 
     int leadWidth = 0;
     for (QLabel* pLabel : editorFormLeadLabels()) {
-        // The one row still carrying the wording it will lose in a later pass is
-        // held to the others' width rather than setting it: a lead label that
-        // long would push every field on every form in behind it
-        if (pLabel == mpScriptsMainArea->label_script_event_handler_entry) {
-            continue;
-        }
         leadWidth = std::max(leadWidth, pLabel->fontMetrics().horizontalAdvance(pLabel->text()));
     }
 
@@ -14757,6 +14660,13 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
     for (QLabel* pLabel : nameLabels) {
         pLabel->setFixedWidth(leadWidth + scmEditorFormNameLabelExtra);
         pLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    }
+
+    // The one lead label whose row is not one control tall: the chips beside it
+    // wrap, so it is held to a single chip's height at the top of the cell and
+    // its word sits level with the first line of them however many there are
+    if (mpChipRow_scriptEvents) {
+        mpScriptsMainArea->label_script_registered_event_handlers->setFixedHeight(mpChipRow_scriptEvents->lineHeight());
     }
 }
 
@@ -15526,6 +15436,12 @@ void dlgTriggerEditor::restyleEditorIcons()
         pClearSoundFile->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
     }
 
+    // The cross on every event chip of the scripts form, and the plus on the
+    // button that opens the field for another one
+    if (mpChipRow_scriptEvents) {
+        mpChipRow_scriptEvents->restyleGlyphs(tokens);
+    }
+
     if (mpLabel_editorCodeHeaderIcon) {
         const qreal glyphRatio = mpLabel_editorCodeHeaderIcon->devicePixelRatioF();
         QPixmap headerGlyph = uiDesign::tintedGlyph(QPixmap(qsl(":/icons/editor-scripts.png")), quietColor)
@@ -16220,25 +16136,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
     }
 
     if (mpScriptsMainArea) {
-        // The other list in the editor that shows what is there rather than
-        // taking something typed: the handlers a script is registered for, added
-        // and removed with the controls beside it. Left to itself it is filled
-        // with QPalette::Base like a field, which reads as a sunken box on the
-        // form; it takes the trees' treatment instead, keeping only the hairline
-        // that says where the list ends.
-        QListWidget* pHandlerList = mpScriptsMainArea->listWidget_script_registered_event_handlers;
-        pHandlerList->setObjectName(qsl("editorScriptHandlers"));
-        pHandlerList->setFrameShape(QFrame::NoFrame);
-        pHandlerList->viewport()->setAutoFillBackground(false);
-        mpScriptsMainArea->setStyleSheet(qsl("#editorScriptHandlers { background: transparent; border: 1px solid %1; border-radius: 6px; outline: none; }"
-                                             // The frame is the list's own, so the viewport inside it draws none
-                                             "#editorScriptHandlers > #qt_scrollarea_viewport { background: transparent; border: none; }"
-                                             "#editorScriptHandlers::item { border-radius: 4px; padding: 2px 4px; }"
-                                             "#editorScriptHandlers::item:hover { background-color: %2; }"
-                                             "#editorScriptHandlers::item:selected { color: %5;"
-                                             " background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
-                                                 .arg(borderColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
-                                         + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens) + formRules);
+        // The events a script is registered for are a row of chips rather than a
+        // list in a box: nothing on this form scrolls, so the names wrap onto as
+        // many lines as they need and the column follows that height
+        mpScriptsMainArea->setStyleSheet(formRules + uiDesign::ChipRow::styleSheetFor(tokens));
     }
 
     // The forms with nothing but fields on them: a name, a delay, a key, a
@@ -17864,11 +17765,7 @@ void dlgTriggerEditor::slot_saveProperty_ScriptEventHandlers()
         return;
     }
 
-    // Collect event handlers from the list widget
-    QStringList newHandlers;
-    for (int i = 0; i < mpScriptsMainArea->listWidget_script_registered_event_handlers->count(); ++i) {
-        newHandlers << mpScriptsMainArea->listWidget_script_registered_event_handlers->item(i)->text();
-    }
+    const QStringList newHandlers = mpChipRow_scriptEvents->items();
 
     if (pT->getEventHandlerList() == newHandlers) {
         return;

@@ -44,6 +44,7 @@ set(mudlet_SRCS
     ActionUnit.cpp
     AliasUnit.cpp
     AltFocusMenuBarDisable.cpp
+    ChipRow.cpp
     CredentialManager.cpp
     ctelnet.cpp
     CustomLineDrawContextMenuHandler.cpp
@@ -93,6 +94,7 @@ set(mudlet_SRCS
     EventLoopPump.cpp
     exitstreewidget.cpp
     FileOpenHandler.cpp
+    FlowLayout.cpp
     FontManager.cpp
     GifTracker.cpp
     GMCPAuthenticator.cpp
@@ -283,6 +285,7 @@ set(mudlet_HDRS
     ActionUnit.h
     AliasUnit.h
     AltFocusMenuBarDisable.h
+    ChipRow.h
     CredentialManager.h
     ctelnet.h
     CustomLineDrawContextMenuHandler.h
@@ -334,6 +337,7 @@ set(mudlet_HDRS
     EventLoopPump.h
     exitstreewidget.h
     FileOpenHandler.h
+    FlowLayout.h
     FontManager.h
     GifTracker.h
     GMCPAuthenticator.h
