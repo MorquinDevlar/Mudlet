@@ -53,6 +53,7 @@
 #include <QDialog>
 #include <QDockWidget>
 #include <QFlag>
+#include <QHash>
 #include <QIcon>
 #include <QPixmap>
 #include <QListWidgetItem>
@@ -255,11 +256,9 @@ public:
     // What the form column asks for as it stands, floored so the code pane
     // keeps its own minimum whatever the form wants
     int formPaneHeightForItsContents(const int paneTotal) const;
+    // The form pane takes the height its contents ask for, unless this view's
+    // splitter has been dragged in this session - then it takes that height
     void fitFormPaneToItsContents();
-    // Every view puts the right hand splitter back to the sizes it was last left
-    // at, which is also the one thing that can take the geometry the trigger
-    // options panel borrowed against out from under it
-    void restoreRightSplitterState(const QByteArray& savedState);
     void updateEditorItemCounts();
     void scheduleEditorItemCountUpdate();
     // The list down the left that switches between what the editor is showing
@@ -855,11 +854,10 @@ private:
     // Shown in the panel's place, saying what it holds
     QToolButton* mpButton_triggerOptionsSummary = nullptr;
     // Height the panel borrowed from the code pane when it was opened, so that
-    // closing it can hand back that much and no more
+    // closing it can hand back that much and no more. Only a view whose
+    // splitter the user has dragged lends anything: everywhere else the open
+    // and the close are answered by measuring the form again.
     int mTriggerOptionsBorrowedHeight = 0;
-    // The last sizes the user dragged the right hand splitter to while a
-    // trigger was on show, restored when the panel is opened again
-    QList<int> mTriggerRightSplitterSizes;
 
     QWidget* mpWidget_editorSidebarPane = nullptr;
     QListWidget* mpListWidget_editorSidebar = nullptr;
@@ -1099,14 +1097,12 @@ private:
     // back, and one the reader closed is not:
     bool mShowAllTriggerControls = false;
 
-    // tracks location of the splitter in the trigger editor for each tab
-    QByteArray mTriggerEditorSplitterState;
-    QByteArray mAliasEditorSplitterState;
-    QByteArray mScriptEditorSplitterState;
-    QByteArray mActionEditorSplitterState;
-    QByteArray mKeyEditorSplitterState;
-    QByteArray mTimerEditorSplitterState;
-    QByteArray mVarEditorSplitterState;
+    // The form pane height the user dragged the right hand splitter to, per
+    // view. A view named here keeps that height as the item in it changes; one
+    // that is not has its form snapped to whatever the item holds, which is
+    // what every view does until a handle is dragged in it. Not stored: a
+    // restart has every view snapping again.
+    QHash<EditorViewType, int> mDraggedFormPaneHeights;
 
     struct EditorState
     {
