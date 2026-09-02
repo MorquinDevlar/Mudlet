@@ -30,6 +30,7 @@
 #include "FontManager.h"
 #include "HostManager.h"
 #include "ShortcutsManager.h"
+#include "uiDesign.h"
 #include "utils.h"
 #include <memory>
 
@@ -120,6 +121,10 @@ public:
     // From https://stackoverflow.com/a/14678964/4805858 an answer to:
     // "How to find and replace string?" by "Czarek Tomczak":
     static bool loadEdbeeTheme(const QString& themeName, const QString& themeFile);
+    // Brings a theme a profile saved before the bundled theme became half of a
+    // light/dark pair forward to the name and file it goes by now; leaves every
+    // other theme alone
+    static void migrateBundledEditorTheme(QString& themeName, QString& themeFile);
     static bool loadLuaFunctionList();
     static std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
     static mudlet* self();
@@ -178,6 +183,20 @@ public:
     // translations done high enough will get a gold star to hide the last few percent
     // as well as encourage translators to maintain it
     static const int scmTranslationGoldStar = 95;
+    // The two editor themes Mudlet carries in its own resource file rather than
+    // downloading into the theme cache. They are named as a light/dark pair so
+    // that the counterpart lookup in the preferences carries a profile from one
+    // to the other when the application appearance changes, the same way it
+    // does for every downloaded theme that comes as a pair.
+    static constexpr QLatin1String scmEditorThemeNameLight{"Mudlet Light"};
+    static constexpr QLatin1String scmEditorThemeFileLight{"Mudlet Light.tmTheme"};
+    static constexpr QLatin1String scmEditorThemeNameDark{"Mudlet Dark"};
+    static constexpr QLatin1String scmEditorThemeFileDark{"Mudlet Dark.tmTheme"};
+    // What the light theme was called while it was the only one Mudlet shipped.
+    // Profiles saved by those versions still carry these two, so both forms have
+    // to keep resolving.
+    static constexpr QLatin1String scmEditorThemeNameLegacy{"Mudlet"};
+    static constexpr QLatin1String scmEditorThemeFileLegacy{"Mudlet.tmTheme"};
     QString scmVersion;
     QString confPath;
     // These have to be "inline" to satisfy the ODR (One Definition Rule):
@@ -318,6 +337,8 @@ public:
     void setShowTabConnectionIndicators(const bool);
     void setupPreInstallPackages(const QString&, const QString&);
     void setToolBarIconSize(int);
+    // Re-inks every glyph on the main toolbar from the palette as it now stands
+    void restyleToolBarIcons();
     void setToolBarVisibility(enums::controlsVisibility);
     void showChangelogIfUpdated();
     void slot_showConnectionDialog();
@@ -393,9 +414,15 @@ public:
     void handleTelnetUri(const QString& uri);
 
     enums::Appearance mAppearance = enums::Appearance::systemSetting;
-    // 1 (of 2) needed to work around a (Windows/MacOs specific QStyleFactory)
-    // issue:
-    QString mBG_ONLY_STYLESHEET;
+    // The sheet for a button filled with the colour it stands for. 1 (of 2)
+    // needed to work around a (Windows/MacOs specific QStyleFactory) issue:
+    // those factories drop a QPushButton's own frame the moment a sheet fills
+    // it, so the frame is drawn back. Mixed when it is asked for rather than
+    // kept as a string built once, because the fill is the value being shown
+    // and the hairline round it follows the theme.
+    QString backgroundOnlyStyleSheet(const QColor& fill) const;
+    // Whether this run's style factory is one of those - decided once, in init()
+    bool mStyleDropsButtonFrame = false;
     // approximate max duration that 'Copy as image' is allowed to take
     // (seconds):
     int mCopyAsImageTimeout = 3;
@@ -430,6 +457,10 @@ public:
     // Flag to prevent connection dialog from opening during telnet:// URI processing
     bool mProcessingTelnetUri = false;
     QToolBar* mpMainToolBar = nullptr;
+    // Which glyph each of the toolbar's actions carries, so that a theme change
+    // can re-ink all of them from one place. The replay bar's pair joins it when
+    // that bar is built.
+    QList<uiDesign::ActionGlyph> mToolBarGlyphs;
     QPointer<QSettings> mpSettings;
     QPointer<ShortcutsManager> mpShortcutsManager;
     TTabBar* mpTabBar = nullptr;
@@ -456,8 +487,10 @@ public:
     // sysApplicationFocusChangeEvent is raised on a change of that and not on
     // every transition Qt reports between its inactive states
     bool mApplicationActive = true;
-    // 2 (of 2) needed to work around a (Windows/MacOs specific QStyleFactory)
-    // issue:
+    // A button or label showing a colour, drawn as a well: the caller fills in
+    // the ink, the fill and the hairline, in that order - the corner and the
+    // padding are already in it. See the constructor for why it is not the pair
+    // of platform variants the sheet above it still is.
     QString mTEXT_ON_BG_STYLESHEET;
     int mToolbarIconSize = 0;
     QMap<QString, translation> mTranslationsMap;

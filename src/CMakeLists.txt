@@ -44,6 +44,7 @@ set(mudlet_SRCS
     ActionUnit.cpp
     AliasUnit.cpp
     AltFocusMenuBarDisable.cpp
+    ChipRow.cpp
     CredentialManager.cpp
     ctelnet.cpp
     CustomLineDrawContextMenuHandler.cpp
@@ -85,14 +86,20 @@ set(mudlet_SRCS
     EditorItemXMLHelpers.cpp
     EditorModifyPropertyCommand.cpp
     EditorMoveItemCommand.cpp
+    EditorPlaceholderButton.cpp
     EditorToggleActiveCommand.cpp
+    EditorSidebarToggle.cpp
+    EditorTreeDelegate.cpp
+    EditorTreeRowMetrics.cpp
     EditorUndoStack.cpp
     EventLoopPump.cpp
     exitstreewidget.cpp
     FileOpenHandler.cpp
+    FlowLayout.cpp
     FontManager.cpp
     GifTracker.cpp
     GMCPAuthenticator.cpp
+    GripSplitter.cpp
     Host.cpp
     HostManager.cpp
     ircmessageformatter.cpp
@@ -115,10 +122,12 @@ set(mudlet_SRCS
     RoomMoveActivationHandler.cpp
     RoomMoveDragHandler.cpp
     ScriptUnit.cpp
+    SearchResultDelegate.cpp
     SecureStringUtils.cpp
     SelectionRectangleHandler.cpp
     SentryWrapper.cpp
     ShortcutsManager.cpp
+    SidebarItemDelegate.cpp
     SingleLineTextEdit.cpp
     SpeechAudioCapture.cpp
     SpeechRecognizerFactory.cpp
@@ -220,7 +229,9 @@ set(mudlet_SRCS
     TTrigger.cpp
     TUiTour.cpp
     TVar.cpp
+    uiDesign.cpp
     UntrustedText.cpp
+    VariableTreeDelegate.cpp
     VarUnit.cpp
     VoskRecognizer.cpp
     WideComboBox.cpp
@@ -293,6 +304,7 @@ set(mudlet_HDRS
     ActionUnit.h
     AliasUnit.h
     AltFocusMenuBarDisable.h
+    ChipRow.h
     CredentialManager.h
     ctelnet.h
     CustomLineDrawContextMenuHandler.h
@@ -335,15 +347,21 @@ set(mudlet_HDRS
     EditorItemXMLHelpers.h
     EditorModifyPropertyCommand.h
     EditorMoveItemCommand.h
+    EditorPlaceholderButton.h
     EditorToggleActiveCommand.h
+    EditorSidebarToggle.h
+    EditorTreeDelegate.h
+    EditorTreeRowMetrics.h
     EditorUndoStack.h
     enums.h
     EventLoopPump.h
     exitstreewidget.h
     FileOpenHandler.h
+    FlowLayout.h
     FontManager.h
     GifTracker.h
     GMCPAuthenticator.h
+    GripSplitter.h
     Host.h
     HostManager.h
     ircmessageformatter.h
@@ -367,10 +385,12 @@ set(mudlet_HDRS
     RoomMoveActivationHandler.h
     RoomMoveDragHandler.h
     ScriptUnit.h
+    SearchResultDelegate.h
     SecureStringUtils.h
     SelectionRectangleHandler.h
     SentryWrapper.h
     ShortcutsManager.h
+    SidebarItemDelegate.h
     SingleLineTextEdit.h
     SpeechAudioCapture.h
     SpeechRecognizer.h
@@ -478,8 +498,10 @@ set(mudlet_HDRS
     TTrigger.h
     TUiTour.h
     TVar.h
+    uiDesign.h
     UntrustedText.h
     utils.h
+    VariableTreeDelegate.h
     VarUnit.h
     VoskRecognizer.h
     widechar_width.h

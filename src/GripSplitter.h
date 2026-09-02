@@ -1,0 +1,117 @@
+#ifndef MUDLET_GRIPSPLITTER_H
+#define MUDLET_GRIPSPLITTER_H
+
+/***************************************************************************
+ *   Copyright (C) 2026 by Vadim Peretokin - vadim.peretokin@mudlet.org    *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, write to the                         *
+ *   Free Software Foundation, Inc.,                                       *
+ *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
+ ***************************************************************************/
+
+#include "utils.h"
+
+#include <QPointer>
+#include <QSplitter>
+#include <QSplitterHandle>
+
+class QMouseEvent;
+class QPainter;
+
+namespace uiDesign {
+
+struct ThemeTokens;
+
+// The seam between two panes. A handle carrying nothing is drawn as one: a
+// hairline down the middle with each pane's own tone carried up to it, which
+// widens to three pixels of the accent while the pointer is on it. A handle
+// given a heading to carry is drawn as a strip deep enough to read the heading
+// in, with the short rounded bar that says it can be dragged across the middle
+// of it. Every colour is mixed at paint time from the application palette, so a
+// theme change needs no more than the repaint it brings with it.
+class GripSplitterHandle : public QSplitterHandle
+{
+    Q_OBJECT
+
+public:
+    Q_DISABLE_COPY(GripSplitterHandle)
+    GripSplitterHandle(const Qt::Orientation orientation, QSplitter* pParent);
+
+    // A strip of content to carry beside the grip; nullptr takes it away again.
+    // The handle stays a handle: the content is told not to take the mouse, so a
+    // drag anywhere on it still resizes.
+    void setContent(QWidget* pContent);
+
+    // Whether the panes either side of this handle can be resized through it.
+    // A heading over a pane whose height is its contents' is a heading and
+    // nothing else: it loses the grip that says otherwise, the cursor that
+    // offers the drag, and the drag itself.
+    void setResizes(const bool resizes);
+    [[nodiscard]] bool resizes() const { return mResizes; }
+
+    [[nodiscard]] QSize sizeHint() const override;
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    // What a handle carrying nothing is drawn as: the seam, and each pane's own
+    // tone carried up to it
+    void paintSeam(QPainter& painter, const ThemeTokens& tokens) const;
+    void resizeEvent(QResizeEvent* event) override;
+    void enterEvent(TEnterEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+
+private:
+    QPointer<QWidget> mpContent;
+    bool mHovered = false;
+    bool mResizes = true;
+};
+
+// A splitter whose handles are the ones above, and which can hand one of them a
+// widget to carry - turning the gap between two panes into the heading of the
+// pane below it.
+class GripSplitter : public QSplitter
+{
+    Q_OBJECT
+
+public:
+    Q_DISABLE_COPY(GripSplitter)
+    // Wide enough to be aimed at with a mouse, narrow enough not to read as a
+    // pane. Public because QSplitter::restoreState() puts back the handle width
+    // that was serialized with the sizes - a state saved before the grips
+    // existed carries the old one - so whoever restores has to say it again.
+    static constexpr int scmHandleThickness = 9;
+
+    explicit GripSplitter(QWidget* pParent = nullptr);
+    GripSplitter(const Qt::Orientation orientation, QWidget* pParent = nullptr);
+
+    // The handle above the widget at `index`. A handle only exists once the
+    // widget under it does, so call this after the panes have been added.
+    void setHeaderHandle(const int index, QWidget* pContent);
+
+    // Whether the handle above the widget at `index` resizes anything; see
+    // GripSplitterHandle::setResizes(). Answers false where there is no such
+    // handle to tell.
+    bool setHandleResizes(const int index, const bool resizes);
+    [[nodiscard]] bool handleResizes(const int index) const;
+
+protected:
+    QSplitterHandle* createHandle() override;
+};
+
+} // namespace uiDesign
+
+#endif // MUDLET_GRIPSPLITTER_H

@@ -44,6 +44,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     LabelAnchorInteractionTest.cpp
     LabelMovieRefusalTest.cpp
     MainConsoleSelectionTest.cpp
+    MainToolBarGlyphTest.cpp
     TabDetachThresholdTest.cpp
     DetachedWindowDiscordButtonTest.cpp
     MainWindowSizeReportTest.cpp
@@ -115,9 +116,33 @@ set(TRIGGER_GROUP_TEST_SOURCES
 
 # The script editor, and the trigger, variable and script forms it hosts
 set(EDITOR_GROUP_TEST_SOURCES
+    ControlSentenceRowTest.cpp
     dlgTriggerEditorUndoRedoTest.cpp
     EdbeeReinitTest.cpp
     EditorBannerViewSwitchTest.cpp
+    EditorChromeInkTest.cpp
+    EditorChromeShapeTest.cpp
+    EditorColumnAlignmentTest.cpp
+    EditorEventChipRowTest.cpp
+    EditorFormShellTest.cpp
+    EditorGeometryWriteGuardTest.cpp
+    EditorIconScaleTest.cpp
+    EditorKeyCaptureTest.cpp
+    EditorMinimumSizeTest.cpp
+    EditorNoticeGlyphTest.cpp
+    EditorOptionsPanelDefaultTest.cpp
+    EditorPlacementPersistenceTest.cpp
+    EditorSidebarCollapseTest.cpp
+    EditorSplitterRestoreTest.cpp
+    EditorSurfaceToneTest.cpp
+    EditorTimerIntervalTest.cpp
+    EditorTreeDotClickTest.cpp
+    EditorTreeHeadingIconTest.cpp
+    EditorTreeRowHeightTest.cpp
+    EditorTreeSelectionPillTest.cpp
+    EditorVariablesFormTest.cpp
+    EditorVariablesTreeTest.cpp
+    ReadabilityAuditTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp
     VariableEditorWriteBackTest.cpp
@@ -161,6 +186,21 @@ set(STARTERUI_GROUP_TEST_SOURCES
     StarterUiTriggerCostTest.cpp
     TutorialInvitationGateTest.cpp
     TutorialInvitationLayoutTest.cpp
+)
+
+# The settings dialog: its sidebar-and-cards shell, the deep links into it, how
+# a change reaches the Host, and what it does with no profile loaded
+set(SETTINGS_GROUP_TEST_SOURCES
+    EditorThemePairTest.cpp
+    SettingsAppearanceTest.cpp
+    SettingsBannerTest.cpp
+    SettingsDeepLinkTest.cpp
+    SettingsDirtyApplyTest.cpp
+    SettingsHostLifecycleTest.cpp
+    SettingsInstantApplyTest.cpp
+    SettingsLiveSyncTest.cpp
+    SettingsSearchTest.cpp
+    SettingsShellNavigationTest.cpp
 )
 
 # Teardown: who owns a profile's dialogs and windows, and what becomes of them when it closes
@@ -283,6 +323,7 @@ add_grouped_test_binary(functional_trigger_tests ${TRIGGER_GROUP_TEST_SOURCES})
 add_grouped_test_binary(functional_editor_tests ${EDITOR_GROUP_TEST_SOURCES})
 add_grouped_test_binary(functional_map_tests ${MAP_GROUP_TEST_SOURCES})
 add_grouped_test_binary(functional_package_tests ${PACKAGE_GROUP_TEST_SOURCES})
+add_grouped_test_binary(functional_settings_tests ${SETTINGS_GROUP_TEST_SOURCES})
 add_grouped_test_binary(functional_starterui_tests ${STARTERUI_GROUP_TEST_SOURCES})
 add_grouped_test_binary(functional_teardown_tests ${TEARDOWN_GROUP_TEST_SOURCES})
 add_grouped_test_binary(functional_media_tests ${MEDIA_GROUP_TEST_SOURCES})
@@ -431,6 +472,19 @@ set_tests_properties(ProfileRoundTripTest MapRoundTripTest MapProgressDialogSeam
 # MapAreaReassignmentTest reports a cost curve built from thousands of rooms,
 # which takes minutes rather than milliseconds if the quadratic term returns
 set_tests_properties(MapAreaReassignmentTest PROPERTIES TIMEOUT 300)
+
+# The settings tests build the whole preferences dialog once per test method,
+# and several of them wait out a quiet window to prove no apply happened
+set_tests_properties(SettingsAppearanceTest
+                     SettingsBannerTest
+                     SettingsDeepLinkTest
+                     SettingsDirtyApplyTest
+                     SettingsHostLifecycleTest
+                     SettingsInstantApplyTest
+                     SettingsLiveSyncTest
+                     SettingsSearchTest
+                     SettingsShellNavigationTest
+                     PROPERTIES TIMEOUT 300)
 
 # HostWidgetDecouplingTest creates a fresh profile per test method, so it needs a longer timeout
 set_tests_properties(HostWidgetDecouplingTest PROPERTIES TIMEOUT 300)

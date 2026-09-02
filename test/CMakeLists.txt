@@ -116,6 +116,16 @@ set_tests_properties(CMakeListsConsistencyTest PROPERTIES
     ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0"
 )
 
+# Colours written out on the surfaces that have adopted the design language.
+# Reads those sources the same way, so it links nothing either.
+add_executable(DesignColourLiteralTest DesignColourLiteralTest.cpp)
+target_link_libraries(DesignColourLiteralTest PRIVATE Qt6::Test)
+target_compile_definitions(DesignColourLiteralTest PRIVATE MUDLET_SRC_DIR="${CMAKE_SOURCE_DIR}/src")
+add_test(NAME DesignColourLiteralTest COMMAND $<TARGET_FILE:DesignColourLiteralTest>)
+set_tests_properties(DesignColourLiteralTest PROPERTIES
+    ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0"
+)
+
 # The version comparison every update offer is decided by. Built from the one
 # updater source it covers rather than linked against the Mudlet library, because
 # the library only contains it when configured with USE_UPDATER - which CI's

@@ -29,8 +29,11 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
-   <property name="spacing">
-    <number>3</number>
+   <property name="horizontalSpacing">
+    <number>14</number>
+   </property>
+   <property name="verticalSpacing">
+    <number>12</number>
    </property>
    <item row="0" column="0" colspan="2">
     <widget class="QWidget" name="widget_top" native="true">
@@ -40,15 +43,18 @@
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
-     <property name="autoFillBackground">
-      <bool>true</bool>
-     </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_widget_top" stretch="0,1,0,0,1,0">
+     <layout class="QHBoxLayout" name="horizontalLayout_widget_top" stretch="0,1,0,1,0,0">
+      <property name="spacing">
+       <number>10</number>
+      </property>
       <property name="leftMargin">
-       <number>6</number>
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
       </property>
       <property name="rightMargin">
-       <number>6</number>
+       <number>0</number>
       </property>
       <property name="bottomMargin">
        <number>0</number>
@@ -62,7 +68,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Name:</string>
+         <string>Name</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -80,35 +86,9 @@
        </widget>
       </item>
       <item>
-       <widget class="QToolButton" name="toolButton_toggleExtraControls">
-        <property name="toolTip">
-         <string>&lt;p&gt;Use this control to show or hide the extra controls for the trigger; this can be used to allow more space to show the trigger &lt;i&gt;items&lt;/i&gt; on smaller screen.&lt;/p&gt;</string>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="icon">
-         <iconset resource="../mudlet.qrc">
-          <normaloff>:/icons/arrow-right_grey-16x.png</normaloff>
-          <normalon>:/icons/arrow-down_grey-16x.png</normalon>
-          <activeoff>:/icons/arrow-right-16x.png</activeoff>
-          <activeon>:/icons/arrow-down-16x.png</activeon>:/icons/arrow-right_grey-16x.png</iconset>
-        </property>
-        <property name="checkable">
-         <bool>true</bool>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-        <property name="autoRaise">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QLabel" name="label_trigger_command">
         <property name="text">
-         <string>Command:</string>
+         <string>Command</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -134,17 +114,20 @@
          <enum>QFrame::NoFrame</enum>
         </property>
         <layout class="QHBoxLayout" name="horizontalLayout_frameId">
+         <property name="spacing">
+          <number>4</number>
+         </property>
          <property name="leftMargin">
-          <number>3</number>
+          <number>9</number>
          </property>
          <property name="topMargin">
-          <number>0</number>
-         </property>
-         <property name="rightMargin">
           <number>3</number>
          </property>
+         <property name="rightMargin">
+          <number>9</number>
+         </property>
          <property name="bottomMargin">
-          <number>0</number>
+          <number>3</number>
          </property>
          <item alignment="Qt::AlignVCenter">
           <widget class="QLabel" name="label_idLabel">
@@ -178,6 +161,25 @@
         </layout>
        </widget>
       </item>
+      <item>
+       <widget class="QToolButton" name="toolButton_toggleExtraControls">
+        <property name="toolTip">
+         <string>&lt;p&gt;Use this control to show or hide the extra controls for the trigger; this can be used to allow more space to show the trigger &lt;i&gt;items&lt;/i&gt; on smaller screen.&lt;/p&gt;</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+        <property name="autoRaise">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -185,7 +187,7 @@
     <widget class="QWidget" name="widget_left" native="true">
      <layout class="QVBoxLayout" name="verticalLayout_left" stretch="1">
       <property name="spacing">
-       <number>3</number>
+       <number>10</number>
       </property>
       <property name="leftMargin">
        <number>0</number>
@@ -391,10 +393,6 @@
            </property>
            <property name="toolTip">
             <string>&lt;p&gt;Click to remove the sound file set for this trigger.&lt;/p&gt;</string>
-           </property>
-           <property name="icon">
-            <iconset resource="../mudlet.qrc">
-             <normaloff>:/icons/edit-clear-locationbar-rtl-green.png</normaloff>:/icons/edit-clear-locationbar-rtl-green.png</iconset>
            </property>
           </widget>
          </item>

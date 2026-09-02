@@ -20,6 +20,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include "uiDesign.h"
+
 #include <QMainWindow>
 #include <QVBoxLayout>
 #include <QPointer>
@@ -177,6 +179,8 @@ private:
     void setupUI();
     void createMenus();
     void createToolBar();
+    // Re-inks every glyph on this window's toolbar from the palette as it now stands
+    void restyleToolBarIcons();
     void connectToolBarActions();
     void updateWindowTitle();
     void updateTabIndicator(int tabIndex = -1);                            // -1 means current tab
@@ -201,6 +205,9 @@ private:
     QVBoxLayout* mpMainLayout{nullptr};
     TTabBar* mpTabBar{nullptr};
     QToolBar* mpToolBar{nullptr};
+    // Which glyph each of this toolbar's actions carries, so that a theme change
+    // can re-ink all of them from one place
+    QList<uiDesign::ActionGlyph> mToolBarGlyphs;
 
     // Toolbar actions - mirroring main window
     QAction* mpActionConnect{nullptr};

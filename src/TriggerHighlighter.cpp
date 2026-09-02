@@ -21,13 +21,24 @@
 #include "Host.h"
 #include "TrailingWhitespaceMarker.h"
 #include "TriggerHighlighter.h"
+#include "mudlet.h"
+#include "uiDesign.h"
 #include "edbee/views/texttheme.h"
 #include "edbee/models/textdocumentscopes.h"
+
+namespace {
+// What a token has to clear against the field it lies on before it counts as
+// readable. Below the 4.5 body text is held to, because a pattern is read in a
+// monospaced face at the form's own size and the colour is a hint rather than
+// the message - but far enough above 1 that a theme's mid-grey comment colour
+// cannot survive on a mid-grey field.
+constexpr qreal scmMinimumTokenContrast = 3.5;
+} // namespace
 
 TriggerHighlighter::TriggerHighlighter(QTextDocument* parent)
 : QSyntaxHighlighter(parent)
 {
-    setTheme("Mudlet"); // start with the default theme
+    setTheme(mudlet::scmEditorThemeNameLight); // start with the default theme
 }
 
 void TriggerHighlighter::setHighlightingEnabled(bool enabled)
@@ -53,14 +64,43 @@ void TriggerHighlighter::highlightBlock(const QString& text)
 
 void TriggerHighlighter::setTheme(const QString& themeName)
 {
+    mThemeName = themeName;
+    rebuildRules();
+}
+
+void TriggerHighlighter::setFieldColors(const QColor& background, const QColor& text)
+{
+    if (mFieldBackground == background && mFieldText == text) {
+        return;
+    }
+    mFieldBackground = background;
+    mFieldText = text;
+    rebuildRules();
+}
+
+void TriggerHighlighter::rebuildRules()
+{
     highlightingRules.clear();
 
     auto edbee = edbee::Edbee::instance();
     auto themeManager = edbee->themeManager();
-    edbee::TextTheme* theme = themeManager->theme(themeName);
+    edbee::TextTheme* theme = themeManager->theme(mThemeName);
+    if (!theme) {
+        // A theme is only registered once its file has been read, and the file
+        // can be gone - a downloaded theme deleted out from under the profile,
+        // or a name that no longer answers to anything. edbee hands back a null
+        // pointer for one it has never seen, so the rows go unhighlighted rather
+        // than the window going down with them.
+        qWarning().nospace() << "TriggerHighlighter::rebuildRules() WARN - no editor theme called \"" << mThemeName << "\" has been loaded, leaving the pattern rows unhighlighted.";
+        rehighlight();
+        return;
+    }
 
-    // set defaults from chosen theme
-    edbee::TextThemeRule defaultRule("default", "selector", theme->foregroundColor(), theme->backgroundColor(), false, false, false);
+    // set defaults from chosen theme. The theme's own background is not among
+    // them: a pattern row is a field on the form rather than a slice of the code
+    // pane, so what is behind the words is the field's colour and nothing a
+    // token brings with it.
+    edbee::TextThemeRule defaultRule("default", "selector", theme->foregroundColor(), QColor(), false, false, false);
     applyFormatting(anchorFormat, &defaultRule);
     applyFormatting(charClassFormat, &defaultRule);
     applyFormatting(escapeCharFormat, &defaultRule);
@@ -110,16 +150,20 @@ void TriggerHighlighter::setTheme(const QString& themeName)
 
 void TriggerHighlighter::applyFormatting(QTextCharFormat& format, edbee::TextThemeRule* rule)
 {
-    QColor foreground = rule->foregroundColor();
-    QColor background = rule->backgroundColor();
+    // What the theme calls this token, moved onto the field it will be read on.
+    // The hue is what says which part of a pattern this is, so that is the half
+    // kept; where it cannot be made to read at all, the field's own text colour
+    // stands in - an unreadable pattern is worse than an unhighlighted one.
+    const QColor foreground = mFieldBackground.isValid() ? uiDesign::readableOn(mFieldBackground, rule->foregroundColor(), mFieldText, scmMinimumTokenContrast) : rule->foregroundColor();
 
     if (foreground.isValid()) {
         format.setForeground(foreground);
     }
 
-    if (background.isValid()) {
-        format.setBackground(background);
-    }
+    // A token never paints its own background, whatever the theme says: the
+    // dark block a code theme puts behind its words is what drew a pattern row
+    // as a black box on a light form
+    format.clearBackground();
     if (rule->bold()) {
         format.setFontWeight(QFont::Bold);
     } else {
