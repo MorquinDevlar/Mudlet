@@ -37,6 +37,7 @@
 
 class Host;
 class QMouseEvent;
+class QSvgRenderer;
 
 class TLabel : public QLabel
 {
@@ -69,6 +70,13 @@ public:
     void setLinkStyle(const QString& linkColor, const QString& linkVisitedColor, bool underline = true);
     void resetLinkStyle();
     void clearVisitedLinks();
+    bool setSvgImage(const QString& path);
+    void clearSvgImage();
+    void setSvgTint(const QColor& color);
+    void clearSvgTint();
+    void setSvgRotation(double angle);
+    void setSvgShear(double shearX, double shearY);
+    void resetSvgTransform();
 
     QPointer<Host> mpHost;
     QString mName;
@@ -80,6 +88,12 @@ public:
     int mEnterFunction = 0;
     int mLeaveFunction = 0;
     QMovie* mpMovie = nullptr;
+    QSvgRenderer* mpSvgRenderer = nullptr;
+    QString mSvgImagePath;
+    QColor mSvgTintColor;
+    double mSvgRotation = 0.0;
+    double mSvgShearX = 0.0;
+    double mSvgShearY = 0.0;
     QVideoWidget* mpVideoWidget = nullptr;
     QString mLinkColor;          // Store link color for inline style injection
     QString mLinkVisitedColor;   // Store visited color for inline style injection
@@ -87,6 +101,7 @@ public:
     QSet<QString> mVisitedLinks; // Track which link URLs have been clicked
 
 private:
+    QPixmap renderSvgPixmap(const QSize& size) const;
     void releaseFunc(const int existingFunction, const int newFunction);
     void applyBackgroundColor();
 

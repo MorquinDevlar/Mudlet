@@ -84,6 +84,7 @@
 #include <QShortcut>
 #include <QSplitter>
 #include <QStyleFactory>
+#include <QSvgRenderer>
 #include <QStyleHints>
 #include <QTableWidget>
 #include <QTextBoundaryFinder>
@@ -3848,6 +3849,14 @@ void mudlet::hideEvent(QHideEvent* event)
 
 std::optional<QSize> mudlet::getImageSize(const QString& imageLocation)
 {
+    if (imageLocation.endsWith(qsl(".svg"), Qt::CaseInsensitive) || imageLocation.endsWith(qsl(".svgz"), Qt::CaseInsensitive)) {
+        QSvgRenderer renderer(imageLocation);
+        if (renderer.isValid()) {
+            return renderer.defaultSize();
+        }
+        return {};
+    }
+
     const QImage image(imageLocation);
 
     if (image.isNull()) {

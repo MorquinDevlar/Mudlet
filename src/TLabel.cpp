@@ -28,7 +28,9 @@
 #include "mudlet.h"
 
 #include <QDesktopServices>
+#include <QPainter>
 #include <QRegularExpression>
+#include <QSvgRenderer>
 #include <QTextCursor>
 #include <QTimer>
 #include <QUrl>
@@ -89,6 +91,10 @@ TLabel::~TLabel()
     if (mpMovie) {
         mpMovie->deleteLater();
         mpMovie = nullptr;
+    }
+    if (mpSvgRenderer) {
+        mpSvgRenderer->deleteLater();
+        mpSvgRenderer = nullptr;
     }
 }
 
@@ -315,10 +321,114 @@ void TLabel::enterEvent(TEnterEvent* event)
 
 void TLabel::resizeEvent(QResizeEvent* event)
 {
+    if (mpSvgRenderer && mpSvgRenderer->isValid()) {
+        QLabel::setPixmap(renderSvgPixmap(event->size()));
+    }
     emit resized();
     QWidget::resizeEvent(event);
 }
 
+
+bool TLabel::setSvgImage(const QString& path)
+{
+    clearSvgImage();
+
+    mpSvgRenderer = new QSvgRenderer(path, this);
+    if (!mpSvgRenderer->isValid()) {
+        delete mpSvgRenderer;
+        mpSvgRenderer = nullptr;
+        return false;
+    }
+
+    mSvgImagePath = path;
+    QLabel::setPixmap(renderSvgPixmap(size()));
+    return true;
+}
+
+QPixmap TLabel::renderSvgPixmap(const QSize& size) const
+{
+    const qreal dpr = devicePixelRatioF();
+    QPixmap svgPixmap(size * dpr);
+    svgPixmap.fill(Qt::transparent);
+    QPainter painter(&svgPixmap);
+
+    if (!qFuzzyIsNull(mSvgRotation) || !qFuzzyIsNull(mSvgShearX) || !qFuzzyIsNull(mSvgShearY)) {
+        const qreal cx = svgPixmap.width() / 2.0;
+        const qreal cy = svgPixmap.height() / 2.0;
+        painter.translate(cx, cy);
+        painter.rotate(mSvgRotation);
+        painter.shear(mSvgShearX, mSvgShearY);
+        painter.translate(-cx, -cy);
+    }
+
+    mpSvgRenderer->render(&painter);
+
+    if (mSvgTintColor.isValid()) {
+        painter.resetTransform();
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(svgPixmap.rect(), mSvgTintColor);
+    }
+
+    painter.end();
+    svgPixmap.setDevicePixelRatio(dpr);
+    return svgPixmap;
+}
+
+void TLabel::clearSvgImage()
+{
+    if (mpSvgRenderer) {
+        delete mpSvgRenderer;
+        mpSvgRenderer = nullptr;
+    }
+    mSvgImagePath.clear();
+    mSvgTintColor = QColor();
+    mSvgRotation = 0.0;
+    mSvgShearX = 0.0;
+    mSvgShearY = 0.0;
+}
+
+void TLabel::setSvgTint(const QColor& color)
+{
+    mSvgTintColor = color;
+    if (mpSvgRenderer && mpSvgRenderer->isValid()) {
+        QLabel::setPixmap(renderSvgPixmap(size()));
+    }
+}
+
+void TLabel::clearSvgTint()
+{
+    mSvgTintColor = QColor();
+    if (mpSvgRenderer && mpSvgRenderer->isValid()) {
+        QLabel::setPixmap(renderSvgPixmap(size()));
+    }
+}
+
+void TLabel::setSvgRotation(double angle)
+{
+    mSvgRotation = angle;
+    if (mpSvgRenderer && mpSvgRenderer->isValid()) {
+        QLabel::setPixmap(renderSvgPixmap(size()));
+    }
+}
+
+void TLabel::setSvgShear(double shearX, double shearY)
+{
+    mSvgShearX = shearX;
+    mSvgShearY = shearY;
+    if (mpSvgRenderer && mpSvgRenderer->isValid()) {
+        QLabel::setPixmap(renderSvgPixmap(size()));
+    }
+}
+
+void TLabel::resetSvgTransform()
+{
+    mSvgRotation = 0.0;
+    mSvgShearX = 0.0;
+    mSvgShearY = 0.0;
+    if (mpSvgRenderer && mpSvgRenderer->isValid()) {
+        QLabel::setPixmap(renderSvgPixmap(size()));
+    }
+}
 
 // This function deferences previous functions in the Lua registry.
 // This allows the functions to be safely overwritten.
