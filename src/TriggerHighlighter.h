@@ -30,7 +30,7 @@ class TriggerHighlighter : public QSyntaxHighlighter
     Q_OBJECT
 
 public:
-    explicit TriggerHighlighter(QTextDocument *parent = nullptr);
+    explicit TriggerHighlighter(QTextDocument* parent = nullptr);
     void setHighlightingEnabled(bool enabled);
     void setTheme(const QString&);
     // The field the tokens are read on. A syntax theme picks its colours against
@@ -40,7 +40,7 @@ public:
     void setFieldColors(const QColor& background, const QColor& text);
 
 protected:
-    void highlightBlock(const QString &text) override;
+    void highlightBlock(const QString& text) override;
 
 private:
     struct HighlightingRule
@@ -66,4 +66,4 @@ private:
     void applyFormatting(QTextCharFormat& format, edbee::TextThemeRule* rule);
 };
 
-#endif  // TRIGGERHIGHLIGHTER_H
+#endif // TRIGGERHIGHLIGHTER_H
