@@ -101,6 +101,12 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("EditorSidebarToggle.h"),
                           QStringLiteral("EditorPlaceholderButton.cpp"),
                           QStringLiteral("EditorPlaceholderButton.h"),
+                          QStringLiteral("dlgAboutDialog.cpp"),
+                          QStringLiteral("dlgAboutDialog.h"),
+                          QStringLiteral("AboutLinkButton.cpp"),
+                          QStringLiteral("AboutLinkButton.h"),
+                          QStringLiteral("AboutSupporterBanner.cpp"),
+                          QStringLiteral("AboutSupporterBanner.h"),
                           QStringLiteral("dlgColorTrigger.cpp"),
                           QStringLiteral("TDetachedWindow.cpp"),
                           QStringLiteral("mudlet.cpp"),
@@ -113,7 +119,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("ui/scripts_main_area.ui"),
                           QStringLiteral("ui/keybindings_main_area.ui"),
                           QStringLiteral("ui/actions_main_area.ui"),
-                          QStringLiteral("ui/vars_main_area.ui")};
+                          QStringLiteral("ui/vars_main_area.ui"),
+                          QStringLiteral("ui/about_dialog.ui")};
         // The settings dialog is one .ui file today and may not stay one, so
         // its pages are taken by pattern rather than named
         const QDir uiDir(srcDir() + QStringLiteral("/ui"));

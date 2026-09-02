@@ -37,6 +37,15 @@ namespace uiDesign {
 class FlowLayout : public QLayout
 {
 public:
+    // What the row asks for when it is asked how wide it would like to be. A
+    // row that is given its own width wants its items on one line; a row inside
+    // a column must not widen that column by the number of items it happens to
+    // hold, so it asks only for the widest one and wraps for the rest.
+    enum class Width {
+        OneLine,
+        WidestItem,
+    };
+
     Q_DISABLE_COPY(FlowLayout)
     // A spacing of -1 takes the style's own idea of what goes between two
     // controls, which is what a layout the caller says nothing about should be
@@ -53,6 +62,9 @@ public:
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSize() const override;
     void setGeometry(const QRect& rect) override;
+    void invalidate() override;
+
+    void setWidthPolicy(const Width policy);
 
     [[nodiscard]] int horizontalSpacing() const;
     [[nodiscard]] int verticalSpacing() const;
@@ -67,6 +79,11 @@ private:
     QList<QLayoutItem*> mItems;
     int mHorizontalSpacing = -1;
     int mVerticalSpacing = -1;
+    Width mWidthPolicy = Width::OneLine;
+    // The last width heightForWidth() was asked about and what it answered: a
+    // single layout pass asks two or three times running with the same number.
+    mutable int mCachedWidth = -1;
+    mutable int mCachedHeight = 0;
 };
 
 } // namespace uiDesign

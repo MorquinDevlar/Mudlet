@@ -73,6 +73,7 @@
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
 #include "dlgKeysMainArea.h"
+#include "dlgAboutDialog.h"
 #include "dlgProfilePreferences.h"
 #include "dlgScriptsMainArea.h"
 #include "dlgTimersMainArea.h"
@@ -99,6 +100,7 @@ private:
     TelnetServerStub* mpServer = nullptr;
     dlgTriggerEditor* mpEditor = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
+    dlgAboutDialog* mpAbout = nullptr;
     Host* mpHost = nullptr;
     // The two items the forms walked on their own below are shown from
     QTreeWidgetItem* mpKeyItem = nullptr;
@@ -124,9 +126,10 @@ private:
     // WCAG allows for words that are unavailable or not yet typed
     static constexpr qreal scmTextFloor = uiDesign::scmTextMinimumRatio;
     static constexpr qreal scmQuietFloor = uiDesign::scmQuietMinimumRatio;
-    // Measured floors, pinned below what the walk actually reaches - 42 things
-    // in the editor and 26 on the settings dialog's first page - so that a walk
-    // which silently stopped finding widgets cannot pass as a clean one
+    // Measured floors, pinned below what the walk actually reaches - 41 things
+    // in the editor, 25 on the settings dialog's first page and 37 on the About
+    // dialog's Mudlet page - so that a walk which silently stopped finding
+    // widgets cannot pass as a clean one
     static constexpr int scmLeastAuditedInTheEditor = 30;
     static constexpr int scmLeastAuditedInTheSettings = 18;
     // ...and on each of the four forms walked on their own below. Those walks
@@ -145,6 +148,7 @@ private:
     static constexpr int scmLeastAuditedOnTheKeysForm = 6;
     static constexpr int scmLeastAuditedOnTheTimersForm = 12;
     static constexpr int scmLeastAuditedOnTheVariablesForm = 6;
+    static constexpr int scmLeastAuditedInTheAbout = 28;
 
     // A button filled with the colour it stands for. Its fill is a value rather
     // than a surface of the design, and the words on it are chosen against that
@@ -220,6 +224,16 @@ private:
         QVERIFY(QTest::qWaitForWindowExposed(mpPreferences));
     }
 
+    // The way mudlet::slot_showAboutDialog() opens it. It restyles itself off
+    // mudlet::signal_appearanceChanged, which is what the control below emits.
+    void openAbout()
+    {
+        mpAbout = new dlgAboutDialog(mudlet::self());
+        mpAbout->resize(1080, 680);
+        mpAbout->show();
+        QVERIFY(QTest::qWaitForWindowExposed(mpAbout));
+    }
+
     // Through the settings dialog's own control rather than through
     // mudlet::setAppearance() outright: that is the one path an appearance
     // change takes while these two windows are open, and it is the path that
@@ -246,6 +260,7 @@ private:
         QCoreApplication::processEvents();
         mpEditor->grab();
         mpPreferences->grab();
+        mpAbout->grab();
     }
 
     // Where a widget actually lands on a shot of the window it is in, clipped by
@@ -549,10 +564,13 @@ private slots:
         QTest::qWait(100ms);
 
         openPreferences();
+        openAbout();
     }
 
     void cleanupTestCase()
     {
+        delete mpAbout;
+        mpAbout = nullptr;
         delete mpPreferences;
         mpPreferences = nullptr;
         mpEditor = nullptr;
@@ -585,7 +603,9 @@ private slots:
             setAppearance(appearance.second);
             const int inTheEditor = auditWindow(mpEditor, qsl("the editor"), appearance.first, failures);
             const int inTheSettings = auditWindow(mpPreferences, qsl("the settings dialog"), appearance.first, failures);
-            counts << qsl("%1: %2 in the editor, %3 in the settings dialog").arg(appearance.first, QString::number(inTheEditor), QString::number(inTheSettings));
+            const int inTheAbout = auditWindow(mpAbout, qsl("the About dialog"), appearance.first, failures);
+            counts << qsl("%1: %2 in the editor, %3 in the settings dialog, %4 in the About dialog")
+                              .arg(appearance.first, QString::number(inTheEditor), QString::number(inTheSettings), QString::number(inTheAbout));
             QVERIFY2(inTheEditor >= scmLeastAuditedInTheEditor,
                      qPrintable(qsl("only %1 things were read in the editor on the %2 appearance, against the %3 this walk reaches - it stopped finding widgets rather than finding them all "
                                     "readable")
@@ -593,6 +613,9 @@ private slots:
             QVERIFY2(inTheSettings >= scmLeastAuditedInTheSettings,
                      qPrintable(qsl("only %1 things were read in the settings dialog on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(inTheSettings), appearance.first, QString::number(scmLeastAuditedInTheSettings))));
+            QVERIFY2(inTheAbout >= scmLeastAuditedInTheAbout,
+                     qPrintable(qsl("only %1 things were read in the About dialog on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(inTheAbout), appearance.first, QString::number(scmLeastAuditedInTheAbout))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

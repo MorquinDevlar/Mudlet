@@ -16,6 +16,21 @@
         <file>icons/3Scapes.png</file>
         <file>icons/aardwolf_mud.png</file>
         <file>icons/abandonedrealms_icon.jpg</file>
+        <file>icons/about-bug.png</file>
+        <file>icons/about-check.png</file>
+        <file>icons/about-chevron-down.png</file>
+        <file>icons/about-chevron-right.png</file>
+        <file>icons/about-docs.png</file>
+        <file>icons/about-forums.png</file>
+        <file>icons/about-github.png</file>
+        <file>icons/about-homepage.png</file>
+        <file>icons/about-license.png</file>
+        <file>icons/about-mail.png</file>
+        <file>icons/about-mudlet.png</file>
+        <file>icons/about-patreon.png</file>
+        <file>icons/about-supporters.png</file>
+        <file>icons/about-swords.png</file>
+        <file>icons/about-third-party.png</file>
         <file>icons/accursed_lands.png</file>
         <file>icons/achaea.png</file>
         <file>icons/aetolia.png</file>
@@ -133,8 +148,7 @@
         <file>icons/folder-new.png</file>
         <file>icons/folder-red-locked.png</file>
         <file>icons/folder.png</file>
-        <file>icons/frame_plaque.png</file>
-        <file>icons/frame_swords.png</file>
+        <file>icons/function.png</file>
         <file>icons/games-solve.png</file>
         <file>icons/generic_mud.jpg</file>
         <file>icons/gw2.png</file>
@@ -179,7 +193,6 @@
         <file>icons/package-manager.png</file>
         <file>icons/password-show-off.png</file>
         <file>icons/password-show-on.png</file>
-        <file>icons/Patreon_Mark_Primary.png</file>
         <file>icons/phoenixmud_480x120.png</file>
         <file>icons/place_of_interest.png</file>
         <file>icons/pkuxkx.png</file>

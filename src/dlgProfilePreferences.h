@@ -305,6 +305,9 @@ private:
     QGroupBox* createCard(const QString& objectName);
     // One muted line under a card's title saying what the card is for, ending
     // in a "Learn more" link where the wiki has a page about it
+    // Every label here that can hold a link goes through this: an anchor's
+    // colour is written into the text rather than answered by a palette
+    void setLinkedText(QLabel* pLabel, const QString& richText);
     void setCardDescription(QGroupBox* pCard, const QString& description, const QString& learnMoreUrl = QString());
     void setCardDescriptions();
     // The ten telnet protocols, reached from the Connection page's protocols card
@@ -474,6 +477,9 @@ private:
     QPointer<QLabel> mpLabel_securityHeadline;
     QPointer<QLabel> mpLabel_securityDetail;
     QPointer<QLabel> mpLabel_securityLink;
+    // What every anchor on this dialog currently carries, since the colour is
+    // written into the text rather than answered by a palette
+    QColor mInkedLinkColour;
     // Where each sidebar category ended up: its row, its page, and - because the
     // item is handed a coloured copy rather than the file itself - the icon file
     // to make that copy from

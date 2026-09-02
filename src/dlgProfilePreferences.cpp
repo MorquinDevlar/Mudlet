@@ -136,7 +136,15 @@ using uiDesign::spotlightStyleSheet;
 using uiDesign::themeTokens;
 using uiDesign::ThemeTokens;
 using uiDesign::tintedGlyph;
+using uiDesign::withLinkColour;
 using uiDesign::wordEnoughToSearch;
+
+// The text a rich-text label was given, before the colour of any link in it was
+// written in. A QLabel bakes an anchor's colour into its document at the moment
+// the text is set, from the application palette of that moment, so the only way
+// to re-ink one when the appearance moves is to set the text again - which
+// means keeping what it was.
+static constexpr char scmProp_settingsRichText[] = "settingsRichText";
 
 // A reading width: whitespace absorbs a wide window rather than the controls
 // stretching across it
@@ -1441,6 +1449,17 @@ void dlgProfilePreferences::addCardRow(QGroupBox* pCard, QWidget* pLabel, QWidge
 
 // Created on the first call and only re-worded afterwards, so that a language
 // change does not leave a page with two of them.
+void dlgProfilePreferences::setLinkedText(QLabel* pLabel, const QString& richText)
+{
+    // The first label may be written before the shell is styled, so the ink is
+    // taken here if nothing has settled it yet
+    if (!mInkedLinkColour.isValid()) {
+        mInkedLinkColour = themeTokens().accentText;
+    }
+    pLabel->setProperty(scmProp_settingsRichText, richText);
+    pLabel->setText(withLinkColour(richText, mInkedLinkColour));
+}
+
 void dlgProfilePreferences::setCardDescription(QGroupBox* pCard, const QString& description, const QString& learnMoreUrl)
 {
     if (!pCard) {
@@ -1476,11 +1495,11 @@ void dlgProfilePreferences::setCardDescription(QGroupBox* pCard, const QString& 
         }
     }
     if (learnMoreUrl.isEmpty()) {
-        pLabel->setText(description.toHtmlEscaped());
+        setLinkedText(pLabel, description.toHtmlEscaped());
         return;
     }
     //: Link at the end of a settings card's description line, opening the Mudlet wiki page about that setting
-    pLabel->setText(qsl("%1 <a href=\"%2\">%3</a>").arg(description.toHtmlEscaped(), learnMoreUrl, tr("Learn more").toHtmlEscaped()));
+    setLinkedText(pLabel, qsl("%1 <a href=\"%2\">%3</a>").arg(description.toHtmlEscaped(), learnMoreUrl, tr("Learn more").toHtmlEscaped()));
 }
 
 // Called from retranslateShell(), so a language change re-words them
@@ -1734,7 +1753,7 @@ void dlgProfilePreferences::updateSecurityStatus()
     mpLabel_securityHeadline->setText(headline);
     mpLabel_securityDetail->setText(detail);
     //: Link on the security status card of the Privacy and security settings page, leading to the "Secure connection" card below it
-    mpLabel_securityLink->setText(qsl("<a href=\"#secureConnection\">%1</a>").arg(tr("Secure connection settings").toHtmlEscaped()));
+    setLinkedText(mpLabel_securityLink, qsl("<a href=\"#secureConnection\">%1</a>").arg(tr("Secure connection settings").toHtmlEscaped()));
 }
 
 // The .ui file titles these group boxes after the tab they sat on, and
@@ -2418,7 +2437,7 @@ void dlgProfilePreferences::runSearch(const QString& query)
         const QString message = tr("No results in settings for \"%1\"").arg(query.trimmed().toHtmlEscaped());
         //: Offered under the settings search empty state; %1 is a link labelled "Mudlet support"
         const QString help = tr("Need help? Visit %1").arg(qsl("<a href=\"%1\">%2</a>").arg(mpItem_support->data(scmRole_externalUrl).toString(), mpItem_support->text()));
-        mpLabel_searchEmpty->setText(qsl("%1<br>%2").arg(message, help));
+        setLinkedText(mpLabel_searchEmpty, qsl("%1<br>%2").arg(message, help));
     }
     mpLabel_searchEmpty->setVisible(!matchCount);
     mpLayout_searchResults->setStretch(0, matchCount ? 0 : 1);
@@ -2837,19 +2856,18 @@ void dlgProfilePreferences::applyShellStyle()
         pControl->setPalette(controlPalette);
     }
 
-    // A rich-text anchor takes its colour from the palette rather than the
-    // stylesheet, and the theme's default is not chosen against a card
-    QList<QLabel*> linkLabels{mpLabel_searchEmpty, mpLabel_securityLink.data()};
-    for (auto* pDescription : findChildren<QLabel*>(qsl("settingsCardDescription"))) {
-        linkLabels.append(pDescription);
-    }
-    for (auto* pLabel : linkLabels) {
-        if (!pLabel) {
-            continue;
+    // A QLabel bakes the colour of an anchor into its document when the text is
+    // set, from the *application* palette of that moment - so writing
+    // QPalette::Link to the label afterwards, as this used to, changed nothing
+    // at all and every link here was painted in the palette's own blue. The
+    // colour travels on the anchor instead, and each label kept the text it was
+    // given so that it can be set again in the new ink.
+    mInkedLinkColour = accentText;
+    for (QLabel* pLabel : findChildren<QLabel*>()) {
+        const QVariant raw = pLabel->property(scmProp_settingsRichText);
+        if (raw.isValid()) {
+            pLabel->setText(withLinkColour(raw.toString(), accentText));
         }
-        QPalette linkPalette = pLabel->palette();
-        linkPalette.setColor(QPalette::Link, accentText);
-        pLabel->setPalette(linkPalette);
     }
 
     // The shortcut conflict warning is written in a state colour, which is

@@ -582,12 +582,47 @@ Stylesheets select on these; setting one after the widget is shown needs an
 | `settingsFocused` | The category list has keyboard focus |
 | `searchMatch` | Marker-pen highlight on a search hit |
 | `searchKeywords` | Comma-separated synonyms fed into the search index |
+| `settingsRichText` | The text a label was given, before the colour of any link in it was written in - see `withLinkColour()` |
+
+...and the About dialog's own, with an `about*` prefix:
+
+| Property | Meaning |
+| --- | --- |
+| `aboutCard` | This group box is a card |
+| `aboutCardPlain` | A card with no title, and so no room reserved for one |
+| `aboutChip` | A word in a box: the channel, the Qt version, a contact handle, a licence kind |
+| `aboutChipLit` | ...and that chip filled with the accent, which the build channel is |
+| `aboutButton` | An ordinary push button on this dialog |
+| `aboutCopied` | ...one of them for the moment after it has copied |
+| `aboutPrimaryButton` | The one button that is an invitation rather than a control |
+| `aboutNavGlyph` | Which file a navigation button's glyph is re-inked from |
+| `aboutRestingText` | What a Copy button reads when it is not saying "Copied" |
+| `aboutRichText` | The text a label was given, before its links were inked |
 
 The editor redesign follows the same scheme with an `editor*` prefix:
-`editorShell`, `editorSidebar`, `editorPage_<key>`, `editorCard`, and so on.
-`settingsRail` and `settingsFocused` are the two exceptions and keep these names
-in both windows: they are the contract `SidebarItemDelegate` and
-`sidebarStyleSheet()` are written against.
+`editorShell`, `editorSidebar`, `editorPage_<key>`, `editorCard`, and so on, and
+the About dialog with an `about*` one: `aboutShell`, `aboutArtColumn`,
+`aboutNav`, `aboutNavButton_<key>`, `aboutStack`, `aboutPage_<key>` and
+`aboutColumn_<key>`.
+
+Three of the `settings*` names are not the settings dialog's alone.
+`settingsRail` and `settingsFocused` are the contract `SidebarItemDelegate` and
+`sidebarStyleSheet()` are written against, and `settingsSurface` - which
+`markAsShellSurface()` puts on - is what every shell's stylesheet keeps its own
+scaffolding transparent by. All three keep these names in every window.
+
+### Anchors are inked in the text, not in a palette
+
+A `QLabel` parses its rich text the moment it is set and bakes the colour of
+every anchor into the document then and there, taking it from the *application*
+palette. Writing `QPalette::Link` to the widget afterwards does nothing, and
+re-polishing it does nothing either - the link stays at Qt's own blue, which is
+2.4:1 on a dark page. `uiDesign::withLinkColour(richText, colour)` writes the
+colour onto the anchor instead, which a document does honour; the text a label
+was given is kept in a dynamic property (`aboutRichText`, `settingsRichText`) so
+that an appearance change can ink it again. A `QTextDocument` ignores an
+`a { color: ... }` rule in a `<style>` head for the same reason, so the licence
+browser's own anchors go through the same helper.
 
 The editor's forms add these, which its tests reach it by:
 

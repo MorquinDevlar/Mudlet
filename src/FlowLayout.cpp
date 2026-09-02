@@ -42,6 +42,23 @@ FlowLayout::~FlowLayout()
 void FlowLayout::addItem(QLayoutItem* pItem)
 {
     mItems.append(pItem);
+    invalidate();
+}
+
+void FlowLayout::invalidate()
+{
+    mCachedWidth = -1;
+    mCachedHeight = 0;
+    QLayout::invalidate();
+}
+
+void FlowLayout::setWidthPolicy(const Width policy)
+{
+    if (mWidthPolicy == policy) {
+        return;
+    }
+    mWidthPolicy = policy;
+    invalidate();
 }
 
 int FlowLayout::count() const
@@ -59,7 +76,9 @@ QLayoutItem* FlowLayout::takeAt(int index)
     if (index < 0 || index >= mItems.count()) {
         return nullptr;
     }
-    return mItems.takeAt(index);
+    QLayoutItem* pItem = mItems.takeAt(index);
+    invalidate();
+    return pItem;
 }
 
 // Neither way: a row of chips is as wide as its chips and as tall as the lines
@@ -76,7 +95,14 @@ bool FlowLayout::hasHeightForWidth() const
 
 int FlowLayout::heightForWidth(int width) const
 {
-    return runItems(QRect(0, 0, width, 0), false);
+    if (width == mCachedWidth) {
+        return mCachedHeight;
+    }
+    // Where the rectangle sits has nothing to do with how tall the lines come
+    // to, so a walk that places nothing can start anywhere
+    mCachedWidth = width;
+    mCachedHeight = runItems(QRect(0, 0, width, 0), false);
+    return mCachedHeight;
 }
 
 // What the items come to on one line, which is the width the row would rather
@@ -84,6 +110,10 @@ int FlowLayout::heightForWidth(int width) const
 // height that costs.
 QSize FlowLayout::sizeHint() const
 {
+    if (mWidthPolicy == Width::WidestItem) {
+        return minimumSize();
+    }
+
     const QMargins margins = contentsMargins();
     int width = 0;
     int height = 0;
@@ -110,7 +140,11 @@ QSize FlowLayout::minimumSize() const
         if (pItem->isEmpty()) {
             continue;
         }
-        smallest = smallest.expandedTo(pItem->minimumSize());
+        // Under WidestItem the hint rather than the minimum, because the hint
+        // is what runItems() actually gives each item: a minimum read off the
+        // smaller of the two would promise a width the row is then drawn wider
+        // than, and this policy's whole job is to be that promise.
+        smallest = smallest.expandedTo(mWidthPolicy == Width::WidestItem ? pItem->sizeHint() : pItem->minimumSize());
     }
     return QSize(smallest.width() + margins.left() + margins.right(), smallest.height() + margins.top() + margins.bottom());
 }

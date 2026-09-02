@@ -259,6 +259,34 @@ private slots:
         QVERIFY2(paintedSurface().lightness() < 128, qPrintable(describe(paintedSurface())));
     }
 
+    // A QLabel bakes the colour of an anchor into its document the moment its
+    // text is set, from the application palette of that moment - so the loop
+    // that used to write QPalette::Link to these labels afterwards did nothing
+    // at all, and every link on this dialog was painted in the palette's own
+    // blue. Nothing else can see that: the readability audit reads inks off
+    // palettes, and the palette said the right thing while the document said
+    // the wrong one.
+    void test_everyLinkCarriesTheAccentInBothAppearances()
+    {
+        auto* pLink = mpPreferences->findChild<QLabel*>(qsl("settingsHeroLink"));
+        QVERIFY2(pLink, "the security status card has no 'settingsHeroLink'");
+        QVERIFY2(pLink->text().contains(qsl("<a ")), "the hero link carries no anchor, so nothing below is measured");
+
+        setAppearance(enums::Appearance::dark);
+        const QString onDark = uiDesign::themeTokens().accentText.name();
+        const QString linkOnDark = pLink->text();
+
+        setAppearance(enums::Appearance::light);
+        const QString onLight = uiDesign::themeTokens().accentText.name();
+        const QString linkOnLight = pLink->text();
+
+        qInfo().noquote() << qsl("  the hero link reads \"%1\" on dark and \"%2\" on light").arg(linkOnDark, linkOnLight);
+        QVERIFY2(onDark != onLight, "the two appearances answer the same accent ink, so the check below cannot tell them apart");
+        QVERIFY2(linkOnDark.contains(qsl("color: %1").arg(onDark)), qPrintable(qsl("the hero link is not inked %1 on the dark appearance: \"%2\"").arg(onDark, linkOnDark)));
+        QVERIFY2(linkOnLight.contains(qsl("color: %1").arg(onLight)),
+                 qPrintable(qsl("the hero link is not inked %1 on the light appearance - an appearance change did not re-ink it: \"%2\"").arg(onLight, linkOnLight)));
+    }
+
     // A card is filled by the shell stylesheet and the text on it is not, so when
     // the two stop agreeing about the theme the result is a dark card under dark
     // text - 1.2:1 before this was fixed, against the 4.5:1 text should keep

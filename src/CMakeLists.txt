@@ -41,6 +41,8 @@ endif()
 
 # Add every .cpp source file here, kept in alphabetical order (case-insensitive).
 set(mudlet_SRCS
+    AboutLinkButton.cpp
+    AboutSupporterBanner.cpp
     ActionUnit.cpp
     AliasUnit.cpp
     AltFocusMenuBarDisable.cpp
@@ -301,6 +303,8 @@ set(mudlet_HDRS
     ../3rdparty/discord/rpc/include/discord_register.h
     ../3rdparty/discord/rpc/include/discord_rpc.h
     ../3rdparty/kdtoolbox/singleshot_connect/singleshot_connect.h
+    AboutLinkButton.h
+    AboutSupporterBanner.h
     ActionUnit.h
     AliasUnit.h
     AltFocusMenuBarDisable.h
