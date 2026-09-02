@@ -139,6 +139,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
+    friend class EditorVariablesFormTest;
     friend class ReadabilityAuditTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
@@ -234,6 +235,9 @@ public:
     // The heading the Lua editor is under, which is also the handle the code
     // pane is resized by
     void setupEditorCodeHeader();
+    // What that heading names: a Lua script everywhere but the variables view,
+    // where the pane under it holds the chosen variable's value
+    [[nodiscard]] QString codeHeaderTitleFor(const EditorViewType view) const;
     void updateEditorCompileChip();
     // The chip speaks for the item in the editor, so switching items puts it
     // back to saying nothing
@@ -262,6 +266,9 @@ public:
     // The keystroke a key is bound to, as a field that listens for it: the hint
     // beside it and the button that forgets the keystroke are built here
     void buildKeyBindingRow();
+    // A variable's key and value types as one row under the head row, with the
+    // switch that keeps it out of the tree on the row under that
+    void buildVariableTypeRows();
     // The field, the hint and the clear button drawn from what the key holds.
     // A group is offered none of them - TKey::match() never matches one.
     void showKeyBinding();
@@ -864,6 +871,9 @@ private:
     // while this window is still around to be asked about the chip.
     QPointer<QWidget> mpWidget_editorCodeHeader;
     QPointer<QLabel> mpLabel_editorCodeHeaderIcon;
+    // ...and the word on it, which the variables view changes: the pane there
+    // holds a value rather than a script
+    QPointer<QLabel> mpLabel_editorCodeHeaderTitle;
     QPointer<QWidget> mpWidget_editorCompileChip;
     QPointer<QLabel> mpLabel_editorCompileDot;
     QPointer<QLabel> mpLabel_editorCompileState;

@@ -759,6 +759,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // Update the status bar on changes
     connect(mpSourceEditorEdbee->controller(), &edbee::TextEditorController::updateStatusTextSignal, this, &dlgTriggerEditor::slot_updateStatusBar);
+    // The caret readout speaks for the code pane, so it goes when the pane does
+    // - a table, a function or a root row leaves nothing under it to have a
+    // caret in - and is asked for again when the pane comes back
+    mpSourceEditorArea->installEventFilter(this);
     mpSourceEditorEdbee->controller()->setAutoScrollToCaret(edbee::TextEditorController::AutoScrollWhenFocus);
 
     // Update the editor preferences
@@ -1113,6 +1117,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // before the head rows for the same reason
     buildTimerIntervalRow();
     buildKeyBindingRow();
+    // ...and the variable's two type pickers as one row, for the same reason
+    buildVariableTypeRows();
 
     // ...and the row the other five forms lead with, shelled over the grids
     // their .ui files lay them out in
@@ -1830,8 +1836,20 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // search row in the part of the panel that does not take turns, rather than
     // inside the pane of trees that goes away. What shows it is unchanged - it
     // is still the Variables view alone.
+    //
+    // The column itself is flush with the window, and what holds the search
+    // field off its edge is that row's own layout - so the switch is given a row
+    // with the same margins and starts on the line the field above it and the
+    // tree rows below it start on. A layout rather than a widget, so that the
+    // row takes no height of its own in the six views the switch is hidden in.
     verticalLayout_frame_left->removeWidget(checkBox_displayAllVariables);
-    verticalLayout_frame_left->insertWidget(1, checkBox_displayAllVariables);
+    auto* pHiddenVariablesRow = new QHBoxLayout();
+    if (QLayout* pSearchRowLayout = widget_searchTerm->layout()) {
+        const QMargins searchRowMargins = pSearchRowLayout->contentsMargins();
+        pHiddenVariablesRow->setContentsMargins(searchRowMargins.left(), 0, searchRowMargins.right(), 0);
+    }
+    pHiddenVariablesRow->addWidget(checkBox_displayAllVariables);
+    verticalLayout_frame_left->insertLayout(1, pHiddenVariablesRow);
 
     // The two panes take turns rather than sharing the height, so there is no
     // split for the reader to place and none to remember
@@ -10299,6 +10317,11 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     treeWidget_variables->setVisible(view == EditorViewType::cmVarsView);
     checkBox_displayAllVariables->setVisible(view == EditorViewType::cmVarsView);
 
+    // ...and what the pane under the heading holds changes with it
+    if (mpLabel_editorCodeHeaderTitle) {
+        mpLabel_editorCodeHeaderTitle->setText(codeHeaderTitleFor(view));
+    }
+
     mpAction_toggleActive->setEnabled(view != EditorViewType::cmVarsView && view != EditorViewType::cmUnknownView);
     mpExportAction->setEnabled(view != EditorViewType::cmVarsView && view != EditorViewType::cmUnknownView);
 
@@ -13177,6 +13200,18 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         return true;
     }
 
+    // What the status bar says about the caret belongs to the code pane, and
+    // there is no caret while the pane is away. edbee is asked to say it again
+    // rather than the last reading being put back: the document under the pane
+    // has changed by the time it returns.
+    if (watched == mpSourceEditorArea) {
+        if (event->type() == QEvent::Hide) {
+            QMainWindow::statusBar()->clearMessage();
+        } else if (event->type() == QEvent::Show && mpSourceEditorEdbee) {
+            mpSourceEditorEdbee->controller()->updateStatusText();
+        }
+    }
+
     // Whatever changed the column's height - a notice put up or taken down, an
     // item chosen, a row of a form shown or hidden - says so by asking the
     // column to lay itself out again. In the views whose column is held to its
@@ -13618,6 +13653,14 @@ void dlgTriggerEditor::slot_colorTriggerBg()
 
 void dlgTriggerEditor::slot_updateStatusBar(const QString& statusText)
 {
+    // Loading a document into a pane that is not on show still moves the caret,
+    // and a reading of where it is would outlive the pane it belongs to.
+    // isVisibleTo() rather than isVisible(), so that the readout is not held
+    // back by the editor window itself not being up yet.
+    if (mpSourceEditorArea && !mpSourceEditorArea->isVisibleTo(this)) {
+        return;
+    }
+
     // edbee adds the scope and last command which is rather technical debugging information,
     // so strip it away by removing the first pipe and everything after it
     const QRegularExpressionMatch match = csmSimplifyStatusBarRegex.match(statusText, 0, QRegularExpression::PartialPreferFirstMatch);
@@ -14568,9 +14611,6 @@ void dlgTriggerEditor::buildEditorFormHeadRows()
             pLayout->setSpacing(scmEditorFormGridSpacingVertical);
         }
     }
-    // The two controls this held are on the head row now, and an empty box in
-    // the grid's first cell would still take the column's width
-    mpVarsMainArea->widget_variable_name->hide();
 
     // The words beside the fields are the form's scaffolding and what is typed
     // into them is its content, so only one of the two is drawn at full strength
@@ -14760,6 +14800,51 @@ void dlgTriggerEditor::buildKeyBindingRow()
     });
 }
 
+// A variable's two type pickers were tucked into the right hand columns of the
+// form's grid, each behind a word pointing at it with an arrow. They are one
+// row now, in the place every other form puts the row under its head row, with
+// each box as wide as the longest thing it can say rather than stretched
+// across the column. The switch that keeps the variable out of the tree is the
+// row under them, which the .ui grid already places for itself.
+void dlgTriggerEditor::buildVariableTypeRows()
+{
+    auto* pGrid = qobject_cast<QGridLayout*>(mpVarsMainArea->frame_vars_main_area->layout());
+    const int labelIndex = pGrid ? pGrid->indexOf(mpVarsMainArea->label_variable_key) : -1;
+    if (labelIndex < 0) {
+        return;
+    }
+
+    // Read before anything is taken out of the grid: detaching an item renumbers
+    // the ones after it
+    int row = 0;
+    int column = 0;
+    int rowSpan = 1;
+    int columnSpan = 1;
+    pGrid->getItemPosition(labelIndex, &row, &column, &rowSpan, &columnSpan);
+    const int span = std::max(1, pGrid->columnCount() - column - 1);
+
+    auto* pRowWidget = new QWidget(mpVarsMainArea->frame_vars_main_area);
+    pRowWidget->setObjectName(qsl("editorVariableTypes"));
+    pRowWidget->setProperty("editorPanelSurface", true);
+    auto* pRow = new QHBoxLayout(pRowWidget);
+    pRow->setContentsMargins(0, 0, 0, 0);
+    pRow->setSpacing(scmEditorModeChipGap);
+    for (QWidget* pControl : {static_cast<QWidget*>(mpVarsMainArea->comboBox_variable_key_type),
+                              static_cast<QWidget*>(mpVarsMainArea->label_variable_value),
+                              static_cast<QWidget*>(mpVarsMainArea->comboBox_variable_value_type)}) {
+        // The .ui grid still holds these, and a widget added to a second layout
+        // while a first one has it is a warning per widget on the console
+        uiDesign::detachFromLayout(pControl);
+        pRow->addWidget(pControl);
+    }
+    // Each box is as wide as the longest reading it can show - which is what its
+    // AdjustToContents policy asks for - so what is left of the row is nothing
+    // rather than two boxes stretched across it
+    pRow->addStretch(1);
+
+    pGrid->addWidget(pRowWidget, row, column + 1, 1, span);
+}
+
 // The row drawn from what the key holds: the keystroke in the field, or the
 // field left empty behind the words saying there is none, and beside it what a
 // click will do. A key group is offered none of it - TKey::match() never
@@ -14889,14 +14974,20 @@ QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
             mpAliasMainArea->label_alias_pattern,
             mpTimersMainArea->label_timer_time,
             mpKeysMainArea->label_key_binding,
-            mpScriptsMainArea->label_script_registered_event_handlers};
+            mpScriptsMainArea->label_script_registered_event_handlers,
+            mpVarsMainArea->label_variable_key,
+            mpVarsMainArea->label_variable_value};
 }
 
 // The first label of every row under a head row, which is what the grid's first
 // column is as wide as
 QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
 {
-    return {mpAliasMainArea->label_alias_pattern, mpTimersMainArea->label_timer_time, mpKeysMainArea->label_key_binding, mpScriptsMainArea->label_script_registered_event_handlers};
+    return {mpAliasMainArea->label_alias_pattern,
+            mpTimersMainArea->label_timer_time,
+            mpKeysMainArea->label_key_binding,
+            mpScriptsMainArea->label_script_registered_event_handlers,
+            mpVarsMainArea->label_variable_key};
 }
 
 // A field has to start at the same place whichever row of whichever form it is
@@ -15887,10 +15978,9 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     mpLabel_editorCodeHeaderIcon->setFixedSize(scmEditorCodeHeaderGlyphSize, scmEditorCodeHeaderGlyphSize);
     pHeaderLayout->addWidget(mpLabel_editorCodeHeaderIcon);
 
-    //: Heading over the editor's code pane, naming the language what is typed there is written in
-    auto* pLabel_headerTitle = new QLabel(tr("Lua script"), mpWidget_editorCodeHeader);
-    pLabel_headerTitle->setObjectName(qsl("editorCodeHeaderTitle"));
-    pHeaderLayout->addWidget(pLabel_headerTitle);
+    mpLabel_editorCodeHeaderTitle = new QLabel(codeHeaderTitleFor(mCurrentView), mpWidget_editorCodeHeader);
+    mpLabel_editorCodeHeaderTitle->setObjectName(qsl("editorCodeHeaderTitle"));
+    pHeaderLayout->addWidget(mpLabel_editorCodeHeaderTitle);
     // Between two equal stretches, so the room the grip is drawn in is left in
     // the middle of the strip rather than wherever the heading happens to end
     pHeaderLayout->addStretch(1);
@@ -15919,6 +16009,19 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     // three panes the right hand splitter stacks
     splitter_right->setHeaderHandle(1, mpWidget_editorCodeHeader);
     updateEditorCompileChip();
+}
+
+// Six of the seven views type Lua under that heading. The variables view does
+// not: the pane there holds the value of whatever the tree has chosen, so the
+// heading names that instead.
+QString dlgTriggerEditor::codeHeaderTitleFor(const EditorViewType view) const
+{
+    if (view == EditorViewType::cmVarsView) {
+        //: Heading over the editor's code pane in the variables view, where the pane holds the chosen variable's value rather than a script
+        return tr("Value");
+    }
+    //: Heading over the editor's code pane, naming the language what is typed there is written in
+    return tr("Lua script");
 }
 
 // Both what the chip says and what it is drawn in, so a theme change and a

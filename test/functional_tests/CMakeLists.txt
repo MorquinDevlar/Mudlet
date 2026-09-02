@@ -135,6 +135,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorTreeHeadingIconTest.cpp
     EditorTreeRowHeightTest.cpp
     EditorTreeSelectionPillTest.cpp
+    EditorVariablesFormTest.cpp
     ReadabilityAuditTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp

@@ -58,6 +58,7 @@
 #include <QScrollArea>
 #include <QToolButton>
 #include <QTemporaryDir>
+#include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
 
@@ -75,6 +76,7 @@
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
 #include "dlgTriggersMainArea.h"
+#include "dlgVarsMainArea.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
@@ -98,6 +100,19 @@ private:
     // The two items the forms walked on their own below are shown from
     QTreeWidgetItem* mpKeyItem = nullptr;
     QTreeWidgetItem* mpTimerItem = nullptr;
+
+    // Looked up rather than kept: every entry into the Variables view rebuilds
+    // the tree, so a row held from one case dangles by the next
+    QTreeWidgetItem* auditedVariableRow() const
+    {
+        QTreeWidgetItem* pBase = mpEditor->treeWidget_variables->topLevelItem(0);
+        for (int i = 0; pBase && i < pBase->childCount(); ++i) {
+            if (pBase->child(i)->text(0) == qsl("auditedVariable")) {
+                return pBase->child(i);
+            }
+        }
+        return nullptr;
+    }
     const QString mProfileName = qsl("ReadabilityAudit-Test-Profile");
     QString mPort;
     const QString mLocalhost = qsl("localhost");
@@ -122,6 +137,10 @@ private:
     // ...and on the timers form, where the words of the interval's sentence are
     // read beside the four fields they name
     static constexpr int scmLeastAuditedOnTheTimersForm = 6;
+    // ...and on the variables form: the name, the two words leading the type
+    // pickers, what each picker is showing, and the switch that hides the
+    // variable from the tree
+    static constexpr int scmLeastAuditedOnTheVariablesForm = 6;
 
     // A button filled with the colour it stands for. Its fill is a value rather
     // than a surface of the design, and the words on it are chosen against that
@@ -502,6 +521,14 @@ private slots:
         mpTimerItem = mpEditor->mpCurrentTimerItem;
         QVERIFY2(mpTimerItem != nullptr, "addTimer() left no current timer item");
 
+        // ...and a variable of the profile's own, so that the form walked below
+        // shows the two type pickers and the switch beside them rather than the
+        // notice a root row puts up
+        QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("auditedVariable = \"north\"")), "the variable the variables form is walked on could not be made");
+        mpEditor->slot_showVariables();
+        QTest::qWait(100ms);
+        QVERIFY2(auditedVariableRow() != nullptr, "the Variables view did not show the variable this walks");
+
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
@@ -644,6 +671,39 @@ private slots:
             QVERIFY2(read >= scmLeastAuditedOnTheTimersForm,
                      qPrintable(qsl("only %1 things were read on the timers form on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheTimersForm))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // ...and the variables form, where the two type pickers sit on one row
+    // behind the words naming them, with the switch that keeps the variable out
+    // of the tree under them
+    void test_theVariablesFormIsReadableInBothAppearances()
+    {
+        mpEditor->slot_showVariables();
+        QCoreApplication::processEvents();
+        QTreeWidgetItem* pRow = auditedVariableRow();
+        QVERIFY2(pRow != nullptr, "the Variables view did not show the variable this walks");
+        mpEditor->treeWidget_variables->setCurrentItem(pRow);
+        mpEditor->slot_variableSelected(pRow);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpVarsMainArea->comboBox_variable_key_type->isVisible(), "the variable this walks is not showing its type pickers");
+
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int read = auditWindow(mpEditor, qsl("the editor's variables form"), appearance.first, failures);
+            counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
+            QVERIFY2(read >= scmLeastAuditedOnTheVariablesForm,
+                     qPrintable(qsl("only %1 things were read on the variables form on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheVariablesForm))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

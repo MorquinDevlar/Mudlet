@@ -171,7 +171,7 @@ private:
     }
 
     // The field on the row under the head row, which has to start where the
-    // name field above it does. The variables form has no such row yet.
+    // name field above it does
     QWidget* leadFieldOf(const EditorViewType view) const
     {
         switch (view) {
@@ -179,6 +179,8 @@ private:
             return mpEditor->mpAliasMainArea->lineEdit_alias_pattern;
         case EditorViewType::cmKeysView:
             return mpEditor->mpKeysMainArea->lineEdit_key_binding;
+        case EditorViewType::cmVarsView:
+            return mpEditor->mpVarsMainArea->comboBox_variable_key_type;
         case EditorViewType::cmScriptView:
             return mpEditor->mpChipRow_scriptEvents;
         case EditorViewType::cmTimerView:

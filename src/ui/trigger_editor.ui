@@ -433,7 +433,7 @@
         <item alignment="Qt::AlignHCenter|Qt::AlignVCenter">
          <widget class="QCheckBox" name="checkBox_displayAllVariables">
           <property name="text">
-           <string>Show normally hidden variables</string>
+           <string>Show hidden variables</string>
           </property>
           <property name="checkable">
            <bool>true</bool>
