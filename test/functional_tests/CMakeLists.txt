@@ -126,6 +126,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorCaretReadingTest.cpp
     EditorChromeInkTest.cpp
     EditorChromeShapeTest.cpp
+    EditorCodeHeadingTest.cpp
     EditorColumnAlignmentTest.cpp
     EditorColumnFontTest.cpp
     EditorEventChipRowTest.cpp
@@ -140,6 +141,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorPlacementPersistenceTest.cpp
     EditorSidebarCollapseTest.cpp
     EditorSplitterRestoreTest.cpp
+    EditorStatusBarTest.cpp
     EditorSurfaceToneTest.cpp
     EditorTimerIntervalTest.cpp
     EditorToolBarOverflowTest.cpp

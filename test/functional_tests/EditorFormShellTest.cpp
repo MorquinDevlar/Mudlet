@@ -307,9 +307,9 @@ private slots:
         mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
     }
 
-    // The handle over the code pane says what it is by what it does: a grip and
-    // a drag in the two views whose forms can use the room, neither in the five
-    // that cannot
+    // The handle over the code pane says what it is by what it does: a hovered
+    // band and a drag in the two views whose forms can use the room, neither in
+    // the five that cannot
     void test_theCodeHeadingOnlyDragsWhereTheFormCanUseTheRoom()
     {
         openAndChoose(EditorViewType::cmTriggerView);

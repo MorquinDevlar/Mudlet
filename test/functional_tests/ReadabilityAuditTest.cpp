@@ -565,6 +565,16 @@ private slots:
 
         openPreferences();
         openAbout();
+
+        // A save that does not compile, so that the note the code pane's
+        // heading carries is on screen for the walk below. Its words are the
+        // one thing in the editor written in a state's own colour rather than
+        // in the shell's ink, which is exactly the case a theme change breaks.
+        mpEditor->mpSourceEditorEdbee->textDocument()->setText(qsl("local a = 1\nlocal b = 1 +* 2\n"));
+        mpEditor->slot_saveEdits();
+        QTest::qWait(50ms);
+        QWidget* pNote = mpEditor->findChild<QWidget*>(qsl("editorCompileNote"));
+        QVERIFY2(pNote != nullptr && pNote->isVisible(), "the heading over the code pane carries no compile note, so the audit below does not cover one");
     }
 
     void cleanupTestCase()

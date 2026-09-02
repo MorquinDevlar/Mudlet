@@ -37,9 +37,10 @@ struct ThemeTokens;
 // hairline down the middle with each pane's own tone carried up to it, which
 // widens to three pixels of the accent while the pointer is on it. A handle
 // given a heading to carry is drawn as a strip deep enough to read the heading
-// in, with the short rounded bar that says it can be dragged across the middle
-// of it. Every colour is mixed at paint time from the application palette, so a
-// theme change needs no more than the repaint it brings with it.
+// in, and says the same thing the same way - a band of the accent along the
+// edge the drag moves, which is the top of the strip for a vertical splitter.
+// Every colour is mixed at paint time from the application palette, so a theme
+// change needs no more than the repaint it brings with it.
 class GripSplitterHandle : public QSplitterHandle
 {
     Q_OBJECT
@@ -48,9 +49,9 @@ public:
     Q_DISABLE_COPY(GripSplitterHandle)
     GripSplitterHandle(const Qt::Orientation orientation, QSplitter* pParent);
 
-    // A strip of content to carry beside the grip; nullptr takes it away again.
-    // The handle stays a handle: the content is told not to take the mouse, so a
-    // drag anywhere on it still resizes.
+    // A strip of content to carry; nullptr takes it away again. The handle
+    // stays a handle: the content is told not to take the mouse, so a drag
+    // anywhere on it still resizes.
     void setContent(QWidget* pContent);
 
     // Whether the panes either side of this handle can be resized through it.
@@ -60,9 +61,24 @@ public:
     void setResizes(const bool resizes);
     [[nodiscard]] bool resizes() const { return mResizes; }
 
+    // One piece of that content to hear clicks for; nullptr takes it away
+    // again. The content takes no mouse events of its own, so a click on the
+    // piece is the handle's to notice: pressed and released inside it without
+    // the pointer having gone a drag's worth away in between is emitted as
+    // clicked(), and the pointer over it is a link's rather than the edge's.
+    void setClickable(QWidget* pPiece);
+
     [[nodiscard]] QSize sizeHint() const override;
 
+signals:
+    void clicked(QWidget* pPiece);
+
 protected:
+    bool event(QEvent* event) override;
+    // A cursor is only worked out as the pointer moves, and the piece that
+    // hears clicks can be shown or taken away while the pointer stands still on
+    // it - so the handle also listens to the piece coming and going
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -75,7 +91,23 @@ protected:
     void leaveEvent(QEvent* event) override;
 
 private:
+    // Whether a point in the handle's own coordinates is on the piece that
+    // hears clicks - false while there is none, or while it is hidden
+    [[nodiscard]] bool overClickable(const QPoint& point) const;
+    // What the pointer is at a point in the handle's own coordinates: a link's
+    // over the piece that hears clicks, and the edge's everywhere else
+    void placeCursor(const QPoint& point);
+
     QPointer<QWidget> mpContent;
+    QPointer<QWidget> mpClickable;
+    // Where the press being held was made, on the screen rather than on the
+    // handle: the handle follows the pointer as the panes are dragged, so
+    // measured against itself a drag goes nowhere at all
+    QPoint mPressedAt;
+    // Whether the press being held ever travelled a drag's worth. The panes
+    // follow the pointer, so a drag that wandered off and came back releases
+    // where it started - which the release point on its own reads as a click.
+    bool mDragged = false;
     bool mHovered = false;
     bool mResizes = true;
 };

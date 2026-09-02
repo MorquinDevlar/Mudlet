@@ -128,6 +128,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorCaretReadingTest;
     friend class EditorChromeInkTest;
     friend class EditorChromeShapeTest;
+    friend class EditorCodeHeadingTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorColumnFontTest;
     friend class EditorEventChipRowTest;
@@ -140,6 +141,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorOptionsPanelDefaultTest;
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
+    friend class EditorStatusBarTest;
     friend class EditorSurfaceToneTest;
     friend class EditorTimerIntervalTest;
     friend class EditorToolBarOverflowTest;
@@ -258,12 +260,18 @@ public:
     // What that heading names: a Lua script everywhere but the variables view,
     // where the pane under it holds the chosen variable's value
     [[nodiscard]] QString codeHeaderTitleFor(const EditorViewType view) const;
-    void updateEditorCompileChip();
-    // The chip speaks for the item in the editor, so switching items puts it
+    // What the strip says about the last save of the item in it, and what it is
+    // written in
+    void updateEditorCodeHeading();
+    // The compiler's sentence, cut to the room the strip has left for it
+    void elideCompileNote();
+    // Where the note leads, whether it was clicked or reached with the keyboard
+    void jumpToCompileErrorLine();
+    // The heading speaks for the item in the editor, so switching items puts it
     // back to saying nothing
     void clearCompileState();
-    // Bracket a save so that showError() is heard by the chip for as long as it
-    // runs, and by nothing else the rest of the time
+    // Bracket a save so that showError() is heard by the heading for as long as
+    // it runs, and by nothing else the rest of the time
     void beginSaveErrorCapture();
     void endSaveErrorCapture();
     // The trigger form's options, moved out of the .ui column of group boxes
@@ -489,6 +497,8 @@ public slots:
     void slot_colorTriggerFg();
     void slot_colorTriggerBg();
     void slot_updateCaretPosition(const QString& statusText); // For the source code editor
+    // A click on the compile note, heard by the handle the strip is carried by
+    void slot_codeHeadingClicked(QWidget* pPiece);
     void slot_profileSaveStarted();
     void slot_profileSaveFinished();
     void slot_editorThemeChanged();
@@ -900,7 +910,7 @@ private:
 
     // The strip the splitter handle over the Lua editor carries. Guarded because
     // the handle owns them: on teardown the splitter can take the strip with it
-    // while this window is still around to be asked about the chip.
+    // while this window is still around to be asked about the heading.
     QPointer<QWidget> mpWidget_editorCodeHeader;
     QPointer<QLabel> mpLabel_editorCodeHeaderIcon;
     // ...and the word on it, which the variables view changes: the pane there
@@ -910,15 +920,22 @@ private:
     // code pane rather than to the window, so it comes and goes with the pane
     // the way the strip carrying it does.
     QPointer<QLabel> mpLabel_editorCaretPosition;
-    QPointer<QWidget> mpWidget_editorCompileChip;
+    QPointer<QWidget> mpWidget_editorCompileNote;
     QPointer<QLabel> mpLabel_editorCompileDot;
-    QPointer<QLabel> mpLabel_editorCompileState;
-    // What the chip says about the item the editor is holding: empty is the
+    QPointer<QLabel> mpLabel_editorCompileMessage;
+    // What the heading says about the item the editor is holding: empty is the
     // reading that it compiled, and anything else is what its last save failed
     // with. Only a save of *this* item writes it - showError() is also how a
     // profile load reports every broken item it comes across, and how an
     // activation the engine refuses is announced, neither of which is this.
     QString mEditorCompileMessage;
+    // The note as it would read with all the room in the world, since what is
+    // shown of it is cut to a strip whose width keeps changing
+    QString mEditorCompileNoteText;
+    // Which line of the item the compiler stopped on, counting from one as it
+    // does, and zero when it named none. Clicking the note moves the caret
+    // there.
+    int mEditorCompileErrorLine = 0;
     // Open only for the length of one save, so that the showError() belonging
     // to that save can be told from the ones raised around it
     bool mEditorSaveErrorCaptureOpen = false;
@@ -1114,6 +1131,9 @@ private:
     edbee::TextSearcher* mpSourceEditorSearcher = nullptr;
 
     inline static const QRegularExpression csmSimplifyCaretReportRegex{qsl(R"(^(?:\[\*\] )?(.+?) \|)")};
+    // What a compiler's report of a failed save is shaped like: the chunk it was
+    // handed, the line it stopped on, and what it made of that line
+    inline static const QRegularExpression csmCompileErrorLineRegex{qsl(R"(^(?:Lua syntax error:\s*)?\[string ".*?"\]:(\d+):\s*(.*)$)")};
 
     QAction* mAddItem = nullptr;
     QAction* mDeleteItem = nullptr;
