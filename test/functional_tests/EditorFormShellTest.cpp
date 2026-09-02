@@ -182,7 +182,9 @@ private:
         case EditorViewType::cmScriptView:
             return mpEditor->mpChipRow_scriptEvents;
         case EditorViewType::cmTimerView:
-            return mpEditor->mpTimersMainArea->timeEdit_timer_hours;
+            // The interval is a sentence, and the words lead it - so what has
+            // to start where the name does is the row, not the first field in it
+            return mpEditor->mpWidget_timerInterval;
         default:
             return nullptr;
         }
@@ -437,7 +439,7 @@ private slots:
         QTest::qWait(100ms);
 
         QVERIFY2(!mpEditor->mpKeysMainArea->lineEdit_key_binding->isVisible(), "a key group is still offered a keystroke it can never match");
-        QVERIFY2(!mpEditor->mpKeysMainArea->pushButton_key_grabKey->isVisible(), "a key group is still offered the button that grabs a keystroke");
+        QVERIFY2(!mpEditor->mpLabel_keyHint->isVisible(), "a key group is still told how to set a keystroke");
     }
 };
 

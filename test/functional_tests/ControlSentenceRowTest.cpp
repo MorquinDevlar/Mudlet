@@ -70,6 +70,27 @@ private:
         return reading;
     }
 
+    // ...and the same for a sentence holding several of them, where which
+    // control landed where is the whole of what a case here is about
+    static QStringList readingOf(const QLayout* pLayout, const QList<QWidget*>& controls)
+    {
+        QStringList reading;
+        for (int i = 0, total = pLayout->count(); i < total; ++i) {
+            QWidget* pWidget = pLayout->itemAt(i)->widget();
+            if (!pWidget) {
+                continue;
+            }
+            const qsizetype control = controls.indexOf(pWidget);
+            if (control >= 0) {
+                reading << qsl("[control %1]").arg(QString::number(control + 1));
+                continue;
+            }
+            auto* pLabel = qobject_cast<QLabel*>(pWidget);
+            reading << (pLabel ? pLabel->text() : qsl("[%1]").arg(QString::fromLatin1(pWidget->metaObject()->className())));
+        }
+        return reading;
+    }
+
     static QString drift(const QString& sentence, const QStringList& reading) { return qsl("\"%1\" laid out as: %2").arg(sentence, reading.join(qsl(" | "))); }
 
 private slots:
@@ -129,6 +150,51 @@ private slots:
 
         const QStringList reading = readingOf(pRow, pSpinBox);
         QVERIFY2(reading == QStringList({qsl("Keep firing for more lines"), qsl("[control]")}), qPrintable(drift(sentence, reading)));
+    }
+
+    // The timer form's interval is four fields in one sentence, and %1 to %4
+    // are what says which of them goes where
+    void test_aSentenceCanHoldSeveralControls()
+    {
+        QWidget host;
+        auto* pRow = new QHBoxLayout(&host);
+        QList<QWidget*> controls{new QSpinBox(&host), new QSpinBox(&host), new QSpinBox(&host)};
+
+        const QString sentence = qsl("Fires every %1 h %2 min %3 s");
+        uiDesign::buildControlSentenceRow(pRow, sentence, controls);
+
+        const QStringList reading = readingOf(pRow, controls);
+        QVERIFY2(reading == QStringList({qsl("Fires every"), qsl("[control 1]"), qsl("h"), qsl("[control 2]"), qsl("min"), qsl("[control 3]"), qsl("s")}), qPrintable(drift(sentence, reading)));
+    }
+
+    // A language that counts the other way round moves the placeholders rather
+    // than the fields, and the row follows the translation
+    void test_aTranslationCanReorderTheControls()
+    {
+        QWidget host;
+        auto* pRow = new QHBoxLayout(&host);
+        QList<QWidget*> controls{new QSpinBox(&host), new QSpinBox(&host), new QSpinBox(&host)};
+
+        const QString sentence = qsl("%3 s, %2 min and %1 h between firings");
+        uiDesign::buildControlSentenceRow(pRow, sentence, controls);
+
+        const QStringList reading = readingOf(pRow, controls);
+        QVERIFY2(reading == QStringList({qsl("[control 3]"), qsl("s,"), qsl("[control 2]"), qsl("min and"), qsl("[control 1]"), qsl("h between firings")}), qPrintable(drift(sentence, reading)));
+    }
+
+    // A translation that dropped one of its placeholders has still to hold
+    // every field it was given, or the interval loses a part of itself
+    void test_aTranslationMissingOnePlaceholderKeepsEveryControl()
+    {
+        QWidget host;
+        auto* pRow = new QHBoxLayout(&host);
+        QList<QWidget*> controls{new QSpinBox(&host), new QSpinBox(&host), new QSpinBox(&host)};
+
+        const QString sentence = qsl("Fires every %1 h %3 s");
+        uiDesign::buildControlSentenceRow(pRow, sentence, controls);
+
+        const QStringList reading = readingOf(pRow, controls);
+        QVERIFY2(reading == QStringList({qsl("Fires every"), qsl("[control 1]"), qsl("h"), qsl("[control 3]"), qsl("s"), qsl("[control 2]")}), qPrintable(drift(sentence, reading)));
     }
 
     // A screen reader names the field by the sentence it sits in, since the

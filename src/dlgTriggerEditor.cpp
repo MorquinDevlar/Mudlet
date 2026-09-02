@@ -740,7 +740,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     mpKeysMainArea = new dlgKeysMainArea(this);
     layoutColumn->addWidget(mpKeysMainArea, 1);
-    connect(mpKeysMainArea->pushButton_key_grabKey, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_keyGrab);
 
     mpVarsMainArea = new dlgVarsMainArea(this);
     layoutColumn->addWidget(mpVarsMainArea, 1);
@@ -1108,6 +1107,12 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // the "Events" label. Before the head rows, so that the row it goes into is
     // carried down with the rest of the grid.
     buildScriptEventRow();
+
+    // ...the timer's interval as a sentence and the key's binding as a field
+    // that listens, both in the cells their .ui grids already lay out, and both
+    // before the head rows for the same reason
+    buildTimerIntervalRow();
+    buildKeyBindingRow();
 
     // ...and the row the other five forms lead with, shelled over the grids
     // their .ui files lay them out in
@@ -1658,7 +1663,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // keys
     connect(mpKeysMainArea->lineEdit_key_name, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
     connect(mpKeysMainArea->lineEdit_key_command, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
-    connect(mpKeysMainArea->pushButton_key_grabKey, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_itemEdited);
 
     // Per-property immediate saves for keys
     connect(mpKeysMainArea->lineEdit_key_name, &QLineEdit::editingFinished, this, &dlgTriggerEditor::slot_saveProperty_KeyName);
@@ -6241,9 +6245,11 @@ void dlgTriggerEditor::addKey(bool isFolder)
         pParentItem->setExpanded(true);
     }
 
-    // Reset UI
+    // Reset UI. A new key answers no keystroke yet, which the field says by
+    // standing empty behind its placeholder rather than by holding those words
+    // as if they were one.
     mpKeysMainArea->lineEdit_key_command->clear();
-    mpKeysMainArea->lineEdit_key_binding->setText("no key chosen");
+    mpKeysMainArea->lineEdit_key_binding->clear();
     clearDocument(mpSourceEditorEdbee); // New Key
 
     // Finalize selection
@@ -7851,6 +7857,12 @@ void dlgTriggerEditor::saveKey()
     QString name = mpKeysMainArea->lineEdit_key_name->text();
     if (name.isEmpty() || name == tr("New key")) {
         name = mpKeysMainArea->lineEdit_key_binding->text();
+        // A key with no keystroke leaves that field empty behind its
+        // placeholder, and an item named after it is named by what the reader
+        // sees there rather than by nothing at all
+        if (name.isEmpty() && !mIsGrabKey) {
+            name = mpKeysMainArea->lineEdit_key_binding->placeholderText();
+        }
     }
     const QString command = mpKeysMainArea->lineEdit_key_command->text();
     const QString script = mpSourceEditorEdbeeDocument->text();
@@ -8634,15 +8646,10 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
         mpKeysMainArea->lineEdit_key_command->setText(command);
         mpKeysMainArea->lineEdit_key_name->setText(name);
         mpKeysMainArea->label_idNumber->setText(QString::number(ID));
-        const QString keyName = mpHost->getKeyUnit()->getKeyName(pT->getKeyCode(), pT->getKeyModifiers());
-        mpKeysMainArea->lineEdit_key_binding->setText(keyName);
-        // TKey::match() never matches a group, so a keystroke on one is a
-        // setting that cannot do anything: the row goes away for a group and
-        // comes back for a key
-        const bool keyBindable = !pT->isFolder();
-        mpKeysMainArea->label_key_binding->setVisible(keyBindable);
-        mpKeysMainArea->lineEdit_key_binding->setVisible(keyBindable);
-        mpKeysMainArea->pushButton_key_grabKey->setVisible(keyBindable);
+        // The keystroke, the words beside it, and whether the row is there at
+        // all: TKey::match() never matches a group, so a keystroke on one is a
+        // setting that cannot do anything
+        showKeyBinding();
 
         clearDocument(mpSourceEditorEdbee, pT->getScript());
         restoreEditorState(EditorViewType::cmKeysView, ID);
@@ -9279,6 +9286,10 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
         mpTimersMainArea->lineEdit_timer_command->setText(command);
         mpTimersMainArea->lineEdit_timer_name->setText(name);
         mpTimersMainArea->label_idNumber->setText(QString::number(ID));
+        // A timer held inside another timer fires once after the one above it
+        // rather than every interval, and the sentence beside the fields is
+        // where the form says so
+        showTimerIntervalSentence(pT->isOffsetTimer());
         const QTime time = pT->getTime();
         mpTimersMainArea->timeEdit_timer_hours->setTime(QTime(time.hour(), 0, 0, 0));
         mpTimersMainArea->timeEdit_timer_minutes->setTime(QTime(0, time.minute(), 0, 0));
@@ -13136,6 +13147,14 @@ void dlgTriggerEditor::slot_profileSaveAsAction()
 
 bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
 {
+    // The field a keystroke is grabbed in: it is watched whether or not a grab
+    // is armed, since arming one is what a click on it does. While one is
+    // armed this filter is on the application as well, and both passes name
+    // the field as the object the event was sent to.
+    if (mpKeysMainArea && watched == mpKeysMainArea->lineEdit_key_binding && handleKeyBindingFieldEvent(event)) {
+        return true;
+    }
+
     if (mIsGrabKey) {
         if (event->type() == QEvent::KeyPress) {
             auto* keyEvent = static_cast<QKeyEvent*>(event);
@@ -13236,9 +13255,7 @@ bool dlgTriggerEditor::event(QEvent* event)
             auto* ke = static_cast<QKeyEvent*>(event);
             switch (ke->key()) {
             case Qt::Key_Escape:
-                mIsGrabKey = false;
-                setShortcuts();
-                QCoreApplication::instance()->removeEventFilter(this);
+                endKeyGrab();
                 ke->accept();
                 return true;
 
@@ -13255,9 +13272,7 @@ bool dlgTriggerEditor::event(QEvent* event)
 
             default:
                 keyGrabCallback(static_cast<Qt::Key>(ke->key()), static_cast<Qt::KeyboardModifiers>(ke->modifiers()));
-                mIsGrabKey = false;
-                setShortcuts();
-                QCoreApplication::instance()->removeEventFilter(this);
+                endKeyGrab();
                 ke->accept();
                 return true;
             }
@@ -13278,9 +13293,16 @@ void dlgTriggerEditor::resizeEvent(QResizeEvent* event)
 
 void dlgTriggerEditor::slot_keyGrab()
 {
+    if (mIsGrabKey) {
+        return;
+    }
     mIsGrabKey = true;
     setShortcuts(false);
     QCoreApplication::instance()->installEventFilter(this);
+    // Reaching for the keystroke is an edit to the key, the way the button this
+    // replaced was
+    slot_itemEdited();
+    showKeyBindingListening();
 }
 
 // Activate shortcuts for editor menu items like Ctrl+S for "Save Item" etc.
@@ -14593,6 +14615,264 @@ void dlgTriggerEditor::buildScriptEventRow()
     connect(mpChipRow_scriptEvents, &uiDesign::ChipRow::itemsChanged, this, &dlgTriggerEditor::slot_itemEdited);
 }
 
+// A timer's interval was drawn as a wall clock: four boxes at 30pt with colons
+// between them, the units named above in 8pt, and nothing saying what the whole
+// of it meant. It is one sentence now, in the type the rest of the form is
+// filled in at - the same four fields, with the words that say what each of
+// them is between them, and the whole of it saying what the timer does.
+void dlgTriggerEditor::buildTimerIntervalRow()
+{
+    auto* pGrid = qobject_cast<QGridLayout*>(mpTimersMainArea->layout());
+    const int labelIndex = pGrid ? pGrid->indexOf(mpTimersMainArea->label_timer_time) : -1;
+    if (labelIndex < 0) {
+        return;
+    }
+
+    mpWidget_timerInterval = new QWidget(mpTimersMainArea);
+    mpWidget_timerInterval->setObjectName(qsl("editorTimerInterval"));
+    mpWidget_timerInterval->setProperty("editorPanelSurface", true);
+    auto* pRow = new QHBoxLayout(mpWidget_timerInterval);
+    pRow->setContentsMargins(0, 0, 0, 0);
+    pRow->setSpacing(scmEditorModeChipGap);
+
+    int row = 0;
+    int column = 0;
+    int rowSpan = 1;
+    int columnSpan = 1;
+    pGrid->getItemPosition(labelIndex, &row, &column, &rowSpan, &columnSpan);
+    // The whole of the row apart from the word leading it, the way the scripts
+    // form's chips take the width the list they replace had
+    pGrid->addWidget(mpWidget_timerInterval, row, column + 1, 1, std::max(1, pGrid->columnCount() - column - 1));
+
+    showTimerIntervalSentence(false);
+}
+
+// Which sentence those words are: a timer fires every interval, while a timer
+// held inside another timer - an offset timer - fires once, that far after the
+// one above it. Rebuilt only when the kind changes, since choosing another
+// timer of the same kind has nothing to move.
+void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
+{
+    if (!mpWidget_timerInterval || (mTimerIntervalRowBuilt && mTimerIntervalOffset == offsetTimer)) {
+        return;
+    }
+    mTimerIntervalRowBuilt = true;
+    mTimerIntervalOffset = offsetTimer;
+
+    const QList<QWidget*> fields{mpTimersMainArea->timeEdit_timer_hours, mpTimersMainArea->timeEdit_timer_minutes, mpTimersMainArea->timeEdit_timer_seconds, mpTimersMainArea->timeEdit_timer_msecs};
+
+    auto* pRow = qobject_cast<QHBoxLayout*>(mpWidget_timerInterval->layout());
+    // The four fields are the form's and stay; the words are this sentence's
+    // own and go out with it
+    while (QLayoutItem* pItem = pRow->takeAt(0)) {
+        QWidget* pWord = pItem->widget();
+        delete pItem;
+        if (pWord && !fields.contains(pWord)) {
+            delete pWord;
+        }
+    }
+    for (QWidget* pField : fields) {
+        // The .ui grid still holds these the first time round, and a widget
+        // added to a second layout while a first one has it is a warning per
+        // widget on the console
+        uiDesign::detachFromLayout(pField);
+    }
+
+    QString sentence;
+    if (offsetTimer) {
+        //: How long after the timer above it an offset timer fires. %1, %2, %3 and %4 are the hour, minute, second and millisecond fields in that order, and may be put wherever the language reads them.
+        sentence = tr("Fires once, %1 h %2 min %3 s %4 ms after the timer above it fires");
+    } else {
+        //: How often a timer fires. %1, %2, %3 and %4 are the hour, minute, second and millisecond fields in that order, and may be put wherever the language reads them.
+        sentence = tr("Fires every %1 h %2 min %3 s %4 ms");
+    }
+    uiDesign::buildControlSentenceRow(pRow, sentence, fields);
+    // Each field is as wide as its digits and the arrows beside them; what is
+    // left of the row is nothing rather than four boxes stretched across it
+    pRow->addStretch(1);
+
+    // The words are the form's scaffolding, the way the labels leading its rows
+    // are, and are written in the same quiet ink
+    for (QLabel* pWord : mpWidget_timerInterval->findChildren<QLabel*>()) {
+        pWord->setProperty("editorRowLabel", true);
+        uiDesign::repolish(pWord);
+    }
+}
+
+// The keystroke a key answers was a read-only field with a "Grab New Key"
+// button beside it, and nothing on screen said the editor had started
+// listening. The field is the control now: a click on it - or Return or Space
+// while it holds the keyboard - starts the grab, it carries the accent while it
+// waits, and the word beside it says what happens next.
+void dlgTriggerEditor::buildKeyBindingRow()
+{
+    auto* pGrid = qobject_cast<QGridLayout*>(mpKeysMainArea->layout());
+    QLineEdit* pField = mpKeysMainArea->lineEdit_key_binding;
+    const int labelIndex = pGrid ? pGrid->indexOf(mpKeysMainArea->label_key_binding) : -1;
+    if (labelIndex < 0) {
+        return;
+    }
+
+    pField->setFocusPolicy(Qt::StrongFocus);
+    pField->setCursor(Qt::PointingHandCursor);
+    //: Tooltip on the field holding the keystroke a key answers; the field listens for the keystroke itself rather than being typed into
+    pField->setToolTip(utils::richText(tr("The keystroke this key answers. Click it, then press the keys you want.")));
+    pField->installEventFilter(this);
+
+    mpButton_keyClear = new QToolButton(mpKeysMainArea);
+    mpButton_keyClear->setObjectName(qsl("editorKeyClear"));
+    mpButton_keyClear->setAutoRaise(true);
+    mpButton_keyClear->setFocusPolicy(Qt::NoFocus);
+    mpButton_keyClear->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
+    //: Tooltip on the cross that takes the keystroke off a key, leaving it bound to nothing
+    mpButton_keyClear->setToolTip(utils::richText(tr("Forget this key")));
+
+    mpLabel_keyHint = new QLabel(mpKeysMainArea);
+    mpLabel_keyHint->setObjectName(qsl("editorKeyHint"));
+    mpLabel_keyHint->setProperty("editorRowLabel", true);
+
+    auto* pRowWidget = new QWidget(mpKeysMainArea);
+    pRowWidget->setObjectName(qsl("editorKeyBindingRow"));
+    pRowWidget->setProperty("editorPanelSurface", true);
+    auto* pRow = new QHBoxLayout(pRowWidget);
+    pRow->setContentsMargins(0, 0, 0, 0);
+    pRow->setSpacing(scmEditorModeChipGap);
+    uiDesign::detachFromLayout(pField);
+    pRow->addWidget(pField, 1);
+    pRow->addWidget(mpButton_keyClear);
+    pRow->addWidget(mpLabel_keyHint);
+    pRow->addStretch(1);
+
+    int row = 0;
+    int column = 0;
+    int rowSpan = 1;
+    int columnSpan = 1;
+    pGrid->getItemPosition(labelIndex, &row, &column, &rowSpan, &columnSpan);
+    pGrid->addWidget(pRowWidget, row, column + 1, 1, std::max(1, pGrid->columnCount() - column - 1));
+
+    // Forgetting the keystroke goes through the path a captured one takes, so
+    // it is one entry on the undo stack like any other change to the key
+    connect(mpButton_keyClear, &QAbstractButton::clicked, this, [this]() {
+        endKeyGrab();
+        keyGrabCallback(Qt::Key_unknown, Qt::NoModifier);
+        slot_itemEdited();
+        showKeyBinding();
+    });
+}
+
+// The row drawn from what the key holds: the keystroke in the field, or the
+// field left empty behind the words saying there is none, and beside it what a
+// click will do. A key group is offered none of it - TKey::match() never
+// matches a folder, so a keystroke on one is a setting that can do nothing.
+void dlgTriggerEditor::showKeyBinding()
+{
+    if (!mpLabel_keyHint) {
+        return;
+    }
+
+    // Looked up the way slot_keySelected does rather than through
+    // getKeyFromTreeItem(), which answers null for a row with no parent
+    TKey* pKey = mpCurrentKeyItem ? mpHost->getKeyUnit()->getKey(mpCurrentKeyItem->data(0, Qt::UserRole).toInt()) : nullptr;
+    const bool bindable = pKey && !pKey->isFolder();
+    QLineEdit* pField = mpKeysMainArea->lineEdit_key_binding;
+    mpKeysMainArea->label_key_binding->setVisible(bindable);
+    pField->setVisible(bindable);
+    mpLabel_keyHint->setVisible(bindable);
+    if (!bindable) {
+        mpButton_keyClear->hide();
+        return;
+    }
+
+    const bool bound = pKey->getKeyCode() != Qt::Key_unknown && pKey->getKeyCode() != Qt::Key(0);
+    pField->setProperty("editorListening", false);
+    uiDesign::repolish(pField);
+    pField->setCursor(Qt::PointingHandCursor);
+    pField->setText(bound ? mpHost->getKeyUnit()->getKeyName(pKey->getKeyCode(), pKey->getKeyModifiers()) : QString());
+    //: Stands in the key binding field for a key that answers no keystroke yet
+    pField->setPlaceholderText(tr("No key chosen"));
+    if (bound) {
+        //: Beside a key's keystroke, saying that clicking the field is how it is changed
+        mpLabel_keyHint->setText(tr("Click to change"));
+    } else {
+        //: Beside the empty key binding field, saying that clicking it is how a keystroke is set
+        mpLabel_keyHint->setText(tr("Click to set"));
+    }
+    // Nothing to forget until there is a keystroke to forget
+    mpButton_keyClear->setVisible(bound);
+}
+
+void dlgTriggerEditor::showKeyBindingListening()
+{
+    if (!mpLabel_keyHint) {
+        return;
+    }
+
+    QLineEdit* pField = mpKeysMainArea->lineEdit_key_binding;
+    pField->clear();
+    //: Stands in the key binding field while the editor waits for the user to press the keys to bind
+    pField->setPlaceholderText(tr("Press a key combination"));
+    //: Beside the key binding field while it waits for a keystroke, saying how to leave the keystroke as it was
+    mpLabel_keyHint->setText(tr("Escape keeps the current key"));
+    pField->setProperty("editorListening", true);
+    uiDesign::repolish(pField);
+    // Pressing rather than clicking is what is wanted now
+    pField->setCursor(Qt::ArrowCursor);
+}
+
+void dlgTriggerEditor::endKeyGrab()
+{
+    if (!mIsGrabKey) {
+        return;
+    }
+    mIsGrabKey = false;
+    setShortcuts();
+    QCoreApplication::instance()->removeEventFilter(this);
+    showKeyBinding();
+}
+
+bool dlgTriggerEditor::handleKeyBindingFieldEvent(QEvent* pEvent)
+{
+    switch (pEvent->type()) {
+    case QEvent::MouseButtonPress:
+        if (!mIsGrabKey && static_cast<QMouseEvent*>(pEvent)->button() == Qt::LeftButton) {
+            mpKeysMainArea->lineEdit_key_binding->setFocus(Qt::MouseFocusReason);
+            slot_keyGrab();
+            return true;
+        }
+        return false;
+
+    case QEvent::KeyPress:
+        // While the grab is armed every keystroke is the one being taken, and
+        // the field holds the keyboard - so it is handed to the editor's own
+        // event(), which is where a grab is read, rather than left to a
+        // read-only line edit that eats the arrows and Ctrl+A on the way past
+        if (mIsGrabKey) {
+            event(pEvent);
+            return true;
+        }
+        switch (static_cast<QKeyEvent*>(pEvent)->key()) {
+        case Qt::Key_Return:
+            [[fallthrough]];
+        case Qt::Key_Enter:
+            [[fallthrough]];
+        case Qt::Key_Space:
+            slot_keyGrab();
+            return true;
+        default:
+            return false;
+        }
+
+    case QEvent::FocusOut:
+        // The user went somewhere else with the grab still armed, which is
+        // Escape by another route: the keystroke stands as it was
+        endKeyGrab();
+        return false;
+
+    default:
+        return false;
+    }
+}
+
 // Every label naming a field on one of the five forms: the name at the head of
 // each, whatever is typed beside it, and the ones leading the rows under it.
 // All of them are drawn in the quiet ink a form's scaffolding is written in.
@@ -15442,6 +15722,12 @@ void dlgTriggerEditor::restyleEditorIcons()
         mpChipRow_scriptEvents->restyleGlyphs(tokens);
     }
 
+    // ...and the same cross beside a key's keystroke, which is what takes it
+    // away again
+    if (mpButton_keyClear) {
+        mpButton_keyClear->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.png"), tokens));
+    }
+
     if (mpLabel_editorCodeHeaderIcon) {
         const qreal glyphRatio = mpLabel_editorCodeHeaderIcon->devicePixelRatioF();
         QPixmap headerGlyph = uiDesign::tintedGlyph(QPixmap(qsl(":/icons/editor-scripts.png")), quietColor)
@@ -16142,13 +16428,26 @@ void dlgTriggerEditor::applyEditorShellStyle()
         mpScriptsMainArea->setStyleSheet(formRules + uiDesign::ChipRow::styleSheetFor(tokens));
     }
 
-    // The forms with nothing but fields on them: a name, a delay, a key, a
-    // value. The two above are here as well, appended to what else they carry.
-    for (QWidget* pMainArea : {static_cast<QWidget*>(mpTimersMainArea),
-                               static_cast<QWidget*>(mpAliasMainArea),
-                               static_cast<QWidget*>(mpActionsMainArea),
-                               static_cast<QWidget*>(mpKeysMainArea),
-                               static_cast<QWidget*>(mpVarsMainArea)}) {
+    if (mpKeysMainArea) {
+        // The field a key's keystroke is set in listens for it rather than
+        // being typed into, and says so by carrying the accent while it waits
+        mpKeysMainArea->setStyleSheet(formRules
+                                      + qsl("#lineEdit_key_binding[editorListening=\"true\"] { border: %3px solid %1; background-color: %2; }"
+                                            // The cross that forgets the keystroke, drawn as the
+                                            // picture alone the way the toolbar's actions are: a
+                                            // frame round a glyph this small reads as a second
+                                            // control
+                                            "#editorKeyClear { border: none; border-radius: %4px; background: transparent; padding: 2px; }"
+                                            "#editorKeyClear:hover { background-color: %5; }")
+                                                .arg(accentColor.name(), accentSoft, QString::number(uiDesign::scmInputBorderWidth))
+                                                .arg(QString::number(uiDesign::scmRadiusChip), hoverSoft));
+    }
+
+    // The forms that are a fixed set of fields and nothing else: a name, an
+    // interval, a value. The three with a control of their own - the trigger's
+    // cards, the script's chips, the key's listening field - are styled above,
+    // where these same rules lead what else they carry.
+    for (QWidget* pMainArea : {static_cast<QWidget*>(mpTimersMainArea), static_cast<QWidget*>(mpAliasMainArea), static_cast<QWidget*>(mpActionsMainArea), static_cast<QWidget*>(mpVarsMainArea)}) {
         if (pMainArea) {
             pMainArea->setStyleSheet(formRules);
         }

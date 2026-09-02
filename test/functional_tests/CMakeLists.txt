@@ -122,6 +122,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorFormShellTest.cpp
     EditorGeometryWriteGuardTest.cpp
     EditorIconScaleTest.cpp
+    EditorKeyCaptureTest.cpp
     EditorMinimumSizeTest.cpp
     EditorNoticeGlyphTest.cpp
     EditorOptionsPanelDefaultTest.cpp
@@ -129,6 +130,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorSidebarCollapseTest.cpp
     EditorSplitterRestoreTest.cpp
     EditorSurfaceToneTest.cpp
+    EditorTimerIntervalTest.cpp
     EditorTreeDotClickTest.cpp
     EditorTreeHeadingIconTest.cpp
     EditorTreeRowHeightTest.cpp

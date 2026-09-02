@@ -313,6 +313,17 @@ void insertGridRowAtTop(QGridLayout* pGrid, QWidget* pWidget);
 // as a sentence: all of it leads, and the control follows.
 void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, QWidget* pControl);
 
+// The same for a sentence holding several controls - "Fires every %1 h %2 min
+// %3 s %4 ms" - where %1 is the first of the list, %2 the second and so on
+// wherever the translation puts them. A placeholder the sentence does not carry
+// leaves its control after the words, as the single-control form does; a
+// placeholder naming a control that is not there is left in the sentence, so a
+// mistranslation shows rather than swallowing a field.
+//
+// Each control keeps whatever accessible name it came with: one sentence cannot
+// name four fields, and what each of them is, is the word beside it.
+void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, const QList<QWidget*>& controls);
+
 // A row that leads somewhere rather than setting something; the chevron at its
 // right edge is drawn by the shell stylesheet from the property this puts on.
 void makeChevronRow(QAbstractButton* pButton);

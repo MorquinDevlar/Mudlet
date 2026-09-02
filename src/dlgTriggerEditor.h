@@ -127,12 +127,14 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorEventChipRowTest;
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
+    friend class EditorKeyCaptureTest;
     friend class EditorMinimumSizeTest;
     friend class EditorNoticeGlyphTest;
     friend class EditorOptionsPanelDefaultTest;
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorSurfaceToneTest;
+    friend class EditorTimerIntervalTest;
     friend class EditorTreeDotClickTest;
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
@@ -251,6 +253,27 @@ public:
     // The events a script is registered for, as a row of chips in the cell
     // beside the "Events" label the .ui file leaves there
     void buildScriptEventRow();
+    // A timer's interval as one sentence rather than as a wall clock: the four
+    // fields the .ui file holds, laid into the words that say what they are
+    void buildTimerIntervalRow();
+    // ...and which of the two sentences those words are, which is the whole of
+    // the difference between a timer and one offset from the timer above it
+    void showTimerIntervalSentence(const bool offsetTimer);
+    // The keystroke a key is bound to, as a field that listens for it: the hint
+    // beside it and the button that forgets the keystroke are built here
+    void buildKeyBindingRow();
+    // The field, the hint and the clear button drawn from what the key holds.
+    // A group is offered none of them - TKey::match() never matches one.
+    void showKeyBinding();
+    // ...and the same row while it is waiting for the keystroke to be pressed
+    void showKeyBindingListening();
+    // Every way out of a grab: a keystroke taken, Escape, or the field losing
+    // the keyboard. A grab takes the editor's shortcuts away and puts a filter
+    // on the application, so nothing may end one without undoing both.
+    void endKeyGrab();
+    // A click on the field arms the grab, Return or Space does the same from
+    // the keyboard, and losing the focus gives up on it
+    bool handleKeyBindingFieldEvent(QEvent* pEvent);
     [[nodiscard]] QList<QLabel*> editorFormRowLabels() const;
     [[nodiscard]] QList<QLabel*> editorFormLeadLabels() const;
     // One width for the words leading those forms' rows, so a field starts at
@@ -879,6 +902,18 @@ private:
     // The events a script is registered for, in the cell beside the "Events"
     // label of the scripts form's grid
     uiDesign::ChipRow* mpChipRow_scriptEvents = nullptr;
+    // A timer's interval, read as a sentence: the four fields of the .ui file
+    // with the words that say what each of them is between them
+    QWidget* mpWidget_timerInterval = nullptr;
+    // Which sentence is up, so that choosing another timer of the same kind
+    // leaves the words where they are
+    bool mTimerIntervalRowBuilt = false;
+    bool mTimerIntervalOffset = false;
+    // What a click on the key binding field will do, said beside it
+    QLabel* mpLabel_keyHint = nullptr;
+    // ...and the cross that forgets the keystroke, which is only there while
+    // there is one to forget
+    QToolButton* mpButton_keyClear = nullptr;
     // Height the panel borrowed from the code pane when it was opened, so that
     // closing it can hand back that much and no more
     int mTriggerOptionsBorrowedHeight = 0;

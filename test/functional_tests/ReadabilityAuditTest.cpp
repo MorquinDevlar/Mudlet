@@ -95,6 +95,9 @@ private:
     dlgTriggerEditor* mpEditor = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
     Host* mpHost = nullptr;
+    // The two items the forms walked on their own below are shown from
+    QTreeWidgetItem* mpKeyItem = nullptr;
+    QTreeWidgetItem* mpTimerItem = nullptr;
     const QString mProfileName = qsl("ReadabilityAudit-Test-Profile");
     QString mPort;
     const QString mLocalhost = qsl("localhost");
@@ -112,6 +115,13 @@ private:
     // the ID pill's two words, the word leading the row of events, the two
     // chips and the button that adds another
     static constexpr int scmLeastAuditedOnTheScriptsForm = 6;
+    // ...on the keys form: the name, the command, the ID pill's two words, the
+    // word leading the key row, the placeholder standing in for the keystroke
+    // it has not been given and the hint beside it
+    static constexpr int scmLeastAuditedOnTheKeysForm = 6;
+    // ...and on the timers form, where the words of the interval's sentence are
+    // read beside the four fields they name
+    static constexpr int scmLeastAuditedOnTheTimersForm = 6;
 
     // A button filled with the colour it stands for. Its fill is a value rather
     // than a surface of the design, and the words on it are chosen against that
@@ -477,6 +487,21 @@ private slots:
         mpEditor->slot_scriptsSelected(mpEditor->mpCurrentScriptItem);
         QTest::qWait(100ms);
 
+        // A key with no keystroke set and a timer, so that the two forms walked
+        // on their own below have something to show: the key row's placeholder
+        // and hint, and the words of the interval's sentence
+        mpEditor->slot_showKeys();
+        mpEditor->addKey(false);
+        QTest::qWait(100ms);
+        mpKeyItem = mpEditor->mpCurrentKeyItem;
+        QVERIFY2(mpKeyItem != nullptr, "addKey() left no current key item");
+
+        mpEditor->slot_showTimers();
+        mpEditor->addTimer(false);
+        QTest::qWait(100ms);
+        mpTimerItem = mpEditor->mpCurrentTimerItem;
+        QVERIFY2(mpTimerItem != nullptr, "addTimer() left no current timer item");
+
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
@@ -562,6 +587,63 @@ private slots:
             QVERIFY2(read >= scmLeastAuditedOnTheScriptsForm,
                      qPrintable(qsl("only %1 things were read on the scripts form on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheScriptsForm))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // The keys form, for the same reason: the field a keystroke is set in
+    // stands empty behind a placeholder until there is one, and the word beside
+    // it saying what a click will do is written in the quiet ink
+    void test_theKeysFormIsReadableInBothAppearances()
+    {
+        mpEditor->slot_showKeys();
+        mpEditor->slot_keySelected(mpKeyItem);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpLabel_keyHint != nullptr && mpEditor->mpLabel_keyHint->isVisible(), "the key this walks is not showing the hint beside its keystroke");
+
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int read = auditWindow(mpEditor, qsl("the editor's keys form"), appearance.first, failures);
+            counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
+            QVERIFY2(read >= scmLeastAuditedOnTheKeysForm,
+                     qPrintable(qsl("only %1 things were read on the keys form on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheKeysForm))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // ...and the timers form, where the interval is a sentence: its words are
+    // the form's scaffolding and are read at the quiet ink's floor
+    void test_theTimersFormIsReadableInBothAppearances()
+    {
+        mpEditor->slot_showTimers();
+        mpEditor->slot_timerSelected(mpTimerItem);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpWidget_timerInterval != nullptr && mpEditor->mpWidget_timerInterval->isVisible(), "the timer this walks is not showing its interval");
+
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int read = auditWindow(mpEditor, qsl("the editor's timers form"), appearance.first, failures);
+            counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
+            QVERIFY2(read >= scmLeastAuditedOnTheTimersForm,
+                     qPrintable(qsl("only %1 things were read on the timers form on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheTimersForm))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

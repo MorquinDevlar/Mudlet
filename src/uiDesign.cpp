@@ -43,6 +43,7 @@
 #include <QListWidget>
 #include <QPainter>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStyle>
@@ -263,24 +264,50 @@ void insertGridRowAtTop(QGridLayout* pGrid, QWidget* pWidget)
 
 void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, QWidget* pControl)
 {
+    // A screen reader announces a field by its own name and not by the labels
+    // beside it, so the control is given the whole sentence it sits in
+    pControl->setAccessibleName(QString(translatedSentence).remove(qsl("%1")).simplified());
+    buildControlSentenceRow(pRow, translatedSentence, QList<QWidget*>{pControl});
+}
+
+void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, const QList<QWidget*>& controls)
+{
     // Null while the row is a bare layout waiting to be added to another one,
     // and Qt reparents everything in it at that point
     QWidget* pParent = pRow->parentWidget();
 
-    const qsizetype placeholder = translatedSentence.indexOf(qsl("%1"));
-    const QString before = (placeholder < 0 ? translatedSentence : translatedSentence.left(placeholder)).trimmed();
-    const QString after = placeholder < 0 ? QString() : translatedSentence.mid(placeholder + 2).trimmed();
+    // The gaps between the words and the controls are the row's own spacing, so
+    // each run of words is trimmed of what would otherwise double it
+    const auto addWords = [pRow, pParent](const QString& words) {
+        const QString trimmed = words.trimmed();
+        if (!trimmed.isEmpty()) {
+            pRow->addWidget(new QLabel(trimmed, pParent));
+        }
+    };
 
-    // A screen reader announces a field by its own name and not by the labels
-    // beside it, so the control is given the whole sentence it sits in
-    pControl->setAccessibleName(QString(translatedSentence).remove(qsl("%1")).simplified());
-
-    if (!before.isEmpty()) {
-        pRow->addWidget(new QLabel(before, pParent));
+    QList<bool> placed(controls.size(), false);
+    static const QRegularExpression placeholderPattern(qsl("%(\\d+)"));
+    qsizetype wordsFrom = 0;
+    QRegularExpressionMatchIterator placeholders = placeholderPattern.globalMatch(translatedSentence);
+    while (placeholders.hasNext()) {
+        const QRegularExpressionMatch placeholder = placeholders.next();
+        const int index = placeholder.captured(1).toInt() - 1;
+        if (index < 0 || index >= controls.size() || placed.at(index)) {
+            continue;
+        }
+        addWords(translatedSentence.mid(wordsFrom, placeholder.capturedStart() - wordsFrom));
+        pRow->addWidget(controls.at(index));
+        placed[index] = true;
+        wordsFrom = placeholder.capturedEnd();
     }
-    pRow->addWidget(pControl);
-    if (!after.isEmpty()) {
-        pRow->addWidget(new QLabel(after, pParent));
+    addWords(translatedSentence.mid(wordsFrom));
+
+    // A translation that lost a placeholder is a mistake in the .ts file, and
+    // the row it produces still has to hold every control it was given
+    for (qsizetype index = 0; index < controls.size(); ++index) {
+        if (!placed.at(index)) {
+            pRow->addWidget(controls.at(index));
+        }
     }
 }
 
