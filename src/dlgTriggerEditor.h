@@ -109,6 +109,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     // Allow QTest-based test classes to access private members
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
+    friend class EditorColumnFontTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
 
@@ -188,6 +189,9 @@ public:
     void enterEvent(TEnterEvent* event) override;
     bool eventFilter(QObject*, QEvent* event) override;
     bool event(QEvent* event) override;
+    // Hide QWidget::setFont() and QWidget::setStyleSheet(): a font has to be carried past the stylesheets in the window, see StyleSheetFontLift
+    void setFont(const QFont& font);
+    void setStyleSheet(const QString& styleSheet);
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* e) override;
     void updateExtraControlsToggleIcon();

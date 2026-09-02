@@ -105,6 +105,101 @@ static const QString cMultiItemPasteSeparator = qsl("\n<!--MUDLET_MULTI_ITEM_SEP
 // Track whether the shared auto-complete provider has been initialized
 bool dlgTriggerEditor::smAutoCompleteInitialized = false;
 
+namespace {
+// Qt's default stylesheet mode keeps a parent's font from any widget a
+// stylesheet style has polished, which is what Qt::WA_StyleSheet marks:
+// QWidgetPrivate::updateFont() skips such a child, naturalWidgetFont()
+// ignores such a parent, and QWidget::setParent() resolves nothing when
+// either side has it. Every widget under the one a sheet was set on carries
+// the flag - this whole window once the profile's sheet lands on it, a form
+// under a sheet of its own. For as long as one of these lives, the flag is
+// off on the given widget, its parent, and every widget under it in the same
+// window, so one of Qt's own propagations run inside the scope crosses the
+// sheets and resolves each widget with the masks it would have had with no
+// sheet in the way: a label with a size of its own keeps it, a merely bold
+// one follows the size, and a size a sheet sets is put back by the same Qt
+// code that puts it there on any other font change. Qt sets the flag again
+// itself on each widget as its render rule is looked up at the end of that
+// widget's own update - after its subtree has been walked, so the walk is not
+// cut short - and the destructor sets it on the rest.
+class StyleSheetFontLift
+{
+public:
+    explicit StyleSheetFontLift(QWidget* pWidget);
+    ~StyleSheetFontLift();
+    Q_DISABLE_COPY_MOVE(StyleSheetFontLift)
+
+private:
+    void lift(QWidget* pWidget);
+
+    // QPointer, as a FontChange handler in the tree is free to rebuild widgets
+    QList<QPointer<QWidget>> mLifted;
+};
+
+StyleSheetFontLift::StyleSheetFontLift(QWidget* pWidget)
+{
+    // a widget takes nothing from a parent that carries the flag, whatever its own says
+    if (auto* pParent = pWidget->parentWidget(); pParent && pParent->testAttribute(Qt::WA_StyleSheet)) {
+        pParent->setAttribute(Qt::WA_StyleSheet, false);
+        mLifted.append(pParent);
+    }
+    lift(pWidget);
+}
+
+void StyleSheetFontLift::lift(QWidget* pWidget)
+{
+    if (pWidget->testAttribute(Qt::WA_StyleSheet)) {
+        pWidget->setAttribute(Qt::WA_StyleSheet, false);
+        mLifted.append(pWidget);
+    }
+    for (auto* pChild : pWidget->children()) {
+        auto* pChildWidget = qobject_cast<QWidget*>(pChild);
+        // a popup or a window of its own is a font tree of its own, as it is for Qt
+        if (pChildWidget && !pChildWidget->isWindow()) {
+            lift(pChildWidget);
+        }
+    }
+}
+
+StyleSheetFontLift::~StyleSheetFontLift()
+{
+    for (const auto& pWidget : mLifted) {
+        if (pWidget) {
+            pWidget->setAttribute(Qt::WA_StyleSheet, true);
+        }
+    }
+}
+
+// Every widget under pRoot, and pRoot itself unless it is a window, resolves
+// its font again from its parent past the sheets - which is what Qt does to
+// a window's widgets when the application font changes, and what a widget
+// polished under a sheet needs once it has been given the application font
+// instead. One of Qt's own internals - a viewport, a spin box's line edit,
+// the "qt_" names - is handed its parent's font at polish with the parent's
+// whole resolve mask as its own, which would pin it, so those go back to an
+// unresolved font instead.
+void resolveFontsUnderStyleSheets(QWidget* pRoot)
+{
+    const StyleSheetFontLift lift(pRoot);
+    QEvent fontEvent(QEvent::ApplicationFontChange);
+    const auto resolve = [&fontEvent](QWidget* pWidget) {
+        if (pWidget->objectName().startsWith(QLatin1String("qt_"))) {
+            pWidget->setFont(QFont());
+        } else {
+            QCoreApplication::sendEvent(pWidget, &fontEvent);
+        }
+    };
+    if (!pRoot->isWindow()) {
+        resolve(pRoot);
+    }
+    for (auto* pChild : pRoot->findChildren<QWidget*>()) {
+        if (pChild->window() == pRoot->window()) {
+            resolve(pChild);
+        }
+    }
+}
+} // namespace
+
 dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 : mpHost(pH)
 , mSearchOptions(pH->mSearchOptions)
@@ -1636,7 +1731,11 @@ void dlgTriggerEditor::applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWid
 
 void dlgTriggerEditor::createPatternItem(int index)
 {
-    auto* pItem = new dlgTriggerPatternEdit(mpWidget_triggerItems);
+    // Made without a parent and given one by the layout inside a lift: under
+    // a stylesheet setParent() hands a new widget the application font rather
+    // than its parent's, and the rows come and go as triggers are shown (see
+    // StyleSheetFontLift)
+    auto* pItem = new dlgTriggerPatternEdit(nullptr);
     QComboBox* pBox = pItem->comboBox_patternType;
     pBox->addItems(mPatternList);
     pBox->setItemData(0, QVariant(index));
@@ -1653,7 +1752,15 @@ void dlgTriggerEditor::createPatternItem(int index)
 
     auto* pLayout = static_cast<QVBoxLayout*>(mpWidget_triggerItems->layout());
     int insertIndex = pLayout->count() - 1;
-    pLayout->insertWidget(insertIndex, pItem);
+    {
+        const StyleSheetFontLift lift(mpWidget_triggerItems);
+        pLayout->insertWidget(insertIndex, pItem);
+    }
+    // Polishing resolves a widget with a class font - a label or a button on
+    // macOS - against that font, past its parent: polish now, then resolve
+    // the row again
+    pItem->ensurePolished();
+    resolveFontsUnderStyleSheets(pItem);
 
     mTriggerPatternEdit.push_back(pItem);
     pItem->mRow = index;
@@ -12727,6 +12834,13 @@ bool dlgTriggerEditor::event(QEvent* event)
         }
     }
 
+    if (event->type() == QEvent::ApplicationFontChange) {
+        // A new application font reaches a window by this event, and the
+        // window resolving its own font again is what carries it down
+        const StyleSheetFontLift lift(this);
+        return QMainWindow::event(event);
+    }
+
     return QMainWindow::event(event);
 }
 
@@ -13850,6 +13964,22 @@ void dlgTriggerEditor::updateExtraControlsToggleIcon()
         icon.addFile(qsl(":/icons/arrow-down-16x.png"), QSize(), QIcon::Active, QIcon::On);
     }
     mpTriggersMainArea->toolButton_toggleExtraControls->setIcon(icon);
+}
+
+// Hides QWidget::setFont(), as dlgMapper and dlgNotepad do
+void dlgTriggerEditor::setFont(const QFont& font)
+{
+    const StyleSheetFontLift lift(this);
+    QMainWindow::setFont(font);
+}
+
+// Hides QWidget::setStyleSheet(): polishing hands every widget its own
+// pre-sheet font back, resolved against the application font rather than
+// its parent's, as the flag is still on while that happens
+void dlgTriggerEditor::setStyleSheet(const QString& styleSheet)
+{
+    QMainWindow::setStyleSheet(styleSheet);
+    resolveFontsUnderStyleSheets(this);
 }
 
 // In case the profile was reset while the editor was out of focus, checks for any script loading errors and displays them
