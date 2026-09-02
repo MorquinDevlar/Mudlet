@@ -15674,16 +15674,22 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // the column the chevron stands in painted by the style, in the platform's
     // saturated selection colour, with the row's pill stuck to the side of it.
     // ...and the chosen one carries the accent bar down its leading edge that
-    // the sidebar's chosen row does, at the same width and in the same colour.
-    // The bar is a transparent border on every row rather than a gap on the
-    // chosen one, so that nothing steps sideways when it appears - and the
-    // row's own padding gives back what the border takes, which is what leaves
-    // the dot, the chevron and the mark the delegate draws where they were.
+    // the sidebar's chosen row does, at the same width and in the same colour -
+    // painted over the pill by EditorTreeDelegate, so that it is a straight
+    // rectangle with square ends rather than the arc a border-left is bent into
+    // by the pill's corner radius. The border stays on every row, transparent
+    // and never coloured, because it is what holds the gutter the bar stands in:
+    // the row's own padding gives back what it takes, which is what leaves the
+    // dot, the chevron and the mark the delegate draws where they were.
+    //
+    // The seventh tree has no delegate of ours (see below), so it is the one
+    // that still takes its bar from the border, arc and all.
     const QColor selectedRow = uiDesign::blend(paneColor, accentColor, uiDesign::scmAccentWashStrength);
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
                                   "QTreeWidget::item { border-radius: %5px; border-left: %6px solid transparent; padding: 2px 4px 2px %7px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
-                                  "QTreeWidget::item:selected { color: %4; background-color: %3; border-left: %6px solid %8; }")
+                                  "QTreeWidget::item:selected { color: %4; background-color: %3; }"
+                                  "#treeWidget_variables::item:selected { border-left: %6px solid %8; }")
                                       .arg(paneColor.name(),
                                            hoverSoft,
                                            selectedRow.name(),
@@ -15696,8 +15702,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     // The tree of Lua variables takes the same rules and is drawn by no delegate
     // of ours: it is a view of what the interpreter holds rather than of what
-    // the profile is made of, so it keeps the view's indentation and the arrows
-    // the style draws in it
+    // the profile is made of, so it keeps the view's indentation, the arrows
+    // the style draws in it, and the accent bar as a border rather than as
+    // something painted over the pill - which is what the rule naming it by
+    // object name above is for
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
         pTreeWidget->setStyleSheet(treeRules);

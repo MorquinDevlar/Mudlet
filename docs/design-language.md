@@ -150,12 +150,23 @@ known numbers.
 
 A chosen row in the editor's item trees carries the same bar, at the same width
 - `scmAccentBarWidth` in `src/uiDesign.h`, so the two lists cannot come to
-disagree about it - but drawn as that `border-left`, because a tree row is as
-wide as the panel happens to be dragged to and there is no fraction to write a
-stop at. The arc at each end of the bar is what that costs. Every row carries
-the border transparent and gives back what it takes out of its own padding, so
-nothing steps sideways when a row is chosen and the delegate's dot, chevron and
-mark stay where they were.
+disagree about it - and it reads the same: one straight stroke down the row's
+leading edge rather than a bracket. It is neither a stop nor a border. A tree row
+is as wide as the panel happens to be dragged to, so there is no fraction to
+write a stop at; and a `border-left` follows the pill's corner radius, bending
+inward at both ends until the bar is pinched to nothing.
+`EditorTreeDelegate::paint()` fills the rectangle itself, over the pill the style
+has just drawn - the full height of the row, so the two ends are square, where
+the sidebar's is clipped by its own pill and rounds off. The transparent
+`border-left` stays on every row, never coloured, because it is what holds the
+gutter the bar stands in - the row's padding gives back what it takes, so nothing
+steps sideways when a row is chosen and the delegate's dot, chevron and mark stay
+where they were.
+
+`treeWidget_variables` is the exception. It shows what the Lua interpreter holds
+rather than what the profile is made of, so no `EditorTreeDelegate` is installed
+on it and nothing paints its bar; a rule naming it by object name colours its
+`border-left` instead, arc and all, until it ever gets one.
 
 ### Radius follows control size
 

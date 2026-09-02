@@ -113,6 +113,7 @@ void EditorTreeDelegate::restyle()
     mMarkInk = tokens.mutedText;
     // The colour the trees' stylesheet writes a chosen row's name in
     mSelectedMarkInk = tokens.accentText;
+    mAccentBar = tokens.accent;
     for (auto& cached : mDotGlyphs) {
         cached = QPixmap();
     }
@@ -497,6 +498,23 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
         pOption->palette.setColor(QPalette::Text, mQuietDot);
         pOption->palette.setColor(QPalette::WindowText, mQuietDot);
     }
+}
+
+void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    QStyledItemDelegate::paint(pPainter, option, index);
+
+    if (index.column() != 0 || !(option.state & QStyle::State_Selected) || option.rect.isEmpty()) {
+        return;
+    }
+
+    // Over the pill the style has just drawn, and over the corner it is rounded
+    // to: a border-left follows that radius, bending the bar inward at both ends
+    // until it reads as a bracket. An integer rectangle filled with a solid
+    // colour lands on whole pixels whatever the painter was left set to, so what
+    // is drawn instead is one straight stroke from the top of the row to the
+    // bottom, square at both ends.
+    pPainter->fillRect(QRect(option.rect.left(), option.rect.top(), scmAccentBarWidth, option.rect.height()), mAccentBar);
 }
 
 QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const

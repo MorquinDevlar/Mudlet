@@ -33,8 +33,9 @@
  * search field over it. Both halves of that are checked here: that the arrow
  * column and the far end of the row are painted the same colour, on a row deep
  * enough that the view would have drawn several branch cells for it, and that
- * the pill's four extreme corners are cut away to the panel behind rather than
- * being more of the selection.
+ * the pill's four corners are cut away to the panel behind rather than being
+ * more of the selection - the leading two read just past the accent bar, which
+ * is a straight rectangle painted over them.
  *
  * The corners are read on a tree that holds the keyboard, because that is the
  * one state the mark that used to square them off was drawn in.
@@ -286,9 +287,13 @@ private slots:
 
         const QColor fill = shot.pixelColor(inViewport(QPoint(band.center().x(), band.top() + 1)));
         const QColor topMiddle = shot.pixelColor(inViewport(QPoint(band.center().x(), band.top())));
-        const QList<QPair<QString, QColor>> corners{{qsl("leading top"), shot.pixelColor(inViewport(band.topLeft()))},
+        // The leading pair are read just past the accent bar, which is drawn
+        // over the pill's leading corners as a straight rectangle and would
+        // otherwise be what these two readings measured
+        const int leading = band.left() + uiDesign::scmAccentBarWidth;
+        const QList<QPair<QString, QColor>> corners{{qsl("leading top"), shot.pixelColor(inViewport(QPoint(leading, band.top())))},
                                                     {qsl("trailing top"), shot.pixelColor(inViewport(band.topRight()))},
-                                                    {qsl("leading bottom"), shot.pixelColor(inViewport(band.bottomLeft()))},
+                                                    {qsl("leading bottom"), shot.pixelColor(inViewport(QPoint(leading, band.bottom())))},
                                                     {qsl("trailing bottom"), shot.pixelColor(inViewport(band.bottomRight()))}};
 
         QStringList measured;
@@ -316,9 +321,13 @@ private slots:
     }
 
     // ...and it leads with the accent bar the sidebar's chosen row leads with,
-    // which is the mark that says "this one" in both of the window's lists. Read
-    // across the middle of the row, where the bar is at its full width: the
-    // corner it is drawn inside pinches it towards either end.
+    // which is the mark that says "this one" in both of the window's lists - and
+    // it is straight, like the sidebar's. Read across three lines of the row:
+    // its top, its middle and its bottom. The middle alone says nothing about
+    // the shape, and the ends are where the shape was wrong - written as the
+    // pill's border-left the bar followed the corner radius, pinching to the
+    // fill and then to the panel at both ends, which reads as a bracket rather
+    // than as a bar. It is painted by EditorTreeDelegate over the pill instead.
     void test_theChosenRowLeadsWithTheAccentBar()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -330,17 +339,24 @@ private slots:
         QVERIFY2(plainBand.top() < chosenBand.top(), "The row read as the unchosen one is not above the chosen one");
         const QImage shot = windowShot();
 
+        const QList<QPair<QString, int>> lines{{qsl("top"), chosenBand.top()}, {qsl("middle"), chosenBand.center().y()}, {qsl("bottom"), chosenBand.bottom()}};
         QStringList measuredBar;
         QStringList measuredPlain;
         QStringList wrong;
-        for (int x = 0; x < uiDesign::scmAccentBarWidth; ++x) {
-            const QColor bar = shot.pixelColor(inViewport(QPoint(chosenBand.left() + x, chosenBand.center().y())));
-            const QColor plain = shot.pixelColor(inViewport(QPoint(plainBand.left() + x, plainBand.center().y())));
-            measuredBar << bar.name();
-            measuredPlain << plain.name();
-            if (bar.rgb() != tokens.accent.rgb()) {
-                wrong << qsl("the chosen row is %1 at x=%2 where the accent is %3").arg(bar.name(), QString::number(x), tokens.accent.name());
+        for (const auto& line : lines) {
+            QStringList acrossTheBar;
+            for (int x = 0; x < uiDesign::scmAccentBarWidth; ++x) {
+                const QColor bar = shot.pixelColor(inViewport(QPoint(chosenBand.left() + x, line.second)));
+                acrossTheBar << bar.name();
+                if (bar.rgb() != tokens.accent.rgb()) {
+                    wrong << qsl("the chosen row's %1 line is %2 at x=%3 where the accent is %4").arg(line.first, bar.name(), QString::number(x), tokens.accent.name());
+                }
             }
+            measuredBar << qsl("%1 %2").arg(line.first, acrossTheBar.join(qsl(" ")));
+        }
+        for (int x = 0; x < uiDesign::scmAccentBarWidth; ++x) {
+            const QColor plain = shot.pixelColor(inViewport(QPoint(plainBand.left() + x, plainBand.center().y())));
+            measuredPlain << plain.name();
             if (plain.rgb() != tokens.pane.rgb()) {
                 wrong << qsl("the row above it is %1 at x=%2 where the panel is %3").arg(plain.name(), QString::number(x), tokens.pane.name());
             }
@@ -350,7 +366,7 @@ private slots:
         const QColor afterTheBar = shot.pixelColor(inViewport(QPoint(chosenBand.left() + uiDesign::scmAccentBarWidth, chosenBand.center().y())));
         qInfo().noquote()
                 << qsl("  the chosen row's leading %1px are %2 and the row above's are %3; the pixel after the bar is %4, the accent %5 and the panel %6")
-                           .arg(QString::number(uiDesign::scmAccentBarWidth), measuredBar.join(qsl(" ")), measuredPlain.join(qsl(" ")), afterTheBar.name(), tokens.accent.name(), tokens.pane.name());
+                           .arg(QString::number(uiDesign::scmAccentBarWidth), measuredBar.join(qsl(", ")), measuredPlain.join(qsl(" ")), afterTheBar.name(), tokens.accent.name(), tokens.pane.name());
 
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("the accent bar down the chosen row is not what is painted: %1").arg(wrong.join(qsl("; ")))));
         QVERIFY2(afterTheBar.rgb() != tokens.accent.rgb(), qPrintable(qsl("the chosen row is the accent past the bar as well, at %1").arg(afterTheBar.name())));
@@ -398,8 +414,10 @@ private slots:
         QStringList measured;
         QStringList disagreed;
         for (const auto& reading : readings) {
+            // The leading pair clear the accent bar, which is painted over the
+            // chosen row's leading corners and over nothing on the hovered one
             const auto cornerOf = [&reading](const QRect& band) {
-                return QPoint(reading.second.x() == 0 ? band.left() : band.right(), reading.second.y() == 0 ? band.top() : band.bottom());
+                return QPoint(reading.second.x() == 0 ? band.left() + uiDesign::scmAccentBarWidth : band.right(), reading.second.y() == 0 ? band.top() : band.bottom());
             };
             const QColor hovered = at(cornerOf(hoveredBand));
             const QColor chosen = at(cornerOf(chosenBand));

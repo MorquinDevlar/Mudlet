@@ -79,6 +79,14 @@ public:
 
     void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override;
 
+    // The row as the style draws it, then the accent bar down its leading edge
+    // for a chosen one. The bar is painted rather than written as the pill's
+    // border-left, which a corner radius bends into a bracket at both ends; the
+    // sidebar's is straight because it is a stop in the pill's gradient, and a
+    // gradient stop is a fraction of a known width - which a tree row, being as
+    // wide as the panel is dragged to, does not have.
+    void paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
+
     // The dot is the switch the row draws and the chevron is the handle that
     // folds it away, so the presses that land on either are answered here rather
     // than by the view - which is where Qt answers the clicks on an item's check
@@ -191,6 +199,8 @@ private:
     // What the tree's stylesheet writes a chosen row's name in, so that the mark
     // beside that name is the one colour with it
     QColor mSelectedMarkInk;
+    // ...and what the bar down that row's leading edge is filled with
+    QColor mAccentBar;
     QString mNewItemDescription;
     QString mNewFolderDescription;
     // Set by a press the dot or the chevron answered and cleared by the release
