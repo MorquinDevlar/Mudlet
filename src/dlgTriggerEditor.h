@@ -121,6 +121,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     // Allow QTest-based test classes to access private members
     friend class dlgTriggerEditorUndoRedoTest;
     friend class EditorBannerViewSwitchTest;
+    friend class EditorChromeInkTest;
     friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorIconScaleTest;
@@ -1076,10 +1077,18 @@ private:
     // profile autosave interval in minutes
     int mAutosaveInterval = 2;
 
-    // The space recorded for the left side for "items" in the trigger area
-    // so as to be able to fit the right side with the extra controls,
-    // determined the first time the area is shrunk down by the user:
-    int mTriggerMainAreaMinimumHeightToShowAll = 0;
+    // The form pane's own height at the moment the options panel was folded
+    // away for want of room, and the mark that the fold was the space's doing
+    // rather than the reader's. Zero while the panel is on show, or while it is
+    // away because it was closed on purpose.
+    //
+    // The splitter's size rather than the form's: folding the panel away
+    // changes what the form is made of, so the form's height at the same
+    // splitter position is a different number the instant the fold happens -
+    // which is how the panel came to reappear on the next move event, fold
+    // again on the one after, and flicker on every pixel of a drag. A splitter
+    // size is what the reader is actually dragging and is unmoved by the fold.
+    int mTriggerOptionsAutoHiddenAtPaneHeight = 0;
 
     // Whether the reader has asked for the extra trigger controls in this
     // session. Not stored: the editor opens with the panel closed every time,

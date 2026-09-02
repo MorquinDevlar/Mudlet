@@ -368,6 +368,77 @@ private slots:
         // off the code pane rather than off the error console under it
         QCOMPARE(sizes.at(0) + sizes.at(1), panesForOne);
     }
+
+    // The flicker a screen recording caught: dragging the right hand splitter
+    // to make the code pane taller folded the options panel away, and the fold
+    // itself changed what the form is made of - so the next move event read a
+    // form taller than the one the fold had been recorded against, brought the
+    // panel back, and folded it again on the event after. One flip per mouse
+    // move, for the length of the drag.
+    //
+    // What is recorded now is the splitter's own size, which the fold does not
+    // touch, and re-opening asks for the pane to be dragged clearly past where
+    // the panel stopped fitting.
+    void test_theFoldedOptionsPanelDoesNotFlickerOnEveryMoveEvent()
+    {
+        // Mirrors scmEditorOptionsRestoreBand in src/dlgTriggerEditor.cpp,
+        // which is file-local to it
+        static constexpr int scmRestoreBand = 24;
+
+        mpEditor->setTriggerOptionsShown(true);
+        QTest::qWait(100ms);
+        enterTheTriggerView();
+        QTest::qWait(50ms);
+        QWidget* pPanel = mpEditor->mpTriggersMainArea->widget_right;
+        QVERIFY2(pPanel != nullptr && pPanel->isVisible(), "the options panel is not on show, so there is nothing here for a drag to fold away");
+        QVERIFY2(mpEditor->mpButton_triggerOptionsSummary != nullptr, "the strip that stands in for the panel is missing");
+
+        const QList<int> opened = mpSplitter->sizes();
+        const int panes = opened.at(0) + opened.at(1);
+        // QSplitter emits splitterMoved() for a drag and not for setSizes(), so
+        // the slot a drag would have reached is called for each step of one
+        const auto dragFormPaneTo = [this, &opened, panes](const int formHeight) {
+            mpSplitter->setSizes({formHeight, panes - formHeight, opened.at(2)});
+            QCoreApplication::processEvents();
+            mpEditor->slot_rightSplitterMoved(0, 0);
+            QCoreApplication::processEvents();
+        };
+
+        int askedFor = opened.at(0);
+        for (int step = 0; step < 200 && pPanel->isVisible(); ++step) {
+            askedFor -= 4;
+            dragFormPaneTo(askedFor);
+        }
+        QVERIFY2(!pPanel->isVisible(), qPrintable(qsl("the options panel never folded away, down to a form pane of %1px").arg(QString::number(askedFor))));
+        const int foldedAt = mpSplitter->sizes().at(0);
+        qInfo().noquote() << qsl("  the panel opened at a form pane of %1px and folded away at %2px; the band before it comes back is %3px")
+                                     .arg(QString::number(opened.at(0)), QString::number(foldedAt), QString::number(scmRestoreBand));
+
+        // The flicker itself: a drag is a hand on a mouse, so the pane sits and
+        // wobbles a few pixels around wherever the panel stopped fitting - and
+        // every one of those events used to bring it back, because the fold had
+        // made the form shorter and the height the fold was recorded against
+        // was one the form had already passed. Back it came, the spacer was at
+        // zero again, and it folded on the event after.
+        for (int nudge = 0; nudge <= scmRestoreBand - 4; nudge += 4) {
+            dragFormPaneTo(foldedAt + nudge);
+            QVERIFY2(!pPanel->isVisible(),
+                     qPrintable(qsl("the options panel came back %1px above where it stopped fitting, inside the %2px band - that is the flicker")
+                                        .arg(QString::number(nudge), QString::number(scmRestoreBand))));
+            QVERIFY2(mpEditor->mpButton_triggerOptionsSummary->isVisible(),
+                     qPrintable(qsl("%1px above where the panel stopped fitting, neither it nor the strip that stands in for it is on show").arg(QString::number(nudge))));
+        }
+
+        // ...and past the band, which is the drag that asks for it back
+        dragFormPaneTo(foldedAt + scmRestoreBand + 4);
+        QVERIFY2(
+                pPanel->isVisible(),
+                qPrintable(
+                        qsl("the options panel stayed folded away %1px above where it stopped fitting, past the %2px band").arg(QString::number(scmRestoreBand + 4), QString::number(scmRestoreBand))));
+
+        mpEditor->setTriggerOptionsShown(false);
+        QTest::qWait(50ms);
+    }
 };
 
 #include "EditorSplitterRestoreTest.moc"

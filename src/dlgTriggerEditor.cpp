@@ -280,6 +280,12 @@ static uiDesign::CardMetrics cardMetrics(const int titleHeight)
 // The least the code pane is left with when the options panel borrows height
 // from it: below this the editor stops being one anything can be typed into
 static constexpr int scmEditorSourcePaneFloor = 120;
+// How much further the form pane has to be dragged open, past where the options
+// panel stopped fitting in it, before that panel unfolds again. A band rather
+// than the same position back: the fold changes what the form is made of, so
+// re-opening at the position it folded at is re-opening at a position it does
+// not fit in - which is the flicker this is here to end.
+static constexpr int scmEditorOptionsRestoreBand = 24;
 // A banner's picture, beside a line of text rather than the 64px block the
 // .ui file sizes it as
 static constexpr int scmEditorBannerGlyphSize = 20;
@@ -14513,6 +14519,9 @@ void dlgTriggerEditor::updateTriggerOptionsSummary()
 void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
 {
     mShowAllTriggerControls = shown;
+    // Whatever the drag left recorded is answered here instead: a panel opened
+    // or closed on purpose is no longer one the room decides about
+    mTriggerOptionsAutoHiddenAtPaneHeight = 0;
     slot_showAllTriggerControls(shown);
     refitSplitterForTriggerOptions(shown);
 }
@@ -14625,6 +14634,7 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
         // themselves.
         mTriggerRightSplitterSizes = splitter_right->sizes();
         mTriggerOptionsBorrowedHeight = 0;
+        const int formPaneHeight = mTriggerRightSplitterSizes.isEmpty() ? 0 : mTriggerRightSplitterSizes.constFirst();
         // The triggersMainArea is visible
         if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked()) {
             // The extra controls are visible in the triggersMainArea
@@ -14632,18 +14642,23 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
                 // And it is not tall enough to show the right hand side - so
                 // hide them - we are using the spacer to detect if there is any
                 // space:
+                //
+                // Where the pane was when they stopped fitting, taken before
+                // the fold rather than after it - see the member's own note for
+                // why the form's height is the one number this cannot use
+                mTriggerOptionsAutoHiddenAtPaneHeight = formPaneHeight;
                 slot_showAllTriggerControls(false);
-                // And the first time note down the required height:
-                if (mTriggerMainAreaMinimumHeightToShowAll < 1) {
-                    mTriggerMainAreaMinimumHeightToShowAll = mpTriggersMainArea->widget_left->height();
-                }
             }
 
         } else {
             // And the extra controls are NOT visible. Only auto-restore them if
-            // the user's preference is to show them - if they explicitly hid the
-            // controls a later splitter expand must not bring them back:
-            if (mShowAllTriggerControls && mTriggerMainAreaMinimumHeightToShowAll > 0 && mpTriggersMainArea->widget_left->height() > mTriggerMainAreaMinimumHeightToShowAll) {
+            // the reader's preference is to show them - if they explicitly hid
+            // the controls a later splitter expand must not bring them back -
+            // and only once the pane is clearly taller than it was when they
+            // stopped fitting, so that the same position, or a jitter of a few
+            // pixels either side of it, never opens them again.
+            if (mShowAllTriggerControls && mTriggerOptionsAutoHiddenAtPaneHeight > 0 && formPaneHeight >= mTriggerOptionsAutoHiddenAtPaneHeight + scmEditorOptionsRestoreBand) {
+                mTriggerOptionsAutoHiddenAtPaneHeight = 0;
                 slot_showAllTriggerControls(true);
             }
         }
@@ -15513,6 +15528,24 @@ QString dlgTriggerEditor::patternRowStyleSheet() const
            + uiDesign::scrollBarStyleSheet(qsl("#editorPatternScroll"), tokens);
 }
 
+// What a widget is drawn in, told to its palette outright, for the two kinds of
+// widget a "color:" rule cannot reach: a view, whose rows a stylesheet only
+// gets at through ::item - and a ::item rule reaches the palette for some
+// selectors and not others - and a control that paints itself, which a
+// stylesheet reaches not at all. The one quiet tone the rest of the chrome
+// takes, and the accent for what is chosen. Anything reading those colours off
+// the widget, an accessibility tool among them, is then told what is actually
+// painted.
+static void inkAsChrome(QWidget* pWidget, const QColor& chrome, const QColor& chosen)
+{
+    QPalette palette = pWidget->palette();
+    palette.setColor(QPalette::Text, chrome);
+    palette.setColor(QPalette::WindowText, chrome);
+    palette.setColor(QPalette::ButtonText, chrome);
+    palette.setColor(QPalette::HighlightedText, chosen);
+    pWidget->setPalette(palette);
+}
+
 // What a row is washed with while the mouse is on it. Painted by the row rather
 // than left to a stylesheet rule on a property: a property that has to be
 // re-polished re-runs the whole sheet over the row's controls for a tint.
@@ -15564,14 +15597,26 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // window: a rule naming QLineEdit on the window would reach the code pane's
     // find bar and the trees' editors as well as the fields it is meant for.
     const QString inputRules = uiDesign::inputStyleSheet(tokens);
+    // One ink for every word of the editor's chrome, which is the quiet tone
+    // the toolbar's buttons, the sidebar's names and the status bar are already
+    // written in: a label, a check box, a radio button, a card's title and a
+    // button all take it, and the full tone is left to what is typed into a
+    // field - which is the ink inputStyleSheet() writes and setFieldColors()
+    // hands the pattern fields.
+    //
+    // Named class by class rather than once on the form, because a stylesheet's
+    // colour does not pass from a widget down to its children the way CSS's
+    // does; and carried by every form rather than named on the window, which
+    // would reach the code pane's find bar and the trees' inline editors too.
+    const QString chromeInkRules = qsl("QLabel, QAbstractButton, QGroupBox { color: %1; }").arg(mutedText.name());
     // An unavailable word is written in the design's own quiet tone rather than
     // the platform's, which on a light theme is a shade off the card it is
-    // written on. Carried by every form rather than named on the window, which
-    // would reach the code pane's find bar and the trees' inline editors too;
-    // the pattern rows keep a copy of the same rule for #label_prompt, since
-    // that sheet is set on the row rather than on the form around it.
+    // written on. The pattern rows keep a copy of the same rule for
+    // #label_prompt, since that sheet is set on the row rather than on the form
+    // around it.
     const QString formRules =
-            inputRules + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }").arg(disabledText.name());
+            inputRules + chromeInkRules
+            + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }").arg(disabledText.name());
 
     restyleEditorIcons();
 
@@ -15593,6 +15638,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                      // The transparent border keeps the label from stepping
                                      // sideways when a hovered button gains one
                                      "QToolBar#editorActionsToolbar QToolButton { color: %3; border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; }"
+                                     // The accent rather than the words' full tone: the glyph beside
+                                     // the word is inked accentText for QIcon::Active, so the two
+                                     // halves of a hovered button light up as one
                                      "QToolBar#editorActionsToolbar QToolButton:hover { color: %4; background-color: %5; }"
                                      "QToolBar#editorActionsToolbar QToolButton:pressed { background-color: %6; }"
                                      "QToolBar#editorActionsToolbar QToolButton:disabled { color: %7; }"
@@ -15603,7 +15651,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                          .arg(pageColor.name(),
                                               borderColor.name(),
                                               mutedText.name(),
-                                              textColor.name(),
+                                              accentText.name(),
                                               hoverSoft,
                                               accentSoft,
                                               disabledText.name(),
@@ -15648,7 +15696,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // A pane rather than the page, so that the panel reads as a column of its
     // own between the sidebar and the column an item is edited in, both of
     // which are the page.
-    frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }").arg(paneColor.name()));
+    // ...and the one word on the panel that is not a row of a tree - the switch
+    // under the variables tree - written in the same tone as the rows above it
+    frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }").arg(paneColor.name()) + chromeInkRules);
 
     // What the seam either side of each column is painted with. A handle
     // carrying no heading draws a hairline and carries each neighbour's own
@@ -15709,14 +15759,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
         pTreeWidget->setStyleSheet(treeRules);
-        // The sheet writes a chosen row's name in the accent ink, and a
-        // ::item:selected rule reaches the widget's palette for some selectors
-        // and not others - so the palette is told outright. Anything reading a
-        // view's colours off it, an accessibility tool among them, is then told
-        // what is actually painted.
-        QPalette treePalette = pTreeWidget->palette();
-        treePalette.setColor(QPalette::HighlightedText, accentText);
-        pTreeWidget->setPalette(treePalette);
+        inkAsChrome(pTreeWidget, mutedText, accentText);
     }
 
     for (uiDesign::EditorTreeDelegate* pDelegate : std::as_const(mEditorTreeDelegates)) {
@@ -15735,6 +15778,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // rather than lived in, and the arrow the style draws in that column is the
     // one thing that says a heading is a group the reader can fold away.
     treeWidget_searchResults->setStyleSheet(treeRules + qsl("QTreeWidget#editorSearchResults::item { padding: 0px 2px; }"));
+    inkAsChrome(treeWidget_searchResults, mutedText, accentText);
     if (mpSearchResultDelegate) {
         mpSearchResultDelegate->restyle();
     }
@@ -15804,38 +15848,40 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     // rows hold: read at the size the rest of the row is read at
                                                     "QLabel[editorRowLabel=\"true\"] { color: %3; background: transparent; }"
                                                     // The box naming a matching mode; the chosen one carries the accent
-                                                    "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %8px; padding: 1px 0px;"
+                                                    "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %7px; padding: 1px 0px;"
                                                     " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
                                                     "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
                                                     // The button the options are opened from is one to press, so it is
                                                     // lifted off the row the way a card is lifted off the page; the
                                                     // strip that stands in for them while they are away is a line of
-                                                    // readings to click, so it is only outlined
-                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %10px;"
-                                                    " padding: %13px %14px; background-color: %1; }"
-                                                    "#toolButton_toggleExtraControls:hover { color: %7; background-color: %11; }"
+                                                    // readings to click, so it is only outlined. Both light up in the
+                                                    // accent under the pointer, which is the ink each of them is
+                                                    // already switched on in - the quiet tone is the resting one.
+                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %9px;"
+                                                    " padding: %12px %13px; background-color: %1; }"
+                                                    "#toolButton_toggleExtraControls:hover { color: %5; background-color: %10; }"
                                                     "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
                                                     "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
                                                     " background: transparent; text-align: left; }"
-                                                    "#editorOptionsSummary:hover { color: %7; border: 1px solid %12; }"
+                                                    "#editorOptionsSummary:hover { color: %5; border: 1px solid %11; }"
                                                     // The ID reads as a label on the trigger, not as a second field: a
                                                     // pill, whose corner is half the height its own type comes to.
                                                     // Anything larger is clamped into an ellipse rather than rounded
                                                     // further, which is why the number is measured rather than named.
-                                                    "#frameId { border: 1px solid %2; border-radius: %9px; background: transparent; }"
+                                                    "#frameId { border: 1px solid %2; border-radius: %8px; background: transparent; }"
                                                     "#frameId QLabel { color: %3; background: transparent; }"
                                                     // The button that empties the sound file field, drawn as
                                                     // the picture alone the way the toolbar's are: a frame
                                                     // round a glyph this small reads as a second control
-                                                    "#toolButton_clearSoundFile { border: none; border-radius: %8px; background: transparent; padding: 2px; }"
-                                                    "#toolButton_clearSoundFile:hover { background-color: %11; }"
+                                                    "#toolButton_clearSoundFile { border: none; border-radius: %7px; background: transparent; padding: 2px; }"
+                                                    "#toolButton_clearSoundFile:hover { background-color: %10; }"
                                                     // The cards are what is drawn in the options column: the scroll
                                                     // area holding them and the viewport Qt gives it show the page
                                                     // through. Named outright, as the pattern rows are, so that a
                                                     // profile stylesheet cannot put the field colour back behind them.
                                                     "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
                                                     " { background: transparent; border: none; }")
-                                                    .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, textColor.name())
+                                                    .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft)
                                                     .arg(QString::number(uiDesign::scmRadiusChip), QString::number(idChipHeight / 2))
                                                     .arg(QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
                                                     .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
@@ -15869,6 +15915,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                              " background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
                                                  .arg(borderColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
                                          + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens) + formRules);
+        inkAsChrome(pHandlerList, mutedText, accentText);
     }
 
     // The forms with nothing but fields on them: a name, a delay, a key, a
@@ -15889,7 +15936,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // says which of the three readings this one is
         mpSystemMessageArea->frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: %4px; }"
                                                                        "QFrame#frame_notificationArea QLabel { background: transparent; color: %3; }")
-                                                                           .arg(accentSoft, accentColor.name(), textColor.name(), QString::number(uiDesign::scmRadiusPanel)));
+                                                                           .arg(accentSoft, accentColor.name(), mutedText.name(), QString::number(uiDesign::scmRadiusPanel)));
         // The .ui file sizes the area around a 64px picture; what it holds now
         // is a line of text beside a small one
         mpSystemMessageArea->setMinimumSize(0, 0);
@@ -15916,6 +15963,19 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // A different font is a different width for the names, so the breakpoint is
     // re-measured with the look it belongs to
     updateEditorSidebarMode();
+
+    // After that, not before: collapsing the sidebar re-polishes the list, and
+    // a re-polish puts back the palette the rules were applied to
+    if (mpListWidget_editorSidebar) {
+        inkAsChrome(mpListWidget_editorSidebar, mutedText, accentText);
+    }
+    // The chevron on the seam draws its own pill and its own stroke, in the
+    // same quiet tone, and what its text() holds is the name a screen reader is
+    // read rather than anything on show - so its palette is the only place the
+    // ink it is actually drawn in can be found
+    if (mpToggle_editorSidebar) {
+        inkAsChrome(mpToggle_editorSidebar, mutedText, accentText);
+    }
 }
 
 // A count is a walk of the whole tree, which filling one out would otherwise

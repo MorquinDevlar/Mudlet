@@ -94,7 +94,10 @@ SearchResultDelegate::SearchResultDelegate(QTreeWidget* pTree)
 void SearchResultDelegate::restyle()
 {
     const ThemeTokens tokens = themeTokens();
-    mTitleColor = tokens.text;
+    // A found item's name is chrome like every other word in the editor that is
+    // not inside a field, so it takes the one quiet tone; what tells it apart
+    // from the line under it is its weight and its size, not its ink
+    mTitleColor = tokens.mutedText;
     mMutedColor = tokens.mutedText;
     mChipBorder = tokens.border;
     mSelectedText = tokens.accentText;
