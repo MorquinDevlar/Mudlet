@@ -297,7 +297,12 @@ private slots:
         QCOMPARE(mpEditor->mTriggerPatternEdit.size(), rowsBefore + 1);
         auto* pRow = mpEditor->mTriggerPatternEdit.last();
         QCOMPARE(pRow->comboBox_patternType->font().pointSizeF(), larger.pointSizeF());
-        QCOMPARE(pRow->label_patternNumber->font().pointSizeF(), larger.pointSizeF());
+        // label_prompt rather than label_patternNumber: the redesign reads a
+        // pattern's number in the profile's display font, like the pattern
+        // beside it, so that one is pinned by applyPatternWidgetStyle() and
+        // follows nothing. label_prompt is still interface text, and still a
+        // QLabel, which is the class-font case this is here to catch.
+        QCOMPARE(pRow->label_prompt->font().pointSizeF(), larger.pointSizeF());
     }
 
     // Setting the profile's stylesheet again - the same one, as scripts do -

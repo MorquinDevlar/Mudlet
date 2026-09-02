@@ -103,7 +103,14 @@ private:
     int topEdgeOf(QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
 
     dlgVarsMainArea* form() const { return mpEditor->mpVarsMainArea; }
-    QString statusBarSays() const { return mpEditor->statusBar()->currentMessage(); }
+    // What the code pane's heading reads out about the caret. The reading moved
+    // off the window's status bar onto the strip over the pane, so it is empty
+    // when that strip is away - which is what it is when the pane is.
+    QString caretReadoutSays() const
+    {
+        QLabel* pCaret = mpEditor->findChild<QLabel*>(qsl("editorCodeCaret"));
+        return (pCaret && pCaret->isVisible()) ? pCaret->text() : QString();
+    }
 
     void openTheVariablesView()
     {
@@ -260,7 +267,7 @@ private slots:
         QCOMPARE(pSwitch->text(), qsl("Show hidden variables"));
     }
 
-    // What the status bar says about the caret belongs to the code pane: a root
+    // What the heading says about the caret belongs to the code pane: a root
     // row has no value under it, so neither the pane nor the readout is there
     void test_theCaretReadoutGoesWithTheCodePane()
     {
@@ -271,14 +278,14 @@ private slots:
 
         QVERIFY2(showTheStringVariable(), "the string variable is not showing");
         QVERIFY2(mpEditor->mpSourceEditorArea->isVisible(), "the code pane is not showing the value of a string variable");
-        QVERIFY2(!statusBarSays().isEmpty(), "the code pane came back without the caret readout that belongs to it");
+        QVERIFY2(!caretReadoutSays().isEmpty(), "the code pane came back without the caret readout that belongs to it");
 
         selectVariable(rootRow());
         QVERIFY2(!mpEditor->mpSourceEditorArea->isVisible(), "the code pane is still showing on the variables root row");
-        QVERIFY2(statusBarSays().isEmpty(), qPrintable(qsl("the status bar still reads out \"%1\" for a code pane that is not on show").arg(statusBarSays())));
+        QVERIFY2(caretReadoutSays().isEmpty(), qPrintable(qsl("the heading still reads out \"%1\" for a code pane that is not on show").arg(caretReadoutSays())));
 
         QVERIFY2(showTheStringVariable(), "the string variable is not showing again");
-        QVERIFY2(!statusBarSays().isEmpty(), "the caret readout did not come back with the code pane");
+        QVERIFY2(!caretReadoutSays().isEmpty(), "the caret readout did not come back with the code pane");
     }
 
     // Six views type Lua under that heading; this one holds the value of
