@@ -131,6 +131,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorSurfaceToneTest;
+    friend class EditorToolBarOverflowTest;
     friend class EditorTreeDotClickTest;
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
@@ -224,6 +225,13 @@ public:
     void applyEditorShellStyle();
     void restyleEditorIcons();
     void applyEditorToolbarButtonStyles();
+    // Keeps every action on the bar reachable at any length the bar can be
+    // given: its groups give their names up in turn as the room runs out and
+    // come back with room to spare - see the implementation for the order
+    void fitEditorToolBarToItsLength();
+    // The four buttons whose wording follows the view say that wording in their
+    // tooltip, which is all a button that has given its name up has left
+    void updateEditorItemActionToolTips();
     // The panel down the left: what its trees draw a row as, and where the
     // search field sits over them
     void setupEditorPanel();
@@ -810,6 +818,20 @@ private:
     std::unordered_map<SingleLineTextEdit*, bool> lineEditShouldMarkSpaces;
 
     QToolBar* toolBar = nullptr;
+
+    // A run of the toolbar's buttons that give their names up together. The
+    // list they are held in is the order the giving up happens in, and the
+    // reverse of it is the order the names come back in. Undo and Redo are
+    // pictures from the start, so they are in neither.
+    struct EditorToolBarGroup
+    {
+        QList<QAction*> actions;
+        bool labelsShown = true;
+    };
+    QList<EditorToolBarGroup> mEditorToolBarGroups;
+    // Changing a button's style relays the bar out, which on a torn-off bar is
+    // another resize - so the fit is not asked to answer its own answer
+    bool mEditorToolBarFitting = false;
 
     // Every action picture is a monochrome glyph tinted from the palette, so
     // each action is kept beside the resource its picture is drawn from

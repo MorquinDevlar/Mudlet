@@ -299,6 +299,57 @@ is `sidebarWidths()` / `updateSidebarMode()` in
   `updateEditorSidebarMode()` in `src/dlgTriggerEditor.cpp`, which measures the
   longest row name where the settings dialog knows its width outright.
 
+#### The editor's actions toolbar gives its names up, never its actions
+
+A `QToolBar` too narrow for what it holds posts the tail of itself into a
+drop-down behind a chevron a few pixels wide at the far edge of the window.
+Nothing says it is there. `fitEditorToolBarToItsLength()` in
+`src/dlgTriggerEditor.cpp` takes the names off instead, and nothing is ever
+hidden while a word is still written out:
+
+- The bar's buttons are held in groups (`mEditorToolBarGroups`), and that list
+  is the order they give their names up in: the four that act on the profile -
+  Import, Export, Create Module, Save Profile - first, the four that act on the
+  item being edited after. Undo and Redo are pictures from the start.
+- A collapsed group is `Qt::ToolButtonIconOnly` per button, through
+  `toolBar->widgetForAction()`; the split Save Profile button keeps its menu
+  arrow. Every one of the eight leads its tooltip with the words it would
+  otherwise be carrying, which for the item four is the view's wording - "Add
+  Trigger", "Add Alias" - rebuilt by `updateEditorItemActionToolTips()`.
+- What is measured is `toolBar->layout()->sizeHint()` along the bar's
+  orientation against the bar's own width or height, so separators, the grip,
+  the spacing and a stylesheet's padding are counted the way Qt counts them, a
+  bar docked at a side is measured down its length, and the answer does not
+  change when Qt has already folded something away.
+- Names come back from the other end, and only with `scmEditorToolBarRestoreMargin`
+  (16px) to spare. Giving them up costs nothing to spare, so the two tests never
+  agree on the same pixel and a drag across the breakpoint settles.
+- It runs on the bar's own resize (an event filter, since the bar is the only
+  thing the window tells), on the icon size preference, on the view changing
+  (the item four are renamed there), on a language, style or font change, on
+  `applyEditorShellStyle()`, and once the window has first been shown. Measured
+  at 39us a call, so a resize drag is answered rather than coalesced.
+- Torn off into a window of its own the bar starts from every name shown, since
+  a float is sized to what it holds; the resize that gives it that size fits it
+  again.
+
+Measured on the offscreen platform at the default 18px glyph: the profile group
+gives its names up at 1120px of window and the item group at 848px; at the
+largest the preference offers, 24px, at 1184px and 904px.
+
+**The fold is left in place and is reachable.** A bar with every name given up
+still wants 477px of window at 18px glyphs and 537px at 24px, against a window
+whose own minimum lets it be dragged down to 279px and below - so between those
+figures Qt does fold, on a window far too narrow to edit anything in. A
+scrolling host of our own would only be a second way of hiding the same buttons,
+so what is done instead is to
+make the button unmistakable: the pill is a `qt_toolbar_ext_button` rule in
+`applyEditorShellStyle()` - card fill, border hairline - and the chevron on it is
+drawn by `inkEditorOverflowChevron()` in `accentText`, because a `QStyle` hands
+that button a picture of its own and a stylesheet cannot recolour one.
+`test/functional_tests/EditorToolBarOverflowTest.cpp` sweeps the window width and
+holds all of it, the numbers above included.
+
 ### Shell over .ui
 
 The `.ui` file is not rewritten. Existing widgets are detached from their

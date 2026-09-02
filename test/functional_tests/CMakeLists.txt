@@ -127,6 +127,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorSidebarCollapseTest.cpp
     EditorSplitterRestoreTest.cpp
     EditorSurfaceToneTest.cpp
+    EditorToolBarOverflowTest.cpp
     EditorTreeDotClickTest.cpp
     EditorTreeHeadingIconTest.cpp
     EditorTreeRowHeightTest.cpp
