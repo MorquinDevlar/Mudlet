@@ -100,8 +100,12 @@ nothing else has it. Two greys in one window's chrome read as two windows.
 
 Three things keep an ink of their own, and each says a state rather than a tone:
 `accentText` for what is chosen or under the pointer, `disabledText` for what is
-unavailable, and the two state chips - the compile chip and the OR/AND mode chip
-- whose colour is walked against their own fill by `readableOn()`.
+unavailable, and the state chips - the compile chip, the OR/AND mode chip, and
+the note that refuses a duplicate event name - whose colour is walked against
+their own fill by `readableOn()`. And what the user typed is content wherever it
+is shown, not chrome: a script's own event names on their chips keep the full
+`text` tone the way the words in a field do, while Mudlet's own `sys*` events on
+the same row are quiet.
 
 One consequence is deliberate: a tree row that is switched off and one that is
 running are now the same tone, since `EditorTreeDelegate` already quietened the
@@ -126,8 +130,10 @@ nothing about the shared builder changed.
 
 `test/functional_tests/EditorChromeInkTest.cpp` is the guard. It walks every
 visible, enabled thing in the editor that shows words - labels, buttons with
-text, group box titles, and each view once by its palette - skipping fields and
-everything under them, the two state chips by object name, and anything chosen,
+text, group box titles, and each view once by its palette - in every one of the
+seven views, with an item on show in each - skipping fields and everything under
+them, the state chips and a chip's own name by object name (`editorCompileChip`,
+`editorModeChip`, `editorChipNote`, `editorChipLabel`), and anything chosen,
 pressed or under the pointer, and compares each ink against `mutedText` on the
 dark appearance and then the light. It reports how many things it read and fails
 below a pinned floor, so a walk that stopped finding widgets cannot pass. One
@@ -211,10 +217,14 @@ gutter the bar stands in - the row's padding gives back what it takes, so nothin
 steps sideways when a row is chosen and the delegate's dot, chevron and mark stay
 where they were.
 
-`treeWidget_variables` is the exception. It shows what the Lua interpreter holds
-rather than what the profile is made of, so no `EditorTreeDelegate` is installed
-on it and nothing paints its bar; a rule naming it by object name colours its
-`border-left` instead, arc and all, until it ever gets one.
+`treeWidget_variables` is drawn by a delegate of its own, `VariableTreeDelegate`
+(`src/VariableTreeDelegate.h`), because what it shows is what the Lua
+interpreter holds rather than what the profile is made of: nothing in it is on
+or off. Its row is the same grammar - the same pill, the same straight bar
+painted by the delegate, the same delegate-drawn chevron and indentation, from
+the measurements both delegates take from `src/EditorTreeRowMetrics.h` - with
+the two slots at the row's leading edge read differently, which "One mark, one
+size" below describes.
 
 ### Radius follows control size
 
@@ -312,6 +322,83 @@ designer layouts and moved into a runtime-built shell:
 This keeps object names, signal connections and every translated string intact,
 so a redesign costs no translation churn and no `.ui` merge conflicts.
 
+The editor's five field-only forms - aliases, timers, keys, scripts, variables -
+are shelled the same way in `buildEditorFormHeadRows()`
+(`src/dlgTriggerEditor.cpp`): the name, the command and the ID pill are lifted
+out of each `.ui` grid into a head row, `insertGridRowAtTop()` puts that row
+above what is left of the grid, and the rows under it are built in place from
+the grid's own controls - the timer's four fields into a sentence, the key's
+field into one that listens, the variable's two pickers onto one row. A control
+that is replaced rather than moved (the script's event list, which became a row
+of chips) leaves the `.ui` file, and the runtime builds its replacement into the
+cell the label leads. The `.ui` files did lose their colons and their caps on
+field heights in that pass: a string that changes anyway is not churn.
+
+### The rows of a form
+
+Every form the editor fills in leads with the same row: the name, whatever is
+typed beside it (a command, where the item has one), and the ID pill. The
+trigger form's `widget_top` is the original; `buildEditorFormHeadRows()` gives
+the five field-only forms the same row at the same measurements, so a view
+switch never moves the Name field. Under it, each row leads with one word.
+
+- **Lead labels share one width.** `alignEditorFormLeadLabels()` measures the
+  widest lead word across the forms in the font the window is running at and
+  gives every lead label that width, and every Name label that width plus the
+  difference between the head row's spacing and the grid's - so a field on any
+  row of any form starts at the same x. It runs at style time and again on a
+  font change. Labels carry the `editorRowLabel` property and take the quiet
+  ink; they lost their colons in the same pass.
+- **The ID pill** (`#frameId`, `editorIdChip`) is `styleEditorIdChip()` on all
+  six forms: `chipFont()`, a corner of half its measured height, drawn from the
+  shared `formRules` rather than once per form.
+- **A sentence round a control.** `buildControlSentenceRow()` lays words and
+  controls into one row from a translated template - one control with `%1`, or
+  several with `%1`..`%n` wherever the translation puts them; a placeholder the
+  translation lost still leaves its control on the row. The timer's interval is
+  one: "Fires every %1 h %2 min %3 s %4 ms", or "Fires once, ... after the timer
+  above it fires" for an offset timer (`editorTimerInterval`). The words are
+  scaffolding and take `editorRowLabel`; each control keeps an accessible name
+  of its own, since a screen reader never reads the word beside it.
+- **A field that listens.** The key binding is a read-only field that arms the
+  editor's key grab when clicked, or on Return or Space: it carries
+  `editorListening` while it waits, the accent frame and wash with it, its
+  placeholder says what to press, and a hint beside it (`editorKeyHint`) says
+  what happens next. Escape, losing the focus, a save, a view change or the
+  window hiding all end the grab through `endKeyGrab()`; a cross
+  (`editorKeyClear`) forgets the keystroke. The grab keeps the keypad modifier.
+- **Chips** (`uiDesign::ChipRow`, `src/ChipRow.h`, over `uiDesign::FlowLayout`)
+  hold a set of short names the user adds and takes away: a script's events.
+  One chip per name with its own cross, and a dashed "Add event" that becomes a
+  field in place; Return or a comma commits and keeps the field open for the
+  next name, Escape closes it, losing focus keeps a typed name and drops an
+  empty one, a name already listed is refused with a note (`editorChipNote`)
+  beside the field. Chips wrap, and the row reports the wrapped height through
+  its size hint and `heightForWidth()`, so the column it is in follows. A
+  script's own event names keep the full `text` tone - they are content, like
+  the words in a field - and Mudlet's own `sys*` events read in `mutedText`
+  (`editorChipSystem`). `chipFont()` is the one recipe for a word in a box: the
+  ID pill, the chips, the hidden-variables count, the value preview in the
+  variables tree.
+
+### The seam over the code pane
+
+The heading over the Lua pane is a `GripSplitterHandle` carrying a strip, and
+whether it also resizes depends on what the form above it holds. In Triggers and
+Buttons the form has something that uses room - a pattern list, a stylesheet
+editor - so the heading drags, and `fitFormPaneToItsContents()` snaps the column
+to what the item asks for unless the user has dragged that view's handle in this
+session (`mDraggedFormPaneHeights`). In Aliases, Timers, Keys, Scripts and
+Variables the form is a fixed set of fields: `formPaneResizes()` says no, the
+handle is made inert (`GripSplitterHandle::setResizes(false)` - no grip drawn,
+no cursor, no drag), and `holdFormPaneToItsContents()` caps the column
+`mpNonCodeWidgets` at its size hint and gives the code pane the rest, keeping the
+pane's floor `scmEditorSourcePaneFloor`. A `LayoutRequest` on the column re-runs
+the cap, so a notice appearing, a row hidden for a key group or chips wrapping
+onto a second line all move the seam by themselves. `EditorFormShellTest` holds
+both halves: a push on the handle leaves a fixed view's column where it was, and
+still moves the trigger form's.
+
 ## 2. Icons
 
 - Monochrome line icons from [Lucide](https://lucide.dev), ISC licence,
@@ -349,6 +436,18 @@ that is currently doing something reads as lit. Full Screen and the Sound family
 pass a second file for their On state. The split buttons keep Qt's own
 `MenuButtonPopup` arrow and hover frame; nothing is drawn over the glyphs.
 
+Everything else the editor draws as a picture comes from the same family and
+the same tinting. The notice banner's three pictures are `editor-notice-info.png`
+(info), `editor-notice-warning.png` (triangle-alert) and
+`editor-notice-error.png` (circle-x): tinting keeps only the shape the alpha
+channel carries, and the old full-colour `dialog-*.png` bitmaps have a solid
+alpha, so the information notice came out as a plain disc. The cross on a chip,
+beside a key's binding and on the sound field is `editor-clear.png` (x); the
+plus on "Add event" is `editor-add.png`; the variables tree's type marks and its
+hidden mark are listed under "One mark, one size" below. A glyph is rendered
+from Lucide's SVG at 128px with the shape in the alpha channel, black ink and
+transparent ground, the way every other `editor-*.png` was.
+
 ### One mark, one size, on every row of an editor tree
 
 A row in the editor's six item trees leads with a state dot, and beside it a
@@ -368,6 +467,27 @@ hover fill on one row is the same shape as the selection pill on the next.
 The ink is `mutedText`, or the colour the trees' stylesheet writes a chosen row's
 name in (`accentText`) while the row is selected, so a mark and the name beside
 it are always the one colour.
+
+The seventh tree reads the same two slots differently, on the same row.
+`VariableTreeDelegate` draws a kept square where the dot stands: filled in the
+green a running dot is filled in when the variable is saved with the profile,
+hollow when it is not, half when only some of a table is, and absent for a row
+the profile cannot keep - a function, a reference, a table past the size limit -
+which is written in `disabledText` with the reason as its tooltip. Beside it
+stands a mark for the value's type: `editor-variables.png` for a table (a table
+is braces everywhere, the sidebar included), `editor-type-string.png` (quote),
+`editor-type-number.png` (hash), `editor-type-boolean.png` (toggle),
+`editor-type-function.png` and `editor-type-other.png` (box). After the name -
+an index key is drawn as `[n]` - comes `editor-hidden.png` on a row that is
+hidden while hidden variables are shown, and at the trailing edge as much of the
+value as the panel leaves room for, in `chipFont()`: the string in quotes, the
+number, `true` or `false`, `{ n keys }` or `{ n items }`. Everything a row is
+drawn from is written into the row's data roles when it is built or written back
+(`setVariableRowData()`, `refreshVariableRow()`), so painting never reaches into
+Lua or counts a table. A click on the square asks the editor for the toggle
+(`slot_toggleVariableKept()`), which is where the rule about which members of a
+table may be kept lives. The switch under the tree says how many globals it
+holds back (`editorHiddenVariablesCount`).
 
 ## 3. Naming
 
@@ -417,6 +537,30 @@ The editor redesign follows the same scheme with an `editor*` prefix:
 `settingsRail` and `settingsFocused` are the two exceptions and keep these names
 in both windows: they are the contract `SidebarItemDelegate` and
 `sidebarStyleSheet()` are written against.
+
+The editor's forms add these, which its tests reach it by:
+
+| Name | What it is |
+| --- | --- |
+| `widget_top` | The head row of a form: name, command, ID pill |
+| `frameId` | The ID pill on every form |
+| `editorScriptEvents` | The `ChipRow` of a script's events |
+| `editorChip`, `editorChipLabel`, `editorChipRemove` | One chip, its name and its cross |
+| `editorChipAdd`, `editorChipEditor`, `editorChipNote` | The dashed add button, the inline field, the "already listed" note |
+| `editorTimerInterval` | The sentence row holding a timer's four fields |
+| `editorKeyBindingRow`, `editorKeyHint`, `editorKeyClear` | The key binding field's row, the hint beside it, the cross that forgets the keystroke |
+| `editorVariableTypes` | The row holding a variable's key and value pickers |
+| `editorHiddenVariablesCount` | The count beside the "Show hidden variables" switch |
+| `editorCodeHeaderTitle` | The word on the code pane's heading: "Lua script", or "Value" in the variables view |
+| `editorNotice*` glyph files | The banner's three pictures |
+
+| Property | Meaning |
+| --- | --- |
+| `editorRowLabel` | A word leading or joining a form row, written in the quiet ink |
+| `editorIdChip` | The frame drawn as the ID pill |
+| `editorPanelSurface` | A row widget that shows the form through, so a profile stylesheet cannot paint a band across it |
+| `editorChipSystem` | A chip holding one of Mudlet's own `sys*` events, read in the quiet ink |
+| `editorListening` | The key binding field while it waits for a keystroke |
 
 ## 4. Search over a widget tree
 
@@ -564,6 +708,12 @@ well, whose fill is a value and whose words are chosen against that fill by
 and a *disabled* push button, the one control neither window draws the surface
 of, whose bevel switched off is a grey the platform picked and which WCAG
 exempts as an inactive component. The ink on that button is still the design's.
+
+It also walks each of the editor's five field-only forms from the form widget
+itself, with an item on show, so the words a form adds - the sentence round a
+timer's fields, the hint beside a key's binding, a script's chips, a variable's
+pickers - are read against their own floors rather than lost in the count for
+the whole window.
 
 The tones the audit holds are walked rather than picked: `mutedText`,
 `disabledText` and `accentText` each start at a weight and are moved until they
