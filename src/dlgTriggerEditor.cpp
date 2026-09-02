@@ -197,10 +197,11 @@ static constexpr int scmEditorRowButtonPaddingHorizontal = 12;
 static constexpr qreal scmEditorRaisedHoverWeight = 0.08;
 static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 
-// How much of the accent a chosen row in the panel of items is filled with. A
-// tone rather than a wash, so that the pill reads as one colour the whole way
-// along however wide the panel is dragged.
-static constexpr qreal scmEditorTreeSelectionWeight = 0.24;
+// How far the chip over the code pane is washed with the colour of the state it
+// is reporting. What a chosen row in the panel of items is filled with is the
+// same idea at a different strength and is named in uiDesign.h, since the ink
+// written over it is measured against that one.
+static constexpr qreal scmEditorCompileChipWash = 0.14;
 // What a row of one of those trees holds its contents off its leading edge by.
 // The accent bar down a chosen row is a border cut out of this rather than a
 // gap added to it, so a row's contents sit where they did with or without one.
@@ -7808,7 +7809,7 @@ void dlgTriggerEditor::saveVar()
     pItem->setToolTip(0, utils::richText(tr("Checked variables will be saved and loaded with your profile.")));
     if (!varUnit->shouldSave(variable)) {
         pItem->setFlags(pItem->flags() & ~(Qt::ItemIsDropEnabled | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable));
-        pItem->setForeground(0, QBrush(QColor("grey")));
+        pItem->setForeground(0, QBrush(uiDesign::themeTokens().mutedText));
         const QString reason = varUnit->getUnsaveableReason(variable);
         pItem->setToolTip(0, reason.isEmpty() ? QString() : utils::richText(reason));
         pItem->setCheckState(0, Qt::Unchecked);
@@ -8959,7 +8960,7 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
     pItem->setCheckState(0, Qt::Unchecked);
     if (!vu->shouldSave(var)) {
         pItem->setFlags(pItem->flags() & ~(Qt::ItemIsDropEnabled | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable));
-        pItem->setForeground(0, QBrush(QColor("grey")));
+        pItem->setForeground(0, QBrush(uiDesign::themeTokens().mutedText));
         const QString reason = vu->getUnsaveableReason(var);
         pItem->setToolTip(0, reason.isEmpty() ? QString() : utils::richText(reason));
     } else if (vu->isSaved(var)) {
@@ -14976,6 +14977,25 @@ void dlgTriggerEditor::restyleEditorTreeHeadingIcons()
     }
 }
 
+// A variable Lua will not let the profile save is written in the quiet tone,
+// and a brush set on a tree item is a colour rather than a role - so nothing
+// re-derives it and the rows keep the tone of whichever theme they were built
+// under. repopulateVars() builds them with the current one, but a theme change
+// on its own does not rebuild the tree, so it comes through here instead.
+// Which rows those are is read off the tree rather than off Lua: a row is one
+// exactly when it already carries a brush.
+void dlgTriggerEditor::restyleUnsaveableVariableRows()
+{
+    const QBrush quiet(uiDesign::themeTokens().mutedText);
+    QTreeWidgetItemIterator it(treeWidget_variables);
+    while (*it) {
+        if ((*it)->data(0, Qt::ForegroundRole).isValid()) {
+            (*it)->setForeground(0, quiet);
+        }
+        ++it;
+    }
+}
+
 // The view can be changed from a deep link, a search result or a keyboard
 // shortcut as much as from the sidebar, so the row that is drawn as chosen is
 // set from the view rather than the other way round - see changeView()
@@ -15355,7 +15375,8 @@ void dlgTriggerEditor::updateEditorCompileChip()
 
     // Nothing to report is the whole of what "it compiled" means here
     const bool compiled = mEditorCompileMessage.isEmpty();
-    const QColor stateColor = uiDesign::stateColor(compiled ? uiDesign::scmStateHue_ok : uiDesign::scmStateHue_error, uiDesign::themeTokens().darkPage);
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    const QColor stateColor = uiDesign::stateColor(compiled ? uiDesign::scmStateHue_ok : uiDesign::scmStateHue_error, tokens.darkPage);
 
     if (compiled) {
         //: Chip on the heading over the editor's code pane, saying the last save of it compiled
@@ -15375,6 +15396,12 @@ void dlgTriggerEditor::updateEditorCompileChip()
         pHandle->setToolTip(mpLabel_editorCompileState->toolTip());
     }
 
+    // The chip is a wash of its own colour on the strip it sits on, so the words
+    // on it are that same colour walked away from the wash until they can be
+    // read on it - the hue is what says which reading this is, and the
+    // lightness is the half there is room to spend
+    const QColor chipFill = uiDesign::blend(tokens.separator, stateColor, scmEditorCompileChipWash);
+    const QColor chipInk = uiDesign::readableOn(chipFill, stateColor, tokens.text, uiDesign::scmTextMinimumRatio);
     mpLabel_editorCompileDot->setStyleSheet(qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(stateColor.name(), QString::number(scmEditorCompileDotDiameter / 2)));
     mpWidget_editorCompileChip->setStyleSheet(qsl("#editorCompileChip { background-color: %1; border-radius: %3px; }"
                                                   // A step down from the heading beside it, which is
@@ -15382,7 +15409,7 @@ void dlgTriggerEditor::updateEditorCompileChip()
                                                   // chip is a note on the strip rather than a second
                                                   // heading on it
                                                   "#editorCompileState { color: %2; font-size: 85%; }")
-                                                      .arg(uiDesign::rgba(stateColor, 0.14), stateColor.name(), QString::number(uiDesign::scmRadiusChip)));
+                                                      .arg(uiDesign::rgba(stateColor, scmEditorCompileChipWash), chipInk.name(), QString::number(uiDesign::scmRadiusChip)));
 }
 
 void dlgTriggerEditor::clearCompileState()
@@ -15537,6 +15564,14 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // window: a rule naming QLineEdit on the window would reach the code pane's
     // find bar and the trees' editors as well as the fields it is meant for.
     const QString inputRules = uiDesign::inputStyleSheet(tokens);
+    // An unavailable word is written in the design's own quiet tone rather than
+    // the platform's, which on a light theme is a shade off the card it is
+    // written on. Carried by every form rather than named on the window, which
+    // would reach the code pane's find bar and the trees' inline editors too;
+    // the pattern rows keep a copy of the same rule for #label_prompt, since
+    // that sheet is set on the row rather than on the form around it.
+    const QString formRules =
+            inputRules + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }").arg(disabledText.name());
 
     restyleEditorIcons();
 
@@ -15644,7 +15679,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // chosen one, so that nothing steps sideways when it appears - and the
     // row's own padding gives back what the border takes, which is what leaves
     // the dot, the chevron and the mark the delegate draws where they were.
-    const QColor selectedRow = uiDesign::blend(paneColor, accentColor, scmEditorTreeSelectionWeight);
+    const QColor selectedRow = uiDesign::blend(paneColor, accentColor, uiDesign::scmAccentWashStrength);
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
                                   "QTreeWidget::item { border-radius: %5px; border-left: %6px solid transparent; padding: 2px 4px 2px %7px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
@@ -15666,10 +15701,23 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
         pTreeWidget->setStyleSheet(treeRules);
+        // The sheet writes a chosen row's name in the accent ink, and a
+        // ::item:selected rule reaches the widget's palette for some selectors
+        // and not others - so the palette is told outright. Anything reading a
+        // view's colours off it, an accessibility tool among them, is then told
+        // what is actually painted.
+        QPalette treePalette = pTreeWidget->palette();
+        treePalette.setColor(QPalette::HighlightedText, accentText);
+        pTreeWidget->setPalette(treePalette);
     }
+
     for (uiDesign::EditorTreeDelegate* pDelegate : std::as_const(mEditorTreeDelegates)) {
         pDelegate->restyle();
     }
+
+    // ...and the rows of the seventh tree that are written in the quiet tone,
+    // which no delegate draws and so nothing else re-inks
+    restyleUnsaveableVariableRows();
 
     // The results take the trees' hover and selection so that one panel reads as
     // one thing; what a row holds is drawn by SearchResultDelegate, which is
@@ -15783,7 +15831,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                     .arg(QString::number(uiDesign::scmRadiusChip), QString::number(idChipHeight / 2))
                                                     .arg(QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
                                                     .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
-                                          + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + inputRules);
+                                          + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + formRules);
         // The chips are measured in the font the sheet just gave them
         restyleTriggerMatchModeChips();
         // ...and the options column against the bar it just sized, so that the
@@ -15812,7 +15860,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                              "#editorScriptHandlers::item:selected { color: %5;"
                                              " background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %3, stop:1 %4); }")
                                                  .arg(borderColor.name(), hoverSoft, uiDesign::rgba(accentColor, 0.24), uiDesign::rgba(accentColor, 0.10), accentText.name())
-                                         + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens) + inputRules);
+                                         + uiDesign::scrollBarStyleSheet(qsl("#editorScriptHandlers"), tokens) + formRules);
     }
 
     // The forms with nothing but fields on them: a name, a delay, a key, a
@@ -15823,7 +15871,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                static_cast<QWidget*>(mpKeysMainArea),
                                static_cast<QWidget*>(mpVarsMainArea)}) {
         if (pMainArea) {
-            pMainArea->setStyleSheet(inputRules);
+            pMainArea->setStyleSheet(formRules);
         }
     }
 

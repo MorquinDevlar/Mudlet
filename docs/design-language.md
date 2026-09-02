@@ -71,15 +71,20 @@ back towards whatever they are written on: 16% on dark, which turns #ffffff into
 
 | Theme | palette `WindowText` | `text` | `mutedText` | `page` | `card` | `field` |
 | --- | --- | --- | --- | --- | --- | --- |
-| dark (#353535 window, #191919 base) | #ffffff | #dfdfdf | #acacac | #353535 | #414141 | #212121 |
-| light (#ececec window, white base) | #000000 | #181818 | #575757 | #ececec | #f6f6f6 | #ffffff |
+| dark (#353535 window, #191919 base) | #ffffff | #dfdfdf | #afafaf | #353535 | #414141 | #212121 |
+| light (#efefef window, white base) | #000000 | #181818 | #585858 | #efefef | #f8f8f8 | #ffffff |
 
 Every other ink is mixed from `text` over a surface, so the whole scale softens
 with it - `mutedText`, `disabledText`, `border`, and the `accentText` blend.
 That is the point rather than a side effect, and the contrast is measured rather
-than assumed (`EditorSurfaceToneTest`): body text clears 4.5:1 on all three
-surfaces in both themes - 9.2:1, 7.6:1 and 12.0:1 on dark, 15.1:1, 16.6:1 and
-17.8:1 on light - and `mutedText` clears 3:1 on the page at 5.4:1 and 6.1:1.
+than assumed (`EditorSurfaceToneTest`, `ReadabilityAuditTest`): body text clears
+4.5:1 on all three surfaces in both themes - 9.2:1, 8.9:1 and 7.7:1 on dark,
+15.4:1, 15.7:1 and 16.7:1 on light. `mutedText` is a quieter weight of the same
+words rather than a different class of thing - a card's description, a chip, the
+status bar - so it carries the same floor and is walked until it meets it on all
+three: 5.6:1, 5.4:1 and 4.7:1 on dark, 6.2:1, 6.3:1 and 6.7:1 on light.
+`disabledText` is walked the same way to the 3:1 an inactive word is held to,
+over the three surfaces and the field as well.
 
 Anything mixed to sit *on* a surface takes that surface as its `from`:
 `border`, `mutedText` and `disabledText` are blends over `page`; a card's check
@@ -438,3 +443,76 @@ boot per run and prove nothing. Add it to the group sources by hand for the
 comparison, take the two dumps, and drop it again. What ships is the diff
 being empty, not the dumps - they are worth nothing once the question is
 answered.
+
+### Guards
+
+Two tests hold the line the rest of this document describes. Text that cannot
+be read in one of the two appearances now fails a run rather than waiting for
+somebody to switch theme and notice.
+
+**`test/DesignColourLiteralTest.cpp`** reads the sources of every surface that
+has adopted the design language and fails on a colour written out rather than
+taken from `themeTokens()`. It links nothing - the `src/` path arrives through
+`MUDLET_SRC_DIR`, the way `CMakeListsConsistencyTest` takes it - so it costs a
+compile and a tenth of a second.
+
+Per line, in C++ it flags a hex colour inside a string literal (a raw string
+literal included), `QColor(Qt::name)`, a `Qt::` colour name reaching
+`QColor`/`QBrush`/`QPen`/`setColor`/`setForeground`/`setBackground`,
+`QColor("...")`, `QColor::fromRgb(...)` or `QColor(r, g, b)` with written
+numbers, `QColorConstants::` anything but `Transparent`, and a CSS colour
+keyword inside a string that also says `color:` or `background`. In a `.ui`
+file it flags a `<color>` element and a `styleSheet` property containing any of
+those.
+
+Three things are deliberately not flagged. `QColor::fromHslF` and `fromHsvF`
+build the semantic state hues, whose lightness already comes off the page.
+`Qt::transparent` is never a theme colour. `Qt::white` and `Qt::black` are the
+ends of the lightness axis rather than colours, so they pass inside a `blend()`
+call or a `fill()` - by context, not globally, so `Qt::white` as an ink is still
+caught.
+
+**`// theme-fixed: <why>`** exempts a line, and the reason travels with the
+code rather than living in a list inside the test - in a `.ui` file inside an
+XML comment, and everywhere else as a `//` one. On a line of its own the
+marker covers the run of lines under it, up to the next blank one, which is how
+a table - a console's ANSI defaults, a map's palette - is marked without
+repeating the reason on every row; and a colour inside a raw string literal,
+which can carry no comment of its own, is marked where the literal opens. It is
+legitimate for a colour that is a *value being shown* rather than chrome: a well
+filled with the colour the user picked, a console or map palette the profile
+owns, another application's brand in a picture of its window. It is not a way
+to keep a colour somebody has not got round to mixing from the tokens.
+
+**`test/functional_tests/ReadabilityAuditTest.cpp`** opens the editor - on a
+trigger with three pattern rows, one of each shape, and its options panel shown
+- and the settings dialog, moves the appearance to dark and then to light, and
+for every visible thing that shows words compares the ink its palette answers
+with against the colour most of the pixels behind it are. A stylesheet's
+`color:` rule reaches the widget through `QStyleSheetStyle::polish()`, which is
+why the palette is what is read; a case of its own proves that on a styled label
+rather than assuming it. Floors are `scmTextMinimumRatio` (4.5:1) for text and
+`scmQuietMinimumRatio` (3:1) for what is unavailable or not yet typed, both in
+`src/uiDesign.h`. It reports how many things it read per window and per
+appearance and fails if that count drops below a pinned floor, so a walk that
+silently stopped finding widgets cannot pass as a clean one.
+
+It skips three things, each for a reason rather than for convenience: the edbee
+code pane, which carries a syntax theme with a background of its own; a colour
+well, whose fill is a value and whose words are chosen against that fill by
+`generateButtonStyleSheet()` - skipped by object name, listed in `wellNames()`;
+and a *disabled* push button, the one control neither window draws the surface
+of, whose bevel switched off is a grey the platform picked and which WCAG
+exempts as an inactive component. The ink on that button is still the design's.
+
+The tones the audit holds are walked rather than picked: `mutedText`,
+`disabledText` and `accentText` each start at a weight and are moved until they
+clear their floor on every surface they can be drawn on - the three depths for
+the first two, and for `accentText` a wash of the accent at
+`scmAccentWashStrength`, which is what a chosen row, a sidebar pill and a lit
+chip all are.
+
+**Adding a surface to the design language means adding it to both**: its files
+to `scannedFiles()` in the scan, and its window to the walk in the audit.
+Neither list can be inferred, and a surface in neither is a surface nothing is
+checking.

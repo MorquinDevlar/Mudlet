@@ -112,11 +112,18 @@ constexpr qreal scmFieldLiftOnDark = 0.30;
 // quiet. That fraction alone is not enough on a light theme - it lands about
 // 2.3:1 on the page, which is a word the reader has to hunt for - so it is a
 // starting point rather than the answer, and the mixture is walked on towards
-// the text until it clears the floor a large or secondary line has to clear
-// against both surfaces such a word is ever set on.
+// the text until it clears the floor an inactive word is held to on every
+// surface such a word is ever set on.
 constexpr qreal scmDisabledTextWeight = 0.32;
-constexpr qreal scmDisabledTextMinimumRatio = 3.0;
-constexpr qreal scmDisabledTextWeightStep = 0.02;
+// ...and where a quieter weight of the body text starts, before the same walk
+// takes it to the floor body text itself keeps
+constexpr qreal scmMutedTextWeight = 0.70;
+// How far the accent is taken towards the end of the lightness scale its page is
+// not at, before the same walk carries it clear of a wash of itself
+constexpr qreal scmAccentTextLiftOnDark = 0.45;
+constexpr qreal scmAccentTextDropOnLight = 0.2;
+// How far each of those walks moves the tone on every pass
+constexpr qreal scmToneWeightStep = 0.02;
 // How many stops readableOn() tries between the colour it was asked for and the
 // end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
@@ -437,7 +444,7 @@ QColor readableOn(const QColor& background, const QColor& wanted, const QColor& 
     // Away from the surface it lies on rather than towards the text colour: it
     // is the hue that says which part of a pattern this is, so the hue is the
     // half worth keeping and the lightness the half to spend
-    const QColor limit = background.lightness() < 128 ? QColor(Qt::white) : QColor(Qt::black);
+    const QColor limit = background.lightness() < 128 ? QColor(Qt::white) : QColor(Qt::black); // theme-fixed: the ends of the lightness axis walked along below, not colours of a theme
     for (int step = 1; step <= scmReadabilitySteps; ++step) {
         const QColor moved = blend(wanted, limit, static_cast<qreal>(step) / scmReadabilitySteps);
         if (contrastRatio(background, moved) >= minimumRatio) {
@@ -481,17 +488,52 @@ ThemeTokens themeTokens()
     tokens.pane = blend(tokens.page, tokens.card, scmPaneLiftTowardsCard);
     tokens.separator = blend(tokens.page, QColor(Qt::black), tokens.darkPage ? scmSeparatorDropOnDark : scmSeparatorDropOnLight);
     tokens.border = blend(tokens.page, tokens.text, tokens.darkPage ? 0.22 : 0.18);
-    tokens.mutedText = blend(tokens.page, tokens.text, 0.70);
+    tokens.mutedText = blend(tokens.page, tokens.text, scmMutedTextWeight);
+    // ...and walked on towards the words until it can be read on all three
+    // surfaces. A muted tone is quieter than the body text, not a different
+    // class of thing: it is what a card's description, a chip's word and the
+    // status bar are written in, so it carries the same floor. On a card - the
+    // most lifted of the three - the weight it starts at lands a hair under it.
+    for (qreal weight = scmMutedTextWeight; weight < 1.0
+                                            && (contrastRatio(tokens.mutedText, tokens.page) < scmTextMinimumRatio || contrastRatio(tokens.mutedText, tokens.pane) < scmTextMinimumRatio
+                                                || contrastRatio(tokens.mutedText, tokens.card) < scmTextMinimumRatio);) {
+        weight = std::min(1.0, weight + scmToneWeightStep);
+        tokens.mutedText = blend(tokens.page, tokens.text, weight);
+    }
     tokens.disabledText = blend(tokens.page, tokens.text, scmDisabledTextWeight);
-    // Both surfaces, since an unavailable word is set on the page - a toolbar
-    // button, a label on a form - and in a field it is typed into alike, and on
-    // a light theme those two are a grey page and a white well
+    // Every surface an unavailable word can be set on: the page - a toolbar
+    // button, a label on a form - a card, a pane, and a field it is typed into.
+    // On a light theme those are a grey page and a white well, and the card is
+    // the one furthest from the page on a dark one.
     for (qreal weight = scmDisabledTextWeight;
-         weight < 1.0 && (contrastRatio(tokens.disabledText, tokens.page) < scmDisabledTextMinimumRatio || contrastRatio(tokens.disabledText, tokens.field) < scmDisabledTextMinimumRatio);) {
-        weight = std::min(1.0, weight + scmDisabledTextWeightStep);
+         weight < 1.0
+         && (contrastRatio(tokens.disabledText, tokens.page) < scmQuietMinimumRatio || contrastRatio(tokens.disabledText, tokens.pane) < scmQuietMinimumRatio
+             || contrastRatio(tokens.disabledText, tokens.card) < scmQuietMinimumRatio || contrastRatio(tokens.disabledText, tokens.field) < scmQuietMinimumRatio);) {
+        weight = std::min(1.0, weight + scmToneWeightStep);
         tokens.disabledText = blend(tokens.page, tokens.text, weight);
     }
-    tokens.accentText = tokens.darkPage ? blend(tokens.accent, QColor(Qt::white), 0.45) : blend(tokens.accent, QColor(Qt::black), 0.2);
+    // A saturated highlight colour rarely holds its own against either page, so
+    // it is taken towards the end of the lightness scale the page is not at -
+    // and then walked on until it can be read on a wash of that same accent,
+    // which is what it is drawn on wherever it appears: a chosen row in a tree
+    // or a sidebar, a chip that is switched on. A colour that clears the
+    // deepest of those washes clears the lighter ones, and a wash can lie on
+    // any of the three surfaces, so all three are asked.
+    {
+        const QColor limit = tokens.darkPage ? QColor(Qt::white) : QColor(Qt::black); // theme-fixed: the ends of the lightness axis walked along below, not colours of a theme
+        const QColor started = blend(tokens.accent, limit, tokens.darkPage ? scmAccentTextLiftOnDark : scmAccentTextDropOnLight);
+        const QList<QColor> washes{
+                blend(tokens.page, tokens.accent, scmAccentWashStrength), blend(tokens.pane, tokens.accent, scmAccentWashStrength), blend(tokens.card, tokens.accent, scmAccentWashStrength)};
+        const auto readsOnEveryWash = [&washes](const QColor& ink) {
+            return std::all_of(washes.cbegin(), washes.cend(), [&ink](const QColor& wash) {
+                return contrastRatio(ink, wash) >= scmTextMinimumRatio;
+            });
+        };
+        tokens.accentText = started;
+        for (int step = 1; step <= scmReadabilitySteps && !readsOnEveryWash(tokens.accentText); ++step) {
+            tokens.accentText = blend(started, limit, static_cast<qreal>(step) / scmReadabilitySteps);
+        }
+    }
     tokens.marker = QColor::fromHslF(scmMarkerHue, scmMarkerSaturation, tokens.darkPage ? scmMarkerLightnessOnDark : scmMarkerLightnessOnLight);
     tokens.hoverSoft = rgba(tokens.text, 0.07);
     tokens.accentSoft = rgba(tokens.accent, 0.14);

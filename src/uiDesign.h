@@ -133,9 +133,18 @@ struct ThemeTokens
     // the drop has to be the smaller one, or the seam becomes a grey rule across
     // the window.
     QColor separator;
+    // Quieter than the body text but the same class of thing - a card's
+    // description, a chip's word, the status bar - so it carries the same floor
+    // and is walked towards the words until it meets it on all three surfaces
     QColor mutedText;
+    // ...and the same walk to the lower floor an unavailable word is held to,
+    // over the three surfaces and the field it may be typed into
     QColor disabledText;
-    // A saturated highlight colour rarely holds its own against both pages
+    // A saturated highlight colour rarely holds its own against either page, so
+    // it is taken towards the end of the lightness scale the page is not at -
+    // and walked on from there until it can be read on a wash of that same
+    // accent, which is what a chosen row, a sidebar's pill and a lit chip all
+    // are. See scmAccentWashStrength.
     QColor accentText;
     // A marker pen whose lightness is chosen for the page it lies on: an opaque
     // pale wash under dark text, a darker one light text still shows through
@@ -147,6 +156,12 @@ struct ThemeTokens
 };
 
 ThemeTokens themeTokens();
+
+// The deepest wash of the accent anything is drawn on: a chosen row in one of
+// the editor's item trees. A sidebar's pill and a chip are lighter washes of the
+// same colour, so the accent ink is measured against this one and holds on all
+// of them.
+inline constexpr qreal scmAccentWashStrength = 0.24;
 
 // What a dot, a chip or a banner is drawn in: the hue says which reading it is
 // while the lightness comes off the page it is drawn on, so one colour holds
@@ -250,6 +265,14 @@ inline constexpr int scmInputHeight = scmInputContentHeight + 2 * (scmInputPaddi
 // How far apart two colours are to read, on the scale WCAG measures it: 1 is a
 // colour on itself and 21 is black on white
 qreal contrastRatio(const QColor& first, const QColor& second);
+
+// What a word has to clear against what it is written on: the floor every ink
+// mixed here is walked until it meets, and the one ReadabilityAuditTest holds
+// both windows to
+inline constexpr qreal scmTextMinimumRatio = 4.5;
+// ...and the lower one WCAG allows a word that is unavailable, or that stands in
+// for one not typed yet
+inline constexpr qreal scmQuietMinimumRatio = 3.0;
 
 // The nearest colour to the one asked for that can be read on a given
 // background: its lightness is walked away from that background until it clears

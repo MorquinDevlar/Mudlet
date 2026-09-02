@@ -133,6 +133,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
+    friend class ReadabilityAuditTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
 
@@ -268,6 +269,8 @@ public:
     // ...and the heading row of each of the seven trees, which carries the same
     // glyph as the sidebar row that opens it
     void restyleEditorTreeHeadingIcons();
+    // ...and the rows of the variables tree that are written in the quiet tone
+    void restyleUnsaveableVariableRows();
     // The toolbar's leading button, and the one place the preference it carries
     // is changed
     void updateEditorSidebarToggle();

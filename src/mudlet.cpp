@@ -220,10 +220,9 @@ void mudlet::init()
 
     if (QStringList{qsl("windowsvista"), qsl("macintosh"), qsl("macos")}.contains(mDefaultStyle, Qt::CaseInsensitive)) {
         qDebug().nospace().noquote() << "mudlet::mudlet() INFO - '" << mDefaultStyle << "' has been detected as the style factory in use - QPushButton styling fix applied!";
-        mBG_ONLY_STYLESHEET = qsl("QPushButton {background-color: %1; border: 1px solid #8f8f91;}");
+        mStyleDropsButtonFrame = true;
     } else {
         qDebug().nospace().noquote() << "mudlet::mudlet() INFO - '" << mDefaultStyle << "' has been detected as the style factory in use - no styling fixes applied.";
-        mBG_ONLY_STYLESHEET = qsl("QPushButton {background-color: %1;}");
     }
 
     // A button showing a colour is a well rather than a button: the design's
@@ -930,6 +929,19 @@ static bool validateConfDir(QString& path)
         return false;
     }
     return true;
+}
+
+// The fill is the colour the button stands for and the hairline round it is the
+// theme's, so only one of the two can be settled ahead of time - which is why
+// the sheet is mixed on every call rather than kept as a string built once.
+// Whether there is a hairline at all is the style factory's business, settled
+// once in init() above.
+QString mudlet::backgroundOnlyStyleSheet(const QColor& fill) const
+{
+    if (!mStyleDropsButtonFrame) {
+        return qsl("QPushButton {background-color: %1;}").arg(fill.name());
+    }
+    return qsl("QPushButton {background-color: %1; border: 1px solid %2;}").arg(fill.name(), uiDesign::themeTokens().border.name());
 }
 
 void mudlet::setupConfig()

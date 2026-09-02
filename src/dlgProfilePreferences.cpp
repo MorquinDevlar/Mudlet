@@ -119,6 +119,7 @@ using uiDesign::invalidateLayoutsUpTo;
 using uiDesign::makeChevronRow;
 using uiDesign::markAsShellSurface;
 using uiDesign::measuredCardTitleHeight;
+using uiDesign::readableOn;
 using uiDesign::rgba;
 using uiDesign::scmProp_focused;
 using uiDesign::scmProp_searchKeywords;
@@ -159,6 +160,15 @@ static constexpr int scmCardPadding = 16;
 static CardMetrics cardMetrics(const int titleHeight)
 {
     return {.cardProperty = scmProp_settingsCard, .plainProperty = scmProp_settingsCardPlain, .padding = scmCardPadding, .titleHeight = titleHeight, .flattenNestedGroupBoxes = true};
+}
+
+// What the shortcut conflict warning is written in: a state colour rather than
+// one of the surface tones, since what it says is a reading rather than a place
+// in the window. The hue says which reading and the lightness comes off the page
+// it is written on, so the one rule holds against both appearances.
+static QString shortcutConflictStyleSheet()
+{
+    return qsl("color: %1; font-weight: bold;").arg(uiDesign::stateColor(uiDesign::scmStateHue_error, uiDesign::themeTokens().darkPage).name());
 }
 
 static const QString scmCategory_general = qsl("general");
@@ -2755,6 +2765,10 @@ void dlgProfilePreferences::applyShellStyle()
                                         "#settingsSearchBack:focus, #settingsSubpageBack:focus { border: 1px solid %8; }"
                                         // Quieter than what they describe, and indented under it
                                         "#settingsCardDescription { color: %5; }"
+                                        // An unavailable word in the design's own quiet tone rather
+                                        // than the platform's, which on a light theme is a shade off
+                                        // the card it is written on
+                                        "QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %9; }"
                                         "QLabel[settingsControlDescription=\"true\"] { color: %5; margin-left: 20px; margin-bottom: 6px; }"
                                         // The wrap holder shows the card through it, named outright
                                         // so a profile stylesheet cannot paint a band across it
@@ -2772,6 +2786,7 @@ void dlgProfilePreferences::applyShellStyle()
                                         "#settingsHeroHeadline { font-weight: bold; font-size: 115%; }"
                                         "#settingsHeroDetail { color: %5; }")
                                             .arg(accentSoft, borderColor.name(), QString::number(scmRadiusPanel), textColor.name(), mutedText.name(), markerSoft, hoverSoft, accentColor.name())
+                                            .arg(tokens.disabledText.name())
                                   + cardIndicatorRules
                                   // A scroll area's bars answer only to a descendant selector
                                   + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens)
@@ -2789,15 +2804,33 @@ void dlgProfilePreferences::applyShellStyle()
     // widget it polishes - and after the stylesheet, because assigning one
     // re-polishes the subtree back to the palette it was first polished with.
     const QColor controlOutlineSource = darkPage ? blend(cardColor, textColor, 0.55) : pageColor;
-    // Mixed over the field rather than the card: what a placeholder is read
-    // against is the inside of the control it stands in
-    const QColor placeholderText = blend(fieldColor, textColor, 0.45);
+    // Mixed over the field rather than the card - what a placeholder is read
+    // against is the inside of the control it stands in - and then moved as far
+    // as it has to be to clear the floor a word that is not typed yet is held to
+    const QColor placeholderText = readableOn(fieldColor, blend(fieldColor, textColor, 0.45), textColor, uiDesign::scmQuietMinimumRatio);
     for (auto* pControl : mpWidget_shell->findChildren<QWidget*>()) {
         if (!qobject_cast<QAbstractButton*>(pControl) && !qobject_cast<QLineEdit*>(pControl) && !qobject_cast<QAbstractSpinBox*>(pControl) && !qobject_cast<QComboBox*>(pControl)) {
             continue;
         }
+        // A dialog makes one of its push buttons the default, which the style
+        // then fills with the highlight colour and writes in white - 2.8:1 on a
+        // dark theme, on whichever button happened to be first. Nothing here is
+        // a default action: a setting is applied as it is changed, so Return has
+        // nothing of the sort to fire.
+        if (auto* pPushButton = qobject_cast<QPushButton*>(pControl)) {
+            pPushButton->setAutoDefault(false);
+            pPushButton->setDefault(false);
+        }
+
         QPalette controlPalette = pControl->palette();
-        controlPalette.setColor(QPalette::Window, controlOutlineSource);
+        // A style draws a push button's bevel from this role as well as the
+        // indicator outlines this is here for, and a disabled one it fills with
+        // a darkening of it outright - which left "Reset" in the quiet ink on a
+        // surface within 1.1:1 of it. Only the two controls whose indicator
+        // needs raising get it now, so a push button keeps the platform's own.
+        if (qobject_cast<QCheckBox*>(pControl) || qobject_cast<QRadioButton*>(pControl)) {
+            controlPalette.setColor(QPalette::Window, controlOutlineSource);
+        }
         // The dark theme leaves PlaceholderText at the light default, which is
         // all but black on a dark field
         controlPalette.setColor(QPalette::PlaceholderText, placeholderText);
@@ -2818,6 +2851,11 @@ void dlgProfilePreferences::applyShellStyle()
         linkPalette.setColor(QPalette::Link, accentText);
         pLabel->setPalette(linkPalette);
     }
+
+    // The shortcut conflict warning is written in a state colour, which is
+    // mixed against the page - so a warning already on show has to be re-inked
+    // rather than left in the lightness the previous page called for
+    label_shortcutsConflictWarning->setStyleSheet(shortcutConflictStyleSheet());
 }
 
 // Found by type rather than listed by hand, since a list would silently miss
@@ -4219,7 +4257,7 @@ void dlgProfilePreferences::updateShortcutConflictWarning()
         return;
     }
 
-    label_shortcutsConflictWarning->setStyleSheet(qsl("color: %1; font-weight: bold;").arg(mudlet::self()->inDarkMode() ? qsl("#ff8080") : qsl("#aa0000")));
+    label_shortcutsConflictWarning->setStyleSheet(shortcutConflictStyleSheet());
     if (!label_shortcutsConflictWarning->isHidden() && warningText == label_shortcutsConflictWarning->text()) {
         return;
     }
@@ -4713,7 +4751,7 @@ void dlgProfilePreferences::slot_resetColors()
     }
     pHost->mCommandLineFgColor = Qt::darkGray;
     pHost->mCommandLineBgColor = Qt::black;
-    pHost->mCommandFgColor = QColor(113, 113, 0);
+    pHost->mCommandFgColor = QColor(113, 113, 0); // theme-fixed: the console's own default palette, which is the game's text rather than the window's chrome
     pHost->mCommandBgColor = Qt::black;
     pHost->mFgColor = Qt::lightGray;
     pHost->mBgColor = Qt::black;
@@ -4754,6 +4792,10 @@ void dlgProfilePreferences::slot_resetMapColors()
     }
 
     // As per values in Host.h:
+    // theme-fixed: the map's own default palette down to the blank line below -
+    // what a room, a level and a grid line are drawn in is the picture the map
+    // is, not chrome of the window holding it, so it stays where it is put
+    // whichever appearance the application is in.
     pHost->mFgColor_2 = QColorConstants::LightGray;
     pHost->mBgColor_2 = QColorConstants::Black;
     pHost->mLowerLevelColor = QColorConstants::DarkGray;
@@ -7206,6 +7248,10 @@ void dlgProfilePreferences::generateDiscordTooltips()
     }
 
     auto setToolTip = [=](QWidget* widget, const QString& highlight) {
+        // theme-fixed: a picture of Discord's own panel, in Discord's colours,
+        // shown so the user can see what the game will publish - it is not a
+        // surface of this dialog and does not follow its theme. A raw string
+        // cannot carry a comment of its own, so this one marks all of it.
         const QString tooltip = qsl(R"(
   <style type="text/css">
     .tg  {border-collapse:collapse;border-spacing:0;}

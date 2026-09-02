@@ -363,9 +363,15 @@ public:
     void handleTelnetUri(const QString& uri);
 
     enums::Appearance mAppearance = enums::Appearance::systemSetting;
-    // 1 (of 2) needed to work around a (Windows/MacOs specific QStyleFactory)
-    // issue:
-    QString mBG_ONLY_STYLESHEET;
+    // The sheet for a button filled with the colour it stands for. 1 (of 2)
+    // needed to work around a (Windows/MacOs specific QStyleFactory) issue:
+    // those factories drop a QPushButton's own frame the moment a sheet fills
+    // it, so the frame is drawn back. Mixed when it is asked for rather than
+    // kept as a string built once, because the fill is the value being shown
+    // and the hairline round it follows the theme.
+    QString backgroundOnlyStyleSheet(const QColor& fill) const;
+    // Whether this run's style factory is one of those - decided once, in init()
+    bool mStyleDropsButtonFrame = false;
     // approximate max duration that 'Copy as image' is allowed to take
     // (seconds):
     int mCopyAsImageTimeout = 3;
