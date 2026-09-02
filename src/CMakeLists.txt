@@ -510,6 +510,7 @@ set(mudlet_HDRS
     VoskRecognizer.h
     widechar_width.h
     WideComboBox.h
+    widgetutils.h
     XMLexport.h
     XMLimport.h)
 

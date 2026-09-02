@@ -50,6 +50,7 @@
 #include "MMCP.h"
 #include "uiDesign.h"
 #include "utils.h"
+#include "widgetutils.h"
 
 #include <chrono>
 #include <vector>
@@ -523,7 +524,7 @@ dlgProfilePreferences::~dlgProfilePreferences()
     // that has the keyboard focus then emits its editingFinished() - the chat
     // name field and the shortcut editors both act on that one - when this
     // object is no longer a valid receiver (#9574)
-    utils::disconnectChildSignals(this);
+    widgetutils::disconnectChildSignals(this);
 }
 
 static QLabel* wrapLabelOf(const QCheckBox* pCheckBox)

@@ -57,6 +57,7 @@
 #include "dlgPackageManager.h"
 #include "dlgProfilePreferences.h"
 #include "MMCPServer.h"
+#include "widgetutils.h"
 
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
@@ -2458,7 +2459,7 @@ void mudlet::slot_moduleManager()
     Host* activeHost = getActiveHost();
     QWidget* activeConsole = activeHost ? activeHost->mpConsole : nullptr;
     QWidget* referenceWidget = activeConsole ? activeConsole : this;
-    utils::forceRepositionDialogOnParentScreen(moduleManager, referenceWidget);
+    widgetutils::forceRepositionDialogOnParentScreen(moduleManager, referenceWidget);
 }
 
 bool mudlet::openWebPage(const QString& path)
@@ -2498,7 +2499,7 @@ void mudlet::slot_packageManager()
     Host* activeHost = getActiveHost();
     QWidget* activeConsole = activeHost ? activeHost->mpConsole : nullptr;
     QWidget* referenceWidget = activeConsole ? activeConsole : this;
-    utils::forceRepositionDialogOnParentScreen(packageManager, referenceWidget);
+    widgetutils::forceRepositionDialogOnParentScreen(packageManager, referenceWidget);
 }
 
 void mudlet::slot_packageExporter()
@@ -2518,7 +2519,7 @@ void mudlet::slot_packageExporter()
     Host* activeHost = getActiveHost();
     QWidget* activeConsole = activeHost ? activeHost->mpConsole : nullptr;
     QWidget* referenceWidget = activeConsole ? activeConsole : this;
-    utils::forceRepositionDialogOnParentScreen(d, referenceWidget);
+    widgetutils::forceRepositionDialogOnParentScreen(d, referenceWidget);
 }
 
 // Qt reports several inactive states - suspended, hidden, and plain inactive -
@@ -4933,7 +4934,7 @@ void mudlet::showOptionsDialog(const QString& tab, Host* pHost)
     // that restores its position after being shown
     QWidget* hostConsole = pHost ? pHost->mpConsole : nullptr;
     QWidget* referenceWidget = hostConsole ? hostConsole : this;
-    utils::forceRepositionDialogOnParentScreen(pPrefs, referenceWidget);
+    widgetutils::forceRepositionDialogOnParentScreen(pPrefs, referenceWidget);
 }
 
 void mudlet::slot_assignShortcutsFromProfile(Host* pHost)
@@ -5518,7 +5519,7 @@ void mudlet::slot_notes()
     Host* activeHost = getActiveHost();
     QWidget* activeConsole = activeHost ? activeHost->mpConsole : nullptr;
     QWidget* referenceWidget = activeConsole ? activeConsole : this;
-    utils::forceRepositionDialogOnParentScreen(pNotes, referenceWidget);
+    widgetutils::forceRepositionDialogOnParentScreen(pNotes, referenceWidget);
 }
 
 void mudlet::slot_profileDiscord()
@@ -6183,9 +6184,8 @@ void mudlet::installModulesList(Host* pHost, QStringList modules)
 {
     for (const auto& module : modules) {
         QStringList entry = pHost->mInstalledModules[module];
-        auto [success, error] = pHost->installPackage(entry[0], enums::PackageModuleType::ModuleFromUI);
-        if (!success && !error.isEmpty()) {
-            qWarning() << "mudlet::installModulesList() WARNING - failed to load module" << module << ":" << error;
+        if (!pHost->installPackage(entry[0], enums::PackageModuleType::ModuleFromUI).first) {
+            qWarning() << "mudlet::installModulesList() WARNING - failed to load module" << module;
         }
         //we repeat this step here b/c we use the same installPackage method for initial loading,
         //where we overwrite the globalSave flag.  This restores saved and loaded packages to their proper flag
@@ -8592,14 +8592,13 @@ void mudlet::setupPreInstallPackages(const QString& gameUrl, const QString& prof
         mudlet::self()->mPackagesToInstallList.append(qsl(":/packages/generic_mapper/generic_mapper.mpackage"));
     }
 
-    // A modest starter UI that adapts to whatever any game provides, only for
-    // players new to Mudlet - veterans will have their own layouts already.
+    // A modest starter UI that adapts to whatever any game provides.
     // Games whose bundled loader above fetches the game's own full interface
     // (flagged in TGameDetails) are skipped: the starter UI would only fight
     // it for the same screen space. Games that push a GUI via Client.GUI at
     // connect time are handled at runtime instead - the starter UI stands
     // aside when one installs.
-    if (!mudlet::self()->experiencedMudletPlayer() && !TGameDetails::gameProvidesOwnUi(gameUrl)) {
+    if (!TGameDetails::gameProvidesOwnUi(gameUrl)) {
         mudlet::self()->mPackagesToInstallList.append(qsl(":/packages/mudlet-base-ui/mudlet-base-ui.mpackage"));
     }
 

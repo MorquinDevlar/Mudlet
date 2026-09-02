@@ -63,6 +63,7 @@
 #include "mudlet.h"
 #include "uiDesign.h"
 #include "utils.h"
+#include "widgetutils.h"
 #include "edbee/models/textdocumentscopes.h"
 
 #include <QApplication>
@@ -2110,7 +2111,7 @@ dlgTriggerEditor::~dlgTriggerEditor()
     // of the item fields has the keyboard focus then emits editingFinished()
     // into one of the slot_saveProperty_...() slots when this object is no
     // longer a valid receiver (#9574)
-    utils::disconnectChildSignals(this);
+    widgetutils::disconnectChildSignals(this);
     // The undo stacks are not in this widget's child tree - the edbee one hangs
     // off a parentless CharTextDocument - so disconnect them by hand:
     if (mpTextUndoStack) {
@@ -3162,9 +3163,9 @@ void dlgTriggerEditor::repositionOnProfileScreen()
 {
     mRepositioningEditorWindow = true;
     if (mpHost && mpHost->mpConsole) {
-        utils::positionDialogOnActiveProfileScreen(this, nullptr, mpHost->mpConsole);
+        widgetutils::positionDialogOnActiveProfileScreen(this, nullptr, mpHost->mpConsole);
     } else {
-        utils::centerDialogOnScreen(this, QGuiApplication::primaryScreen());
+        widgetutils::centerDialogOnScreen(this, QGuiApplication::primaryScreen());
     }
     mRepositioningEditorWindow = false;
 }
@@ -13287,13 +13288,12 @@ void dlgTriggerEditor::slot_import()
     QStringList failedPackages;
 
     for (const QString& fileName : fileNames) {
-        auto [success, errorMsg] = mpHost->installPackage(fileName, enums::PackageModuleType::Package);
-        if (success) {
+        if (mpHost->installPackage(fileName, enums::PackageModuleType::Package).first) {
             mpHost->waitForProfileSave();
         } else {
             const QString baseName = QFileInfo(fileName).fileName();
             failedPackages << baseName;
-            qWarning() << "dlgTriggerEditor::slot_import() ERROR - failed to import" << baseName << ":" << errorMsg;
+            qWarning() << "dlgTriggerEditor::slot_import() ERROR - failed to import" << baseName;
         }
     }
 

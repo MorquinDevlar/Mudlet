@@ -25,6 +25,7 @@
 #include "Host.h"
 #include "HostManager.h"
 #include "mudlet.h"
+#include "widgetutils.h"
 #include "utils.h"
 #include "dlgMapper.h"
 #include "TRoomDB.h"
@@ -2941,7 +2942,7 @@ void TDetachedWindow::slot_showPreferencesDialog()
         // Position the preferences dialog on the same screen as this detached window
         auto pPrefs = pHost ? pHost->mpDlgProfilePreferences : mudletInstance->mpDlgProfilePreferences;
         if (pPrefs) {
-            utils::positionDialogOnParentScreen(pPrefs, this);
+            widgetutils::positionDialogOnParentScreen(pPrefs, this);
 
             // Set up focus restoration for the preferences dialog to return to this detached window
             mudletInstance->setupPreferencesFocusRestoration(pPrefs);
@@ -2970,7 +2971,7 @@ void TDetachedWindow::slot_showNotesDialog()
 
         // Position the notes dialog on the same screen as this detached window
         if (pHost->mpNotePad) {
-            utils::positionDialogOnParentScreen(pHost->mpNotePad, this);
+            widgetutils::positionDialogOnParentScreen(pHost->mpNotePad, this);
 
             // Set up focus restoration for the notepad to return to this detached window
             mudletInstance->setupNotepadFocusRestoration(pHost->mpNotePad);
@@ -3006,7 +3007,7 @@ void TDetachedWindow::slot_showPackageManagerDialog()
 
         // Position the package manager dialog on the same screen as this detached window
         if (pHost->mpPackageManager) {
-            utils::positionDialogOnParentScreen(pHost->mpPackageManager, this);
+            widgetutils::positionDialogOnParentScreen(pHost->mpPackageManager, this);
 
             // Set up focus restoration for the package manager to return to this detached window
             mudletInstance->setupPackageManagerFocusRestoration(pHost->mpPackageManager);
@@ -3035,7 +3036,7 @@ void TDetachedWindow::slot_showModuleManagerDialog()
 
         // Position the module manager dialog on the same screen as this detached window
         if (pHost->mpModuleManager) {
-            utils::positionDialogOnParentScreen(pHost->mpModuleManager, this);
+            widgetutils::positionDialogOnParentScreen(pHost->mpModuleManager, this);
 
             // Set up focus restoration for the module manager to return to this detached window
             mudletInstance->setupModuleManagerFocusRestoration(pHost->mpModuleManager);
