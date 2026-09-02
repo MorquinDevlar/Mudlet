@@ -42,7 +42,10 @@
  * Run with: ctest -R EditorStatusBarTest -V
  */
 
+#include <QFontInfo>
+#include <QImage>
 #include <QLabel>
+#include <QListWidget>
 #include <QStatusBar>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
@@ -74,6 +77,9 @@ private:
     const QString mProfileName = qsl("EditorStatusBar-Test-Profile");
     QString mPort;
     const QString mLocalhost = qsl("localhost");
+    // How far apart, summed over the three channels, two inks may be and still
+    // be one ink: antialiasing lands the darkest pixel of a glyph a shade off
+    static constexpr int scmInkTolerance = 24;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -103,6 +109,36 @@ private:
     static QRect placeInTheBar(const QWidget* pLabel, const QWidget* pBar) { return QRect(pLabel->mapTo(pBar, QPoint(0, 0)), pLabel->size()); }
 
     static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
+
+    // What a piece of text is painted in, read off a shot of the window: the
+    // pixel in its rectangle furthest from the ground at its corner. A palette
+    // can say one thing and the style paint another, which is why the paint is
+    // what is read.
+    static QColor paintedInk(const QImage& shot, const QRect& rect)
+    {
+        // A shot of a window on a screen that doubles its pixels is twice the
+        // size the window measures, so the rectangle has to be taken there
+        // before anything in it can be read
+        const qreal shotRatio = shot.devicePixelRatio();
+        const QRect inShot =
+                QRect(QPoint(qRound(rect.left() * shotRatio), qRound(rect.top() * shotRatio)), QPoint(qRound(rect.right() * shotRatio), qRound(rect.bottom() * shotRatio))).intersected(shot.rect());
+        const QColor ground = shot.pixelColor(inShot.topLeft());
+        QColor ink = ground;
+        int furthest = -1;
+        for (int y = inShot.top(); y <= inShot.bottom(); ++y) {
+            for (int x = inShot.left(); x <= inShot.right(); ++x) {
+                const QColor candidate = shot.pixelColor(x, y);
+                const int distance = qAbs(candidate.red() - ground.red()) + qAbs(candidate.green() - ground.green()) + qAbs(candidate.blue() - ground.blue());
+                if (distance > furthest) {
+                    furthest = distance;
+                    ink = candidate;
+                }
+            }
+        }
+        return ink;
+    }
+
+    static int apart(const QColor& a, const QColor& b) { return qAbs(a.red() - b.red()) + qAbs(a.green() - b.green()) + qAbs(a.blue() - b.blue()); }
 
 private slots:
     void initTestCase()
@@ -216,6 +252,45 @@ private slots:
         QVERIFY2(pAutosave->isVisible(), "a timed message took the last save away as well, so it is not a permanent widget");
 
         QTRY_VERIFY2(pCounts->isVisible(), "the counts label never came back once the message had timed out");
+    }
+
+    // The bar is written in the sidebar's hand: the same face at the same size
+    // and weight as the names down the left of the window, so the two edges of
+    // the window read as one thing rather than the bar as small print under it
+    void test_theBarIsWrittenLikeTheSidebar()
+    {
+        QListWidget* pSidebar = mpEditor->mpListWidget_editorSidebar;
+        QVERIFY2(pSidebar != nullptr, "The editor has no sidebar list to take the hand from");
+        const QFontInfo sidebarHand(pSidebar->font());
+
+        const QList<QLabel*> readings{mpEditor->mpLabel_statusCounts, mpEditor->mpLabel_statusAutosave};
+        for (QLabel* pLabel : readings) {
+            QVERIFY2(pLabel != nullptr, "The status bar is missing one of its two labels");
+            const QFontInfo hand(pLabel->font());
+            qInfo().noquote() << qsl("  %1 is set in %2 at %3pt, weight %4; the sidebar in %5 at %6pt, weight %7")
+                                         .arg(pLabel->objectName(),
+                                              hand.family(),
+                                              QString::number(hand.pointSizeF()),
+                                              QString::number(hand.weight()),
+                                              sidebarHand.family(),
+                                              QString::number(sidebarHand.pointSizeF()),
+                                              QString::number(sidebarHand.weight()));
+            QVERIFY2(hand.family() == sidebarHand.family() && qFuzzyCompare(hand.pointSizeF(), sidebarHand.pointSizeF()) && hand.weight() == sidebarHand.weight(),
+                     qPrintable(qsl("%1 is not written in the sidebar's hand").arg(pLabel->objectName())));
+        }
+
+        // ...and in the sidebar's ink, as painted rather than as the rules say:
+        // a name that is not the chosen one, against the counts
+        QTRY_VERIFY2(!mpEditor->mpLabel_statusCounts->text().isEmpty(), "the counts label never filled, so there is no ink to read");
+        QVERIFY2(pSidebar->count() > 1 && pSidebar->currentRow() != 1, "the sidebar has no unchosen second row to read the ink from");
+        const QImage shot = mpEditor->grab().toImage();
+        const QRect nameRect = QRect(pSidebar->viewport()->mapTo(mpEditor, pSidebar->visualItemRect(pSidebar->item(1)).topLeft()), pSidebar->visualItemRect(pSidebar->item(1)).size());
+        const QRect countsRect = QRect(mpEditor->mpLabel_statusCounts->mapTo(mpEditor, QPoint(0, 0)), mpEditor->mpLabel_statusCounts->size());
+        const QColor nameInk = paintedInk(shot, nameRect);
+        const QColor countsInk = paintedInk(shot, countsRect);
+        qInfo().noquote() << qsl("  the sidebar's \"%1\" is painted in %2 and the counts in %3, %4 apart")
+                                     .arg(pSidebar->item(1)->text(), nameInk.name(), countsInk.name(), QString::number(apart(nameInk, countsInk)));
+        QVERIFY2(apart(nameInk, countsInk) <= scmInkTolerance, qPrintable(qsl("the bar is written in %1 while the sidebar's names are in %2").arg(countsInk.name(), nameInk.name())));
     }
 };
 

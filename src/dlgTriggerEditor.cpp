@@ -15712,7 +15712,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                        // Or the platform style draws a sunken frame around
                                        // every widget the bar holds
                                        "QStatusBar#editorStatusBar::item { border: none; }"
-                                       "QStatusBar#editorStatusBar QLabel { color: %3; font-size: 92%; padding: 0px 6px; }")
+                                       // In the sidebar's hand - the same face, size and ink as the
+                                       // names down the left - so the bar reads as part of the
+                                       // window's chrome rather than as small print under it
+                                       "QStatusBar#editorStatusBar QLabel { color: %3; padding: 0px 6px; }")
                                            .arg(pageColor.name(), borderColor.name(), mutedText.name());
 
     const QString shellStyleSheet = toolBarRules + statusBarRules;
