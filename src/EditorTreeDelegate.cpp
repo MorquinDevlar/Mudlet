@@ -19,6 +19,7 @@
 
 #include "EditorTreeDelegate.h"
 
+#include "EditorTreeRowMetrics.h"
 #include "Host.h"
 #include "TAction.h"
 #include "TAlias.h"
@@ -37,48 +38,6 @@
 
 namespace uiDesign {
 
-namespace {
-constexpr int scmDotDiameter = 9;
-// Between the dot and the mark that follows it
-constexpr int scmDotGap = 6;
-constexpr qreal scmHollowDotPenWidth = 1.5;
-// How far past the dot a click still counts as one on it
-constexpr int scmDotHitSlack = 2;
-// The square the chevron is drawn in, centred in the indentation step it stands
-// in - the same square the dot is drawn in, so the two read as one row of marks
-constexpr int scmChevronBox = 9;
-// Half the height of the chevron's stroke inside that square
-constexpr qreal scmChevronArm = 2.6;
-constexpr qreal scmChevronPenWidth = 1.4;
-// The square every mark is drawn in - a folder's, an error's, a tree's own
-// heading - which is the size the panel's other list draws its glyphs at
-// (scmGlyphSize in SearchResultDelegate.cpp)
-constexpr int scmMarkSize = 16;
-// ...and the room every row leaves for the mark, which is the same room whether
-// the row has one or not. That is what makes the hover fill on a tree's heading
-// and the selection pill on an item under it the one height.
-constexpr int scmSlotHeight = std::max({scmMarkSize, scmDotDiameter, scmChevronBox});
-// What each level is held in by if the view had none to report, which it always
-// does have - a style with no metric for it is what this stands in for
-constexpr int scmFallbackIndentStep = 20;
-// A tree indented deeply enough would otherwise grow the cache a depth at a time
-constexpr int scmDecorationCacheLimit = 256;
-// A click carrying one of these is the selection being worked on rather than a
-// row being switched on or off
-constexpr Qt::KeyboardModifiers scmSelectionModifiers = Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier;
-
-// How deep in the tree a row is. The view counts the same thing to work out how
-// far to indent a row, and keeps the answer to itself.
-int levelOf(const QModelIndex& index)
-{
-    int level = 0;
-    for (QModelIndex ancestor = index.parent(); ancestor.isValid(); ancestor = ancestor.parent()) {
-        ++level;
-    }
-    return level;
-}
-} // namespace
-
 EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeType, Host* pHost)
 : QStyledItemDelegate(pTree)
 , mpTree(pTree)
@@ -92,7 +51,7 @@ EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeTy
         // to, so nothing moves; what changes is that the row is one rectangle
         // rather than a column of branch cells with the row stuck to them, and
         // the pill a selected row is drawn as can be a single unbroken shape.
-        mIndentStep = mpTree->indentation() > 0 ? mpTree->indentation() : scmFallbackIndentStep;
+        mIndentStep = mpTree->indentation() > 0 ? mpTree->indentation() : scmTreeFallbackIndentStep;
         mpTree->setIndentation(0);
         // The viewport is made by QAbstractScrollArea's constructor and never
         // replaced, so it is here to be watched from the moment the tree exists
@@ -314,7 +273,7 @@ QPixmap EditorTreeDelegate::dotGlyph(const DotState state) const
         return glyph;
     }
 
-    glyph = QPixmap(qRound(scmDotDiameter * ratio), qRound(scmDotDiameter * ratio));
+    glyph = QPixmap(qRound(scmTreeDotDiameter * ratio), qRound(scmTreeDotDiameter * ratio));
     glyph.setDevicePixelRatio(ratio);
     glyph.fill(Qt::transparent);
 
@@ -322,11 +281,11 @@ QPixmap EditorTreeDelegate::dotGlyph(const DotState state) const
     painter.setRenderHint(QPainter::Antialiasing, true);
     // A stroked circle is drawn centred on its path, so a hollow dot is pulled in
     // by half a pen to end up the same size as a filled one
-    const qreal inset = (state == DotState::Off) ? scmHollowDotPenWidth / 2.0 : 0.0;
-    const QRectF circle(inset, inset, scmDotDiameter - 2.0 * inset, scmDotDiameter - 2.0 * inset);
+    const qreal inset = (state == DotState::Off) ? scmTreeHollowPenWidth / 2.0 : 0.0;
+    const QRectF circle(inset, inset, scmTreeDotDiameter - 2.0 * inset, scmTreeDotDiameter - 2.0 * inset);
     if (state == DotState::Off) {
         QPen pen(mQuietDot);
-        pen.setWidthF(scmHollowDotPenWidth);
+        pen.setWidthF(scmTreeHollowPenWidth);
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
     } else {
@@ -349,32 +308,7 @@ QPixmap EditorTreeDelegate::chevronGlyph(const ChevronState state) const
         return glyph;
     }
 
-    const qreal ratio = mDotGlyphRatio;
-    glyph = QPixmap(qRound(scmChevronBox * ratio), qRound(scmChevronBox * ratio));
-    glyph.setDevicePixelRatio(ratio);
-    glyph.fill(Qt::transparent);
-
-    QPainter painter(&glyph);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    QPen pen(mChevronInk);
-    pen.setWidthF(scmChevronPenWidth);
-    pen.setCapStyle(Qt::RoundCap);
-    pen.setJoinStyle(Qt::RoundJoin);
-    painter.setPen(pen);
-    painter.setBrush(Qt::NoBrush);
-    const qreal centre = scmChevronBox / 2.0;
-    // Pointing the way the row will open: along the list while it is folded,
-    // down into it once it is not. The arm across the point is shortened, so
-    // that the mark stays inside its square whichever way round it is drawn.
-    const qreal reach = scmChevronArm / 1.6;
-    QPolygonF stroke;
-    if (state == ChevronState::Open) {
-        stroke << QPointF(centre - scmChevronArm, centre - reach) << QPointF(centre, centre + reach) << QPointF(centre + scmChevronArm, centre - reach);
-    } else {
-        stroke << QPointF(centre - reach, centre - scmChevronArm) << QPointF(centre + reach, centre) << QPointF(centre - reach, centre + scmChevronArm);
-    }
-    painter.drawPolyline(stroke);
-    painter.end();
+    glyph = treeRowChevronGlyph(state == ChevronState::Open, mChevronInk, mDotGlyphRatio);
     return glyph;
 }
 
@@ -412,7 +346,7 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
     }
 
     const qreal ratio = mDotGlyphRatio;
-    glyph = tintedGlyph(QPixmap(file), selected ? mSelectedMarkInk : mMarkInk).scaled(QSize(scmMarkSize, scmMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph = tintedGlyph(QPixmap(file), selected ? mSelectedMarkInk : mMarkInk).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(ratio);
     return glyph;
 }
@@ -428,7 +362,7 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
     if (const auto cached = mDecorations.constFind(key); cached != mDecorations.constEnd()) {
         return cached.value();
     }
-    if (mDecorations.size() >= scmDecorationCacheLimit) {
+    if (mDecorations.size() >= scmTreeDecorationCacheLimit) {
         mDecorations.clear();
     }
 
@@ -438,30 +372,30 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
     // of those the row has, which is what makes every row in the tree one
     // height; only its width follows what is actually in it.
     const int lead = level * mIndentStep;
-    const int dotWidth = state.known ? scmDotDiameter : 0;
-    const int markWidth = state.mark == RowMark::None ? 0 : scmMarkSize;
-    const int gap = (dotWidth > 0 && markWidth > 0) ? scmDotGap : 0;
+    const int dotWidth = state.known ? scmTreeDotDiameter : 0;
+    const int markWidth = state.mark == RowMark::None ? 0 : scmTreeMarkSize;
+    const int gap = (dotWidth > 0 && markWidth > 0) ? scmTreeDotGap : 0;
     const int slotWidth = std::max(lead + dotWidth + gap + markWidth, 1);
 
     const qreal ratio = mDotGlyphRatio;
-    QPixmap composed(qRound(slotWidth * ratio), qRound(scmSlotHeight * ratio));
+    QPixmap composed(qRound(slotWidth * ratio), qRound(scmTreeSlotHeight * ratio));
     composed.setDevicePixelRatio(ratio);
     composed.fill(Qt::transparent);
     QPainter painter(&composed);
     if (chevron != ChevronState::None) {
-        painter.drawPixmap(QPointF(lead - mIndentStep + (mIndentStep - scmChevronBox) / 2.0, (scmSlotHeight - scmChevronBox) / 2.0), chevronGlyph(chevron));
+        painter.drawPixmap(QPointF(lead - mIndentStep + (mIndentStep - scmTreeChevronBox) / 2.0, (scmTreeSlotHeight - scmTreeChevronBox) / 2.0), chevronGlyph(chevron));
     }
     if (state.known) {
-        painter.drawPixmap(QPointF(lead, (scmSlotHeight - scmDotDiameter) / 2.0), dotGlyph(state.dot));
+        painter.drawPixmap(QPointF(lead, (scmTreeSlotHeight - scmTreeDotDiameter) / 2.0), dotGlyph(state.dot));
     }
     if (markWidth > 0) {
-        painter.drawPixmap(QPointF(lead + dotWidth + gap, (scmSlotHeight - scmMarkSize) / 2.0), markGlyph(state.mark, selected));
+        painter.drawPixmap(QPointF(lead + dotWidth + gap, (scmTreeSlotHeight - scmTreeMarkSize) / 2.0), markGlyph(state.mark, selected));
     }
     painter.end();
 
     Decoration decoration;
     decoration.icon = QIcon(composed);
-    decoration.size = QSize(slotWidth, scmSlotHeight);
+    decoration.size = QSize(slotWidth, scmTreeSlotHeight);
     mDecorations.insert(key, decoration);
     return decoration;
 }
@@ -471,7 +405,7 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
     QStyledItemDelegate::initStyleOption(pOption, index);
 
     const ItemState state = stateOf(index);
-    const int level = levelOf(index);
+    const int level = treeRowLevelOf(index);
     const ChevronState chevron = chevronOf(index, level);
     // Nothing to lead the row with: no dot, no room to hold it in and nothing
     // folded inside it, which is what a tree's own heading row is. It keeps the
@@ -479,7 +413,7 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
     // beside it in the sidebar carries - drawn at the size every mark under it
     // is drawn at, so the heading is exactly as tall as the rows it heads.
     if (!state.known && level < 1 && chevron == ChevronState::None) {
-        pOption->decorationSize = QSize(scmMarkSize, scmMarkSize);
+        pOption->decorationSize = QSize(scmTreeMarkSize, scmTreeMarkSize);
         return;
     }
 
@@ -536,14 +470,14 @@ QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const Q
     // The decoration leads with the room the row's depth holds it in, and the
     // dot is the square that follows it - then the row's mark, if it has one.
     // The rest of the row's leading edge is left to start a drag from.
-    const int lead = levelOf(index) * mIndentStep;
-    const QRect dotRect(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmDotDiameter) / 2, scmDotDiameter, scmDotDiameter);
-    return dotRect.adjusted(-scmDotHitSlack, -scmDotHitSlack, scmDotHitSlack, scmDotHitSlack);
+    const int lead = treeRowLevelOf(index) * mIndentStep;
+    const QRect dotRect(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmTreeDotDiameter) / 2, scmTreeDotDiameter, scmTreeDotDiameter);
+    return dotRect.adjusted(-scmTreeMarkHitSlack, -scmTreeMarkHitSlack, scmTreeMarkHitSlack, scmTreeMarkHitSlack);
 }
 
 QRect EditorTreeDelegate::chevronHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
-    const int level = levelOf(index);
+    const int level = treeRowLevelOf(index);
     if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || chevronOf(index, level) == ChevronState::None) {
         return {};
     }
@@ -642,7 +576,7 @@ bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel,
     }
 
     auto* pMouseEvent = static_cast<QMouseEvent*>(pEvent);
-    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmSelectionModifiers)) {
+    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmTreeSelectionModifiers)) {
         return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
     }
     const QPoint pressedAt = pMouseEvent->position().toPoint();

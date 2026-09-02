@@ -60,6 +60,7 @@
 #include "EditorTreeDelegate.h"
 #include "GripSplitter.h"
 #include "SearchResultDelegate.h"
+#include "VariableTreeDelegate.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 #include "utils.h"
@@ -1849,6 +1850,15 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         pHiddenVariablesRow->setContentsMargins(searchRowMargins.left(), 0, searchRowMargins.right(), 0);
     }
     pHiddenVariablesRow->addWidget(checkBox_displayAllVariables);
+    // ...and how many the switch would add, at the trailing end of that row: a
+    // quiet reading rather than a control, in the same monospace the ID beside
+    // an item's name is set in. Nothing is said while there is nothing hidden.
+    mpLabel_hiddenVariablesCount = new QLabel(this);
+    mpLabel_hiddenVariablesCount->setObjectName(qsl("editorHiddenVariablesCount"));
+    mpLabel_hiddenVariablesCount->setFont(uiDesign::chipFont(this));
+    mpLabel_hiddenVariablesCount->hide();
+    pHiddenVariablesRow->addStretch(1);
+    pHiddenVariablesRow->addWidget(mpLabel_hiddenVariablesCount);
     verticalLayout_frame_left->insertLayout(1, pHiddenVariablesRow);
 
     // The two panes take turns rather than sharing the height, so there is no
@@ -2863,6 +2873,11 @@ void dlgTriggerEditor::slot_hideVariable(bool status)
         } else {
             vu->removeHidden(var);
         }
+        // The row is still in the tree until the variables are read again, so
+        // the mark that says it is hidden goes on or comes off it here - and the
+        // reading beside the switch over the tree changes with it
+        refreshVariableRow(mpCurrentVarItem);
+        updateHiddenVariablesCount();
     }
 }
 
@@ -6221,6 +6236,7 @@ void dlgTriggerEditor::addVar(bool isFolder)
     }
     vu->addTempVar(pNewItem, newVar);
     pNewItem->setFlags(pNewItem->flags() & ~(Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled));
+    refreshVariableRow(pNewItem);
 
     // Finalize selection
     mpCurrentVarItem = pNewItem;
@@ -7857,27 +7873,13 @@ void dlgTriggerEditor::saveVar()
     pItem->setToolTip(0, utils::richText(tr("Checked variables will be saved and loaded with your profile.")));
     if (!varUnit->shouldSave(variable)) {
         pItem->setFlags(pItem->flags() & ~(Qt::ItemIsDropEnabled | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable));
-        pItem->setForeground(0, QBrush(uiDesign::themeTokens().mutedText));
         const QString reason = varUnit->getUnsaveableReason(variable);
         pItem->setToolTip(0, reason.isEmpty() ? QString() : utils::richText(reason));
         pItem->setCheckState(0, Qt::Unchecked);
     } else if (varUnit->isSaved(variable)) {
         pItem->setCheckState(0, Qt::Checked);
     }
-    pItem->setData(0, Qt::UserRole, variable->getValueType());
-    QIcon icon;
-    switch (variable->getValueType()) {
-    case 5:
-        icon.addPixmap(QPixmap(qsl(":/icons/table.png")), QIcon::Normal, QIcon::Off);
-        break;
-    case 6:
-        icon.addPixmap(QPixmap(qsl(":/icons/function.png")), QIcon::Normal, QIcon::Off);
-        break;
-    default:
-        icon.addPixmap(QPixmap(qsl(":/icons/variable.png")), QIcon::Normal, QIcon::Off);
-        break;
-    }
-    pItem->setIcon(0, icon);
+    refreshVariableRow(pItem);
     mChangingVar = false;
     slot_variableSelected(pItem);
     if (renameRefused) {
@@ -8825,6 +8827,38 @@ void dlgTriggerEditor::slot_variableChanged(QTreeWidgetItem* pItem)
     }
 }
 
+// What a click on the square at the head of a variable's row asks for. The
+// square is drawn by VariableTreeDelegate, which makes the row the tree's
+// current one before asking - so there is nothing here to be handed.
+//
+// Qt's tristate cascade ticks every member of a table the tick reaches,
+// including the ones VarUnit refuses to save: a function, a reference, a table
+// past the size limit. Those are put back afterwards, which is what the check
+// box this replaces did (#9957). The saving itself is left where it was - every
+// one of these ticks reaches slot_variableChanged().
+void dlgTriggerEditor::slot_toggleVariableKept()
+{
+    QTreeWidgetItem* pItem = treeWidget_variables->currentItem();
+    if (!pItem || !(pItem->flags() & Qt::ItemIsUserCheckable)) {
+        return;
+    }
+    if (pItem->checkState(0) == Qt::Checked) {
+        pItem->setCheckState(0, Qt::Unchecked);
+        return;
+    }
+    // A partly ticked table is one the reader is asking to keep the whole of,
+    // which is the reading Qt gives a box that is not user-tristate
+    pItem->setCheckState(0, Qt::Checked);
+    QList<QTreeWidgetItem*> members;
+    treeWidget_variables->getAllChildren(pItem, members);
+    VarUnit* vu = mpHost->getLuaInterface()->getVarUnit();
+    for (QTreeWidgetItem* pMember : members) {
+        if (!vu->shouldSave(pMember)) {
+            pMember->setCheckState(0, Qt::Unchecked);
+        }
+    }
+}
+
 void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
 {
     if (!pItem || treeWidget_variables->indexOfTopLevelItem(pItem) == 0) {
@@ -8922,7 +8956,6 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
 
     const int varType = var->getValueType();
     const int keyType = var->getKeyType();
-    QIcon icon;
 
     switch (keyType) {
         //    case LUA_TNONE: // -1
@@ -8971,7 +9004,6 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
     case LUA_TBOOLEAN:
         mpSourceEditorArea->show();
         mpSourceEditorEdbee->setEnabled(true);
-        icon.addPixmap(QPixmap(qsl(":/icons/variable.png")), QIcon::Normal, QIcon::Off);
         // index 3 = "boolean"
         mpVarsMainArea->comboBox_variable_value_type->setCurrentIndex(3);
         mpVarsMainArea->comboBox_variable_value_type->setEnabled(true);
@@ -8979,7 +9011,6 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
     case LUA_TNUMBER:
         mpSourceEditorArea->show();
         mpSourceEditorEdbee->setEnabled(true);
-        icon.addPixmap(QPixmap(qsl(":/icons/variable.png")), QIcon::Normal, QIcon::Off);
         // index 2 = "number"
         mpVarsMainArea->comboBox_variable_value_type->setCurrentIndex(2);
         mpVarsMainArea->comboBox_variable_value_type->setEnabled(true);
@@ -8987,7 +9018,6 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
     case LUA_TSTRING:
         mpSourceEditorArea->show();
         mpSourceEditorEdbee->setEnabled(true);
-        icon.addPixmap(QPixmap(qsl(":/icons/variable.png")), QIcon::Normal, QIcon::Off);
         // index 1 = "string"
         mpVarsMainArea->comboBox_variable_value_type->setCurrentIndex(1);
         mpVarsMainArea->comboBox_variable_value_type->setEnabled(true);
@@ -8999,14 +9029,12 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
         mpVarsMainArea->comboBox_variable_value_type->setEnabled(!(pItem->childCount() > 0));
         // index 4 = "table"
         mpVarsMainArea->comboBox_variable_value_type->setCurrentIndex(4);
-        icon.addPixmap(QPixmap(qsl(":/icons/table.png")), QIcon::Normal, QIcon::Off);
         break;
     case LUA_TFUNCTION:
         mpSourceEditorArea->hide();
         mpSourceEditorEdbee->setEnabled(false);
         mpVarsMainArea->comboBox_variable_value_type->setCurrentIndex(5);
         mpVarsMainArea->comboBox_variable_value_type->setEnabled(false);
-        icon.addPixmap(QPixmap(qsl(":/icons/function.png")), QIcon::Normal, QIcon::Off);
         break;
     case LUA_TLIGHTUSERDATA:
         [[fallthrough]];
@@ -9024,14 +9052,12 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
     pItem->setCheckState(0, Qt::Unchecked);
     if (!vu->shouldSave(var)) {
         pItem->setFlags(pItem->flags() & ~(Qt::ItemIsDropEnabled | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable));
-        pItem->setForeground(0, QBrush(uiDesign::themeTokens().mutedText));
         const QString reason = vu->getUnsaveableReason(var);
         pItem->setToolTip(0, reason.isEmpty() ? QString() : utils::richText(reason));
     } else if (vu->isSaved(var)) {
         pItem->setCheckState(0, Qt::Checked);
     }
-    pItem->setData(0, Qt::UserRole, var->getValueType());
-    pItem->setIcon(0, icon);
+    refreshVariableRow(pItem);
     mChangingVar = false;
     // Said on selection rather than when the user tries to save: getValue() goes
     // by this same name, so for most of what is refused here the value box filled
@@ -9725,6 +9751,60 @@ void dlgTriggerEditor::repopulateVars()
     mpVarBaseItem->setExpanded(true);
     treeWidget_variables->setUpdatesEnabled(true);
     treeWidget_variables->setCurrentItem(mpVarBaseItem);
+    updateHiddenVariablesCount();
+}
+
+// A row of the Variables view carries what it is drawn from: the value's type,
+// the preview at its trailing edge, whether its key is a place in a list rather
+// than a name, and whether it is hidden. Nothing re-derives those once they are
+// set, so every path that writes a variable back comes through here - which is
+// what keeps painting a tree of several thousand rows off Lua's own tree.
+void dlgTriggerEditor::refreshVariableRow(QTreeWidgetItem* pItem)
+{
+    if (!pItem) {
+        return;
+    }
+    VarUnit* vu = mpHost->getLuaInterface()->getVarUnit();
+    // ...or the variable the editor has just made, which Lua does not hold yet
+    TVar* var = vu->getWVar(pItem);
+    if (!var) {
+        var = vu->getTVar(pItem);
+    }
+    if (!var) {
+        return;
+    }
+    uiDesign::VariableTreeDelegate::setVariableRowData(pItem, var, vu->isHidden(var));
+}
+
+// How many of the profile's globals the switch over the tree would bring into
+// it. Counted off Lua's own tree rather than off the rows, since the rows are
+// exactly what is missing while the switch is off; and only the globals, since
+// what the switch adds to the tree is top-level rows.
+void dlgTriggerEditor::updateHiddenVariablesCount()
+{
+    if (!mpLabel_hiddenVariablesCount) {
+        return;
+    }
+    int hiddenCount = 0;
+    VarUnit* vu = mpHost->getLuaInterface()->getVarUnit();
+    if (TVar* pBase = vu->getBase()) {
+        const QList<TVar*> globals = pBase->getChildren(false);
+        for (TVar* pGlobal : globals) {
+            if (vu->isHidden(pGlobal)) {
+                ++hiddenCount;
+            }
+        }
+    }
+    mpLabel_hiddenVariablesCount->setVisible(hiddenCount > 0);
+    if (hiddenCount > 0) {
+        //: Quiet reading beside the "Show hidden variables" switch over the editor's Variables tree, saying how many variables are hidden right now. %1 is that count.
+        mpLabel_hiddenVariablesCount->setText(tr("%1 hidden").arg(hiddenCount));
+        //: Accessible name of the "Show hidden variables" switch over the editor's Variables tree, said with how many variables are hidden right now. %1 is that count.
+        checkBox_displayAllVariables->setAccessibleName(tr("Show hidden variables (%1)").arg(hiddenCount));
+        return;
+    }
+    mpLabel_hiddenVariablesCount->clear();
+    checkBox_displayAllVariables->setAccessibleName(checkBox_displayAllVariables->text());
 }
 
 void dlgTriggerEditor::expand_child_triggers(TTrigger* pTriggerParent, QTreeWidgetItem* pWidgetItemParent)
@@ -15692,25 +15772,6 @@ void dlgTriggerEditor::restyleEditorTreeHeadingIcons()
     }
 }
 
-// A variable Lua will not let the profile save is written in the quiet tone,
-// and a brush set on a tree item is a colour rather than a role - so nothing
-// re-derives it and the rows keep the tone of whichever theme they were built
-// under. repopulateVars() builds them with the current one, but a theme change
-// on its own does not rebuild the tree, so it comes through here instead.
-// Which rows those are is read off the tree rather than off Lua: a row is one
-// exactly when it already carries a brush.
-void dlgTriggerEditor::restyleUnsaveableVariableRows()
-{
-    const QBrush quiet(uiDesign::themeTokens().mutedText);
-    QTreeWidgetItemIterator it(treeWidget_variables);
-    while (*it) {
-        if ((*it)->data(0, Qt::ForegroundRole).isValid()) {
-            (*it)->setForeground(0, quiet);
-        }
-        ++it;
-    }
-}
-
 // The view can be changed from a deep link, a search result or a keyboard
 // shortcut as much as from the sidebar, so the row that is drawn as chosen is
 // set from the view rather than the other way round - see changeView()
@@ -15881,6 +15942,13 @@ void dlgTriggerEditor::restyleEditorIcons()
     // ...and the heading row of each tree, which carries the same seven glyphs
     restyleEditorTreeHeadingIcons();
 
+    // ...and the marks the variables tree draws into its own rows: the type
+    // beside each name, the square that says the profile keeps it, the mark on
+    // a hidden row
+    if (mpVariableTreeDelegate) {
+        mpVariableTreeDelegate->restyle();
+    }
+
     // The button that empties the sound file field. It carries the same tinted
     // set as the toolbar's actions rather than a green bitmap, and the mode that
     // matters most here is the disabled one: with no sound file set there is
@@ -15963,9 +16031,10 @@ void dlgTriggerEditor::restyleEditorIcons()
 }
 
 // The six trees a profile's own items live in are the ones a state dot says
-// anything about. The variables tree is a view of what Lua holds and the results
-// tree a list of matches, and neither has anything to switch on or off - so they
-// take the panel's look without the dots.
+// anything about. The seventh is a view of what Lua holds, so its rows are drawn
+// by a delegate of their own - the same row grammar, with the square that says
+// whether the profile keeps the variable where the dot would be. The results
+// tree is a list of matches and has nothing to switch on or off at all.
 void dlgTriggerEditor::setupEditorPanel()
 {
     const QList<QPair<TTreeWidget*, TreeType>> itemTrees{{treeWidget_triggers, TreeType::Trigger},
@@ -15991,7 +16060,15 @@ void dlgTriggerEditor::setupEditorPanel()
         itemTree.first->setTextElideMode(Qt::ElideRight);
         itemTree.first->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     }
+    // ...and the seventh, whose rows say something else but are held to the same
+    // grammar: one height, the room its depth holds it in and the chevron that
+    // folds it drawn here rather than by the view, and the accent bar down a
+    // chosen row painted over the pill rather than bent round its corner
+    mpVariableTreeDelegate = new uiDesign::VariableTreeDelegate(treeWidget_variables);
+    connect(mpVariableTreeDelegate, &uiDesign::VariableTreeDelegate::keptToggleRequested, this, &dlgTriggerEditor::slot_toggleVariableKept);
+    treeWidget_variables->setItemDelegate(mpVariableTreeDelegate);
     treeWidget_variables->setTextElideMode(Qt::ElideRight);
+    treeWidget_variables->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     // The mark that says which row the keyboard is on is drawn once for the
     // whole row while a tree shows focus across all its columns - and
@@ -16423,7 +16500,17 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // A pane rather than the page, so that the panel reads as a column of its
     // own between the sidebar and the column an item is edited in, both of
     // which are the page.
-    frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }").arg(paneColor.name()));
+    // ...and, on that same pane, the quiet reading of how many variables the
+    // switch above the tree would bring into it. A rule rather than a palette
+    // colour, since the pane's own sheet is what the label shows through.
+    frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }"
+                                  "#editorHiddenVariablesCount { color: %2; background: transparent; }")
+                                      .arg(paneColor.name(), mutedText.name()));
+    if (mpLabel_hiddenVariablesCount) {
+        // Measured off the row it lies on rather than off its own font: a rule
+        // naming the label stops it inheriting anything from what it sits on
+        mpLabel_hiddenVariablesCount->setFont(uiDesign::chipFont(frame_left));
+    }
 
     // What the seam either side of each column is painted with. A handle
     // carrying no heading draws a hairline and carries each neighbour's own
@@ -16457,30 +16544,22 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // the row's own padding gives back what it takes, which is what leaves the
     // dot, the chevron and the mark the delegate draws where they were.
     //
-    // The seventh tree has no delegate of ours (see below), so it is the one
-    // that still takes its bar from the border, arc and all.
+    // All seven trees alike: the tree of Lua variables is drawn by a delegate of
+    // its own, and that one paints the bar down a chosen row the same way.
     const QColor selectedRow = uiDesign::blend(paneColor, accentColor, uiDesign::scmAccentWashStrength);
     const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
                                   "QTreeWidget::item { border-radius: %5px; border-left: %6px solid transparent; padding: 2px 4px 2px %7px; }"
                                   "QTreeWidget::item:hover { background-color: %2; }"
-                                  "QTreeWidget::item:selected { color: %4; background-color: %3; }"
-                                  "#treeWidget_variables::item:selected { border-left: %6px solid %8; }")
+                                  "QTreeWidget::item:selected { color: %4; background-color: %3; }")
                                       .arg(paneColor.name(),
                                            hoverSoft,
                                            selectedRow.name(),
                                            accentText.name(),
                                            QString::number(uiDesign::scmRadiusPanel),
                                            QString::number(uiDesign::scmAccentBarWidth),
-                                           QString::number(scmEditorTreeRowGutter - uiDesign::scmAccentBarWidth),
-                                           accentColor.name())
+                                           QString::number(scmEditorTreeRowGutter - uiDesign::scmAccentBarWidth))
                               + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
-    // The tree of Lua variables takes the same rules and is drawn by no delegate
-    // of ours: it is a view of what the interpreter holds rather than of what
-    // the profile is made of, so it keeps the view's indentation, the arrows
-    // the style draws in it, and the accent bar as a border rather than as
-    // something painted over the pill - which is what the rule naming it by
-    // object name above is for
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {
         pTreeWidget->setStyleSheet(treeRules);
@@ -16497,10 +16576,6 @@ void dlgTriggerEditor::applyEditorShellStyle()
     for (uiDesign::EditorTreeDelegate* pDelegate : std::as_const(mEditorTreeDelegates)) {
         pDelegate->restyle();
     }
-
-    // ...and the rows of the seventh tree that are written in the quiet tone,
-    // which no delegate draws and so nothing else re-inks
-    restyleUnsaveableVariableRows();
 
     // The results take the trees' hover and selection so that one panel reads as
     // one thing; what a row holds is drawn by SearchResultDelegate, which is

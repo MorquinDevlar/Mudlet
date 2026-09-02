@@ -112,6 +112,7 @@ class ChipRow;
 class EditorSidebarToggle;
 class EditorTreeDelegate;
 class SearchResultDelegate;
+class VariableTreeDelegate;
 }
 
 
@@ -140,6 +141,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
     friend class EditorVariablesFormTest;
+    friend class EditorVariablesTreeTest;
     friend class ReadabilityAuditTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class VariableEditorWriteBackTest;
@@ -329,8 +331,11 @@ public:
     // ...and the heading row of each of the seven trees, which carries the same
     // glyph as the sidebar row that opens it
     void restyleEditorTreeHeadingIcons();
-    // ...and the rows of the variables tree that are written in the quiet tone
-    void restyleUnsaveableVariableRows();
+    // ...and what a row of the variables tree is drawn from, which is written
+    // into the row rather than read off Lua while it is painted
+    void refreshVariableRow(QTreeWidgetItem* pItem);
+    // ...and how many globals the switch over that tree would bring into it
+    void updateHiddenVariablesCount();
     // The toolbar's leading button, and the one place the preference it carries
     // is changed
     void updateEditorSidebarToggle();
@@ -412,6 +417,8 @@ public slots:
     void slot_hideVariable(bool);
     void slot_variableSelected(QTreeWidgetItem*);
     void slot_variableChanged(QTreeWidgetItem*);
+    // What a click on the square at the head of a variable's row asks for
+    void slot_toggleVariableKept();
     void slot_showVariables();
     void slot_viewErrorsAction();
     void slot_setupPatternControls(const int);
@@ -874,6 +881,11 @@ private:
     // One per item tree, kept so that a theme change can be handed on to the
     // state dots they draw
     QList<uiDesign::EditorTreeDelegate*> mEditorTreeDelegates;
+    // ...and the seventh tree's own, for the same reason
+    uiDesign::VariableTreeDelegate* mpVariableTreeDelegate = nullptr;
+    // How many variables the switch over that tree would bring into it, said
+    // quietly at the trailing end of the switch's row
+    QPointer<QLabel> mpLabel_hiddenVariablesCount;
 
     // The strip the splitter handle over the Lua editor carries. Guarded because
     // the handle owns them: on teardown the splitter can take the strip with it

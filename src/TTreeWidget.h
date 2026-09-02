@@ -56,8 +56,6 @@ public:
     bool dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData* data, Qt::DropAction action) override;
     void rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end) override;
     void rowsInserted(const QModelIndex& parent, int start, int end) override;
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
     // The option the view lays a row out from. QAbstractItemView keeps
     // initViewItemOption() to itself, and measuring a row against the style from
     // outside the view needs the same starting point the view uses.
@@ -87,8 +85,6 @@ private:
     int mOldPosition;  // Deprecated: kept for compatibility, will be removed
     int mChildID;      // Deprecated: kept for compatibility, will be removed
     TreeType mTreeType = TreeType::None;
-    // CHECK: Should this actually be a: QPersistentModelIndex ?
-    QModelIndex mClickedItem;
 };
 
 #endif // MUDLET_TTREEWIDGET_H

@@ -90,6 +90,7 @@
         <file>icons/editor-export.png</file>
         <file>icons/editor-filter.png</file>
         <file>icons/editor-folder.png</file>
+        <file>icons/editor-hidden.png</file>
         <file>icons/editor-import.png</file>
         <file>icons/editor-keys.png</file>
         <file>icons/editor-module.png</file>
@@ -108,6 +109,11 @@
         <file>icons/editor-statistics.png</file>
         <file>icons/editor-timers.png</file>
         <file>icons/editor-triggers.png</file>
+        <file>icons/editor-type-boolean.png</file>
+        <file>icons/editor-type-function.png</file>
+        <file>icons/editor-type-number.png</file>
+        <file>icons/editor-type-other.png</file>
+        <file>icons/editor-type-string.png</file>
         <file>icons/editor-undo.png</file>
         <file>icons/editor-variables.png</file>
         <file>icons/errors.png</file>
@@ -129,7 +135,6 @@
         <file>icons/folder.png</file>
         <file>icons/frame_plaque.png</file>
         <file>icons/frame_swords.png</file>
-        <file>icons/function.png</file>
         <file>icons/games-solve.png</file>
         <file>icons/generic_mud.jpg</file>
         <file>icons/gw2.png</file>
@@ -211,7 +216,6 @@
         <file>icons/solid-line.png</file>
         <file>icons/stickmud_icon.jpg</file>
         <file>icons/system-users.png</file>
-        <file>icons/table.png</file>
         <file>icons/toolbar-about.png</file>
         <file>icons/toolbar-connect.png</file>
         <file>icons/toolbar-discord.png</file>
@@ -233,7 +237,6 @@
         <file>icons/tools-report-bug.png</file>
         <file>icons/tools-wizard.png</file>
         <file>icons/utilities-file-archiver.png</file>
-        <file>icons/variable.png</file>
         <file>icons/variables.png</file>
         <file>icons/view-filter.png</file>
         <file>icons/view-restore.png</file>

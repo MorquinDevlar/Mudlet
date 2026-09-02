@@ -24,10 +24,8 @@
 
 #include "Host.h"
 #include "LuaInterface.h"
-#include "VarUnit.h"
 
 #include <QtEvents>
-#include <QHeaderView>
 #include <QToolTip>
 
 TTreeWidget::TTreeWidget(QWidget* pW)
@@ -82,61 +80,6 @@ QStyleOptionViewItem TTreeWidget::viewItemOption() const
     QStyleOptionViewItem option;
     initViewItemOption(&option);
     return option;
-}
-
-void TTreeWidget::mouseReleaseEvent(QMouseEvent* event)
-{
-    QModelIndex indexClicked = indexAt(event->pos());
-    if (mTreeType == TreeType::Var && indexClicked.isValid() && indexClicked.row() != 0 && mClickedItem == indexClicked) {
-        QRect vrect = visualRect(indexClicked);
-        int itemIndentation = vrect.x() - visualRect(rootIndex()).x();
-        QRect rect = QRect(header()->sectionViewportPosition(0) + itemIndentation, vrect.y(), style()->pixelMetric(QStyle::PM_IndicatorWidth), vrect.height());
-        if (rect.contains(event->pos())) {
-            QTreeWidgetItem* clicked = itemFromIndex(indexClicked);
-            if (!clicked) {
-                return;
-            }
-            if (!(clicked->flags() & Qt::ItemIsUserCheckable)) {
-                return;
-            }
-            if (clicked->checkState(0) == Qt::Unchecked) {
-                clicked->setCheckState(0, Qt::Checked);
-                //get all children and see what ones we can save
-                QList<QTreeWidgetItem*> list;
-                getAllChildren(clicked, list);
-                QListIterator<QTreeWidgetItem*> it(list);
-                LuaInterface* lI = mpHost->getLuaInterface();
-                VarUnit* vu = lI->getVarUnit();
-                while (it.hasNext()) {
-                    QTreeWidgetItem* item = it.next();
-                    if (!vu->shouldSave(item)) {
-                        item->setCheckState(0, Qt::Unchecked);
-                    }
-                }
-            } else {
-                clicked->setCheckState(0, Qt::Unchecked);
-            }
-            return;
-        }
-    }
-    QTreeWidget::mouseReleaseEvent(event);
-}
-
-void TTreeWidget::mousePressEvent(QMouseEvent* event)
-{
-    QModelIndex indexClicked = indexAt(event->pos());
-    if (mTreeType == TreeType::Var && indexClicked.isValid()) {
-        QRect vrect = visualRect(indexClicked);
-        int itemIndentation = vrect.x() - visualRect(rootIndex()).x();
-        QRect rect = QRect(header()->sectionViewportPosition(0) + itemIndentation, vrect.y(), style()->pixelMetric(QStyle::PM_IndicatorWidth), vrect.height());
-        if (rect.contains(event->pos())) {
-            mClickedItem = indexClicked;
-            QTreeWidget::mousePressEvent(event);
-            return;
-        }
-    }
-
-    QTreeWidget::mousePressEvent(event);
 }
 
 void TTreeWidget::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end)

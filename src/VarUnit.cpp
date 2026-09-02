@@ -23,6 +23,7 @@
 #include "VarUnit.h"
 
 #include "TVar.h"
+#include "VariableTreeDelegate.h"
 #include "utils.h"
 
 #include <QDebug>
@@ -357,25 +358,18 @@ void VarUnit::buildVarTree(QTreeWidgetItem* p, TVar* var, bool showHidden)
                 pItem->setCheckState(0, Qt::Checked);
             }
             if (!shouldSave(child)) {
+                // The row is drawn in the tone an unavailable word is written in
+                // by VariableTreeDelegate, which reads that off this flag - a
+                // brush set here would be a colour rather than a role, and would
+                // keep the tone of whichever theme the tree was built under
                 pItem->setFlags(pItem->flags() & ~(Qt::ItemIsDropEnabled | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable));
-                pItem->setForeground(0, QBrush(QColor("grey")));
                 const QString reason = getUnsaveableReason(child);
                 pItem->setToolTip(0, reason.isEmpty() ? QString() : utils::richText(reason));
             }
-            pItem->setData(0, Qt::UserRole, child->getValueType());
-            QIcon icon;
-            switch (child->getValueType()) {
-            case 5:
-                icon.addPixmap(QPixmap(qsl(":/icons/table.png")), QIcon::Normal, QIcon::Off);
-                break;
-            case 6:
-                icon.addPixmap(QPixmap(qsl(":/icons/function.png")), QIcon::Normal, QIcon::Off);
-                break;
-            default:
-                icon.addPixmap(QPixmap(qsl(":/icons/variable.png")), QIcon::Normal, QIcon::Off);
-                break;
-            }
-            pItem->setIcon(0, icon);
+            // What the row is drawn from: its type, the preview of its value,
+            // whether its key is a place in a list and whether it is hidden. A
+            // row carries no picture of its own - the delegate draws the marks.
+            uiDesign::VariableTreeDelegate::setVariableRowData(pItem, child, isHidden(child));
             wVars.insert(pItem, child);
             cList.append(pItem);
             if (child->getValueType() == 5) {

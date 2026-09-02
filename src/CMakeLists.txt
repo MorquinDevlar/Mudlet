@@ -90,6 +90,7 @@ set(mudlet_SRCS
     EditorToggleActiveCommand.cpp
     EditorSidebarToggle.cpp
     EditorTreeDelegate.cpp
+    EditorTreeRowMetrics.cpp
     EditorUndoStack.cpp
     EventLoopPump.cpp
     exitstreewidget.cpp
@@ -226,6 +227,7 @@ set(mudlet_SRCS
     TVar.cpp
     uiDesign.cpp
     UntrustedText.cpp
+    VariableTreeDelegate.cpp
     VarUnit.cpp
     WideComboBox.cpp
     XMLexport.cpp
@@ -332,6 +334,7 @@ set(mudlet_HDRS
     EditorToggleActiveCommand.h
     EditorSidebarToggle.h
     EditorTreeDelegate.h
+    EditorTreeRowMetrics.h
     EditorUndoStack.h
     enums.h
     EventLoopPump.h
@@ -475,6 +478,7 @@ set(mudlet_HDRS
     uiDesign.h
     UntrustedText.h
     utils.h
+    VariableTreeDelegate.h
     VarUnit.h
     widechar_width.h
     WideComboBox.h
