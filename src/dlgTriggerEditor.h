@@ -143,6 +143,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorSplitterRestoreTest;
     friend class EditorStatusBarTest;
     friend class EditorSurfaceToneTest;
+    friend class EditorTabAtStartTest;
     friend class EditorTimerIntervalTest;
     friend class EditorToolBarOverflowTest;
     friend class EditorTreeDotClickTest;
