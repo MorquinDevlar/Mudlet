@@ -127,6 +127,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorChromeInkTest;
     friend class EditorChromeShapeTest;
     friend class EditorColumnAlignmentTest;
+    friend class EditorColumnFontTest;
     friend class EditorEventChipRowTest;
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
@@ -227,6 +228,9 @@ public:
     void enterEvent(TEnterEvent* event) override;
     bool eventFilter(QObject*, QEvent* event) override;
     bool event(QEvent* event) override;
+    // Hide QWidget::setFont() and QWidget::setStyleSheet(): a font has to be carried past the stylesheets in the window, see StyleSheetFontLift
+    void setFont(const QFont& font);
+    void setStyleSheet(const QString& styleSheet);
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* e) override;
     void updateExtraControlsToggleIcon();

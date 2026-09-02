@@ -124,6 +124,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorChromeInkTest.cpp
     EditorChromeShapeTest.cpp
     EditorColumnAlignmentTest.cpp
+    EditorColumnFontTest.cpp
     EditorEventChipRowTest.cpp
     EditorFormShellTest.cpp
     EditorGeometryWriteGuardTest.cpp
