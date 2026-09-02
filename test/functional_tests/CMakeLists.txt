@@ -130,6 +130,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorGeometryWriteGuardTest.cpp
     EditorIconScaleTest.cpp
     EditorKeyCaptureTest.cpp
+    EditorKeyGrabShortcutsTest.cpp
     EditorMinimumSizeTest.cpp
     EditorNoticeGlyphTest.cpp
     EditorOptionsPanelDefaultTest.cpp

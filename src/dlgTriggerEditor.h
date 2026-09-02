@@ -55,6 +55,7 @@
 #include <QFlag>
 #include <QHash>
 #include <QIcon>
+#include <QKeySequence>
 #include <QPixmap>
 #include <QListWidgetItem>
 #include <QScrollArea>
@@ -132,6 +133,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
     friend class EditorKeyCaptureTest;
+    friend class EditorKeyGrabShortcutsTest;
     friend class EditorMinimumSizeTest;
     friend class EditorNoticeGlyphTest;
     friend class EditorOptionsPanelDefaultTest;
@@ -839,8 +841,9 @@ private:
     [[nodiscard]] int patternTypeColumnWidth(const QFont& typeFont) const;
 
     void keyGrabCallback(const Qt::Key, const Qt::KeyboardModifiers);
-    void setShortcuts(const bool active = true);
-    void setShortcuts(QList<QAction*> actionList, const bool active = true);
+    QList<QAction*> toolbarActions() const;
+    void suspendShortcuts();
+    void restoreShortcuts();
 
     void showOrHideRestoreEditorActionsToolbarAction();
     void checkForMoreThanOneTriggerItem();
@@ -859,28 +862,9 @@ private:
     void setupPatternNavigationShortcuts();
 
 
-    // PLACEMARKER 3/3 save button texts need to be kept in sync
-    // Note: Shortcut values use Qt's portable format (Ctrl+S) which Qt maps correctly per-platform
-    // Keys use tr() to match translated action labels; values are not translated (they're key sequences)
-    std::unordered_map<QString, QString> mButtonShortcuts = {{tr("Save Item"), qsl("Ctrl+S")},
-                                                             {tr("Save Trigger"), qsl("Ctrl+S")},
-                                                             {tr("Save Timer"), qsl("Ctrl+S")},
-                                                             {tr("Save Alias"), qsl("Ctrl+S")},
-                                                             {tr("Save Script"), qsl("Ctrl+S")},
-                                                             {tr("Save Button"), qsl("Ctrl+S")},
-                                                             {tr("Save Key"), qsl("Ctrl+S")},
-                                                             {tr("Save Variable"), qsl("Ctrl+S")},
-                                                             {tr("Save Profile"), qsl("Ctrl+Shift+S")},
-                                                             {tr("Triggers"), qsl("Ctrl+1")},
-                                                             {tr("Aliases"), qsl("Ctrl+2")},
-                                                             {tr("Scripts"), qsl("Ctrl+3")},
-                                                             {tr("Timers"), qsl("Ctrl+4")},
-                                                             {tr("Keys"), qsl("Ctrl+5")},
-                                                             {tr("Variables"), qsl("Ctrl+6")},
-                                                             {tr("Buttons"), qsl("Ctrl+7")},
-                                                             {tr("Errors"), qsl("Ctrl+8")},
-                                                             {tr("Statistics"), qsl("Ctrl+9")},
-                                                             {tr("Debug"), qsl("Ctrl+0")}};
+    // The shortcuts a key grab took away, keyed by action, so that ending the
+    // grab puts back exactly those
+    QHash<QAction*, QKeySequence> mKeyGrabSuspendedShortcuts;
 
     std::unordered_map<SingleLineTextEdit*, bool> lineEditShouldMarkSpaces;
 

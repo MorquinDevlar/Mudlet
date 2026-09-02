@@ -1314,47 +1314,56 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     QAction* viewTriggerAction = new QAction(QIcon(qsl(":/icons/tools-wizard.png")), tr("Triggers"), this);
     viewTriggerAction->setStatusTip(tr("Show Triggers"));
     viewTriggerAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Triggers"), QKeySequence(Qt::CTRL | Qt::Key_1).toString(QKeySequence::NativeText)));
+    viewTriggerAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_1));
     connect(viewTriggerAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showTriggers);
 
     QAction* viewAliasAction = new QAction(QIcon(qsl(":/icons/system-users.png")), tr("Aliases"), this);
     viewAliasAction->setStatusTip(tr("Show Aliases"));
     viewAliasAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Aliases"), QKeySequence(Qt::CTRL | Qt::Key_2).toString(QKeySequence::NativeText)));
+    viewAliasAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_2));
     connect(viewAliasAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showAliases);
 
     QAction* viewScriptsAction = new QAction(QIcon(qsl(":/icons/document-properties.png")), tr("Scripts"), this);
     viewScriptsAction->setStatusTip(tr("Show Scripts"));
     viewScriptsAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Scripts"), QKeySequence(Qt::CTRL | Qt::Key_3).toString(QKeySequence::NativeText)));
+    viewScriptsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_3));
     connect(viewScriptsAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showScripts);
 
     QAction* showTimersAction = new QAction(QIcon(qsl(":/icons/chronometer.png")), tr("Timers"), this);
     showTimersAction->setStatusTip(tr("Show Timers"));
     showTimersAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Timers"), QKeySequence(Qt::CTRL | Qt::Key_4).toString(QKeySequence::NativeText)));
+    showTimersAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_4));
     connect(showTimersAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showTimers);
 
     QAction* viewKeysAction = new QAction(QIcon(qsl(":/icons/preferences-desktop-keyboard.png")), tr("Keys"), this);
     viewKeysAction->setStatusTip(tr("Show Keybindings"));
     viewKeysAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Keybindings"), QKeySequence(Qt::CTRL | Qt::Key_5).toString(QKeySequence::NativeText)));
+    viewKeysAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_5));
     connect(viewKeysAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showKeys);
 
     QAction* viewVarsAction = new QAction(QIcon(qsl(":/icons/variables.png")), tr("Variables"), this);
     viewVarsAction->setStatusTip(tr("Show Variables"));
     viewVarsAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Variables"), QKeySequence(Qt::CTRL | Qt::Key_6).toString(QKeySequence::NativeText)));
+    viewVarsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_6));
     connect(viewVarsAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showVariables);
 
     QAction* viewActionAction = new QAction(QIcon(qsl(":/icons/bookmarks.png")), tr("Buttons"), this);
     viewActionAction->setStatusTip(tr("Show Buttons"));
     viewActionAction->setToolTip(qsl("%1 (%2)").arg(tr("Show Buttons"), QKeySequence(Qt::CTRL | Qt::Key_7).toString(QKeySequence::NativeText)));
+    viewActionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_7));
     connect(viewActionAction, &QAction::triggered, this, &dlgTriggerEditor::slot_showActions);
 
 
     QAction* viewErrorsAction = new QAction(QIcon(qsl(":/icons/errors.png")), tr("Errors"), this);
     viewErrorsAction->setStatusTip(tr("Show/Hide the errors console in the bottom right of this editor."));
     viewErrorsAction->setToolTip(qsl("%1 (%2)").arg(tr("Show/Hide errors console"), QKeySequence(Qt::CTRL | Qt::Key_8).toString(QKeySequence::NativeText)));
+    viewErrorsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_8));
     connect(viewErrorsAction, &QAction::triggered, this, &dlgTriggerEditor::slot_viewErrorsAction);
 
     QAction* viewStatsAction = new QAction(QIcon(qsl(":/icons/view-statistics.png")), tr("Statistics"), this);
     viewStatsAction->setStatusTip(tr("Generate a statistics summary display on the main profile console."));
     viewStatsAction->setToolTip(qsl("%1 (%2)").arg(tr("Generate statistics"), QKeySequence(Qt::CTRL | Qt::Key_9).toString(QKeySequence::NativeText)));
+    viewStatsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_9));
     connect(viewStatsAction, &QAction::triggered, this, &dlgTriggerEditor::slot_viewStatsAction);
 
     QAction* showDebugAreaAction = new QAction(QIcon(qsl(":/icons/tools-report-bug.png")), tr("Debug"), this);
@@ -1362,6 +1371,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     //: %1 is a keyboard shortcut, e.g. 'Ctrl+0' on Windows/Linux or '⌘0' on macOS
     showDebugAreaAction->setToolTip(
             utils::richText(tr("Show/Hide Debug Console (%1) -> system will be <b><i>slower</i></b>.").arg(QKeySequence(Qt::CTRL | Qt::Key_0).toString(QKeySequence::NativeText))));
+    showDebugAreaAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
     connect(showDebugAreaAction, &QAction::triggered, this, &dlgTriggerEditor::slot_toggleCentralDebugConsole);
 
     mpAction_toggleActive = new QAction(tr("Activate"), this);
@@ -1397,8 +1407,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mAddGroup, &QAction::triggered, this, &dlgTriggerEditor::slot_addNewGroup);
 
     // 'Save Item' does not see to be translated as it is only ever used programmatically and not visible to the player
-    // PLACEMARKER 1/3 save button texts need to be kept in sync
     mSaveItem = new QAction(QIcon(qsl(":/icons/document-save-as.png")), qsl("Save Item"), this);
+    mSaveItem->setShortcut(QKeySequence(QKeySequence::Save));
     connect(mSaveItem, &QAction::triggered, this, &dlgTriggerEditor::slot_saveEdits);
 
     QAction* copyAction = new QAction(tr("Copy"), this);
@@ -1496,6 +1506,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
                                                    "<p>Should there be any modules that are marked to be \"<i>synced</i>\" this will "
                                                    "also cause them to be saved and reloaded into other profiles if they too are "
                                                    "active.</p>")));
+    mProfileSaveAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
     //: Status tip for saving profile
     mProfileSaveAction->setStatusTip(tr("Save profile (triggers, aliases, scripts, timers, buttons, keys - not the map) and synchronize modules."));
 
@@ -1681,7 +1692,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // the starting state for that is a visible one so it needs to be hidden at
     // the start:
     mpAction_restoreEditorActionsToolbar->setVisible(false);
-    setShortcuts();
 
     setupEditorPanel();
     applyEditorShellStyle();
@@ -10621,7 +10631,6 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     // texts are duplicated here so that translators can work with the full string
     switch (mCurrentView) {
     case EditorViewType::cmTriggerView:
-        // PLACEMARKER 2/3 save button texts need to be kept in sync
         mAddItem->setText(tr("Add Trigger"));
         mAddItem->setStatusTip(tr("Add new trigger"));
         mAddGroup->setText(tr("Add Trigger Group"));
@@ -13605,7 +13614,7 @@ void dlgTriggerEditor::slot_keyGrab()
         return;
     }
     mIsGrabKey = true;
-    setShortcuts(false);
+    suspendShortcuts();
     QCoreApplication::instance()->installEventFilter(this);
     // Reaching for the keystroke is an edit to the key, the way the button this
     // replaced was
@@ -13613,29 +13622,37 @@ void dlgTriggerEditor::slot_keyGrab()
     showKeyBindingListening();
 }
 
-// Activate shortcuts for editor menu items like Ctrl+S for "Save Item" etc.
-// Deactivate instead with optional "false" - to allow these for keybindings
-void dlgTriggerEditor::setShortcuts(const bool active)
+// The actions a key grab has to silence: the ones on the editor's toolbar, and
+// the view switchers - no longer a toolbar's actions, but their shortcuts are
+// still the ones a keybinding has to be able to take away
+QList<QAction*> dlgTriggerEditor::toolbarActions() const
 {
-    setShortcuts(toolBar->actions(), active);
-    // The view switchers are no longer a toolbar's actions, but their shortcuts
-    // are still the ones a keybinding has to be able to take away
-    setShortcuts(mEditorViewActions, active);
+    return toolBar->actions() + mEditorViewActions;
 }
 
-void dlgTriggerEditor::setShortcuts(QList<QAction*> actionList, const bool active)
+// Take the editor's own shortcuts away for the duration of a key grab, so a
+// keystroke like Ctrl+S reaches the grab rather than the action
+void dlgTriggerEditor::suspendShortcuts()
 {
-    QString buttonLabel;
-    for (auto& action : actionList) {
-        if (!active) {
-            action->setShortcut(QString());
-            continue;
-        }
-        buttonLabel = action->text();
-        if (auto it = mButtonShortcuts.find(buttonLabel); it != mButtonShortcuts.end()) {
-            action->setShortcut(it->second);
+    for (auto* action : toolbarActions()) {
+        // A second click on Grab Key while one is armed finds every shortcut
+        // gone already and records nothing, so the first grab's record stands
+        if (const QKeySequence shortcut = action->shortcut(); !shortcut.isEmpty()) {
+            mKeyGrabSuspendedShortcuts.insert(action, shortcut);
+            action->setShortcut(QKeySequence());
         }
     }
+}
+
+// Put back exactly what suspendShortcuts() took
+void dlgTriggerEditor::restoreShortcuts()
+{
+    for (auto* action : toolbarActions()) {
+        if (const auto it = mKeyGrabSuspendedShortcuts.constFind(action); it != mKeyGrabSuspendedShortcuts.constEnd()) {
+            action->setShortcut(it.value());
+        }
+    }
+    mKeyGrabSuspendedShortcuts.clear();
 }
 
 void dlgTriggerEditor::keyGrabCallback(const Qt::Key key, const Qt::KeyboardModifiers modifier)
@@ -15220,7 +15237,7 @@ void dlgTriggerEditor::releaseKeyGrab()
         return;
     }
     mIsGrabKey = false;
-    setShortcuts();
+    restoreShortcuts();
     QCoreApplication::instance()->removeEventFilter(this);
 }
 
