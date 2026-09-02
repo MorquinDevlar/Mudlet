@@ -21,6 +21,7 @@
  ***************************************************************************/
 
 #include <QColor>
+#include <QFont>
 #include <QHash>
 #include <QIcon>
 #include <QKeySequence>
@@ -70,10 +71,14 @@ inline constexpr char scmProp_paneTone[] = "uiPaneTone";
 // below, so which property says so is the first of the few things that differ.
 inline constexpr char scmProp_settingsCard[] = "settingsCard";
 inline constexpr char scmProp_editorCard[] = "editorCard";
-// ...and a card carrying a single option, which needs no heading and so no room
-// inside for one. Only the settings dialog has such a card so far, but the
-// builder takes the name rather than assuming it.
+inline constexpr char scmProp_aboutCard[] = "aboutCard";
+// ...and a card carrying no heading, and so no room inside for one: a single
+// option in the settings dialog, the thanks and third-party cards on the About
+// one. The builder takes the name rather than assuming either.
 inline constexpr char scmProp_settingsCardPlain[] = "settingsCardPlain";
+// The About dialog's own pair: a maker's card is headed by their name, and the
+// thanks and third-party cards carry no heading at all.
+inline constexpr char scmProp_aboutCardPlain[] = "aboutCardPlain";
 
 // Every surface in either window is mixed from four palette colours and nothing
 // else, so that a theme change moves all of them together. The recipes live
@@ -462,6 +467,24 @@ inline constexpr int scmCardTitleGap = 8;
 // A QLabel's rich text reaches a picture only through a URL, and a glyph tinted
 // at runtime has no path - so it travels inline
 QString inlineGlyph(const QPixmap& glyph);
+
+// The colour of a link, written into the link itself.
+//
+// A QLabel parses its rich text the moment it is set and bakes the colour of
+// every anchor into the document then and there, taking it from the
+// *application* palette - so writing QPalette::Link to the widget afterwards
+// changes nothing, and re-polishing it changes nothing either. Every anchor is
+// left at Qt's own blue, which is 2.4:1 on a dark page. Setting the colour on
+// the anchor is what a document does honour, so it travels there instead, and
+// the text a label was given has to be kept somewhere it can be inked from
+// again when the appearance moves.
+QString withLinkColour(const QString& richText, const QColor& colour);
+
+// The platform's fixed-pitch face at the size the window is running at: a
+// version string, a host name, a build fact. Scaled off the font handed in
+// rather than off a number, so it follows the interface font - and a base
+// measured in pixels is answered in pixels, since pointSizeF() is -1 there.
+QFont fixedPitchFont(const QFont& base, const qreal scale = 1.0);
 
 // The types are the ones connectApplyTriggers() listens to, so everything able
 // to schedule an apply can also be told apart from how it was populated

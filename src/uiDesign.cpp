@@ -34,6 +34,7 @@
 #include <QDoubleSpinBox>
 #include <QFileInfo>
 #include <QFontComboBox>
+#include <QFontDatabase>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -920,6 +921,24 @@ QString inlineGlyph(const QPixmap& glyph)
     buffer.open(QIODevice::WriteOnly);
     glyph.save(&buffer, "PNG");
     return qsl(R"(<img src="data:image/png;base64,%1" width="18" height="18">)").arg(QString::fromLatin1(png.toBase64()));
+}
+
+QString withLinkColour(const QString& richText, const QColor& colour)
+{
+    // Every anchor this is asked about is written "<a href=", so a plain
+    // replace reaches all of them without parsing the document
+    return QString(richText).replace(qsl("<a "), qsl("<a style=\"color: %1\" ").arg(colour.name()));
+}
+
+QFont fixedPitchFont(const QFont& base, const qreal scale)
+{
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (base.pointSizeF() > 0.0) {
+        font.setPointSizeF(base.pointSizeF() * scale);
+    } else {
+        font.setPixelSize(std::max(1, qRound(base.pixelSize() * scale)));
+    }
+    return font;
 }
 
 QVariant controlValue(const QObject* pControl)
