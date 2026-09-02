@@ -260,10 +260,73 @@ private slots:
         QVERIFY2(clearButton()->isHidden(), "the cross is still offered for a key with nothing to forget");
     }
 
+    // Saving the item is a way out of a grab too. Nothing on the toolbar takes
+    // the keyboard, so the field's own FocusOut never fires - and the name a
+    // key with no name of its own is given is read off the very field the grab
+    // has emptied.
+    void test_savingWhileListeningEndsTheGrab()
+    {
+        mpEditor->mpKeysMainArea->lineEdit_key_name->setText(qsl("New key"));
+        armTheGrab();
+        QVERIFY2(mpEditor->mIsGrabKey, "clicking the field did not start the grab");
+        QVERIFY2(field()->text().isEmpty(), "the field still shows a keystroke while it waits for one");
+
+        mpEditor->slot_saveSelectedItem();
+        QCoreApplication::processEvents();
+
+        QVERIFY2(!mpEditor->mIsGrabKey, "saving the item left the editor listening for a keystroke");
+        QCOMPARE(mpShortcutAction->shortcut(), mShortcut);
+
+        // The filter a grab puts on the application takes the arrows wherever
+        // in Mudlet they are pressed, so one pressed somewhere else says
+        // whether that filter is still there
+        QLineEdit elsewhere;
+        elsewhere.setText(qsl("abc"));
+        elsewhere.setCursorPosition(0);
+        QTest::keyClick(&elsewhere, Qt::Key_Right);
+        QCOMPARE(elsewhere.cursorPosition(), 1);
+
+        TKey* pKey = key();
+        QVERIFY2(pKey != nullptr, "the key is not in the key unit");
+        QVERIFY2(!pKey->getName().isEmpty(), "the key was saved with no name at all");
+        QVERIFY2(!mpKeyItem->text(0).isEmpty(), "the key's row in the tree is blank");
+    }
+
+    // ...and so is going to another view, which the sidebar does without taking
+    // the keyboard either
+    void test_switchingViewsEndsTheGrab()
+    {
+        armTheGrab();
+        QVERIFY2(mpEditor->mIsGrabKey, "clicking the field did not start the grab");
+
+        mpEditor->slot_showTimers();
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+
+        QVERIFY2(!mpEditor->mIsGrabKey, "switching views left the editor listening for a keystroke");
+        QCOMPARE(mpShortcutAction->shortcut(), mShortcut);
+
+        mpEditor->slot_showKeys();
+        mpEditor->slot_keySelected(mpKeyItem);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+    }
+
     // A key group never matches a keystroke - TKey::match() answers no for a
-    // folder - so none of the row is a setting it has
+    // folder - so none of the row is a setting it has, and the row widget goes
+    // with the three things on it: left showing, it holds a row of the form's
+    // grid open for nothing, which is dead height in a capped column
     void test_aKeyGroupIsOfferedNoneOfTheRow()
     {
+        QWidget* pRow = mpEditor->mpKeysMainArea->findChild<QWidget*>(qsl("editorKeyBindingRow"));
+        QVERIFY2(pRow != nullptr, "the keys form has no key binding row");
+        QVERIFY2(pRow->isVisible(), "the key binding row is not showing for a key that can hold a keystroke");
+        // What the row asks for rather than what it was given: the form's own
+        // hint is what the two readings below are, and a row stretched to fill
+        // the column is not what it costs that hint
+        const int rowHeight = pRow->sizeHint().height();
+        const int withRow = mpEditor->mpKeysMainArea->sizeHint().height();
+
         mpEditor->addKey(true);
         QCoreApplication::processEvents();
         QTest::qWait(100ms);
@@ -271,6 +334,14 @@ private slots:
         QVERIFY2(!field()->isVisible(), "a key group is still offered a keystroke it can never match");
         QVERIFY2(!hint()->isVisible(), "a key group is still told how to set a keystroke");
         QVERIFY2(!clearButton()->isVisible(), "a key group is still offered the cross that forgets a keystroke");
+        QVERIFY2(!pRow->isVisible(), "the row those three sit on is still showing for a key group");
+
+        const int withoutRow = mpEditor->mpKeysMainArea->sizeHint().height();
+        qInfo().noquote()
+                << qsl("  the keys form asks for %1 with the key row and %2 without it, the row asking for %3").arg(QString::number(withRow), QString::number(withoutRow), QString::number(rowHeight));
+        QVERIFY2(withRow - withoutRow > rowHeight,
+                 qPrintable(qsl("the form gave back only %1 for a key group while the row it stopped showing asks for %2 - the grid row it stood in is still open")
+                                    .arg(QString::number(withRow - withoutRow), QString::number(rowHeight))));
     }
 };
 

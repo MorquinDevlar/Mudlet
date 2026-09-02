@@ -105,7 +105,6 @@ Chip::Chip(const QString& name, QWidget* pParent)
     // about; the rules below select it through the chip, whose property says
     // whether the name is one of Mudlet's own
     mpLabel->setObjectName(qsl("editorChipLabel"));
-    mpLabel->setFont(chipFont(this));
     mpLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     pRow->addWidget(mpLabel);
 
@@ -115,14 +114,34 @@ Chip::Chip(const QString& name, QWidget* pParent)
     // Tab walks the chips themselves; the cross is reached with Delete instead,
     // which is one stop per chip rather than two
     mpRemove->setFocusPolicy(Qt::NoFocus);
-    const int glyphSize = chipGlyphSizeOn(this);
-    mpRemove->setIconSize(QSize(glyphSize, glyphSize));
-    mpRemove->setFixedSize(glyphSize, glyphSize);
     connect(mpRemove, &QAbstractButton::clicked, this, &Chip::removeRequested);
     pRow->addWidget(mpRemove);
 
-    setFixedHeight(chipHeightOn(this));
+    remeasure();
     setName(name);
+}
+
+// Measured off the row rather than off the chip's own font: a stylesheet rule
+// naming the chip stops it inheriting anything from what it lies on, so its own
+// font answers with the application's rather than with the row's - and the row's
+// is what "a shade smaller than the words around it" is a shade smaller than.
+void Chip::remeasure()
+{
+    const QWidget* pOn = parentWidget() ? parentWidget() : this;
+    mpLabel->setFont(chipFont(pOn));
+    const int glyphSize = chipGlyphSizeOn(pOn);
+    mpRemove->setIconSize(QSize(glyphSize, glyphSize));
+    mpRemove->setFixedSize(glyphSize, glyphSize);
+    setFixedHeight(chipHeightOn(pOn));
+    updateGeometry();
+}
+
+void Chip::changeEvent(QEvent* pEvent)
+{
+    QFrame::changeEvent(pEvent);
+    if (pEvent->type() == QEvent::FontChange) {
+        remeasure();
+    }
 }
 
 void Chip::setName(const QString& name)
@@ -185,10 +204,7 @@ ChipRow::ChipRow(QWidget* pParent)
     //: Tooltip on the button that opens the field for another event a script should listen for
     mpAdd->setToolTip(utils::richText(tr("Listen for another event")));
     mpAdd->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    mpAdd->setFont(chipFont(this));
-    mpAdd->setFixedHeight(chipHeightOn(this));
-    const int glyphSize = chipGlyphSizeOn(this);
-    mpAdd->setIconSize(QSize(glyphSize, glyphSize));
+    remeasure();
     connect(mpAdd, &QAbstractButton::clicked, this, &ChipRow::beginAdd);
 
     mpField = new QLineEdit(this);
@@ -266,6 +282,19 @@ QWidget* ChipRow::chipAt(const int index) const
     return index >= 0 && index < mChips.size() ? mChips.at(index) : nullptr;
 }
 
+int ChipRow::indexOf(const QString& name) const
+{
+    // What was handed to setItems() is not what a chip ended up showing, so the
+    // name looked for is put through the same trim the chips were
+    const QString wanted = cleaned(name);
+    for (int i = 0; i < mChips.size(); ++i) {
+        if (mChips.at(i)->name() == wanted) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void ChipRow::focusItem(const int index)
 {
     if (Chip* pChip = qobject_cast<Chip*>(chipAt(index)); pChip) {
@@ -304,6 +333,26 @@ bool ChipRow::hasHeightForWidth() const
 int ChipRow::heightForWidth(int width) const
 {
     return mpFlow->totalHeightForWidth(width);
+}
+
+void ChipRow::remeasure()
+{
+    mpAdd->setFont(chipFont(this));
+    mpAdd->setFixedHeight(chipHeightOn(this));
+    const int glyphSize = chipGlyphSizeOn(this);
+    mpAdd->setIconSize(QSize(glyphSize, glyphSize));
+    for (Chip* pChip : mChips) {
+        pChip->remeasure();
+    }
+    updateGeometry();
+}
+
+void ChipRow::changeEvent(QEvent* pEvent)
+{
+    QWidget::changeEvent(pEvent);
+    if (pEvent->type() == QEvent::FontChange) {
+        remeasure();
+    }
 }
 
 void ChipRow::resizeEvent(QResizeEvent* pEvent)
@@ -418,7 +467,7 @@ void ChipRow::openField(const int index)
     mpField->selectAll();
 }
 
-void ChipRow::closeField()
+void ChipRow::closeField(const bool keepNote)
 {
     if (!mFieldOpen) {
         return;
@@ -426,7 +475,9 @@ void ChipRow::closeField()
     mFieldOpen = false;
     mEditingIndex = -1;
     mpField->clear();
-    hideNote();
+    if (!keepNote) {
+        hideNote();
+    }
     rebuild();
 }
 
@@ -455,6 +506,13 @@ void ChipRow::commitField(const bool stillTyping)
         if (i != editing && mChips.at(i)->name() == name) {
             showNote(name);
             emit duplicateRefused(name);
+            if (!stillTyping) {
+                // The user has gone elsewhere, so there is nobody left to type
+                // the name over: leaving the field open would leave it standing
+                // unfocused with the add button hidden behind it. The note keeps
+                // its two seconds, which is what says why nothing was added.
+                closeField(true);
+            }
             return;
         }
     }
@@ -492,12 +550,21 @@ void ChipRow::removeAt(const int index)
     if (index < 0 || index >= mChips.size()) {
         return;
     }
-    if (mFieldOpen && mEditingIndex >= 0) {
-        // The field is standing in for a chip, and the one going away may be
-        // that chip - so the rename is dropped rather than landing on a name
-        // that has moved
-        closeField();
+    // The cross is not focusable, so an open field still holds the keyboard -
+    // and the focus move below would take its FocusOut with it, committing what
+    // was typed as a side effect of a click that asked for a removal. The field
+    // is settled here instead, by the rule focus-out goes by: a name that was
+    // typed is kept, an empty field is given up on. A rename settled this way
+    // renames the chip it stands in for, which is not the one going away: the
+    // commit leaves the list the same length, so the index below still holds.
+    if (mFieldOpen) {
+        if (cleaned(mpField->text()).isEmpty()) {
+            closeField();
+        } else {
+            commitField(false);
+        }
     }
+
     // The cross that asked for this is a child of the chip, and its own signal
     // is still on the stack - so the chip is taken out of the row now and freed
     // once that has unwound
@@ -508,11 +575,13 @@ void ChipRow::removeAt(const int index)
 
     // Something has to hold the keyboard afterwards, or a run of Delete presses
     // stops after the first one
+    mCommitting = true;
     if (!mChips.isEmpty()) {
         mChips.at(std::min(static_cast<qsizetype>(index), mChips.size() - 1))->setFocus(Qt::OtherFocusReason);
     } else if (!mFieldOpen) {
         mpAdd->setFocus(Qt::OtherFocusReason);
     }
+    mCommitting = false;
     emit itemsChanged();
 }
 

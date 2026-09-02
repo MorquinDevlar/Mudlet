@@ -72,7 +72,10 @@
 #include "TTrigger.h"
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
+#include "dlgKeysMainArea.h"
 #include "dlgProfilePreferences.h"
+#include "dlgScriptsMainArea.h"
+#include "dlgTimersMainArea.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
 #include "dlgTriggersMainArea.h"
@@ -126,20 +129,21 @@ private:
     // which silently stopped finding widgets cannot pass as a clean one
     static constexpr int scmLeastAuditedInTheEditor = 30;
     static constexpr int scmLeastAuditedInTheSettings = 18;
-    // ...and on the scripts form, which is walked on its own below: the name,
-    // the ID pill's two words, the word leading the row of events, the two
-    // chips and the button that adds another
+    // ...and on each of the four forms walked on their own below. Those walks
+    // are held to the form widget rather than to the whole window, so these are
+    // floors the form alone can miss: measured at 6 on the scripts form (the
+    // name, the ID pill's two words, the word leading the row of events, the
+    // two chips and the button that adds another), 7 on the keys form (the
+    // name, the command, the ID pill's two words, the word leading the key row,
+    // the placeholder standing in for the keystroke it has not been given, and
+    // the hint beside it), 14 on the timers form, where the words of the
+    // interval's sentence are read beside the four fields they name, and 7 on
+    // the variables form (the name, the two words leading the type pickers,
+    // what each picker is showing, and the switch that hides the variable from
+    // the tree)
     static constexpr int scmLeastAuditedOnTheScriptsForm = 6;
-    // ...on the keys form: the name, the command, the ID pill's two words, the
-    // word leading the key row, the placeholder standing in for the keystroke
-    // it has not been given and the hint beside it
     static constexpr int scmLeastAuditedOnTheKeysForm = 6;
-    // ...and on the timers form, where the words of the interval's sentence are
-    // read beside the four fields they name
-    static constexpr int scmLeastAuditedOnTheTimersForm = 6;
-    // ...and on the variables form: the name, the two words leading the type
-    // pickers, what each picker is showing, and the switch that hides the
-    // variable from the tree
+    static constexpr int scmLeastAuditedOnTheTimersForm = 12;
     static constexpr int scmLeastAuditedOnTheVariablesForm = 6;
 
     // A button filled with the colour it stands for. Its fill is a value rather
@@ -406,11 +410,17 @@ private:
 
     // Every word on one window in one appearance. Answers how many things it
     // read, and adds a line to failures for each one that cannot be read.
-    int auditWindow(QWidget* pWindow, const QString& windowName, const QString& appearance, QStringList& failures) const
+    int auditWindow(QWidget* pWindow, const QString& windowName, const QString& appearance, QStringList& failures) const { return auditWithin(pWindow, pWindow, windowName, appearance, failures); }
+
+    // ...and the same walk held to one part of that window. The picture is still
+    // taken of the whole window, since what is painted behind a form is painted
+    // by whatever is under it - but only what is on pRoot is read, so a floor on
+    // the count is a floor on that form rather than on everything around it.
+    int auditWithin(QWidget* pWindow, QWidget* pRoot, const QString& windowName, const QString& appearance, QStringList& failures) const
     {
         const QImage shot = pWindow->grab().toImage();
         int audited = 0;
-        for (QWidget* pWidget : pWindow->findChildren<QWidget*>()) {
+        for (QWidget* pWidget : pRoot->findChildren<QWidget*>()) {
             if (!pWidget->isVisible() || pWidget->rect().isEmpty() || !auditable(pWidget) || aColourWell(pWidget) || insideTheCodePane(pWidget) || aDisabledPushButton(pWidget)) {
                 continue;
             }
@@ -609,7 +619,7 @@ private slots:
         QStringList counts;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
             setAppearance(appearance.second);
-            const int read = auditWindow(mpEditor, qsl("the editor's scripts form"), appearance.first, failures);
+            const int read = auditWithin(mpEditor, mpEditor->mpScriptsMainArea, qsl("the editor's scripts form"), appearance.first, failures);
             counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
             QVERIFY2(read >= scmLeastAuditedOnTheScriptsForm,
                      qPrintable(qsl("only %1 things were read on the scripts form on the %2 appearance, against the %3 this walk reaches")
@@ -638,7 +648,7 @@ private slots:
         QStringList counts;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
             setAppearance(appearance.second);
-            const int read = auditWindow(mpEditor, qsl("the editor's keys form"), appearance.first, failures);
+            const int read = auditWithin(mpEditor, mpEditor->mpKeysMainArea, qsl("the editor's keys form"), appearance.first, failures);
             counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
             QVERIFY2(read >= scmLeastAuditedOnTheKeysForm,
                      qPrintable(qsl("only %1 things were read on the keys form on the %2 appearance, against the %3 this walk reaches")
@@ -666,7 +676,7 @@ private slots:
         QStringList counts;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
             setAppearance(appearance.second);
-            const int read = auditWindow(mpEditor, qsl("the editor's timers form"), appearance.first, failures);
+            const int read = auditWithin(mpEditor, mpEditor->mpTimersMainArea, qsl("the editor's timers form"), appearance.first, failures);
             counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
             QVERIFY2(read >= scmLeastAuditedOnTheTimersForm,
                      qPrintable(qsl("only %1 things were read on the timers form on the %2 appearance, against the %3 this walk reaches")
@@ -699,7 +709,7 @@ private slots:
         QStringList counts;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
             setAppearance(appearance.second);
-            const int read = auditWindow(mpEditor, qsl("the editor's variables form"), appearance.first, failures);
+            const int read = auditWithin(mpEditor, mpEditor->mpVarsMainArea, qsl("the editor's variables form"), appearance.first, failures);
             counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
             QVERIFY2(read >= scmLeastAuditedOnTheVariablesForm,
                      qPrintable(qsl("only %1 things were read on the variables form on the %2 appearance, against the %3 this walk reaches")

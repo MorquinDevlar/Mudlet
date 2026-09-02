@@ -2932,9 +2932,20 @@ void dlgTriggerEditor::slot_setTreeWidgetIconSize(const int s)
 
 void dlgTriggerEditor::closeEvent(QCloseEvent* event)
 {
+    // A grab puts a filter on the whole application and takes the editor's own
+    // shortcuts away, neither of which may outlive the window it was armed in
+    endKeyGrab();
     emit editorClosing();
     writeSettings();
     event->accept();
+}
+
+void dlgTriggerEditor::hideEvent(QHideEvent* event)
+{
+    // ...and the editor is hidden rather than closed on several paths, the
+    // profile going away among them
+    endKeyGrab();
+    QMainWindow::hideEvent(event);
 }
 
 // The strip along the top of a window that can be grabbed with the mouse: as
@@ -3255,11 +3266,18 @@ void dlgTriggerEditor::slot_itemSelectedInSearchResults(QTreeWidgetItem* pItem)
                     mpScriptsMainArea->lineEdit_script_name->setFocus(Qt::OtherFocusReason);
                     mpScriptsMainArea->lineEdit_script_name->setCursorPosition(pItem->data(0, PositionRole).toInt());
                     break;
-                case SearchResultIsEventHandler:
+                case SearchResultIsEventHandler: {
                     // The row of chips does not scroll, so pointing at the one
-                    // that matched is the whole of the jump
-                    mpChipRow_scriptEvents->focusItem(pItem->data(0, PatternOrLineRole).toInt());
+                    // that matched is the whole of the jump - by name rather
+                    // than by the number the search counted to, since the row
+                    // shows neither an empty name nor a repeated one and its
+                    // chips are therefore not the script's list position for
+                    // position
+                    TScript* pScript = mpHost->getScriptUnit()->getScript(idSearch);
+                    const QString handler = pScript ? pScript->getEventHandlerList().value(pItem->data(0, PatternOrLineRole).toInt()) : QString();
+                    mpChipRow_scriptEvents->focusItem(mpChipRow_scriptEvents->indexOf(handler));
                     break;
+                }
                 default:
                     qDebug() << "dlgTriggerEditor::slot_item_selected_list(...) Called for a SCRIPT type item but handler for element of type:" << treeWidgetItem->data(0, TypeRole).toInt()
                              << "not yet done/applicable...!";
@@ -5274,6 +5292,14 @@ void dlgTriggerEditor::slot_itemMoved(int itemID, int oldParentID, int newParent
         if (pT) {
             viewType = EditorViewType::cmTimerView;
             itemName = pT->getName();
+            // Dropped onto another timer, this one has just become an offset
+            // timer - or has stopped being one - which is a different sentence
+            // beside the same four fields. Deferred because the tree announces
+            // the move before the timer unit has carried it out, so what the
+            // timer's parent is, is only settled once this has returned.
+            if (mpCurrentTimerItem && mpCurrentTimerItem->data(0, Qt::UserRole).toInt() == itemID) {
+                QTimer::singleShot(0ms, this, &dlgTriggerEditor::refreshShownTimerIntervalSentence);
+            }
         } else {
             return;
         }
@@ -7871,15 +7897,23 @@ void dlgTriggerEditor::saveKey()
         return;
     }
 
+    // Saving is one of the ways out of a grab: the toolbar's buttons take no
+    // focus, so a click on Save item with one armed would otherwise leave it
+    // armed - and read the emptied field below as the key's name
+    endKeyGrab();
+
     mpKeysMainArea->trimName();
     QString name = mpKeysMainArea->lineEdit_key_name->text();
     if (name.isEmpty() || name == tr("New key")) {
-        name = mpKeysMainArea->lineEdit_key_binding->text();
         // A key with no keystroke leaves that field empty behind its
         // placeholder, and an item named after it is named by what the reader
         // sees there rather than by nothing at all
-        if (name.isEmpty() && !mIsGrabKey) {
+        name = mpKeysMainArea->lineEdit_key_binding->text();
+        if (name.isEmpty()) {
             name = mpKeysMainArea->lineEdit_key_binding->placeholderText();
+        }
+        if (name.isEmpty()) {
+            name = tr("New key");
         }
     }
     const QString command = mpKeysMainArea->lineEdit_key_command->text();
@@ -10210,6 +10244,11 @@ void dlgTriggerEditor::moveEvent(QMoveEvent* event)
 
 void dlgTriggerEditor::changeView(EditorViewType view)
 {
+    // Before anything is read off the form: hiding the keys form further down
+    // does end a grab, through the field's own FocusOut, but by then the save
+    // below has already read the field the grab left empty
+    endKeyGrab();
+
     saveOpenChanges();
 
     if (mNeedUpdateData) {
@@ -14701,6 +14740,18 @@ void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
 
     const QList<QWidget*> fields{mpTimersMainArea->timeEdit_timer_hours, mpTimersMainArea->timeEdit_timer_minutes, mpTimersMainArea->timeEdit_timer_seconds, mpTimersMainArea->timeEdit_timer_msecs};
 
+    // A screen reader announces a field by its own name and never by the word
+    // standing beside it, and one sentence cannot name four of them - so each
+    // says which part of the interval it holds
+    //: Accessible name of the hours field of a timer's interval
+    mpTimersMainArea->timeEdit_timer_hours->setAccessibleName(tr("Hours"));
+    //: Accessible name of the minutes field of a timer's interval
+    mpTimersMainArea->timeEdit_timer_minutes->setAccessibleName(tr("Minutes"));
+    //: Accessible name of the seconds field of a timer's interval
+    mpTimersMainArea->timeEdit_timer_seconds->setAccessibleName(tr("Seconds"));
+    //: Accessible name of the milliseconds field of a timer's interval
+    mpTimersMainArea->timeEdit_timer_msecs->setAccessibleName(tr("Milliseconds"));
+
     auto* pRow = qobject_cast<QHBoxLayout*>(mpWidget_timerInterval->layout());
     // The four fields are the form's and stay; the words are this sentence's
     // own and go out with it
@@ -14739,6 +14790,19 @@ void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
     }
 }
 
+// Which of the two sentences the timer on show wants, taken from the timer
+// again rather than from what was last drawn: its parent may have changed
+// without the form being told to load it afresh
+void dlgTriggerEditor::refreshShownTimerIntervalSentence()
+{
+    if (!mpCurrentTimerItem) {
+        return;
+    }
+    if (TTimer* pT = mpHost->getTimerUnit()->getTimer(mpCurrentTimerItem->data(0, Qt::UserRole).toInt()); pT) {
+        showTimerIntervalSentence(pT->isOffsetTimer());
+    }
+}
+
 // The keystroke a key answers was a read-only field with a "Grab New Key"
 // button beside it, and nothing on screen said the editor had started
 // listening. The field is the control now: a click on it - or Return or Space
@@ -14774,6 +14838,7 @@ void dlgTriggerEditor::buildKeyBindingRow()
     auto* pRowWidget = new QWidget(mpKeysMainArea);
     pRowWidget->setObjectName(qsl("editorKeyBindingRow"));
     pRowWidget->setProperty("editorPanelSurface", true);
+    mpWidget_keyBindingRow = pRowWidget;
     auto* pRow = new QHBoxLayout(pRowWidget);
     pRow->setContentsMargins(0, 0, 0, 0);
     pRow->setSpacing(scmEditorModeChipGap);
@@ -14855,12 +14920,23 @@ void dlgTriggerEditor::showKeyBinding()
         return;
     }
 
+    // Whatever led here - a toolbar button, another item, another view - the
+    // row is about to say what the key holds, which a grab still waiting for a
+    // keystroke would contradict
+    releaseKeyGrab();
+
     // Looked up the way slot_keySelected does rather than through
     // getKeyFromTreeItem(), which answers null for a row with no parent
     TKey* pKey = mpCurrentKeyItem ? mpHost->getKeyUnit()->getKey(mpCurrentKeyItem->data(0, Qt::UserRole).toInt()) : nullptr;
     const bool bindable = pKey && !pKey->isFolder();
     QLineEdit* pField = mpKeysMainArea->lineEdit_key_binding;
     mpKeysMainArea->label_key_binding->setVisible(bindable);
+    // The whole row rather than the three things on it: a widget left visible
+    // holding nothing still takes a row of the grid, and the gap it leaves is
+    // dead height in a column the code pane is measured against
+    if (mpWidget_keyBindingRow) {
+        mpWidget_keyBindingRow->setVisible(bindable);
+    }
     pField->setVisible(bindable);
     mpLabel_keyHint->setVisible(bindable);
     if (!bindable) {
@@ -14904,7 +14980,7 @@ void dlgTriggerEditor::showKeyBindingListening()
     pField->setCursor(Qt::ArrowCursor);
 }
 
-void dlgTriggerEditor::endKeyGrab()
+void dlgTriggerEditor::releaseKeyGrab()
 {
     if (!mIsGrabKey) {
         return;
@@ -14912,6 +14988,14 @@ void dlgTriggerEditor::endKeyGrab()
     mIsGrabKey = false;
     setShortcuts();
     QCoreApplication::instance()->removeEventFilter(this);
+}
+
+void dlgTriggerEditor::endKeyGrab()
+{
+    if (!mIsGrabKey) {
+        return;
+    }
+    releaseKeyGrab();
     showKeyBinding();
 }
 
@@ -16749,6 +16833,10 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
         // The same three move the widest of the pattern type names, which is
         // what a row's type column is held to
         mPatternTypeColumnWidth = 0;
+        // ...and the width every form's rows are led at, which is what its own
+        // words are wide - the "Events" label, pinned in there to the height one
+        // line of chips comes to, among them
+        alignEditorFormLeadLabels();
     }
 
     // A search result's row height is measured off the font the results are

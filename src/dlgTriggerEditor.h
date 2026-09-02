@@ -214,6 +214,7 @@ public:
     Q_DECLARE_FLAGS(SearchOptions, SearchOption)
 
     void closeEvent(QCloseEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void focusInEvent(QFocusEvent*) override;
     void focusOutEvent(QFocusEvent*) override;
     void showEvent(QShowEvent* event) override;
@@ -263,6 +264,9 @@ public:
     // ...and which of the two sentences those words are, which is the whole of
     // the difference between a timer and one offset from the timer above it
     void showTimerIntervalSentence(const bool offsetTimer);
+    // ...taken from the timer on show, for whatever moved it rather than chose
+    // it: which kind of timer it is, is its parent's business
+    void refreshShownTimerIntervalSentence();
     // The keystroke a key is bound to, as a field that listens for it: the hint
     // beside it and the button that forgets the keystroke are built here
     void buildKeyBindingRow();
@@ -274,10 +278,15 @@ public:
     void showKeyBinding();
     // ...and the same row while it is waiting for the keystroke to be pressed
     void showKeyBindingListening();
-    // Every way out of a grab: a keystroke taken, Escape, or the field losing
-    // the keyboard. A grab takes the editor's shortcuts away and puts a filter
-    // on the application, so nothing may end one without undoing both.
+    // Every way out of a grab: a keystroke taken, Escape, the field losing the
+    // keyboard, a toolbar button, another view, or the editor going away. A
+    // grab takes the editor's shortcuts away and puts a filter on the
+    // application, so nothing may end one without undoing both.
     void endKeyGrab();
+    // ...which is this, and then the row drawn again from what the key holds.
+    // showKeyBinding() calls this rather than endKeyGrab() so that drawing the
+    // row also ends a grab, without the two calling each other in a circle.
+    void releaseKeyGrab();
     // A click on the field arms the grab, Return or Space does the same from
     // the keyboard, and losing the focus gives up on it
     bool handleKeyBindingFieldEvent(QEvent* pEvent);
@@ -924,6 +933,9 @@ private:
     // ...and the cross that forgets the keystroke, which is only there while
     // there is one to forget
     QToolButton* mpButton_keyClear = nullptr;
+    // The three of them together in the cell beside the "Key" label, hidden as
+    // one for a key group so that the grid row goes with them
+    QPointer<QWidget> mpWidget_keyBindingRow;
     // Height the panel borrowed from the code pane when it was opened, so that
     // closing it can hand back that much and no more
     int mTriggerOptionsBorrowedHeight = 0;

@@ -30,6 +30,7 @@
  * Run with: ctest -R EditorEventChipRowTest -V
  */
 
+#include <QFontInfo>
 #include <QLabel>
 #include <QLineEdit>
 #include <QTemporaryDir>
@@ -398,6 +399,173 @@ private slots:
         QCOMPARE(mpEditor->mpNonCodeWidgets->height(), withChips);
 
         mpEditor->resize(1100, 900);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+    }
+
+    // The cross takes no focus, so a name half typed into the open field is
+    // settled by the removal itself rather than by whatever the focus lands on
+    // afterwards - which is nothing at all when the row is emptied
+    void test_removingAChipSettlesTheOpenFieldFirst()
+    {
+        row()->setItems({qsl("AlphaEvent"), qsl("BetaEvent")});
+        QCoreApplication::processEvents();
+        QSignalSpy changes(row(), &uiDesign::ChipRow::itemsChanged);
+
+        row()->beginAdd();
+        QCoreApplication::processEvents();
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        field()->setText(qsl("GammaEvent"));
+
+        QWidget* pChip = row()->chipAt(1);
+        QVERIFY2(pChip != nullptr, "the row has no second chip to take away");
+        QToolButton* pCross = pChip->findChild<QToolButton*>(qsl("editorChipRemove"));
+        QVERIFY2(pCross != nullptr, "a chip has no cross to take it away with");
+        pCross->click();
+        QCoreApplication::processEvents();
+
+        QCOMPARE(row()->items(), QStringList({qsl("AlphaEvent"), qsl("GammaEvent")}));
+        QCOMPARE(changes.count(), 2);
+        QVERIFY2(field() == nullptr, "the field is still open after a chip was taken away");
+        QVERIFY2(!addButton()->isHidden(), "the add button did not come back when the field closed");
+
+        // ...and again with one chip, where taking it away leaves nothing for
+        // the keyboard to move to and so nothing to commit the name in passing
+        row()->setItems({qsl("AlphaEvent")});
+        QCoreApplication::processEvents();
+        changes.clear();
+
+        row()->beginAdd();
+        QCoreApplication::processEvents();
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        field()->setText(qsl("DeltaEvent"));
+
+        QToolButton* pOnlyCross = row()->chipAt(0)->findChild<QToolButton*>(qsl("editorChipRemove"));
+        QVERIFY2(pOnlyCross != nullptr, "the one chip has no cross to take it away with");
+        pOnlyCross->click();
+        QCoreApplication::processEvents();
+
+        QCOMPARE(row()->items(), QStringList{qsl("DeltaEvent")});
+        QCOMPARE(changes.count(), 2);
+        QVERIFY2(field() == nullptr, "the field is still open after the last chip was taken away");
+        QVERIFY2(!addButton()->isHidden(), "the add button did not come back when the field closed");
+    }
+
+    // A name already listed cannot be taken, and on the way out there is nobody
+    // left to type it over - so the field goes with the refusal rather than
+    // standing open and unfocused over the button that reopens it
+    void test_aRefusedNameOnTheWayOutClosesTheField()
+    {
+        row()->setItems({qsl("sysLoadEvent")});
+        QCoreApplication::processEvents();
+        const int before = row()->count();
+        QSignalSpy refusals(row(), &uiDesign::ChipRow::duplicateRefused);
+
+        row()->beginAdd();
+        QCoreApplication::processEvents();
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        field()->setText(qsl("sysLoadEvent"));
+
+        mpEditor->mpScriptsMainArea->lineEdit_script_name->setFocus(Qt::OtherFocusReason);
+        QCoreApplication::processEvents();
+
+        QCOMPARE(refusals.count(), 1);
+        QVERIFY2(field() == nullptr, "the field was left open on a name that was refused, with nothing left to type over it");
+        QVERIFY2(!addButton()->isHidden(), "the add button is still hidden behind a field that has been refused");
+        QVERIFY2(note() != nullptr, "nothing is left saying why the name was not taken");
+        QCOMPARE(row()->count(), before);
+    }
+
+    // The search counts through the script's own list, which can hold the same
+    // name twice - the row draws it once. So the jump goes by the name rather
+    // than by the number the search counted to.
+    void test_theSearchJumpFindsTheChipByName()
+    {
+        mpEditor->addScript(false);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QTreeWidgetItem* pOtherItem = mpEditor->mpCurrentScriptItem;
+        QVERIFY2(pOtherItem != nullptr && pOtherItem != mpScriptItem, "addScript() left no second script to search into");
+        mpEditor->mpScriptsMainArea->lineEdit_script_name->setText(qsl("SearchJumpScript"));
+        mpEditor->slot_saveSelectedItem();
+        QTest::qWait(50ms);
+        QCOMPARE(pOtherItem->text(0), qsl("SearchJumpScript"));
+        const int otherID = pOtherItem->data(0, Qt::UserRole).toInt();
+
+        // Back to the first script before the list is written, so that leaving
+        // the second one is not what saves the row's chips over it
+        mpEditor->slot_scriptsSelected(mpScriptItem);
+        QTest::qWait(50ms);
+        TScript* pOther = mpHost->getScriptUnit()->getScript(otherID);
+        QVERIFY2(pOther != nullptr, "the second script is not in the script unit");
+        pOther->setEventHandlerList({qsl("MyEvent"), qsl("MyEvent"), qsl("OtherEvent")});
+        QCOMPARE(pOther->getEventHandlerList().count(), 3);
+
+        // Something inside the row holds the keyboard first, or a jump that
+        // pointed at nothing would leave the answer below to whatever had it
+        addButton()->setFocus(Qt::OtherFocusReason);
+        QCoreApplication::processEvents();
+        QCOMPARE(row()->focusWidget(), addButton());
+
+        auto* pResult = new QTreeWidgetItem(QStringList{qsl("SearchJumpScript")});
+        pResult->setData(0, dlgTriggerEditor::ItemRole, static_cast<int>(EditorViewType::cmScriptView));
+        pResult->setData(0, dlgTriggerEditor::TypeRole, dlgTriggerEditor::SearchResultIsEventHandler);
+        pResult->setData(0, dlgTriggerEditor::NameRole, qsl("SearchJumpScript"));
+        pResult->setData(0, dlgTriggerEditor::IdRole, otherID);
+        // Where OtherEvent stands in the script's own list, which is one along
+        // from where it stands in the row
+        pResult->setData(0, dlgTriggerEditor::PatternOrLineRole, 2);
+        mpEditor->treeWidget_searchResults->addTopLevelItem(pResult);
+
+        mpEditor->slot_itemSelectedInSearchResults(pResult);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+
+        QCOMPARE(row()->items(), QStringList({qsl("MyEvent"), qsl("OtherEvent")}));
+        QCOMPARE(row()->focusWidget(), row()->chipAt(1));
+    }
+
+    // A chip is as tall as the type in it, and the word leading the row is
+    // pinned to one chip's height - both measured off the interface font rather
+    // than written down, so both have to be measured again when it changes.
+    //
+    // The change is handed to the row and to the window rather than set on the
+    // application: trigger_editor.ui pins a font on the frame these forms are
+    // in, and Qt does not carry a font past a widget a stylesheet has been
+    // applied to - so an application font never reaches either of them by
+    // itself. What is walked here is that each of the two answers the change it
+    // does hear.
+    void test_aLargerFontReMeasuresTheChips()
+    {
+        row()->setItems({qsl("AlphaEvent"), qsl("BetaEvent")});
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        QCOMPARE(row()->count(), 2);
+
+        QLabel* pLead = mpEditor->mpScriptsMainArea->label_script_registered_event_handlers;
+        const int wasLine = row()->lineHeight();
+        const QFont was = row()->font();
+
+        QFont bigger = was;
+        bigger.setPointSizeF(QFontInfo(was).pointSizeF() + 4.0);
+        row()->setFont(bigger);
+        mpEditor->setFont(bigger);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+
+        const int line = row()->lineHeight();
+        QVERIFY2(line > wasLine, qPrintable(qsl("a font four points larger left a line of chips at %1, which is what it was").arg(QString::number(line))));
+        for (int i = 0; i < row()->count(); ++i) {
+            QVERIFY2(row()->chipAt(i)->height() == line,
+                     qPrintable(qsl("chip %1 is %2 tall while a line of chips is now %3").arg(QString::number(i), QString::number(row()->chipAt(i)->height()), QString::number(line))));
+        }
+        QVERIFY2(addButton()->height() == line, qPrintable(qsl("the button that adds an event is %1 tall while a chip is now %2").arg(QString::number(addButton()->height()), QString::number(line))));
+        QVERIFY2(pLead->height() == line,
+                 qPrintable(qsl("the word leading the row is %1 tall while a line of chips is now %2, so it no longer sits level with the first of them")
+                                    .arg(QString::number(pLead->height()), QString::number(line))));
+
+        row()->setFont(was);
+        mpEditor->setFont(was);
         QCoreApplication::processEvents();
         QTest::qWait(100ms);
     }

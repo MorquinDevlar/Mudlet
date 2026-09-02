@@ -57,6 +57,11 @@ public:
     void setName(const QString& name);
     [[nodiscard]] QString name() const { return mName; }
     void setRemoveGlyph(const QIcon& glyph);
+    // The type, the cross and the height a chip comes to, all of which are the
+    // font's business. Public because a chip is measured off the row it lies on
+    // rather than off its own font - see the note on the body - so the row is
+    // what has to ask for this when that font changes.
+    void remeasure();
 
 signals:
     // The user asked to rename this one - by clicking it, or by pressing Enter
@@ -65,6 +70,7 @@ signals:
     void removeRequested();
 
 protected:
+    void changeEvent(QEvent* pEvent) override;
     void keyPressEvent(QKeyEvent* pEvent) override;
     void mousePressEvent(QMouseEvent* pEvent) override;
 
@@ -99,6 +105,10 @@ public:
     // The chip showing the name at that index, for a caller that has to point
     // at one. Null where there is no such index.
     [[nodiscard]] QWidget* chipAt(const int index) const;
+    // Where the chip showing that name stands, or -1 for a name the row is not
+    // showing. setItems() drops empty and repeated names, so a caller holding an
+    // index into what it handed over cannot use it here - the name can.
+    [[nodiscard]] int indexOf(const QString& name) const;
     // Hands that chip the keyboard. The row does not scroll, so there is
     // nothing to bring into view.
     void focusItem(const int index);
@@ -132,16 +142,22 @@ signals:
     void duplicateRefused(const QString& name);
 
 protected:
+    void changeEvent(QEvent* pEvent) override;
     void resizeEvent(QResizeEvent* pEvent) override;
     bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
 
 private:
     Chip* makeChip(const QString& name);
+    // The add button and every chip, measured off the row's own font - which is
+    // what a chip's type is a shade smaller than
+    void remeasure();
     // Puts the chips, the field and the add button in the order they are read
     // in, since a flow layout has no notion of inserting into the middle of one
     void rebuild();
     void openField(const int index);
-    void closeField();
+    // keepNote leaves whatever the note is saying standing, for the one caller
+    // that closes the field precisely because a name was refused
+    void closeField(const bool keepNote = false);
     void commitField(const bool stillTyping);
     void removeAt(const int index);
     void showNote(const QString& name);

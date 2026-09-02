@@ -321,7 +321,10 @@ void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence
 // mistranslation shows rather than swallowing a field.
 //
 // Each control keeps whatever accessible name it came with: one sentence cannot
-// name four fields, and what each of them is, is the word beside it.
+// name four fields. The word beside a control names it to a reader looking at
+// the row and to nobody else - a screen reader announces a field by its own
+// accessible name - so the caller has to give each control one before it builds
+// the row.
 void buildControlSentenceRow(QBoxLayout* pRow, const QString& translatedSentence, const QList<QWidget*>& controls);
 
 // A row that leads somewhere rather than setting something; the chevron at its

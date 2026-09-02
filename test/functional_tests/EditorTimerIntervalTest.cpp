@@ -34,6 +34,7 @@
  * Run with: ctest -R EditorTimerIntervalTest -V
  */
 
+#include <QFontInfo>
 #include <QLabel>
 #include <QRegularExpression>
 #include <QTemporaryDir>
@@ -243,11 +244,24 @@ private slots:
         QVERIFY2(shown == QStringList({qsl("Fires every"), qsl("[1]"), qsl("h"), qsl("[2]"), qsl("min"), qsl("[3]"), qsl("s"), qsl("[4]"), qsl("ms")}),
                  qPrintable(qsl("the interval reads as: %1").arg(shown.join(qsl(" | ")))));
 
-        const int formSize = mpEditor->mpTimersMainArea->font().pointSize();
+        // QFont::pointSize() answers -1 for a font that was set in pixels, and
+        // -1 == -1 holds for any two such fonts however far apart they are.
+        // QFontInfo answers the size the font actually came out at, in points,
+        // whichever way it was asked for.
+        const qreal formSize = QFontInfo(mpEditor->mpTimersMainArea->font()).pointSizeF();
+        QVERIFY2(formSize > 0.0, "the timers form's own font has no resolved size, so there is nothing to hold the fields to");
         for (QTimeEdit* pField : fields()) {
             QVERIFY2(pField->parentWidget() == row(), qPrintable(qsl("%1 is not in the interval row").arg(pField->objectName())));
-            QVERIFY2(pField->font().pointSize() == formSize,
-                     qPrintable(qsl("%1 is set at %2pt while the form it is on runs at %3pt").arg(pField->objectName(), QString::number(pField->font().pointSize()), QString::number(formSize))));
+            const qreal fieldSize = QFontInfo(pField->font()).pointSizeF();
+            QVERIFY2(qAbs(fieldSize - formSize) <= 0.5,
+                     qPrintable(qsl("%1 is set at %2pt while the form it is on runs at %3pt").arg(pField->objectName(), QString::number(fieldSize, 'f', 2), QString::number(formSize, 'f', 2))));
+        }
+
+        // A screen reader announces a field by its own name and never by the
+        // word standing beside it, so each of the four says which part of the
+        // interval it holds
+        for (QTimeEdit* pField : fields()) {
+            QVERIFY2(!pField->accessibleName().isEmpty(), qPrintable(qsl("%1 is announced by nothing but the word beside it").arg(pField->objectName())));
         }
 
         for (const QString& gone : {qsl("label_timer_hours"),
@@ -299,6 +313,38 @@ private slots:
 
         choose(mpTimerItem);
         QCOMPARE(shownWords(), wordsOf(everySentence()));
+    }
+
+    // ...and it becomes one by being dragged onto another timer, which changes
+    // nothing the form was told to load again - so the sentence has to be
+    // re-read from the timer rather than only when another one is chosen
+    void test_movingATimerUnderAnotherChangesTheSentence()
+    {
+        mpEditor->addTimer(false);
+        QTest::qWait(100ms);
+        QTreeWidgetItem* pMovedItem = mpEditor->mpCurrentTimerItem;
+        QVERIFY2(pMovedItem != nullptr && pMovedItem != mpTimerItem, "addTimer() left no new timer to move");
+        choose(pMovedItem);
+        QCOMPARE(shownWords(), wordsOf(everySentence()));
+
+        TTimer* pMoved = timerOf(pMovedItem);
+        QVERIFY2(pMoved != nullptr && !pMoved->isOffsetTimer(), "the timer this moves is already an offset timer, so the move would change nothing");
+        const int movedID = pMovedItem->data(0, Qt::UserRole).toInt();
+        const int newParentID = mpTimerItem->data(0, Qt::UserRole).toInt();
+        const int oldParentID = pMoved->getParent() ? pMoved->getParent()->getID() : 0;
+
+        // The two halves of a drop, in the order TTreeWidget::rowsInserted()
+        // does them: the editor is told the item moved, and the timer unit is
+        // then asked to carry the move out. The tree row is left where it is -
+        // which kind of timer this is, is the timer unit's answer and not the
+        // tree's, and moving the row would change the selection under the case.
+        mpEditor->slot_itemMoved(movedID, oldParentID, newParentID, 0, 0);
+        mpHost->getTimerUnit()->reParentTimer(movedID, oldParentID, newParentID, 0, 0);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+
+        QVERIFY2(pMoved->isOffsetTimer(), "the move did not make the timer an offset timer, so there is nothing for the sentence to say");
+        QCOMPARE(shownWords(), wordsOf(onceSentence()));
     }
 };
 
