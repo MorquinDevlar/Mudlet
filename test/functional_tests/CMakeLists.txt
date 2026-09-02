@@ -136,6 +136,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorSplitterRestoreTest.cpp
     EditorSurfaceToneTest.cpp
     EditorTimerIntervalTest.cpp
+    EditorToolBarOverflowTest.cpp
     EditorTreeDotClickTest.cpp
     EditorTreeHeadingIconTest.cpp
     EditorTreeRowHeightTest.cpp

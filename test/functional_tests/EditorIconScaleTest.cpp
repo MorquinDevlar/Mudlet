@@ -26,8 +26,8 @@
  *
  * Two costs. The pictures did not match, a third again as large on one bar as
  * on the other. And the toolbar's buttons are as wide as their glyph plus their
- * name, so the oversized default pushed the row past the window sooner and
- * posted actions into the overflow menu on windows with plenty of room.
+ * name, so the oversized default pushed the row past the window sooner and took
+ * the names off buttons on windows with plenty of room.
  *
  * The preference is not the problem and is not dropped - it is there for anyone
  * who needs a bigger target. What changed is what its default maps to: six
@@ -39,6 +39,7 @@
 #include <QListWidget>
 #include <QTemporaryDir>
 #include <QToolBar>
+#include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
 
@@ -77,8 +78,8 @@ private:
     // What that default used to draw, when the step was eight pixels
     static constexpr int scmOldDefaultGlyphSize = 24;
 
-    // The sweep the overflow width is found by. The step is fine enough to tell
-    // two icon sizes apart on a bar of a dozen buttons.
+    // The sweep the breakpoint is found by. The step is fine enough to tell two
+    // icon sizes apart on a bar of a dozen buttons.
     static constexpr int scmSweepStep = 10;
     static constexpr int scmSweepCeiling = 3000;
 
@@ -103,25 +104,32 @@ private:
         }
     }
 
-    // The button a QToolBar posts what it cannot fit into. It exists from the
-    // start and is shown only while something has been posted to it, so its
-    // visibility is the overflow itself rather than a proxy for it.
-    QWidget* extensionButton() const { return mpEditor->toolBar->findChild<QWidget*>(qsl("qt_toolbar_ext_button")); }
-
-    // The narrowest window that still shows every action on the bar. Swept
-    // upwards from the narrowest the editor can be dragged to, so the figure is
-    // one a user could actually arrive at.
-    int narrowestWidthWithNoOverflow()
+    // Whether every button that acts on the profile - Import, Export, Create
+    // Module, Save Profile - is still carrying its name. That group is the
+    // first the bar takes the names off when it runs out of room, so the width
+    // it gives them up at is the width the bar stopped fitting at.
+    bool profileGroupIsNamed() const
     {
-        QWidget* pExtension = extensionButton();
-        if (!pExtension) {
-            return -1;
+        const auto& group = mpEditor->mEditorToolBarGroups.constFirst();
+        for (QAction* pAction : group.actions) {
+            auto* pButton = qobject_cast<QToolButton*>(mpEditor->toolBar->widgetForAction(pAction));
+            if (!pButton || pButton->toolButtonStyle() != Qt::ToolButtonTextBesideIcon) {
+                return false;
+            }
         }
+        return true;
+    }
+
+    // The narrowest window that still writes every name out. Swept upwards from
+    // the narrowest the editor can be dragged to, so the figure is one a user
+    // could actually arrive at.
+    int narrowestWidthWithEveryNameWritten()
+    {
         for (int width = mpEditor->minimumWidth(); width <= scmSweepCeiling; width += scmSweepStep) {
             mpEditor->resize(width, 700);
             QCoreApplication::sendPostedEvents();
             QTest::qWait(20ms);
-            if (!pExtension->isVisible()) {
+            if (profileGroupIsNamed()) {
                 return width;
             }
         }
@@ -219,27 +227,30 @@ private slots:
         QCOMPARE(mpEditor->toolBar->iconSize(), QSize(24, 24));
     }
 
-    // What the rebaselining was for, measured rather than argued. The bar it is
-    // measured against is 24px outright - the size the old mapping drew at the
-    // default - rather than a preference value, so the comparison says the same
-    // thing whatever the mapping is.
-    void test_theDefaultNeedsLessWidthBeforeActionsGoIntoTheOverflowMenu()
+    // What the rebaselining was for, measured rather than argued. Nothing is
+    // posted into an overflow menu any more - the bar takes the names off its
+    // buttons a group at a time instead - so what a wider glyph costs is read
+    // off the width the first of those groups gives its names up at. The bar it
+    // is measured against is 24px outright - the size the old mapping drew at
+    // the default - rather than a preference value, so the comparison says the
+    // same thing whatever the mapping is.
+    void test_theDefaultWritesEveryNameOutOnANarrowerWindow()
     {
         setPreference(scmDefaultPreference);
         mpEditor->toolBar->setIconSize(QSize(scmOldDefaultGlyphSize, scmOldDefaultGlyphSize));
         QTest::qWait(50ms);
-        const int before = narrowestWidthWithNoOverflow();
+        const int before = narrowestWidthWithEveryNameWritten();
 
         // ...against whatever the preference's default actually maps to, taken
         // through the preference rather than set here
         setPreference(scmDefaultPreference);
-        const int after = narrowestWidthWithNoOverflow();
+        const int after = narrowestWidthWithEveryNameWritten();
 
-        qInfo().noquote() << qsl("  every action fits from %1px of window at the old default's %2px glyphs, and from %3px at the %4px it maps to now")
+        qInfo().noquote() << qsl("  every name is written out from %1px of window at the old default's %2px glyphs, and from %3px at the %4px it maps to now")
                                      .arg(QString::number(before), QString::number(scmOldDefaultGlyphSize), QString::number(after), QString::number(mpEditor->toolBar->iconSize().width()));
-        QVERIFY2(before > 0 && after > 0, "The toolbar never stopped overflowing within the swept range, so there is nothing to compare");
+        QVERIFY2(before > 0 && after > 0, "The bar wrote every name out at every width swept, so there is nothing to compare");
         QVERIFY2(after < before,
-                 qPrintable(qsl("The toolbar needs %1px of window at the preference's default before every action fits, against %2px at the size that default used to draw - no improvement")
+                 qPrintable(qsl("The toolbar needs %1px of window at the preference's default before every name is written out, against %2px at the size that default used to draw - no improvement")
                                     .arg(QString::number(after), QString::number(before))));
     }
 };

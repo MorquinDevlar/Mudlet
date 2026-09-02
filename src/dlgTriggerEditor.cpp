@@ -112,6 +112,11 @@
 #include <QVBoxLayout>
 
 
+// Forward declarations for the toolbar fit's helpers (defined beside it, later
+// in this file)
+static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*>& actions, const bool shown);
+static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink);
+
 // Forward declaration for per-property undo helper (defined later in this file)
 static void pushKeyPropertyCommand(EditorUndoStack* undoStack, Host* host, int keyID, const QString& keyName, const QString& propertyName, const QString& oldStateXML, const QString& newStateXML);
 
@@ -175,6 +180,21 @@ static constexpr int scmEditorSidebarRowChrome = 40;
 // dots are five pixels across, and the rest is what holds them off the bar's
 // edge and off the first button
 static constexpr int scmEditorToolbarGripExtent = 11;
+// The chevron on Qt's own overflow button. That fold is only reachable on a
+// window narrower than a bar with every name already given up - see
+// docs/design-language.md - and the two faint arrowheads a style hands out for
+// it are barely on the page, so the mark is drawn here instead: the same stroke
+// the sidebar's toggle and a tree's rows are opened by.
+static constexpr int scmEditorOverflowChevronExtent = 12;
+static constexpr qreal scmEditorOverflowChevronArm = 3.0;
+static constexpr qreal scmEditorOverflowChevronPenWidth = 1.5;
+
+// How much room the bar has to have left over before a group that gave its
+// names up is allowed them back. Taking them away costs nothing to spare and
+// giving them back costs this, so the band between the two is where a drag
+// across the breakpoint lands - without it the same pixel would both fit and
+// not fit and the bar would flicker under the pointer.
+static constexpr int scmEditorToolBarRestoreMargin = 16;
 // The narrowest the editor is worth showing its names beside - a floor for the
 // breakpoint, not a width anything is held to
 static constexpr int scmEditorContentColumnWidth = 640;
@@ -1260,23 +1280,22 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(treeWidget_keys, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
 
 
+    // The wording on this and on the three below follows the view, and so does
+    // the tooltip that stands in for it once the bar is too narrow to write it
+    // out - both are set by changeView() through updateEditorItemActionToolTips()
     mAddItem = new QAction(QIcon(qsl(":/icons/document-new.png")), QString(), this);
-    mAddItem->setToolTip(qsl("<p>%1 (%2)</p>").arg(tr("Add Item"), QKeySequence(QKeySequence::New).toString()));
     mAddItem->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     mAddItem->setShortcut(QKeySequence(QKeySequence::New));
     frame_left->addAction(mAddItem);
     connect(mAddItem, &QAction::triggered, this, &dlgTriggerEditor::slot_addNewItem);
 
     mDeleteItem = new QAction(QIcon::fromTheme(qsl(":/icons/edit-delete"), QIcon(qsl(":/icons/edit-delete.png"))), QString(), this);
-    mDeleteItem->setToolTip(qsl("<p>%1 (%2)</p>").arg(tr("Delete Item"), QKeySequence(QKeySequence::Delete).toString()));
     mDeleteItem->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     mDeleteItem->setShortcut(QKeySequence(QKeySequence::Delete));
     frame_left->addAction(mDeleteItem);
     connect(mDeleteItem, &QAction::triggered, this, &dlgTriggerEditor::slot_deleteItemOrGroup);
 
     mAddGroup = new QAction(QIcon(qsl(":/icons/folder-new.png")), QString(), this);
-    //: %1 is a keyboard shortcut, e.g. 'Ctrl+Shift+N' on Windows/Linux or '⌘⇧N' on macOS
-    mAddGroup->setToolTip(tr("Add Group (%1)").arg(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N).toString(QKeySequence::NativeText)));
     mAddGroup->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     mAddGroup->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N));
     frame_left->addAction(mAddGroup);
@@ -1285,11 +1304,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // 'Save Item' does not see to be translated as it is only ever used programmatically and not visible to the player
     // PLACEMARKER 1/3 save button texts need to be kept in sync
     mSaveItem = new QAction(QIcon(qsl(":/icons/document-save-as.png")), qsl("Save Item"), this);
-    //: %1 is a keyboard shortcut, e.g. 'Ctrl+S' on Windows/Linux or '⌘S' on macOS
-    mSaveItem->setToolTip(tr("<p>Saves the selected item. (%1)</p>"
-                             "<p>Saving causes any changes to the item to take effect. It will not save to disk, "
-                             "so changes will be lost in case of a computer/program crash (but Save Profile to the right will be secure.)</p>")
-                                  .arg(QKeySequence(QKeySequence::Save).toString(QKeySequence::NativeText)));
     connect(mSaveItem, &QAction::triggered, this, &dlgTriggerEditor::slot_saveEdits);
 
     QAction* copyAction = new QAction(tr("Copy"), this);
@@ -1369,22 +1383,24 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     mpCreateModuleAction = new QAction(QIcon(qsl(":/icons/package-exporter.png")), tr("Create Module"), this);
     mpCreateModuleAction->setEnabled(true);
-    mpCreateModuleAction->setToolTip(tr("<p>Create a module from selected items</p>"));
+    // Led by the words on the button, which is what is left of it once the bar
+    // is too narrow to write them out beside the picture
+    mpCreateModuleAction->setToolTip(qsl("<p>%1</p>%2").arg(mpCreateModuleAction->text(), tr("<p>Create a module from selected items</p>")));
     connect(mpCreateModuleAction, &QAction::triggered, this, &dlgTriggerEditor::slot_createModule);
 
     mProfileSaveAction = new QAction(QIcon(qsl(":/icons/document-save-all.png")), tr("Save Profile"), this);
-    //: %1 is a keyboard shortcut, e.g. 'Ctrl+Shift+S' on Windows/Linux or '⌘⇧S' on macOS
-    mProfileSaveAction->setToolTip(tr("<p>Saves your profile. (%1)</p>"
-                                      "<p>Saves your entire profile (triggers, aliases, scripts, timers, buttons and "
-                                      "keys, but not the map or script-specific settings) to your computer disk, so "
-                                      "in case of a computer or program crash, all changes you have done will be "
-                                      "retained.</p>"
-                                      "<p>It also makes a backup of your profile, you can load an older version of it "
-                                      "when connecting.</p>"
-                                      "<p>Should there be any modules that are marked to be \"<i>synced</i>\" this will "
-                                      "also cause them to be saved and reloaded into other profiles if they too are "
-                                      "active.</p>")
-                                           .arg(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S).toString(QKeySequence::NativeText)));
+    mProfileSaveAction->setToolTip(qsl("<p>%1 (%2)</p>%3")
+                                           .arg(mProfileSaveAction->text(),
+                                                QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S).toString(QKeySequence::NativeText),
+                                                tr("<p>Saves your entire profile (triggers, aliases, scripts, timers, buttons and "
+                                                   "keys, but not the map or script-specific settings) to your computer disk, so "
+                                                   "in case of a computer or program crash, all changes you have done will be "
+                                                   "retained.</p>"
+                                                   "<p>It also makes a backup of your profile, you can load an older version of it "
+                                                   "when connecting.</p>"
+                                                   "<p>Should there be any modules that are marked to be \"<i>synced</i>\" this will "
+                                                   "also cause them to be saved and reloaded into other profiles if they too are "
+                                                   "active.</p>")));
     //: Status tip for saving profile
     mProfileSaveAction->setStatusTip(tr("Save profile (triggers, aliases, scripts, timers, buttons, keys - not the map) and synchronize modules."));
 
@@ -1476,6 +1492,22 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         pButton_saveProfile->setMenu(pMenu_saveProfile);
         pButton_saveProfile->setPopupMode(QToolButton::MenuButtonPopup);
     }
+
+    // A bar too narrow for every name gives them up a group at a time rather
+    // than posting its tail into a drop-down. What acts on the profile goes
+    // first - those four are the ones a player reaches for least often, and the
+    // ones whose pictures say the most on their own - and what acts on the item
+    // being edited holds its names longest.
+    mEditorToolBarGroups.append(EditorToolBarGroup{{importAction, mpExportAction, mpCreateModuleAction, mProfileSaveAction}, true});
+    mEditorToolBarGroups.append(EditorToolBarGroup{{mAddItem, mAddGroup, mSaveItem, mDeleteItem}, true});
+    // The bar is the only thing the window tells when it has more or less room
+    // to offer, so its own resize is what the fit runs on
+    toolBar->installEventFilter(this);
+    // Docking the bar at a side turns its overflow button the other way round,
+    // and turning it puts the style's own picture back on it
+    connect(toolBar, &QToolBar::orientationChanged, this, [this]() {
+        inkEditorOverflowChevron(toolBar, uiDesign::themeTokens().accentText);
+    });
 
     applyEditorToolbarButtonStyles();
 
@@ -2932,6 +2964,10 @@ void dlgTriggerEditor::slot_setToolBarIconSize(const int s)
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
     }
+
+    // ...and a wider glyph is a wider button, which moves the width the bar
+    // gives its names up at as well
+    fitEditorToolBarToItsLength();
 }
 
 void dlgTriggerEditor::slot_setTreeWidgetIconSize(const int s)
@@ -10314,6 +10350,9 @@ void dlgTriggerEditor::showEvent(QShowEvent* event)
         mEditorFirstShown = true;
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
+        // The bar has a length to be measured against from this moment on, and
+        // the resize that gave it one may already have gone past
+        fitEditorToolBarToItsLength();
 
         // The first item goes into the form before the editor is put on screen -
         // mudlet::slot_showEditorDialog() picks it, then shows the window - so
@@ -10559,6 +10598,12 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     // Which of the two the code pane's heading is in this view - a heading that
     // also drags, or only a heading - and the column's own height either way
     applyFormPaneSeamPolicy();
+
+    // Four buttons on the bar have just been renamed, and their names are what
+    // they cost it - so the tooltips that stand in for those names are rebuilt
+    // and the fit is taken again against the new wording
+    updateEditorItemActionToolTips();
+    fitEditorToolBarToItsLength();
 
     // Update undo/redo button states when changing views
     slot_updateUndoRedoButtonStates();
@@ -13276,6 +13321,14 @@ void dlgTriggerEditor::slot_profileSaveAsAction()
 
 bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
 {
+    // The bar is the only thing told what room the window has left it, so its
+    // own resize is where the fit is taken. Ahead of the key grab below, which
+    // otherwise swallows every event that is not a key while a key is grabbed.
+    if (watched == toolBar && event->type() == QEvent::Resize) {
+        fitEditorToolBarToItsLength();
+        return false;
+    }
+
     // The field a keystroke is grabbed in: it is watched whether or not a grab
     // is armed, since arming one is what a click on it does. While one is
     // armed this filter is on the application as well, and both passes name
@@ -15492,6 +15545,17 @@ void dlgTriggerEditor::slot_visibilityChangedEditorActionsToolbar()
 void dlgTriggerEditor::slot_floatingChangedEditorActionsToolbar()
 {
     showOrHideRestoreEditorActionsToolbarAction();
+
+    // A bar torn off into a window of its own is given the size of what it
+    // holds, so it starts from every name shown - and the resize that gives it
+    // that size runs the fit again. Left collapsed, it would be sized to the
+    // pictures and could then never find the room to ask for its names back.
+    if (toolBar->isFloating()) {
+        for (EditorToolBarGroup& group : mEditorToolBarGroups) {
+            group.labelsShown = true;
+            setToolBarButtonLabelsShown(toolBar, group.actions, true);
+        }
+    }
 }
 
 // This also triggers the corresponding signal that is connected to the
@@ -15927,6 +15991,10 @@ void dlgTriggerEditor::restyleEditorIcons()
         glyph.first->setIcon(icon);
     }
 
+    // The one mark on the bar a style draws rather than the design: Qt's own
+    // overflow button, which a window narrow enough can still reach
+    inkEditorOverflowChevron(toolBar, accentText);
+
     // Quieter than the name beside them, and the accent under a chosen one
     restyleEditorSidebarIcons(quietColor, accentText);
 
@@ -16242,6 +16310,82 @@ void dlgTriggerEditor::endSaveErrorCapture()
     updateEditorCompileChip();
 }
 
+// The length the bar wants along the way it runs, with the button styles it is
+// carrying at this moment. It is the layout's own hint rather than a sum taken
+// here, so the separators, the grip, the spacing and the padding a stylesheet
+// hands out are all counted the way Qt itself counts them when it decides
+// whether something has to be posted into the overflow. The hint is taken from
+// the items' size hints rather than from the geometry they were last given, so
+// it says the same thing whether or not Qt has already folded the tail away.
+static int toolBarLengthWanted(const QToolBar* pToolBar)
+{
+    const QLayout* pLayout = pToolBar->layout();
+    const QSize wanted = pLayout ? pLayout->sizeHint() : pToolBar->sizeHint();
+    return pToolBar->orientation() == Qt::Horizontal ? wanted.width() : wanted.height();
+}
+
+static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*>& actions, const bool shown)
+{
+    for (QAction* pAction : actions) {
+        if (auto* pButton = qobject_cast<QToolButton*>(pToolBar->widgetForAction(pAction))) {
+            pButton->setToolButtonStyle(shown ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonIconOnly);
+        }
+    }
+    // A button Qt has already folded away is hidden, and a hidden widget's
+    // updateGeometry() does not reach the layout it is in - so the bar is told
+    // outright rather than through the buttons, or the hint read next would be
+    // the one measured before this ran
+    if (QLayout* pLayout = pToolBar->layout()) {
+        pLayout->invalidate();
+    }
+}
+
+// The fold below the fit: on a window narrower than a bar of pictures there is
+// nothing left to give up, and Qt posts the tail of the bar into a drop-down.
+// Its button is left in place - a scrolling host of our own would be a second
+// way of hiding the same buttons - and only made unmistakable: the pill comes
+// from the stylesheet in applyEditorShellStyle(), and the chevron from here,
+// since a QStyle hands the button a picture of its own and a stylesheet cannot
+// recolour one.
+static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink)
+{
+    auto* pExtension = pToolBar->findChild<QToolButton*>(qsl("qt_toolbar_ext_button"));
+    if (!pExtension) {
+        return;
+    }
+    const qreal glyphRatio = pExtension->devicePixelRatioF();
+    QPixmap chevron(QSize(scmEditorOverflowChevronExtent, scmEditorOverflowChevronExtent) * glyphRatio);
+    chevron.setDevicePixelRatio(glyphRatio);
+    chevron.fill(Qt::transparent);
+
+    QPainter painter(&chevron);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPen pen(ink);
+    pen.setWidthF(scmEditorOverflowChevronPenWidth);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    painter.setPen(pen);
+
+    // Pointing the way the bar runs, which is where the buttons it holds went
+    const QPointF centre(scmEditorOverflowChevronExtent / 2.0, scmEditorOverflowChevronExtent / 2.0);
+    // The arm across the point is shortened, the way the sidebar's is, so the
+    // mark stays inside its square whichever way round it is drawn
+    const qreal reach = scmEditorOverflowChevronArm / 1.6;
+    QPolygonF stroke;
+    if (pToolBar->orientation() == Qt::Horizontal) {
+        stroke << QPointF(centre.x() - reach, centre.y() - scmEditorOverflowChevronArm) << QPointF(centre.x() + reach, centre.y())
+               << QPointF(centre.x() - reach, centre.y() + scmEditorOverflowChevronArm);
+    } else {
+        stroke << QPointF(centre.x() - scmEditorOverflowChevronArm, centre.y() - reach) << QPointF(centre.x(), centre.y() + reach)
+               << QPointF(centre.x() + scmEditorOverflowChevronArm, centre.y() - reach);
+    }
+    painter.drawPolyline(stroke);
+    painter.end();
+
+    pExtension->setIcon(QIcon(chevron));
+    pExtension->setIconSize(QSize(scmEditorOverflowChevronExtent, scmEditorOverflowChevronExtent));
+}
+
 // A row of names beside pictures, whatever icon size the preferences ask for:
 // the grouping the toolbar is read by only works if the names are there
 void dlgTriggerEditor::applyEditorToolbarButtonStyles()
@@ -16260,6 +16404,92 @@ void dlgTriggerEditor::applyEditorToolbarButtonStyles()
             pButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
         }
     }
+    // The line above is the bar's own style, which every button follows again
+    // the moment it is set - so a group that had already given its names up is
+    // told a second time
+    for (const EditorToolBarGroup& group : mEditorToolBarGroups) {
+        setToolBarButtonLabelsShown(toolBar, group.actions, group.labelsShown);
+    }
+}
+
+// Nothing on this bar is ever put out of reach. Where Qt would post the tail of
+// it into a drop-down whose button is a few pixels of chevron at the far edge,
+// the groups give their names up in turn instead and stand as pictures their
+// tooltips speak for: the profile's four first, the item's four after, in the
+// order mEditorToolBarGroups holds them.
+//
+// They are given back from the other end, and only once the bar would hold them
+// with scmEditorToolBarRestoreMargin left over. Taking a name away costs nothing
+// to spare, so the two tests never agree on the same pixel and a drag across the
+// breakpoint settles instead of flickering.
+//
+// Run on the bar's own resize, on the icon size changing, on the view changing -
+// the item four are renamed there, and what they cost is their names - on a
+// language, style or font change, on the editor's own restyle, and once the
+// window has been shown.
+void dlgTriggerEditor::fitEditorToolBarToItsLength()
+{
+    if (!toolBar || mEditorToolBarGroups.isEmpty() || mEditorToolBarFitting) {
+        return;
+    }
+    // Along the bar rather than across it: docked at a side it runs downwards,
+    // and the names are then what its height is spent on
+    const bool horizontal = toolBar->orientation() == Qt::Horizontal;
+    const int available = horizontal ? toolBar->width() : toolBar->height();
+    // A bar that has not been laid out yet has nothing to measure against, and
+    // the answer it would give is one to throw away rather than to act on
+    if (available <= 1) {
+        return;
+    }
+
+    mEditorToolBarFitting = true;
+    bool namesGivenUp = false;
+    for (EditorToolBarGroup& group : mEditorToolBarGroups) {
+        if (toolBarLengthWanted(toolBar) <= available) {
+            break;
+        }
+        if (!group.labelsShown) {
+            continue;
+        }
+        group.labelsShown = false;
+        setToolBarButtonLabelsShown(toolBar, group.actions, false);
+        namesGivenUp = true;
+    }
+
+    // Only when nothing was given up in this pass: a bar that has just run out
+    // of room cannot also have room to spare, and asking would set every group
+    // it just collapsed back and forth
+    if (!namesGivenUp) {
+        for (auto it = mEditorToolBarGroups.rbegin(), end = mEditorToolBarGroups.rend(); it != end; ++it) {
+            if (it->labelsShown) {
+                continue;
+            }
+            setToolBarButtonLabelsShown(toolBar, it->actions, true);
+            if (toolBarLengthWanted(toolBar) + scmEditorToolBarRestoreMargin > available) {
+                setToolBarButtonLabelsShown(toolBar, it->actions, false);
+                break;
+            }
+            it->labelsShown = true;
+        }
+    }
+    mEditorToolBarFitting = false;
+}
+
+// A button standing as a picture is read by its tooltip alone, so each of these
+// four leads with the words it is carrying rather than with a fixed "Add Item"
+// that says nothing about which of the seven kinds is on show. Their wording is
+// set a few lines up in changeView(), which is the only caller.
+void dlgTriggerEditor::updateEditorItemActionToolTips()
+{
+    mAddItem->setToolTip(qsl("<p>%1 (%2)</p>").arg(mAddItem->text(), QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText)));
+    mAddGroup->setToolTip(qsl("<p>%1 (%2)</p>").arg(mAddGroup->text(), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N).toString(QKeySequence::NativeText)));
+    mDeleteItem->setToolTip(qsl("<p>%1 (%2)</p>").arg(mDeleteItem->text(), QKeySequence(QKeySequence::Delete).toString(QKeySequence::NativeText)));
+    mSaveItem->setToolTip(qsl("<p>%1 (%2)</p>%3")
+                                  .arg(mSaveItem->text(),
+                                       QKeySequence(QKeySequence::Save).toString(QKeySequence::NativeText),
+                                       //: Follows a heading that is the button's own wording - "Save Trigger", "Save Alias" and so on
+                                       tr("<p>Saving causes any changes to the item to take effect. It will not save to disk, "
+                                          "so changes will be lost in case of a computer/program crash (but Save Profile to the right will be secure.)</p>")));
 }
 
 // Every colour is mixed from the application palette rather than written out as
@@ -16474,7 +16704,15 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                      // Styling the button at all takes the arrow's own
                                      // separator with it, so the menu half is drawn as one
                                      // piece with the rest
-                                     "QToolBar#editorActionsToolbar QToolButton::menu-button { border: none; background: transparent; width: 14px; }")
+                                     "QToolBar#editorActionsToolbar QToolButton::menu-button { border: none; background: transparent; width: 14px; }"
+                                     // Qt's own overflow button, which only a window narrower
+                                     // than a bar of pictures can reach. Drawn as a control
+                                     // rather than as the pair of faint arrowheads a style
+                                     // leaves on the page there: a card lifted off the bar with
+                                     // the hairline every other box in this window carries, and
+                                     // the chevron inkEditorOverflowChevron() puts on it
+                                     "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button { border: 1px solid %2; background-color: %11; padding: 1px 3px; }"
+                                     "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button:hover { border-color: %4; background-color: %5; }")
                                          .arg(pageColor.name(),
                                               borderColor.name(),
                                               mutedText.name(),
@@ -16484,7 +16722,8 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                               disabledText.name(),
                                               gripAcross,
                                               gripAlong,
-                                              QString::number(scmEditorToolbarGripExtent));
+                                              QString::number(scmEditorToolbarGripExtent),
+                                              cardColor.name());
 
     const QString statusBarRules = qsl("QStatusBar#editorStatusBar { background-color: %1; border-top: 1px solid %2; }"
                                        // Or the platform style draws a sunken frame around
@@ -16789,6 +17028,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
     if (mpToggle_editorSidebar) {
         inkAsChrome(mpToggle_editorSidebar, mutedText, accentText);
     }
+
+    // The rules above give the toolbar's buttons their padding and the bar its
+    // spacing, so a restyle moves the width the names are given up at. The bar
+    // is sent no resize by it, so the fit is taken here rather than waited for.
+    fitEditorToolBarToItsLength();
 }
 
 // A count is a walk of the whole tree, which filling one out would otherwise
@@ -16946,6 +17190,8 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
     if (e->type() == QEvent::LanguageChange || e->type() == QEvent::StyleChange || e->type() == QEvent::FontChange) {
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
+        // The same three move what a toolbar button costs the bar it is on
+        fitEditorToolBarToItsLength();
         // The same three move the widest of the pattern type names, which is
         // what a row's type column is held to
         mPatternTypeColumnWidth = 0;
