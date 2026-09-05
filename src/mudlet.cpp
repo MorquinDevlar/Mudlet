@@ -6844,6 +6844,15 @@ void mudlet::migrateBundledEditorTheme(QString& themeName, QString& themeFile)
     }
 }
 
+bool mudlet::editorThemeResolves(const QString& themeFile)
+{
+    if (themeFile.isEmpty()) {
+        return false;
+    }
+    return QFile::exists(getMudletPath(enums::editorWidgetThemePathFile, themeFile));
+}
+
+
 // loads the needed edbee theme from disk for use
 bool mudlet::loadEdbeeTheme(const QString& themeName, const QString& themeFile)
 {

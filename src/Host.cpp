@@ -5812,20 +5812,39 @@ void Host::setCommandLineHistorySaveSize(const int lines)
     }
 }
 
-QString Host::getEditorTheme() const
+// The pair the profile recorded for the appearance in force, whether or not this
+// machine has it
+void Host::storedEditorTheme(QString& themeName, QString& themeFile) const
 {
     if (mudlet::self()->inDarkMode() && !mEditorThemeDark.isEmpty() && !mEditorThemeFileDark.isEmpty()) {
-        return mEditorThemeDark;
+        themeName = mEditorThemeDark;
+        themeFile = mEditorThemeFileDark;
+        return;
     }
-    return mEditorTheme;
+    themeName = mEditorTheme;
+    themeFile = mEditorThemeFile;
+}
+
+QString Host::getEditorTheme() const
+{
+    QString themeName;
+    QString themeFile;
+    storedEditorTheme(themeName, themeFile);
+    if (mudlet::editorThemeResolves(themeFile)) {
+        return themeName;
+    }
+    return mudlet::self()->inDarkMode() ? QString(mudlet::scmEditorThemeNameDark) : QString(mudlet::scmEditorThemeNameLight);
 }
 
 QString Host::getEditorThemeFile() const
 {
-    if (mudlet::self()->inDarkMode() && !mEditorThemeDark.isEmpty() && !mEditorThemeFileDark.isEmpty()) {
-        return mEditorThemeFileDark;
+    QString themeName;
+    QString themeFile;
+    storedEditorTheme(themeName, themeFile);
+    if (mudlet::editorThemeResolves(themeFile)) {
+        return themeFile;
     }
-    return mEditorThemeFile;
+    return mudlet::self()->inDarkMode() ? QString(mudlet::scmEditorThemeFileDark) : QString(mudlet::scmEditorThemeFileLight);
 }
 
 void Host::editorThemeChanged()

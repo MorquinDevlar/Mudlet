@@ -111,6 +111,14 @@ private:
         QCoreApplication::processEvents();
     }
 
+    // Straight at the application, for the cases that are about what the editor
+    // is handed rather than about the preferences control
+    void setAppearanceDirectly(const enums::Appearance state)
+    {
+        mudlet::self()->setAppearance(state);
+        QCoreApplication::processEvents();
+    }
+
     QStringList themesOffered() const
     {
         QStringList names;
@@ -265,6 +273,107 @@ private slots:
 
         setAppearance(enums::Appearance::light);
         QCOMPARE(themeBox()->currentText(), mLoneThemeName);
+    }
+
+    // A profile can name a theme this machine does not have - downloaded on
+    // another computer, or cleared out of the cache since. edbee would answer
+    // that with a fallback theme of its own; the editor takes the bundled one
+    // for the appearance in force instead.
+    void test_aThemeThisMachineDoesNotHaveFallsBackToTheBundledOne()
+    {
+        QVERIFY2(!mudlet::editorThemeResolves(qsl("Monokai.tmTheme")), "the missing theme this case needs is somehow on this machine");
+
+        mpHost->mEditorTheme = qsl("Monokai");
+        mpHost->mEditorThemeFile = qsl("Monokai.tmTheme");
+        mpHost->mEditorThemeDark.clear();
+        mpHost->mEditorThemeFileDark.clear();
+
+        setAppearanceDirectly(enums::Appearance::light);
+        QCOMPARE(mpHost->getEditorTheme(), QString(mudlet::scmEditorThemeNameLight));
+        QCOMPARE(mpHost->getEditorThemeFile(), QString(mudlet::scmEditorThemeFileLight));
+
+        // ...and it follows the appearance, which a profile stuck on one dead
+        // name never could
+        setAppearanceDirectly(enums::Appearance::dark);
+        QCOMPARE(mpHost->getEditorTheme(), QString(mudlet::scmEditorThemeNameDark));
+        QCOMPARE(mpHost->getEditorThemeFile(), QString(mudlet::scmEditorThemeFileDark));
+
+        setAppearanceDirectly(enums::Appearance::light);
+    }
+
+    // The whole point of doing it at load rather than as a migration: what the
+    // profile recorded is untouched, so the theme comes back if it is installed
+    // again - and a Mudlet old enough not to know these names reads what it
+    // always read.
+    void test_theFallbackDoesNotRewriteWhatTheProfileRecorded()
+    {
+        mpHost->mEditorTheme = qsl("Monokai");
+        mpHost->mEditorThemeFile = qsl("Monokai.tmTheme");
+        mpHost->mEditorThemeDark.clear();
+        mpHost->mEditorThemeFileDark.clear();
+
+        setAppearanceDirectly(enums::Appearance::light);
+        QCOMPARE(mpHost->getEditorTheme(), QString(mudlet::scmEditorThemeNameLight));
+        setAppearanceDirectly(enums::Appearance::dark);
+        QCOMPARE(mpHost->getEditorTheme(), QString(mudlet::scmEditorThemeNameDark));
+        setAppearanceDirectly(enums::Appearance::light);
+
+        QCOMPARE(mpHost->mEditorTheme, qsl("Monokai"));
+        QCOMPARE(mpHost->mEditorThemeFile, qsl("Monokai.tmTheme"));
+        QVERIFY2(mpHost->mEditorThemeDark.isEmpty(), "the fallback wrote a dark theme into the profile");
+        QVERIFY2(mpHost->mEditorThemeFileDark.isEmpty(), "the fallback wrote a dark theme file into the profile");
+    }
+
+    // ...and a theme that is on this machine is drawn with, whoever wrote it
+    void test_aThemeThisMachineDoesHaveIsUsedAsItStands()
+    {
+        const QString file = mudlet::getMudletPath(enums::editorWidgetThemePathFile, mLoneThemeFile);
+        QVERIFY(QDir().mkpath(QFileInfo(file).absolutePath()));
+        QVERIFY2(QFile::copy(qsl(":/edbee_defaults/Mudlet Light.tmTheme"), file), "could not put a readable theme file in the cache for this case");
+        QVERIFY2(mudlet::editorThemeResolves(mLoneThemeFile), "the theme file was written but does not resolve");
+
+        mpHost->mEditorTheme = mLoneThemeName;
+        mpHost->mEditorThemeFile = mLoneThemeFile;
+        mpHost->mEditorThemeDark.clear();
+        mpHost->mEditorThemeFileDark.clear();
+
+        setAppearanceDirectly(enums::Appearance::light);
+        QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
+        QCOMPARE(mpHost->getEditorThemeFile(), mLoneThemeFile);
+
+        // No counterpart to switch to, and one that resolves is not something to
+        // override: it stays put the way it always did
+        setAppearanceDirectly(enums::Appearance::dark);
+        QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
+
+        setAppearanceDirectly(enums::Appearance::light);
+        QFile::remove(file);
+    }
+
+    // The halves are answered for separately: a dark theme that cannot be found
+    // leaves the light one the profile did choose in charge, rather than the
+    // whole profile being moved onto the bundled pair.
+    void test_aDarkHalfThatCannotBeFoundDoesNotCostTheLightOne()
+    {
+        const QString file = mudlet::getMudletPath(enums::editorWidgetThemePathFile, mLoneThemeFile);
+        QVERIFY(QDir().mkpath(QFileInfo(file).absolutePath()));
+        QVERIFY2(QFile::copy(qsl(":/edbee_defaults/Mudlet Light.tmTheme"), file), "could not put a readable theme file in the cache for this case");
+
+        mpHost->mEditorTheme = mLoneThemeName;
+        mpHost->mEditorThemeFile = mLoneThemeFile;
+        mpHost->mEditorThemeDark = qsl("Monokai");
+        mpHost->mEditorThemeFileDark = qsl("Monokai.tmTheme");
+
+        setAppearanceDirectly(enums::Appearance::light);
+        QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
+
+        setAppearanceDirectly(enums::Appearance::dark);
+        QCOMPARE(mpHost->getEditorTheme(), QString(mudlet::scmEditorThemeNameDark));
+        QCOMPARE(mpHost->getEditorThemeFile(), QString(mudlet::scmEditorThemeFileDark));
+
+        setAppearanceDirectly(enums::Appearance::light);
+        QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
+        QFile::remove(file);
     }
 };
 

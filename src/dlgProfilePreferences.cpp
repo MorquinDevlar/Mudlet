@@ -4543,9 +4543,16 @@ void dlgProfilePreferences::loadEditorTab()
     mudlet::loadEdbeeTheme(pHost->getEditorTheme(), pHost->getEditorThemeFile());
     populateScriptsList();
 
-    // pre-select the current theme
+    // pre-select the current theme. What the profile recorded rather than what
+    // the editor is drawn with: those differ when the recorded theme is not on
+    // this machine, and the control is where the profile's own choice is shown
+    // and written back from. Showing the fallback here would offer to save it
+    // over the choice.
+    QString storedThemeName;
+    QString storedThemeFile;
+    pHost->storedEditorTheme(storedThemeName, storedThemeFile);
     code_editor_theme_selection_combobox->lineEdit()->setPlaceholderText(qsl("Select theme"));
-    auto themeIndex = code_editor_theme_selection_combobox->findText(pHost->getEditorTheme());
+    auto themeIndex = code_editor_theme_selection_combobox->findText(storedThemeName);
     code_editor_theme_selection_combobox->setCurrentIndex(themeIndex);
     slot_themeSelected(themeIndex);
 

@@ -786,8 +786,17 @@ public:
     QString mEditorThemeDark;
     // code editor theme file for dark mode on disk for edbee to load
     QString mEditorThemeFileDark;
+    // What the editor is drawn with. Both answer the bundled theme for the
+    // appearance in force when the profile's own theme is not on this machine -
+    // one downloaded on another computer, or since cleared out of the cache -
+    // rather than letting edbee fall back to a theme of its own. The fallback
+    // lasts the session and nothing above writes it down: the profile goes on
+    // recording the theme it chose, so reinstalling that theme brings it back,
+    // and a Mudlet old enough not to know these names still reads what it always
+    // read.
     QString getEditorTheme() const;
     QString getEditorThemeFile() const;
+    void storedEditorTheme(QString& themeName, QString& themeFile) const;
     void editorThemeChanged();
 
     // search engine URL prefix to search query

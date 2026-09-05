@@ -125,6 +125,10 @@ public:
     // light/dark pair forward to the name and file it goes by now; leaves every
     // other theme alone
     static void migrateBundledEditorTheme(QString& themeName, QString& themeFile);
+    // Whether the theme file a profile carries is one that can still be found -
+    // in the resources for the two bundled themes, in the download cache for
+    // every other
+    static bool editorThemeResolves(const QString& themeFile);
     static bool loadLuaFunctionList();
     static std::string replaceString(std::string subject, const std::string& search, const std::string& replace);
     static mudlet* self();
