@@ -322,31 +322,31 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
     QString file;
     switch (mark) {
     case RowMark::Folder:
-        file = qsl(":/icons/editor-folder.png");
+        file = qsl(":/icons/editor-folder.svg");
         break;
     case RowMark::Filter:
-        file = qsl(":/icons/editor-filter.png");
+        file = qsl(":/icons/editor-filter.svg");
         break;
     case RowMark::OffsetTimer:
-        file = qsl(":/icons/editor-offset-timer.png");
+        file = qsl(":/icons/editor-offset-timer.svg");
         break;
     case RowMark::Error:
         // The glyph the Errors view carries in the sidebar, so the row and the
         // place it sends the reader are the one picture
-        file = qsl(":/icons/editor-errors.png");
+        file = qsl(":/icons/editor-errors.svg");
         break;
     case RowMark::NewFolder:
-        file = qsl(":/icons/editor-new-folder.png");
+        file = qsl(":/icons/editor-new-folder.svg");
         break;
     case RowMark::NewItem:
-        file = qsl(":/icons/editor-new-item.png");
+        file = qsl(":/icons/editor-new-item.svg");
         break;
     case RowMark::None:
         return glyph;
     }
 
     const qreal ratio = mDotGlyphRatio;
-    glyph = tintedGlyph(QPixmap(file), selected ? mSelectedMarkInk : mMarkInk).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph = tintedGlyph(uiDesign::glyphPixmap(file), selected ? mSelectedMarkInk : mMarkInk).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(ratio);
     return glyph;
 }

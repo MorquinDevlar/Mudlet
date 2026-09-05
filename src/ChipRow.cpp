@@ -616,11 +616,11 @@ QString ChipRow::cleaned(const QString& name)
 
 void ChipRow::restyleGlyphs(const ThemeTokens& tokens)
 {
-    mRemoveGlyph = tintedIcon(qsl(":/icons/editor-clear.png"), tokens);
+    mRemoveGlyph = tintedIcon(qsl(":/icons/editor-clear.svg"), tokens);
     for (Chip* pChip : mChips) {
         pChip->setRemoveGlyph(mRemoveGlyph);
     }
-    mpAdd->setIcon(tintedIcon(qsl(":/icons/editor-add.png"), tokens));
+    mpAdd->setIcon(tintedIcon(qsl(":/icons/editor-add.svg"), tokens));
 }
 
 QString ChipRow::styleSheetFor(const ThemeTokens& tokens)

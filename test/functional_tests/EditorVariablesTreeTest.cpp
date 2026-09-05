@@ -512,12 +512,12 @@ private slots:
     void test_eachRowCarriesTheMarkForItsKindOfValue()
     {
         openTheVariablesView();
-        const QList<QPair<QString, QString>> expected{{qsl("myString"), qsl(":/icons/editor-type-string.png")},
-                                                      {qsl("myNumber"), qsl(":/icons/editor-type-number.png")},
-                                                      {qsl("myBoolean"), qsl(":/icons/editor-type-boolean.png")},
-                                                      {qsl("myFunction"), qsl(":/icons/editor-type-function.png")},
-                                                      {qsl("myKeyed"), qsl(":/icons/editor-variables.png")},
-                                                      {qsl("myList"), qsl(":/icons/editor-variables.png")}};
+        const QList<QPair<QString, QString>> expected{{qsl("myString"), qsl(":/icons/editor-type-string.svg")},
+                                                      {qsl("myNumber"), qsl(":/icons/editor-type-number.svg")},
+                                                      {qsl("myBoolean"), qsl(":/icons/editor-type-boolean.svg")},
+                                                      {qsl("myFunction"), qsl(":/icons/editor-type-function.svg")},
+                                                      {qsl("myKeyed"), qsl(":/icons/editor-variables.svg")},
+                                                      {qsl("myList"), qsl(":/icons/editor-variables.svg")}};
         QStringList wrong;
         QStringList measured;
         for (const auto& row : expected) {
@@ -529,12 +529,12 @@ private slots:
         }
         // ...and each of those is a picture the binary actually carries: a file
         // left out of the resource list reads back as nothing at all
-        for (const QString& file : {qsl(":/icons/editor-type-string.png"),
-                                    qsl(":/icons/editor-type-number.png"),
-                                    qsl(":/icons/editor-type-boolean.png"),
-                                    qsl(":/icons/editor-type-function.png"),
-                                    qsl(":/icons/editor-type-other.png"),
-                                    qsl(":/icons/editor-hidden.png")}) {
+        for (const QString& file : {qsl(":/icons/editor-type-string.svg"),
+                                    qsl(":/icons/editor-type-number.svg"),
+                                    qsl(":/icons/editor-type-boolean.svg"),
+                                    qsl(":/icons/editor-type-function.svg"),
+                                    qsl(":/icons/editor-type-other.svg"),
+                                    qsl(":/icons/editor-hidden.svg")}) {
             if (QPixmap(file).isNull()) {
                 wrong << qsl("%1 is not in the resources").arg(file);
             }
@@ -643,7 +643,7 @@ private slots:
 
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QImage onTheHeading = drawnAt(option.icon, scmMarkSize);
-        const QImage wanted = drawnAt(QIcon(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/editor-variables.png")), tokens.mutedText)), scmMarkSize);
+        const QImage wanted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-variables.svg")), tokens.mutedText)), scmMarkSize);
         QVERIFY2(!onTheHeading.isNull(), "the tree's heading row carries no picture at all");
         QVERIFY2(onTheHeading == wanted, "the tree's heading row does not carry the braces its sidebar row carries, inked in the tone the editor's chrome is");
     }

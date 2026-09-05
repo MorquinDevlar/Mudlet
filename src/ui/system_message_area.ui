@@ -248,10 +248,6 @@ background-color: rgb(255, 254, 215);
            <property name="focusPolicy">
             <enum>Qt::FocusPolicy::NoFocus</enum>
            </property>
-           <property name="icon">
-            <iconset resource="../mudlet.qrc">
-             <normaloff>:/icons/application-exit.png</normaloff>:/icons/application-exit.png</iconset>
-           </property>
            <property name="autoRaise">
             <bool>true</bool>
            </property>

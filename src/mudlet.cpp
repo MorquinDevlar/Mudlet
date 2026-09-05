@@ -1347,31 +1347,31 @@ void mudlet::init()
     // editor concepts take the editor's own files, so that a trigger is the same
     // picture wherever it is offered. The two checkable pairs carry a second
     // file for their On state.
-    mToolBarGlyphs = {{mpActionConnect, qsl(":/icons/toolbar-connect.png"), QString()},
-                      {mpActionTriggers, qsl(":/icons/editor-triggers.png"), QString()},
-                      {mpActionAliases, qsl(":/icons/editor-aliases.png"), QString()},
-                      {mpActionTimers, qsl(":/icons/editor-timers.png"), QString()},
-                      {mpActionButtons, qsl(":/icons/editor-buttons.png"), QString()},
-                      {mpActionScripts, qsl(":/icons/editor-scripts.png"), QString()},
-                      {mpActionKeys, qsl(":/icons/editor-keys.png"), QString()},
-                      {mpActionVariables, qsl(":/icons/editor-variables.png"), QString()},
-                      {mpActionMuteMedia, qsl(":/icons/toolbar-sound-on.png"), qsl(":/icons/toolbar-sound-off.png")},
-                      {mpActionMuteAPI, qsl(":/icons/toolbar-sound-on.png"), qsl(":/icons/toolbar-sound-off.png")},
-                      {mpActionMuteGame, qsl(":/icons/toolbar-sound-on.png"), qsl(":/icons/toolbar-sound-off.png")},
+    mToolBarGlyphs = {{mpActionConnect, qsl(":/icons/toolbar-connect.svg"), QString()},
+                      {mpActionTriggers, qsl(":/icons/editor-triggers.svg"), QString()},
+                      {mpActionAliases, qsl(":/icons/editor-aliases.svg"), QString()},
+                      {mpActionTimers, qsl(":/icons/editor-timers.svg"), QString()},
+                      {mpActionButtons, qsl(":/icons/editor-buttons.svg"), QString()},
+                      {mpActionScripts, qsl(":/icons/editor-scripts.svg"), QString()},
+                      {mpActionKeys, qsl(":/icons/editor-keys.svg"), QString()},
+                      {mpActionVariables, qsl(":/icons/editor-variables.svg"), QString()},
+                      {mpActionMuteMedia, qsl(":/icons/toolbar-sound-on.svg"), qsl(":/icons/toolbar-sound-off.svg")},
+                      {mpActionMuteAPI, qsl(":/icons/toolbar-sound-on.svg"), qsl(":/icons/toolbar-sound-off.svg")},
+                      {mpActionMuteGame, qsl(":/icons/toolbar-sound-on.svg"), qsl(":/icons/toolbar-sound-off.svg")},
                       {mpActionDiscord, qsl(":/icons/toolbar-discord.png"), QString()},
                       {mpActionMudletDiscord, qsl(":/icons/toolbar-discord.png"), QString()},
-                      {mpActionMapper, qsl(":/icons/toolbar-map.png"), QString()},
-                      {mpActionHelp, qsl(":/icons/toolbar-manual.png"), QString()},
-                      {mpActionOptions, qsl(":/icons/toolbar-settings.png"), QString()},
-                      {mpActionNotes, qsl(":/icons/toolbar-notepad.png"), QString()},
-                      {mpActionPackageManager, qsl(":/icons/toolbar-packages.png"), QString()},
-                      {mpActionModuleManager, qsl(":/icons/editor-module.png"), QString()},
-                      {mpActionPackageExporter, qsl(":/icons/toolbar-export.png"), QString()},
-                      {mpActionReplay, qsl(":/icons/toolbar-replay.png"), QString()},
-                      {mpActionReconnect, qsl(":/icons/toolbar-reconnect.png"), QString()},
-                      {mpActionMultiView, qsl(":/icons/toolbar-multiview.png"), QString()},
-                      {mpActionAbout, qsl(":/icons/toolbar-about.png"), QString()},
-                      {mpActionFullScreenView, qsl(":/icons/toolbar-fullscreen.png"), qsl(":/icons/toolbar-fullscreen-exit.png")}};
+                      {mpActionMapper, qsl(":/icons/toolbar-map.svg"), QString()},
+                      {mpActionHelp, qsl(":/icons/toolbar-manual.svg"), QString()},
+                      {mpActionOptions, qsl(":/icons/toolbar-settings.svg"), QString()},
+                      {mpActionNotes, qsl(":/icons/toolbar-notepad.svg"), QString()},
+                      {mpActionPackageManager, qsl(":/icons/toolbar-packages.svg"), QString()},
+                      {mpActionModuleManager, qsl(":/icons/editor-module.svg"), QString()},
+                      {mpActionPackageExporter, qsl(":/icons/toolbar-export.svg"), QString()},
+                      {mpActionReplay, qsl(":/icons/toolbar-replay.svg"), QString()},
+                      {mpActionReconnect, qsl(":/icons/toolbar-reconnect.svg"), QString()},
+                      {mpActionMultiView, qsl(":/icons/toolbar-multiview.svg"), QString()},
+                      {mpActionAbout, qsl(":/icons/toolbar-about.svg"), QString()},
+                      {mpActionFullScreenView, qsl(":/icons/toolbar-fullscreen.svg"), qsl(":/icons/toolbar-fullscreen-exit.svg")}};
     restyleToolBarIcons();
 
     const QFont mainFont = QFont(qsl("Bitstream Vera Sans Mono"), 8, QFont::Normal);
@@ -6575,8 +6575,8 @@ bool mudlet::replayStart()
 
     // The replay bar is built the first time a replay runs, so its two glyphs
     // join the ledger here rather than with the rest
-    mToolBarGlyphs.append({mpActionReplaySpeedUp, qsl(":/icons/toolbar-replay-faster.png"), QString()});
-    mToolBarGlyphs.append({mpActionReplaySpeedDown, qsl(":/icons/toolbar-replay-slower.png"), QString()});
+    mToolBarGlyphs.append({mpActionReplaySpeedUp, qsl(":/icons/toolbar-replay-faster.svg"), QString()});
+    mToolBarGlyphs.append({mpActionReplaySpeedDown, qsl(":/icons/toolbar-replay-slower.svg"), QString()});
     restyleToolBarIcons();
 
     mpLabelReplaySpeedDisplay = new QLabel(this);

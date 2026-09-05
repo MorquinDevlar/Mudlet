@@ -43,10 +43,13 @@
  */
 
 #include <QAction>
+#include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QPainter>
 #include <QPalette>
 #include <QSignalSpy>
+#include <QSvgRenderer>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QtTest/QtTest>
@@ -135,7 +138,7 @@ private:
     static QImage expectedTriggersGlyph()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        return drawnAt(QIcon(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/editor-triggers.png")), tokens.mutedText)));
+        return drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-triggers.svg")), tokens.mutedText)));
     }
 
     void startProfile(const QString& hostname)
@@ -207,6 +210,49 @@ private slots:
         mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
     }
 
+    // Every other case here compares one drawn glyph against another built the
+    // same way, so a glyph that came out of the SVG empty - a renderer that
+    // refuses the file, a stroke="currentColor" nothing resolves - would leave
+    // both sides blank and every one of them green. This is the case that reads
+    // the ink itself.
+    void test_aGlyphIsDrawnFromItsSvgAtTheDesignsStrokeWidth()
+    {
+        const QImage drawn = uiDesign::glyphPixmap(qsl(":/icons/toolbar-map.svg")).toImage();
+        QCOMPARE(drawn.size(), QSize(uiDesign::scmGlyphRasterSize, uiDesign::scmGlyphRasterSize));
+
+        const auto inked = [](const QImage& image) {
+            qint64 covered = 0;
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    if (qAlpha(image.pixel(x, y)) > 32) {
+                        ++covered;
+                    }
+                }
+            }
+            return covered;
+        };
+
+        const qint64 drawnInk = inked(drawn);
+        QVERIFY2(drawnInk > 0, "the glyph came out of its SVG with no ink in it at all");
+
+        // ...and the weight is this design's rather than the file's. Lucide
+        // authors every icon at a stroke width of 2, so the same map drawn as
+        // shipped has to cover more of the square than the one the window uses.
+        QFile source(qsl(":/icons/toolbar-map.svg"));
+        QVERIFY(source.open(QIODevice::ReadOnly));
+        QSvgRenderer asAuthored(source.readAll());
+        QVERIFY(asAuthored.isValid());
+        QPixmap authored(uiDesign::scmGlyphRasterSize, uiDesign::scmGlyphRasterSize);
+        authored.fill(Qt::transparent);
+        QPainter painter(&authored);
+        painter.setRenderHint(QPainter::Antialiasing);
+        asAuthored.render(&painter);
+        painter.end();
+
+        QVERIFY2(uiDesign::scmGlyphStrokeWidth < 2.0, "this case only means anything while the design asks for a lighter pen than Lucide's");
+        QVERIFY2(drawnInk < inked(authored.toImage()), "the glyph is as heavy as Lucide authored it, so scmGlyphStrokeWidth never reached the renderer");
+    }
+
     // The caption stands still and the picture moves - the whole of the relabel
     void test_theSoundButtonKeepsItsCaptionWhileItsGlyphSaysTheState()
     {
@@ -246,8 +292,8 @@ private slots:
         // different ones: a change of ink alone would pass the line above while
         // the speaker kept its waves through both states
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const QImage expectedUnmuted = drawnAt(QIcon(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/toolbar-sound-on.png")), tokens.mutedText)));
-        const QImage expectedMuted = drawnAt(QIcon(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/toolbar-sound-off.png")), tokens.accentText)));
+        const QImage expectedUnmuted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/toolbar-sound-on.svg")), tokens.mutedText)));
+        const QImage expectedMuted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/toolbar-sound-off.svg")), tokens.accentText)));
         QVERIFY2(glyphUnmuted == expectedUnmuted,
                  qPrintable(qsl("the unmuted Sound button is not the speaker-with-waves glyph in the quiet ink: %1").arg(differenceBetween(glyphUnmuted, expectedUnmuted))));
         QVERIFY2(glyphMuted == expectedMuted, qPrintable(qsl("the muted Sound button is not the speaker-with-x glyph in the accent: %1").arg(differenceBetween(glyphMuted, expectedMuted))));

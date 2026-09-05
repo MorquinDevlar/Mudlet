@@ -947,29 +947,29 @@ void dlgProfilePreferences::buildSearchResultsPage()
 QList<dlgProfilePreferences::CategoryDefinition> dlgProfilePreferences::categoryDefinitions() const
 {
     return {//: Sidebar category in the settings dialog, holding saving, language, logging, web search and update options
-            {scmCategory_general, qsl("settings-general.png"), tr("General")},
+            {scmCategory_general, qsl("settings-general.svg"), tr("General")},
             //: Sidebar category in the settings dialog, holding the theme, icon sizes and profile tab options
-            {scmCategory_appearance, qsl("settings-appearance.png"), tr("Appearance")},
+            {scmCategory_appearance, qsl("settings-appearance.svg"), tr("Appearance")},
             //: Sidebar category in the settings dialog, holding the font, colors, borders and wrapping of the game's text window
-            {scmCategory_mainDisplay, qsl("settings-display.png"), tr("Main display")},
+            {scmCategory_mainDisplay, qsl("settings-display.svg"), tr("Main display")},
             //: Sidebar category in the settings dialog, holding the options of the command line the player types into
-            {scmCategory_inputLine, qsl("settings-input.png"), tr("Input line")},
+            {scmCategory_inputLine, qsl("settings-input.svg"), tr("Input line")},
             //: Sidebar category in the settings dialog, holding the script editor's options
-            {scmCategory_editor, qsl("settings-editor.png"), tr("Editor")},
+            {scmCategory_editor, qsl("settings-editor.svg"), tr("Editor")},
             //: Sidebar category in the settings dialog, holding the map's files, view and colors
-            {scmCategory_mapper, qsl("settings-mapper.png"), tr("Mapper")},
+            {scmCategory_mapper, qsl("settings-mapper.svg"), tr("Mapper")},
             //: Sidebar category in the settings dialog, holding the Discord Rich Presence and MudMaster chat options
-            {scmCategory_chat, qsl("settings-chat.png"), tr("Chat and sharing")},
+            {scmCategory_chat, qsl("settings-chat.svg"), tr("Chat and sharing")},
             //: Sidebar category in the settings dialog, holding the game protocol, encoding and compatibility options
-            {scmCategory_connection, qsl("settings-connection.png"), tr("Connection"), true},
+            {scmCategory_connection, qsl("settings-connection.svg"), tr("Connection"), true},
             //: Sidebar category in the settings dialog, holding the secure connection, proxy, password and permission options
-            {scmCategory_privacy, qsl("settings-privacy.png"), tr("Privacy and security")},
+            {scmCategory_privacy, qsl("settings-privacy.svg"), tr("Privacy and security")},
             //: Sidebar category in the settings dialog, holding the screen reader and other accessibility options
-            {scmCategory_accessibility, qsl("settings-accessibility.png"), tr("Accessibility")},
+            {scmCategory_accessibility, qsl("settings-accessibility.svg"), tr("Accessibility")},
             //: Sidebar category in the settings dialog, holding the main window's keyboard shortcuts
-            {scmCategory_shortcuts, qsl("settings-shortcuts.png"), tr("Shortcuts")},
+            {scmCategory_shortcuts, qsl("settings-shortcuts.svg"), tr("Shortcuts")},
             //: Sidebar category in the settings dialog, holding development and diagnostic options
-            {scmCategory_advanced, qsl("settings-advanced.png"), tr("Advanced")}};
+            {scmCategory_advanced, qsl("settings-advanced.svg"), tr("Advanced")}};
 }
 
 QWidget* dlgProfilePreferences::buildSidebar()
@@ -2680,7 +2680,7 @@ void dlgProfilePreferences::restyleSidebarIcons(const QColor& normal, const QCol
         if (!pItem || it.value().iconFile.isEmpty()) {
             continue;
         }
-        const QPixmap source(qsl(":/icons/%1").arg(it.value().iconFile));
+        const QPixmap source = uiDesign::glyphPixmap(qsl(":/icons/%1").arg(it.value().iconFile));
         const QPixmap quiet = tintedGlyph(source, normal);
         QIcon icon(quiet);
         // Otherwise the view makes one by washing the icon in the highlight colour
@@ -2689,7 +2689,7 @@ void dlgProfilePreferences::restyleSidebarIcons(const QColor& normal, const QCol
         mCategoryIconMarkup.insert(it.key(), inlineGlyph(quiet));
     }
     if (mpItem_support) {
-        mpItem_support->setIcon(QIcon(tintedGlyph(QPixmap(qsl(":/icons/settings-support.png")), normal)));
+        mpItem_support->setIcon(QIcon(tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/settings-support.svg")), normal)));
     }
     // A header built under the previous theme holds that theme's picture, and
     // re-wording it is what puts the new one in
@@ -2737,7 +2737,7 @@ void dlgProfilePreferences::applyShellStyle()
     const QString markerSoft = rgba(tokens.marker, darkPage ? 0.75 : 0.95);
 
     if (mpAction_searchIcon) {
-        mpAction_searchIcon->setIcon(QIcon(tintedGlyph(QPixmap(qsl(":/icons/settings-search.png")), mutedText)));
+        mpAction_searchIcon->setIcon(QIcon(tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/settings-search.svg")), mutedText)));
     }
     // Quieter than the name beside them, and the accent under a selected one
     restyleSidebarIcons(mutedText, accentText);

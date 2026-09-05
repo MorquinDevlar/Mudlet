@@ -325,7 +325,7 @@ private:
     QImage markDrawnFrom(const TTreeWidget* pTree, const QString& glyphFile, const QColor& ink) const
     {
         const qreal ratio = pTree->devicePixelRatioF();
-        return uiDesign::tintedGlyph(QPixmap(glyphFile), ink)
+        return uiDesign::tintedGlyph(uiDesign::glyphPixmap(glyphFile), ink)
                 .scaled(QSize(scmMarkSize, scmMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation)
                 .toImage()
                 .convertToFormat(QImage::Format_ARGB32);
@@ -512,10 +512,10 @@ private slots:
         QTreeWidgetItem* pTimerHeading = mpEditor->mpTimerBaseItem;
 
         const QList<QPair<QString, QPair<QImage, QImage>>> readings{
-                {qsl("a folder"), {markOf(pTriggers, rowFor(pTriggerHeading, mTriggerFolderId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-folder.png"), tokens.mutedText)}},
-                {qsl("a filter chain"), {markOf(pTriggers, rowFor(pTriggerHeading, mFilterChainId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-filter.png"), tokens.mutedText)}},
-                {qsl("a broken item"), {markOf(pTriggers, rowFor(pTriggerHeading, mBrokenTriggerId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-errors.png"), tokens.mutedText)}},
-                {qsl("an offset timer"), {markOf(pTimers, rowFor(pTimerHeading, mOffsetTimerId), false), markDrawnFrom(pTimers, qsl(":/icons/editor-offset-timer.png"), tokens.mutedText)}}};
+                {qsl("a folder"), {markOf(pTriggers, rowFor(pTriggerHeading, mTriggerFolderId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-folder.svg"), tokens.mutedText)}},
+                {qsl("a filter chain"), {markOf(pTriggers, rowFor(pTriggerHeading, mFilterChainId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-filter.svg"), tokens.mutedText)}},
+                {qsl("a broken item"), {markOf(pTriggers, rowFor(pTriggerHeading, mBrokenTriggerId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-errors.svg"), tokens.mutedText)}},
+                {qsl("an offset timer"), {markOf(pTimers, rowFor(pTimerHeading, mOffsetTimerId), false), markDrawnFrom(pTimers, qsl(":/icons/editor-offset-timer.svg"), tokens.mutedText)}}};
 
         QStringList wrong;
         QStringList measured;
@@ -542,7 +542,7 @@ private slots:
 
         const QImage unchosen = markOf(pTree, pFolder, false);
         const QImage chosen = markOf(pTree, pFolder, true);
-        const QImage wantedChosen = markDrawnFrom(pTree, qsl(":/icons/editor-folder.png"), tokens.accentText);
+        const QImage wantedChosen = markDrawnFrom(pTree, qsl(":/icons/editor-folder.svg"), tokens.accentText);
         qInfo().noquote() << qsl("  the folder's mark is %1 unchosen and %2 chosen; the muted tone is %3 and the chosen text colour %4")
                                      .arg(inkOf(unchosen), inkOf(chosen), tokens.mutedText.name(), tokens.accentText.name());
 

@@ -454,9 +454,18 @@ still moves the trigger form's.
 
 - Monochrome line icons from [Lucide](https://lucide.dev), ISC licence,
   attributed in the About dialog (`src/dlgAboutDialog.cpp`).
-- Shipped as 128px alpha PNGs in `src/icons/` (`settings-general.png`,
-  `settings-appearance.png`, ...). The shape lives in the alpha channel; the RGB
-  content is irrelevant.
+- Shipped as SVG in `src/icons/` (`settings-general.svg`,
+  `settings-appearance.svg`, ...), exactly as Lucide authors them.
+- Loaded only through `glyphPixmap(file)`, which rasterises at
+  `scmGlyphRasterSize` (128px) and draws every glyph at
+  `scmGlyphStrokeWidth`. Lucide authors at a stroke width of 2, which reads
+  heavy at the sizes this window draws at; the weight is a token here rather
+  than a property of the asset, so changing it is one number and not 83
+  re-rendered files. Results are held in `QPixmapCache` - parsing an SVG per use
+  is what made the About dialog's chip row measurably slow when its glyphs were
+  re-encoded per chip.
+- The shape still lives in the alpha channel: `glyphPixmap()` draws onto a
+  transparent pixmap, so everything downstream of it is unchanged.
 - Tinted at runtime by `tintedGlyph(source, color)`: fill through the alpha with
   `QPainter::CompositionMode_SourceIn`, which keeps the antialiased edges that
   per-pixel recolouring would harden into a staircase.
@@ -471,12 +480,15 @@ still moves the trigger form's.
 
 The main window toolbar is the third consumer, and the detached profile window
 builds the same bar from the same list (`src/mudlet.cpp`,
-`src/TDetachedWindow.cpp`). Its own glyphs are named `toolbar-*.png`. The seven
+`src/TDetachedWindow.cpp`). Its own glyphs are named `toolbar-*.svg`. The seven
 editor concepts - Triggers, Aliases, Timers, Buttons, Scripts, Keys, Variables -
-take the editor's `editor-*.png` files rather than copies of them, so that a
+take the editor's `editor-*.svg` files rather than copies of them, so that a
 trigger is the same picture wherever it is offered; the module manager takes
-`editor-module.png` for the same reason. One glyph comes from outside Lucide: the
-Discord mark, from [Simple Icons](https://simpleicons.org) under CC0 1.0.
+`editor-module.svg` for the same reason. Three glyphs come from outside Lucide,
+from [Simple Icons](https://simpleicons.org) under CC0 1.0: the Discord mark
+(`toolbar-discord.png`) and the GitHub and Patreon marks in the About dialog.
+Those three stay PNG - they are filled shapes with no stroke, so there is no
+weight to set, and `glyphPixmap()` reads any non-`.svg` file as a raster.
 
 Each window keeps a `QList<uiDesign::ActionGlyph>` of action to file and a
 `restyleToolBarIcons()` that re-inks every entry through
@@ -488,16 +500,16 @@ pass a second file for their On state. The split buttons keep Qt's own
 `MenuButtonPopup` arrow and hover frame; nothing is drawn over the glyphs.
 
 Everything else the editor draws as a picture comes from the same family and
-the same tinting. The notice banner's three pictures are `editor-notice-info.png`
-(info), `editor-notice-warning.png` (triangle-alert) and
-`editor-notice-error.png` (circle-x): tinting keeps only the shape the alpha
+the same tinting. The notice banner's three pictures are `editor-notice-info.svg`
+(info), `editor-notice-warning.svg` (triangle-alert) and
+`editor-notice-error.svg` (circle-x): tinting keeps only the shape the alpha
 channel carries, and the old full-colour `dialog-*.png` bitmaps have a solid
 alpha, so the information notice came out as a plain disc. The cross on a chip,
-beside a key's binding and on the sound field is `editor-clear.png` (x); the
-plus on "Add event" is `editor-add.png`; the variables tree's type marks and its
-hidden mark are listed under "One mark, one size" below. A glyph is rendered
-from Lucide's SVG at 128px with the shape in the alpha channel, black ink and
-transparent ground, the way every other `editor-*.png` was.
+beside a key's binding and on the sound field is `editor-clear.svg` (x); the
+plus on "Add event" is `editor-add.svg`; the variables tree's type marks and its
+hidden mark are listed under "One mark, one size" below. A new glyph is Lucide's
+own SVG file, copied in under the name this window knows it by - nothing is
+rendered ahead of time.
 
 ### One mark, one size, on every row of an editor tree
 

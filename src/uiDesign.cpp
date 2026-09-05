@@ -32,6 +32,7 @@
 #include <QDateTimeEdit>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QFileInfo>
 #include <QFontComboBox>
 #include <QFontDatabase>
@@ -43,12 +44,14 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <QPixmapCache>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionGroupBox>
+#include <QSvgRenderer>
 #include <QTimer>
 #include <QToolButton>
 #include <QTransform>
@@ -819,6 +822,44 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
     return rules;
 }
 
+QPixmap glyphPixmap(const QString& file)
+{
+    const QString key = qsl("uiDesign-glyph-%1-%2").arg(file, QString::number(scmGlyphStrokeWidth));
+    QPixmap glyph;
+    if (QPixmapCache::find(key, &glyph)) {
+        return glyph;
+    }
+
+    if (!file.endsWith(QLatin1StringView(".svg"), Qt::CaseInsensitive)) {
+        glyph = QPixmap(file);
+        QPixmapCache::insert(key, glyph);
+        return glyph;
+    }
+
+    QFile source(file);
+    if (!source.open(QIODevice::ReadOnly)) {
+        return glyph;
+    }
+    QByteArray svg = source.readAll();
+    // Lucide writes the weight into every file as stroke-width="2"; swapping it
+    // here is what makes the weight a token instead of a property of the asset
+    svg.replace(QByteArrayLiteral(R"(stroke-width="2")"), QByteArrayLiteral(R"(stroke-width=")") + QByteArray::number(scmGlyphStrokeWidth) + '"');
+
+    QSvgRenderer renderer(svg);
+    if (!renderer.isValid()) {
+        return glyph;
+    }
+    glyph = QPixmap(scmGlyphRasterSize, scmGlyphRasterSize);
+    glyph.fill(Qt::transparent);
+    QPainter painter(&glyph);
+    painter.setRenderHint(QPainter::Antialiasing);
+    renderer.render(&painter);
+    painter.end();
+
+    QPixmapCache::insert(key, glyph);
+    return glyph;
+}
+
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
 {
     QPixmap glyph = source;
@@ -831,8 +872,8 @@ QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
 
 QIcon tintedIcon(const QString& glyphOff, const QString& glyphOn, const ThemeTokens& tokens)
 {
-    const QPixmap sourceOff(glyphOff);
-    const QPixmap sourceOn(glyphOn == glyphOff ? sourceOff : QPixmap(glyphOn));
+    const QPixmap sourceOff = glyphPixmap(glyphOff);
+    const QPixmap sourceOn = glyphOn == glyphOff ? sourceOff : glyphPixmap(glyphOn);
 
     QIcon icon;
     icon.addPixmap(tintedGlyph(sourceOff, tokens.mutedText), QIcon::Normal, QIcon::Off);

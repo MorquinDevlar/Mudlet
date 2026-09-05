@@ -67,7 +67,7 @@ void AboutSupporterBanner::applyTokens(const uiDesign::ThemeTokens& tokens)
         // 128px picture inside paintEvent() is a nearest-neighbour blit, and
         // one that runs again on every repaint
         const qreal ratio = devicePixelRatioF();
-        QPixmap blade = QPixmap(qsl(":/icons/about-swords.png")).scaled(qRound(scmGlyphSize * ratio), qRound(scmGlyphSize * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        QPixmap blade = uiDesign::glyphPixmap(qsl(":/icons/about-swords.svg")).scaled(qRound(scmGlyphSize * ratio), qRound(scmGlyphSize * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
         blade.setDevicePixelRatio(ratio);
         mGlyph = uiDesign::tintedGlyph(blade, tokens.accentText);
     }

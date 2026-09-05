@@ -65,19 +65,19 @@ QString glyphFileFor(const EditorViewType viewType)
 {
     switch (viewType) {
     case EditorViewType::cmTriggerView:
-        return qsl(":/icons/editor-triggers.png");
+        return qsl(":/icons/editor-triggers.svg");
     case EditorViewType::cmAliasView:
-        return qsl(":/icons/editor-aliases.png");
+        return qsl(":/icons/editor-aliases.svg");
     case EditorViewType::cmScriptView:
-        return qsl(":/icons/editor-scripts.png");
+        return qsl(":/icons/editor-scripts.svg");
     case EditorViewType::cmTimerView:
-        return qsl(":/icons/editor-timers.png");
+        return qsl(":/icons/editor-timers.svg");
     case EditorViewType::cmKeysView:
-        return qsl(":/icons/editor-keys.png");
+        return qsl(":/icons/editor-keys.svg");
     case EditorViewType::cmActionView:
-        return qsl(":/icons/editor-buttons.png");
+        return qsl(":/icons/editor-buttons.svg");
     case EditorViewType::cmVarsView:
-        return qsl(":/icons/editor-variables.png");
+        return qsl(":/icons/editor-variables.svg");
     default:
         return {};
     }
@@ -145,7 +145,7 @@ QPixmap SearchResultDelegate::typeGlyph(const EditorViewType viewType, const boo
     const QString glyphFile = glyphFileFor(viewType);
     QPixmap glyph;
     if (!glyphFile.isEmpty()) {
-        glyph = tintedGlyph(QPixmap(glyphFile), selected ? mSelectedText : mMutedColor).scaled(QSize(scmGlyphSize, scmGlyphSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        glyph = tintedGlyph(uiDesign::glyphPixmap(glyphFile), selected ? mSelectedText : mMutedColor).scaled(QSize(scmGlyphSize, scmGlyphSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         glyph.setDevicePixelRatio(ratio);
     }
     mTypeGlyphs.insert(key, glyph);

@@ -36,6 +36,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
 
@@ -48,6 +49,7 @@
 #include "dlgSystemMessageArea.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include "GroupedTest.h"
 
@@ -196,6 +198,38 @@ private slots:
             QVERIFY2(firstInk >= 0 && lastInk > firstInk, qPrintable(qsl("a notice's picture has no shape in it at all: %1").arg(row)));
             QVERIFY2(row.mid(firstInk, lastInk - firstInk + 1).contains(QLatin1Char('.')), qPrintable(qsl("a notice's picture is a filled shape rather than a line glyph: %1").arg(row)));
         }
+    }
+
+    // The banner's other picture. It shipped as application-exit.png, a
+    // full-colour bitmap of a red cross - which said "error" on a banner that is
+    // usually a tip, and was the one thing on it not inked from the palette.
+    void test_theDismissCrossIsInkedFromThePaletteLikeTheNoticeBesideIt()
+    {
+        mpEditor->slot_showTriggers();
+        mpEditor->showInfo(qsl("A notice the reader can dismiss"));
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+
+        QToolButton* pClose = mpEditor->mpSystemMessageArea->messageAreaCloseButton;
+        QVERIFY2(pClose, "the banner has no close button");
+        const QImage cross = pClose->icon().pixmap(pClose->iconSize()).toImage();
+        QVERIFY2(!cross.isNull(), "the banner's close button carries no picture at all");
+
+        // Tinting keeps only the alpha, so every pixel with ink in it is the one
+        // colour. The red cross was full-colour, and would fail on both counts.
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        QSet<QRgb> inks;
+        for (int y = 0; y < cross.height(); ++y) {
+            for (int x = 0; x < cross.width(); ++x) {
+                const QColor pixel = cross.pixelColor(x, y);
+                if (pixel.alpha() >= scmInkAlpha) {
+                    inks.insert(qRgb(pixel.red(), pixel.green(), pixel.blue()));
+                }
+            }
+        }
+        QVERIFY2(!inks.isEmpty(), "the banner's close button has no shape in it");
+        QCOMPARE(inks.size(), 1);
+        QCOMPARE(QColor(*inks.cbegin()).name(), tokens.mutedText.name());
     }
 };
 

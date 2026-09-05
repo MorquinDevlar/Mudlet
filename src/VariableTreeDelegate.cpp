@@ -292,17 +292,17 @@ QString VariableTreeDelegate::typeGlyphFile(const QModelIndex& index) const
     case TypeMark::Table:
         // A table is braces wherever it is drawn, so the row takes the glyph the
         // sidebar's Variables row carries rather than a second picture of one
-        return qsl(":/icons/editor-variables.png");
+        return qsl(":/icons/editor-variables.svg");
     case TypeMark::String:
-        return qsl(":/icons/editor-type-string.png");
+        return qsl(":/icons/editor-type-string.svg");
     case TypeMark::Number:
-        return qsl(":/icons/editor-type-number.png");
+        return qsl(":/icons/editor-type-number.svg");
     case TypeMark::Boolean:
-        return qsl(":/icons/editor-type-boolean.png");
+        return qsl(":/icons/editor-type-boolean.svg");
     case TypeMark::Function:
-        return qsl(":/icons/editor-type-function.png");
+        return qsl(":/icons/editor-type-function.svg");
     case TypeMark::Other:
-        return qsl(":/icons/editor-type-other.png");
+        return qsl(":/icons/editor-type-other.svg");
     case TypeMark::None:
         return {};
     }
@@ -409,27 +409,27 @@ QPixmap VariableTreeDelegate::typeGlyph(const TypeMark type, const QColor& ink, 
     QString file;
     switch (type) {
     case TypeMark::Table:
-        file = qsl(":/icons/editor-variables.png");
+        file = qsl(":/icons/editor-variables.svg");
         break;
     case TypeMark::String:
-        file = qsl(":/icons/editor-type-string.png");
+        file = qsl(":/icons/editor-type-string.svg");
         break;
     case TypeMark::Number:
-        file = qsl(":/icons/editor-type-number.png");
+        file = qsl(":/icons/editor-type-number.svg");
         break;
     case TypeMark::Boolean:
-        file = qsl(":/icons/editor-type-boolean.png");
+        file = qsl(":/icons/editor-type-boolean.svg");
         break;
     case TypeMark::Function:
-        file = qsl(":/icons/editor-type-function.png");
+        file = qsl(":/icons/editor-type-function.svg");
         break;
     case TypeMark::Other:
-        file = qsl(":/icons/editor-type-other.png");
+        file = qsl(":/icons/editor-type-other.svg");
         break;
     case TypeMark::None:
         return glyph;
     }
-    glyph = tintedGlyph(QPixmap(file), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * mGlyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph = tintedGlyph(uiDesign::glyphPixmap(file), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * mGlyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(mGlyphRatio);
     return glyph;
 }
@@ -440,7 +440,7 @@ QPixmap VariableTreeDelegate::hiddenGlyph(const QColor& ink, const int cacheSlot
     if (!glyph.isNull()) {
         return glyph;
     }
-    glyph = tintedGlyph(QPixmap(qsl(":/icons/editor-hidden.png")), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * mGlyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph = tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-hidden.svg")), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * mGlyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(mGlyphRatio);
     return glyph;
 }

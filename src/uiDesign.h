@@ -391,6 +391,23 @@ QString rgba(const QColor& color, const qreal alpha);
 // antialiased edges that recolouring the pixels would harden into a staircase
 QPixmap tintedGlyph(const QPixmap& source, const QColor& color);
 
+// The pen every Lucide glyph is drawn with. Lucide authors at 2, which reads
+// heavy at the sizes the toolbar and the editor draw at, so the glyphs ship as
+// SVG and the weight is set here rather than baked into a raster.
+inline constexpr qreal scmGlyphStrokeWidth = 1.5;
+
+// What an SVG glyph is rasterised at. The same size the glyphs were shipped as
+// PNGs at, so every caller's scaled() lands where it did before.
+inline constexpr int scmGlyphRasterSize = 128;
+
+// The only way a glyph file becomes a pixmap. An .svg is drawn at
+// scmGlyphStrokeWidth, anything else is read as a raster - which is what the
+// three brand marks (GitHub, Patreon, Discord) still are, being filled shapes
+// with no stroke to set. Results are cached: parsing an SVG per chip is what
+// made the About dialog's construction measurably slow when its glyphs were
+// re-encoded per use.
+QPixmap glyphPixmap(const QString& file);
+
 // One glyph inked for every mode a control asks a QIcon for, so that a toolbar
 // action carries the same picture in the same four inks wherever it is drawn:
 //

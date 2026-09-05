@@ -310,6 +310,8 @@ static constexpr int scmEditorOptionsRestoreBand = 24;
 // A banner's picture, beside a line of text rather than the 64px block the
 // .ui file sizes it as
 static constexpr int scmEditorBannerGlyphSize = 20;
+// ...and the cross that dismisses it, inside the 16px button the .ui fixes
+static constexpr int scmEditorBannerCloseSize = 12;
 
 // A trigger's pattern rows. A row is as tall as the profile's display font asks
 // for, since that is the font the pattern itself is read in - but never shorter
@@ -1562,21 +1564,21 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // Every picture an action carries, on the toolbar and in the trees' context
     // menu alike, is drawn from a monochrome glyph tinted to the palette, which
     // restyleEditorIcons() redoes whenever the theme changes
-    mEditorActionGlyphs = {{mAddItem, qsl(":/icons/editor-add.png")},
-                           {mAddGroup, qsl(":/icons/editor-add-group.png")},
-                           {mSaveItem, qsl(":/icons/editor-save-item.png")},
-                           {mDeleteItem, qsl(":/icons/editor-delete.png")},
-                           {mpUndoAction, qsl(":/icons/editor-undo.png")},
-                           {mpRedoAction, qsl(":/icons/editor-redo.png")},
-                           {importAction, qsl(":/icons/editor-import.png")},
-                           {mpExportAction, qsl(":/icons/editor-export.png")},
-                           {mpCreateModuleAction, qsl(":/icons/editor-module.png")},
-                           {mProfileSaveAction, qsl(":/icons/editor-save-profile.png")},
-                           {mProfileSaveAsAction, qsl(":/icons/editor-save-profile.png")},
+    mEditorActionGlyphs = {{mAddItem, qsl(":/icons/editor-add.svg")},
+                           {mAddGroup, qsl(":/icons/editor-add-group.svg")},
+                           {mSaveItem, qsl(":/icons/editor-save-item.svg")},
+                           {mDeleteItem, qsl(":/icons/editor-delete.svg")},
+                           {mpUndoAction, qsl(":/icons/editor-undo.svg")},
+                           {mpRedoAction, qsl(":/icons/editor-redo.svg")},
+                           {importAction, qsl(":/icons/editor-import.svg")},
+                           {mpExportAction, qsl(":/icons/editor-export.svg")},
+                           {mpCreateModuleAction, qsl(":/icons/editor-module.svg")},
+                           {mProfileSaveAction, qsl(":/icons/editor-save-profile.svg")},
+                           {mProfileSaveAsAction, qsl(":/icons/editor-save-profile.svg")},
                            // Menu-only, and reached from the trees rather than the toolbar
-                           {mpAction_toggleActive, qsl(":/icons/editor-activate.png")},
-                           {copyAction, qsl(":/icons/editor-copy.png")},
-                           {pasteAction, qsl(":/icons/editor-paste.png")}};
+                           {mpAction_toggleActive, qsl(":/icons/editor-activate.svg")},
+                           {copyAction, qsl(":/icons/editor-copy.svg")},
+                           {pasteAction, qsl(":/icons/editor-paste.svg")}};
 
     // Saving the profile under another name is the rarer of the pair, so it
     // hangs off the button beside it rather than taking a place of its own
@@ -1614,17 +1616,17 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // list, so the seven things a profile is made of come first and the three
     // that run a one-off action are put below a rule.
     buildEditorSidebar();
-    addEditorSidebarRow(viewTriggerAction, EditorViewType::cmTriggerView, qsl(":/icons/editor-triggers.png"));
-    addEditorSidebarRow(viewAliasAction, EditorViewType::cmAliasView, qsl(":/icons/editor-aliases.png"));
-    addEditorSidebarRow(viewScriptsAction, EditorViewType::cmScriptView, qsl(":/icons/editor-scripts.png"));
-    addEditorSidebarRow(showTimersAction, EditorViewType::cmTimerView, qsl(":/icons/editor-timers.png"));
-    addEditorSidebarRow(viewKeysAction, EditorViewType::cmKeysView, qsl(":/icons/editor-keys.png"));
-    addEditorSidebarRow(viewActionAction, EditorViewType::cmActionView, qsl(":/icons/editor-buttons.png"));
-    addEditorSidebarRow(viewVarsAction, EditorViewType::cmVarsView, qsl(":/icons/editor-variables.png"));
+    addEditorSidebarRow(viewTriggerAction, EditorViewType::cmTriggerView, qsl(":/icons/editor-triggers.svg"));
+    addEditorSidebarRow(viewAliasAction, EditorViewType::cmAliasView, qsl(":/icons/editor-aliases.svg"));
+    addEditorSidebarRow(viewScriptsAction, EditorViewType::cmScriptView, qsl(":/icons/editor-scripts.svg"));
+    addEditorSidebarRow(showTimersAction, EditorViewType::cmTimerView, qsl(":/icons/editor-timers.svg"));
+    addEditorSidebarRow(viewKeysAction, EditorViewType::cmKeysView, qsl(":/icons/editor-keys.svg"));
+    addEditorSidebarRow(viewActionAction, EditorViewType::cmActionView, qsl(":/icons/editor-buttons.svg"));
+    addEditorSidebarRow(viewVarsAction, EditorViewType::cmVarsView, qsl(":/icons/editor-variables.svg"));
     addEditorSidebarSeparator();
-    addEditorSidebarRow(viewErrorsAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-errors.png"));
-    addEditorSidebarRow(viewStatsAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-statistics.png"));
-    addEditorSidebarRow(showDebugAreaAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-debug.png"));
+    addEditorSidebarRow(viewErrorsAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-errors.svg"));
+    addEditorSidebarRow(viewStatsAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-statistics.svg"));
+    addEditorSidebarRow(showDebugAreaAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-debug.svg"));
 
     // A toolbar used to be what these actions were held by, which is what put
     // their Ctrl+1 to Ctrl+0 shortcuts within reach of the window; a sidebar
@@ -2365,7 +2367,7 @@ int dlgTriggerEditor::patternTypeColumnWidth(const QFont& typeFont) const
 QIcon dlgTriggerEditor::patternDeleteIcon() const
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QPixmap deleteSource(qsl(":/icons/editor-delete.png"));
+    const QPixmap deleteSource = uiDesign::glyphPixmap(qsl(":/icons/editor-delete.svg"));
     QIcon deleteGlyph(uiDesign::tintedGlyph(deleteSource, tokens.mutedText));
     deleteGlyph.addPixmap(uiDesign::tintedGlyph(deleteSource, tokens.text), QIcon::Active);
     return deleteGlyph;
@@ -2725,7 +2727,7 @@ void dlgTriggerEditor::restyleAddPatternIcon()
     }
 
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QPixmap addSource(qsl(":/icons/editor-add.png"));
+    const QPixmap addSource = uiDesign::glyphPixmap(qsl(":/icons/editor-add.svg"));
     QIcon addGlyph(uiDesign::tintedGlyph(addSource, tokens.mutedText));
     addGlyph.addPixmap(uiDesign::tintedGlyph(addSource, tokens.accentText), QIcon::Active);
     mpButton_addPattern->setIcon(addGlyph);
@@ -14218,7 +14220,7 @@ void dlgTriggerEditor::createSearchOptionIcon()
     }
 
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QPixmap source(qsl(":/icons/settings-search.png"));
+    const QPixmap source = uiDesign::glyphPixmap(qsl(":/icons/settings-search.svg"));
     const QIcon newIcon(uiDesign::tintedGlyph(source, (mSearchOptions == SearchOptionNone) ? tokens.mutedText : tokens.accentText));
 
     // Store the current setting icon - may need to copy it into the grandparent QComboBox items
@@ -14254,8 +14256,8 @@ void dlgTriggerEditor::updateSearchHistoryAction()
     }
 
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    QIcon chevron(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/arrow-down.png")), tokens.mutedText));
-    chevron.addPixmap(uiDesign::tintedGlyph(QPixmap(qsl(":/icons/arrow-down.png")), tokens.text), QIcon::Active);
+    QIcon chevron(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-chevron-down.svg")), tokens.mutedText));
+    chevron.addPixmap(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-chevron-down.svg")), tokens.text), QIcon::Active);
     mpAction_searchHistory->setIcon(chevron);
     mpAction_searchHistory->setVisible(comboBox_searchTerms->count() > 0);
 }
@@ -15973,7 +15975,7 @@ void dlgTriggerEditor::addEditorSidebarSeparator()
 void dlgTriggerEditor::restyleEditorSidebarIcons(const QColor& normal, const QColor& selected)
 {
     for (const auto& glyph : std::as_const(mEditorSidebarGlyphs)) {
-        const QPixmap source(glyph.second);
+        const QPixmap source = uiDesign::glyphPixmap(glyph.second);
         QIcon icon(uiDesign::tintedGlyph(source, normal));
         // Otherwise the view makes one by washing the icon in the highlight colour
         icon.addPixmap(uiDesign::tintedGlyph(source, selected), QIcon::Selected);
@@ -15993,18 +15995,18 @@ void dlgTriggerEditor::restyleEditorSidebarIcons(const QColor& normal, const QCo
 void dlgTriggerEditor::restyleEditorTreeHeadingIcons()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QList<QPair<QTreeWidgetItem*, QString>> headings{{mpTriggerBaseItem, qsl(":/icons/editor-triggers.png")},
-                                                           {mpAliasBaseItem, qsl(":/icons/editor-aliases.png")},
-                                                           {mpScriptsBaseItem, qsl(":/icons/editor-scripts.png")},
-                                                           {mpTimerBaseItem, qsl(":/icons/editor-timers.png")},
-                                                           {mpKeyBaseItem, qsl(":/icons/editor-keys.png")},
-                                                           {mpActionBaseItem, qsl(":/icons/editor-buttons.png")},
-                                                           {mpVarBaseItem, qsl(":/icons/editor-variables.png")}};
+    const QList<QPair<QTreeWidgetItem*, QString>> headings{{mpTriggerBaseItem, qsl(":/icons/editor-triggers.svg")},
+                                                           {mpAliasBaseItem, qsl(":/icons/editor-aliases.svg")},
+                                                           {mpScriptsBaseItem, qsl(":/icons/editor-scripts.svg")},
+                                                           {mpTimerBaseItem, qsl(":/icons/editor-timers.svg")},
+                                                           {mpKeyBaseItem, qsl(":/icons/editor-keys.svg")},
+                                                           {mpActionBaseItem, qsl(":/icons/editor-buttons.svg")},
+                                                           {mpVarBaseItem, qsl(":/icons/editor-variables.svg")}};
     for (const auto& heading : headings) {
         if (!heading.first) {
             continue;
         }
-        const QPixmap source(heading.second);
+        const QPixmap source = uiDesign::glyphPixmap(heading.second);
         QIcon icon(uiDesign::tintedGlyph(source, tokens.mutedText));
         // The same pair the sidebar's rows are cut from, so that a chosen
         // heading and a chosen sidebar row are the one colour
@@ -16168,7 +16170,7 @@ void dlgTriggerEditor::restyleEditorIcons()
         if (!glyph.first) {
             continue;
         }
-        const QPixmap source(glyph.second);
+        const QPixmap source = uiDesign::glyphPixmap(glyph.second);
         QIcon icon(uiDesign::tintedGlyph(source, quietColor));
         // Active rather than Selected: a tool button asks for Active while the
         // pointer is on it and never for Selected, which the sidebar's chosen
@@ -16200,7 +16202,7 @@ void dlgTriggerEditor::restyleEditorIcons()
     // nothing to take away, which is how the button spends most of its life.
     if (mpTriggersMainArea) {
         QToolButton* pClearSoundFile = mpTriggersMainArea->toolButton_clearSoundFile;
-        pClearSoundFile->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.png"), tokens));
+        pClearSoundFile->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.svg"), tokens));
         pClearSoundFile->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
     }
 
@@ -16213,12 +16215,12 @@ void dlgTriggerEditor::restyleEditorIcons()
     // ...and the same cross beside a key's keystroke, which is what takes it
     // away again
     if (mpButton_keyClear) {
-        mpButton_keyClear->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.png"), tokens));
+        mpButton_keyClear->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.svg"), tokens));
     }
 
     if (mpLabel_editorCodeHeaderIcon) {
         const qreal glyphRatio = mpLabel_editorCodeHeaderIcon->devicePixelRatioF();
-        QPixmap headerGlyph = uiDesign::tintedGlyph(QPixmap(qsl(":/icons/editor-scripts.png")), quietColor)
+        QPixmap headerGlyph = uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-scripts.svg")), quietColor)
                                       .scaled(QSize(scmEditorCodeHeaderGlyphSize, scmEditorCodeHeaderGlyphSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         headerGlyph.setDevicePixelRatio(glyphRatio);
         mpLabel_editorCodeHeaderIcon->setPixmap(headerGlyph);
@@ -16260,17 +16262,37 @@ void dlgTriggerEditor::restyleEditorIcons()
         // through its alpha channel keeps only the shape that channel carries,
         // and those bitmaps' alpha is a solid disc or triangle - so the info
         // notice came out as a filled circle with nothing readable in it
-        const QList<std::tuple<QLabel*, QString, QColor>> bannerGlyphs{{mpSystemMessageArea->notificationAreaIconLabelError, qsl(":/icons/editor-notice-error.png"), errorColor},
-                                                                       {mpSystemMessageArea->notificationAreaIconLabelWarning, qsl(":/icons/editor-notice-warning.png"), warningColor},
-                                                                       {mpSystemMessageArea->notificationAreaIconLabelInformation, qsl(":/icons/editor-notice-info.png"), accentText}};
+        const QList<std::tuple<QLabel*, QString, QColor>> bannerGlyphs{{mpSystemMessageArea->notificationAreaIconLabelError, qsl(":/icons/editor-notice-error.svg"), errorColor},
+                                                                       {mpSystemMessageArea->notificationAreaIconLabelWarning, qsl(":/icons/editor-notice-warning.svg"), warningColor},
+                                                                       {mpSystemMessageArea->notificationAreaIconLabelInformation, qsl(":/icons/editor-notice-info.svg"), accentText}};
         for (const auto& [pLabel, glyphFile, glyphColor] : bannerGlyphs) {
             const qreal glyphRatio = pLabel->devicePixelRatioF();
-            QPixmap glyph =
-                    uiDesign::tintedGlyph(QPixmap(glyphFile), glyphColor).scaled(QSize(scmEditorBannerGlyphSize, scmEditorBannerGlyphSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            QPixmap glyph = uiDesign::tintedGlyph(uiDesign::glyphPixmap(glyphFile), glyphColor)
+                                    .scaled(QSize(scmEditorBannerGlyphSize, scmEditorBannerGlyphSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
             glyph.setDevicePixelRatio(glyphRatio);
             pLabel->setPixmap(glyph);
             pLabel->setMargin(0);
             pLabel->setFixedSize(scmEditorBannerGlyphSize, scmEditorBannerGlyphSize);
+        }
+
+        // ...and the cross that dismisses the banner, in the same hand. The .ui
+        // file shipped it as application-exit.png - a full-colour bitmap of a
+        // red cross, which read as an error on a banner that is usually a tip,
+        // and was the one picture on the banner not inked from the palette.
+        if (QToolButton* pClose = mpSystemMessageArea->messageAreaCloseButton) {
+            const qreal glyphRatio = pClose->devicePixelRatioF();
+            const auto crossInked = [glyphRatio](const QColor& colour) {
+                QPixmap glyph = uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-clear.svg")), colour)
+                                        .scaled(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                glyph.setDevicePixelRatio(glyphRatio);
+                return glyph;
+            };
+            QIcon cross(crossInked(tokens.mutedText));
+            // Quiet until the pointer is on it: dismissing is not what the
+            // banner is there to offer
+            cross.addPixmap(crossInked(tokens.text), QIcon::Active);
+            pClose->setIcon(cross);
+            pClose->setIconSize(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize));
         }
     }
 }
@@ -17410,7 +17432,7 @@ void dlgTriggerEditor::updateEditorItemCounts()
 void dlgTriggerEditor::updateExtraControlsToggleIcon()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QPixmap source(qsl(":/icons/editor-options.png"));
+    const QPixmap source = uiDesign::glyphPixmap(qsl(":/icons/editor-options.svg"));
     QIcon icon;
     icon.addPixmap(uiDesign::tintedGlyph(source, tokens.mutedText), QIcon::Normal, QIcon::Off);
     icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Normal, QIcon::On);

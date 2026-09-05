@@ -138,7 +138,7 @@ QFont fixedPitchFont()
 // comes from, so that nothing downsamples it again later
 QPixmap glyphAt(const QString& file, const int size, const qreal ratio, const QColor& colour)
 {
-    QPixmap glyph = QPixmap(file).scaled(qRound(size * ratio), qRound(size * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QPixmap glyph = uiDesign::glyphPixmap(file).scaled(qRound(size * ratio), qRound(size * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(ratio);
     return uiDesign::tintedGlyph(glyph, colour);
 }
@@ -320,10 +320,10 @@ QWidget* dlgAboutDialog::buildContentColumn()
 
     // The four names are the .ui file's own tab titles, so no translation of
     // them churns for the sake of the pages replacing the tabs
-    const QList<QPair<QString, QPair<QString, QString>>> pages{{qsl("mudlet"), {tabWidget->tabText(0), qsl(":/icons/about-mudlet.png")}},
-                                                               {qsl("supporters"), {tabWidget->tabText(1), qsl(":/icons/about-supporters.png")}},
-                                                               {qsl("license"), {tabWidget->tabText(2), qsl(":/icons/about-license.png")}},
-                                                               {qsl("thirdparty"), {tabWidget->tabText(3), qsl(":/icons/about-third-party.png")}}};
+    const QList<QPair<QString, QPair<QString, QString>>> pages{{qsl("mudlet"), {tabWidget->tabText(0), qsl(":/icons/about-mudlet.svg")}},
+                                                               {qsl("supporters"), {tabWidget->tabText(1), qsl(":/icons/about-supporters.svg")}},
+                                                               {qsl("license"), {tabWidget->tabText(2), qsl(":/icons/about-license.svg")}},
+                                                               {qsl("thirdparty"), {tabWidget->tabText(3), qsl(":/icons/about-third-party.svg")}}};
     for (const auto& page : pages) {
         auto* pButton = new QToolButton(pNav);
         pButton->setObjectName(qsl("aboutNavButton_%1").arg(page.first));
@@ -482,7 +482,7 @@ QWidget* dlgAboutDialog::createContactChips(const aboutMaker& maker, QWidget* pP
     rowPolicy.setHeightForWidth(true);
     pRow->setSizePolicy(rowPolicy);
 
-    const QList<QPair<QString, QString>> contacts{{qsl(":/icons/about-github.png"), maker.github}, {qsl(":/icons/toolbar-discord.png"), maker.discord}, {qsl(":/icons/about-mail.png"), maker.email}};
+    const QList<QPair<QString, QString>> contacts{{qsl(":/icons/about-github.png"), maker.github}, {qsl(":/icons/toolbar-discord.png"), maker.discord}, {qsl(":/icons/about-mail.svg"), maker.email}};
     for (const auto& contact : contacts) {
         if (contact.second.isEmpty()) {
             continue;
@@ -563,17 +563,17 @@ QWidget* dlgAboutDialog::buildMudletPage()
     mpLayout_links->setSpacing(10);
 
     const QList<QList<QString>> links{//: Name of the link to the Mudlet homepage
-                                      {qsl(":/icons/about-homepage.png"), tr("Homepage"), qsl("www.mudlet.org"), qsl("https://www.mudlet.org/")},
+                                      {qsl(":/icons/about-homepage.svg"), tr("Homepage"), qsl("www.mudlet.org"), qsl("https://www.mudlet.org/")},
                                       //: Name of the link to the Mudlet forums
-                                      {qsl(":/icons/about-forums.png"), tr("Forums"), qsl("forums.mudlet.org"), qsl("https://forums.mudlet.org/")},
+                                      {qsl(":/icons/about-forums.svg"), tr("Forums"), qsl("forums.mudlet.org"), qsl("https://forums.mudlet.org/")},
                                       //: Name of the link to the Mudlet wiki
-                                      {qsl(":/icons/about-docs.png"), tr("Documentation"), qsl("wiki.mudlet.org/w/Main_Page"), qsl("https://wiki.mudlet.org/w/Main_Page")},
+                                      {qsl(":/icons/about-docs.svg"), tr("Documentation"), qsl("wiki.mudlet.org/w/Main_Page"), qsl("https://wiki.mudlet.org/w/Main_Page")},
                                       //: Name of the link to the Mudlet Discord server
                                       {qsl(":/icons/toolbar-discord.png"), tr("Discord"), qsl("mudlet.org/chat"), qsl("https://www.mudlet.org/chat")},
                                       //: Name of the link to Mudlet's source code
                                       {qsl(":/icons/about-github.png"), tr("Source code"), qsl("github.com/Mudlet/Mudlet"), qsl("https://github.com/Mudlet/Mudlet")},
                                       //: Name of the link to Mudlet's issue tracker
-                                      {qsl(":/icons/about-bug.png"), tr("Report a bug"), qsl("github.com/Mudlet/Mudlet/issues"), qsl("https://github.com/Mudlet/Mudlet/issues")}};
+                                      {qsl(":/icons/about-bug.svg"), tr("Report a bug"), qsl("github.com/Mudlet/Mudlet/issues"), qsl("https://github.com/Mudlet/Mudlet/issues")}};
     for (const auto& link : links) {
         auto* pButton = new uiDesign::AboutLinkButton(link.at(0), link.at(1), link.at(2), link.at(3), pLinks);
         pButton->setObjectName(qsl("aboutLinkButton"));
@@ -1161,7 +1161,7 @@ void dlgAboutDialog::restyleContactChips(const ThemeTokens& tokens)
 
 QIcon dlgAboutDialog::copyButtonIcon(const bool copied, const ThemeTokens& tokens) const
 {
-    return QIcon(copied ? tintedGlyph(QPixmap(qsl(":/icons/about-check.png")), tokens.accentText) : tintedGlyph(QPixmap(qsl(":/icons/editor-copy.png")), tokens.mutedText));
+    return QIcon(copied ? tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/about-check.svg")), tokens.accentText) : tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-copy.svg")), tokens.mutedText));
 }
 
 void dlgAboutDialog::applyShellStyle()
@@ -1261,7 +1261,7 @@ void dlgAboutDialog::applyShellStyle()
         pButton->setIcon(tintedIcon(pButton->property("aboutNavGlyph").toString(), tokens));
     }
     for (QToolButton* pToggle : mThirdPartyToggles) {
-        pToggle->setIcon(tintedIcon(qsl(":/icons/about-chevron-right.png"), qsl(":/icons/about-chevron-down.png"), tokens));
+        pToggle->setIcon(tintedIcon(qsl(":/icons/about-chevron-right.svg"), qsl(":/icons/about-chevron-down.svg"), tokens));
     }
     for (uiDesign::AboutLinkButton* pLink : mLinkButtons) {
         pLink->applyTokens(tokens);
@@ -1275,10 +1275,10 @@ void dlgAboutDialog::applyShellStyle()
     restyleContactChips(tokens);
     restyleArtwork(tokens);
     if (auto* pNoticeGlyph = findChild<QLabel*>(qsl("aboutLicenseNoticeGlyph")); pNoticeGlyph) {
-        pNoticeGlyph->setPixmap(glyphAt(qsl(":/icons/about-mudlet.png"), scmNoticeGlyphSize, devicePixelRatioF(), tokens.accentText));
+        pNoticeGlyph->setPixmap(glyphAt(qsl(":/icons/about-mudlet.svg"), scmNoticeGlyphSize, devicePixelRatioF(), tokens.accentText));
     }
     if (auto* pPatreon = findChild<QPushButton*>(qsl("aboutPatreonButton")); pPatreon) {
-        pPatreon->setIcon(QIcon(tintedGlyph(QPixmap(qsl(":/icons/about-patreon.png")), tokens.accentText)));
+        pPatreon->setIcon(QIcon(tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/about-patreon.png")), tokens.accentText)));
     }
 
     // ...and every anchor is re-inked from the text the label was given, since

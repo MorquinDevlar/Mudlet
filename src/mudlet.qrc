@@ -16,21 +16,21 @@
         <file>icons/3Scapes.png</file>
         <file>icons/aardwolf_mud.png</file>
         <file>icons/abandonedrealms_icon.jpg</file>
-        <file>icons/about-bug.png</file>
-        <file>icons/about-check.png</file>
-        <file>icons/about-chevron-down.png</file>
-        <file>icons/about-chevron-right.png</file>
-        <file>icons/about-docs.png</file>
-        <file>icons/about-forums.png</file>
+        <file>icons/about-bug.svg</file>
+        <file>icons/about-check.svg</file>
+        <file>icons/about-chevron-down.svg</file>
+        <file>icons/about-chevron-right.svg</file>
+        <file>icons/about-docs.svg</file>
+        <file>icons/about-forums.svg</file>
         <file>icons/about-github.png</file>
-        <file>icons/about-homepage.png</file>
-        <file>icons/about-license.png</file>
-        <file>icons/about-mail.png</file>
-        <file>icons/about-mudlet.png</file>
+        <file>icons/about-homepage.svg</file>
+        <file>icons/about-license.svg</file>
+        <file>icons/about-mail.svg</file>
+        <file>icons/about-mudlet.svg</file>
         <file>icons/about-patreon.png</file>
-        <file>icons/about-supporters.png</file>
-        <file>icons/about-swords.png</file>
-        <file>icons/about-third-party.png</file>
+        <file>icons/about-supporters.svg</file>
+        <file>icons/about-swords.svg</file>
+        <file>icons/about-third-party.svg</file>
         <file>icons/accursed_lands.png</file>
         <file>icons/achaea.png</file>
         <file>icons/aetolia.png</file>
@@ -92,45 +92,46 @@
         <file>icons/edit-paste.png</file>
         <file>icons/edit-select-all.png</file>
         <file>icons/edit-web-search.png</file>
-        <file>icons/editor-activate.png</file>
-        <file>icons/editor-add-group.png</file>
-        <file>icons/editor-add.png</file>
-        <file>icons/editor-aliases.png</file>
-        <file>icons/editor-buttons.png</file>
-        <file>icons/editor-clear.png</file>
-        <file>icons/editor-copy.png</file>
-        <file>icons/editor-debug.png</file>
-        <file>icons/editor-delete.png</file>
-        <file>icons/editor-errors.png</file>
-        <file>icons/editor-export.png</file>
-        <file>icons/editor-filter.png</file>
-        <file>icons/editor-folder.png</file>
-        <file>icons/editor-hidden.png</file>
-        <file>icons/editor-import.png</file>
-        <file>icons/editor-keys.png</file>
-        <file>icons/editor-module.png</file>
-        <file>icons/editor-new-folder.png</file>
-        <file>icons/editor-new-item.png</file>
-        <file>icons/editor-notice-error.png</file>
-        <file>icons/editor-notice-info.png</file>
-        <file>icons/editor-notice-warning.png</file>
-        <file>icons/editor-offset-timer.png</file>
-        <file>icons/editor-options.png</file>
-        <file>icons/editor-paste.png</file>
-        <file>icons/editor-redo.png</file>
-        <file>icons/editor-save-item.png</file>
-        <file>icons/editor-save-profile.png</file>
-        <file>icons/editor-scripts.png</file>
-        <file>icons/editor-statistics.png</file>
-        <file>icons/editor-timers.png</file>
-        <file>icons/editor-triggers.png</file>
-        <file>icons/editor-type-boolean.png</file>
-        <file>icons/editor-type-function.png</file>
-        <file>icons/editor-type-number.png</file>
-        <file>icons/editor-type-other.png</file>
-        <file>icons/editor-type-string.png</file>
-        <file>icons/editor-undo.png</file>
-        <file>icons/editor-variables.png</file>
+        <file>icons/editor-activate.svg</file>
+        <file>icons/editor-add-group.svg</file>
+        <file>icons/editor-add.svg</file>
+        <file>icons/editor-aliases.svg</file>
+        <file>icons/editor-buttons.svg</file>
+        <file>icons/editor-chevron-down.svg</file>
+        <file>icons/editor-clear.svg</file>
+        <file>icons/editor-copy.svg</file>
+        <file>icons/editor-debug.svg</file>
+        <file>icons/editor-delete.svg</file>
+        <file>icons/editor-errors.svg</file>
+        <file>icons/editor-export.svg</file>
+        <file>icons/editor-filter.svg</file>
+        <file>icons/editor-folder.svg</file>
+        <file>icons/editor-hidden.svg</file>
+        <file>icons/editor-import.svg</file>
+        <file>icons/editor-keys.svg</file>
+        <file>icons/editor-module.svg</file>
+        <file>icons/editor-new-folder.svg</file>
+        <file>icons/editor-new-item.svg</file>
+        <file>icons/editor-notice-error.svg</file>
+        <file>icons/editor-notice-info.svg</file>
+        <file>icons/editor-notice-warning.svg</file>
+        <file>icons/editor-offset-timer.svg</file>
+        <file>icons/editor-options.svg</file>
+        <file>icons/editor-paste.svg</file>
+        <file>icons/editor-redo.svg</file>
+        <file>icons/editor-save-item.svg</file>
+        <file>icons/editor-save-profile.svg</file>
+        <file>icons/editor-scripts.svg</file>
+        <file>icons/editor-statistics.svg</file>
+        <file>icons/editor-timers.svg</file>
+        <file>icons/editor-triggers.svg</file>
+        <file>icons/editor-type-boolean.svg</file>
+        <file>icons/editor-type-function.svg</file>
+        <file>icons/editor-type-number.svg</file>
+        <file>icons/editor-type-other.svg</file>
+        <file>icons/editor-type-string.svg</file>
+        <file>icons/editor-undo.svg</file>
+        <file>icons/editor-variables.svg</file>
         <file>icons/errors.png</file>
         <file>icons/export.png</file>
         <file>icons/face-plain.png</file>
@@ -209,43 +210,43 @@
         <file>icons/searchOptions-none.png</file>
         <file>icons/searchOptions-unspecified.png</file>
         <file>icons/searchOptions-withVariables+wholeWords.png</file>
-        <file>icons/settings-accessibility.png</file>
-        <file>icons/settings-advanced.png</file>
-        <file>icons/settings-appearance.png</file>
-        <file>icons/settings-chat.png</file>
-        <file>icons/settings-connection.png</file>
-        <file>icons/settings-display.png</file>
-        <file>icons/settings-editor.png</file>
-        <file>icons/settings-general.png</file>
-        <file>icons/settings-input.png</file>
-        <file>icons/settings-mapper.png</file>
-        <file>icons/settings-privacy.png</file>
-        <file>icons/settings-search.png</file>
-        <file>icons/settings-shortcuts.png</file>
-        <file>icons/settings-support.png</file>
+        <file>icons/settings-accessibility.svg</file>
+        <file>icons/settings-advanced.svg</file>
+        <file>icons/settings-appearance.svg</file>
+        <file>icons/settings-chat.svg</file>
+        <file>icons/settings-connection.svg</file>
+        <file>icons/settings-display.svg</file>
+        <file>icons/settings-editor.svg</file>
+        <file>icons/settings-general.svg</file>
+        <file>icons/settings-input.svg</file>
+        <file>icons/settings-mapper.svg</file>
+        <file>icons/settings-privacy.svg</file>
+        <file>icons/settings-search.svg</file>
+        <file>icons/settings-shortcuts.svg</file>
+        <file>icons/settings-support.svg</file>
         <file>icons/Slothmud.png</file>
         <file>icons/starmourn.png</file>
         <file>icons/solid-line.png</file>
         <file>icons/stickmud_icon.jpg</file>
         <file>icons/system-users.png</file>
-        <file>icons/toolbar-about.png</file>
-        <file>icons/toolbar-connect.png</file>
+        <file>icons/toolbar-about.svg</file>
+        <file>icons/toolbar-connect.svg</file>
         <file>icons/toolbar-discord.png</file>
-        <file>icons/toolbar-export.png</file>
-        <file>icons/toolbar-fullscreen-exit.png</file>
-        <file>icons/toolbar-fullscreen.png</file>
-        <file>icons/toolbar-manual.png</file>
-        <file>icons/toolbar-map.png</file>
-        <file>icons/toolbar-multiview.png</file>
-        <file>icons/toolbar-notepad.png</file>
-        <file>icons/toolbar-packages.png</file>
-        <file>icons/toolbar-reconnect.png</file>
-        <file>icons/toolbar-replay-faster.png</file>
-        <file>icons/toolbar-replay-slower.png</file>
-        <file>icons/toolbar-replay.png</file>
-        <file>icons/toolbar-settings.png</file>
-        <file>icons/toolbar-sound-off.png</file>
-        <file>icons/toolbar-sound-on.png</file>
+        <file>icons/toolbar-export.svg</file>
+        <file>icons/toolbar-fullscreen-exit.svg</file>
+        <file>icons/toolbar-fullscreen.svg</file>
+        <file>icons/toolbar-manual.svg</file>
+        <file>icons/toolbar-map.svg</file>
+        <file>icons/toolbar-multiview.svg</file>
+        <file>icons/toolbar-notepad.svg</file>
+        <file>icons/toolbar-packages.svg</file>
+        <file>icons/toolbar-reconnect.svg</file>
+        <file>icons/toolbar-replay-faster.svg</file>
+        <file>icons/toolbar-replay-slower.svg</file>
+        <file>icons/toolbar-replay.svg</file>
+        <file>icons/toolbar-settings.svg</file>
+        <file>icons/toolbar-sound-off.svg</file>
+        <file>icons/toolbar-sound-on.svg</file>
         <file>icons/tools-report-bug.png</file>
         <file>icons/tools-wizard.png</file>
         <file>icons/utilities-file-archiver.png</file>

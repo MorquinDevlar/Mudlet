@@ -52,6 +52,7 @@
 #include "TelnetServerStub.h"
 #include "dlgProfilePreferences.h"
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include "GroupedTest.h"
 
@@ -401,8 +402,11 @@ private slots:
         QImage carried;
         QVERIFY(carried.loadFromData(QByteArray::fromBase64(mainDisplayGlyph.toLatin1()), "PNG"));
         // Tinting replaces the colour and keeps the alpha, so the shape is what
-        // survives out of the file and into the header
-        const QImage expected(qsl(":/icons/settings-display.png"));
+        // survives out of the file and into the header. The glyph has to come
+        // through glyphPixmap() rather than straight off the path: reading the
+        // SVG as an image would draw it at the file's own size and at Lucide's
+        // stroke width, neither of which is what the window carries.
+        const QImage expected = uiDesign::glyphPixmap(qsl(":/icons/settings-display.svg")).toImage();
         QCOMPARE(carried.size(), expected.size());
         QCOMPARE(carried.convertToFormat(QImage::Format_Alpha8), expected.convertToFormat(QImage::Format_Alpha8));
     }
