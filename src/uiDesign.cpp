@@ -724,22 +724,70 @@ QString gripGlyphFile(const QColor& color, const bool alongTheBar)
     return filePath;
 }
 
-static QString themedArrowFile(const QColor& color, const bool pointingUp)
+// What is left of a glyph once the empty margin around it is taken off. Lucide
+// draws inside a 24 unit box and leaves room on every side, which a glyph 20px
+// or more across can afford; an 8 or 9px control arrow cannot, and spends half
+// its height on the margin rather than on the mark.
+static QPixmap croppedToItsInk(const QPixmap& glyph)
 {
-    const QString filePath = glyphCacheFile(qsl("arrow-%1-%2.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1)));
+    const QImage image = glyph.toImage().convertToFormat(QImage::Format_ARGB32);
+    int left = image.width();
+    int right = -1;
+    int top = image.height();
+    int bottom = -1;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            if (qAlpha(image.pixel(x, y)) == 0) {
+                continue;
+            }
+            left = std::min(left, x);
+            right = std::max(right, x);
+            top = std::min(top, y);
+            bottom = std::max(bottom, y);
+        }
+    }
+    if (right < left || bottom < top) {
+        return glyph;
+    }
+    return glyph.copy(QRect(QPoint(left, top), QPoint(right, bottom)));
+}
+
+static QString themedArrowFile(const QColor& color, const bool pointingUp, const int size)
+{
+    const QString filePath = glyphCacheFile(qsl("arrow-%1-%2-%3.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size)));
     if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
         return filePath;
     }
 
-    QPixmap glyph(qsl(":/icons/arrow-down_grey-16x.png"));
-    if (glyph.isNull()) {
+    // The same chevron the editor's search history is offered under, so a
+    // control that drops something down says it the way the rest of the window
+    // does. It replaces a full-colour bitmap of a solid triangle.
+    QPixmap source = croppedToItsInk(glyphPixmap(qsl(":/icons/editor-chevron-down.svg")));
+    if (source.isNull()) {
         return QString();
     }
     if (pointingUp) {
-        glyph = glyph.transformed(QTransform().rotate(180));
+        source = source.transformed(QTransform().rotate(180));
     }
-    if (!tintedGlyph(glyph, color).save(filePath, "PNG")) {
-        return QString();
+    source = tintedGlyph(source, color);
+
+    // Written twice on a screen that doubles its pixels, the way the grip is:
+    // a stylesheet loads the path it is given through QPixmap, which looks for
+    // the @2x file beside it first
+    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
+    QList<qreal> ratios{1.0};
+    if (ratio > 1.0) {
+        ratios << ratio;
+    }
+    for (const qreal drawnAt : std::as_const(ratios)) {
+        const int drawnSize = qRound(size * drawnAt);
+        const QPixmap arrow = source.scaled(drawnSize, drawnSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        const QString wanted =
+                drawnAt > 1.0 ? glyphCacheFile(qsl("arrow-%1-%2-%3@%4x.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size), QString::number(qRound(drawnAt))))
+                              : filePath;
+        if (!arrow.save(wanted, "PNG")) {
+            return QString();
+        }
     }
     return filePath;
 }
@@ -770,8 +818,13 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
     // line edit and a spin box with no steppers at all. So the two controls that
     // carry arrows are only claimed once there is a picture to put the arrows
     // back with; without one they keep the frame the platform draws them with.
-    const QString downArrow = themedArrowFile(tokens.mutedText, false);
-    const QString upArrow = themedArrowFile(tokens.mutedText, true);
+    // The combo box and the steppers draw at different sizes, and a picture a
+    // stylesheet scales for itself is a picture drawn at neither: each gets a
+    // file cut to the size its rule asks for
+    const QString downArrow = themedArrowFile(tokens.mutedText, false, scmInputArrowSize);
+    const QString upArrow = themedArrowFile(tokens.mutedText, true, scmInputArrowSize);
+    const QString stepperDownArrow = themedArrowFile(tokens.mutedText, false, scmInputStepperArrowSize);
+    const QString stepperUpArrow = themedArrowFile(tokens.mutedText, true, scmInputStepperArrowSize);
     const bool arrowsAvailable = !downArrow.isEmpty() && !upArrow.isEmpty();
 
     QStringList fieldTypes{qsl("QLineEdit"), qsl("QPlainTextEdit"), qsl("QTextEdit")};
@@ -816,8 +869,8 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
                  + qsl(" { subcontrol-origin: border; subcontrol-position: top right; width: %1px; border: none; background: transparent; }").arg(QString::number(scmInputStepperWidth))
                  + scoped({qsl("QAbstractSpinBox::down-button")})
                  + qsl(" { subcontrol-origin: border; subcontrol-position: bottom right; width: %1px; border: none; background: transparent; }").arg(QString::number(scmInputStepperWidth))
-                 + scoped({qsl("QAbstractSpinBox::up-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(upArrow, QString::number(scmInputStepperArrowSize))
-                 + scoped({qsl("QAbstractSpinBox::down-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(downArrow, QString::number(scmInputStepperArrowSize));
+                 + scoped({qsl("QAbstractSpinBox::up-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(stepperUpArrow, QString::number(scmInputStepperArrowSize))
+                 + scoped({qsl("QAbstractSpinBox::down-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(stepperDownArrow, QString::number(scmInputStepperArrowSize));
     }
     return rules;
 }
