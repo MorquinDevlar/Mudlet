@@ -24,6 +24,8 @@
 
 #include "mudlet.h"
 
+#include <QResizeEvent>
+
 
 dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
 : QWidget(pParentWidget)
@@ -46,6 +48,42 @@ dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
 
     slot_applyAppearance();
     connect(mudlet::self(), &mudlet::signal_appearanceChanged, this, &dlgSystemMessageArea::slot_applyAppearance);
+}
+
+// A notice is as tall as its words are at the width it has been given, and no
+// taller. Its wrapping label answers a plain size hint with the height that text
+// would take in a box narrow enough to read comfortably - a guess at a shape,
+// not at this shape - and a layout hands a widget spare room up to that guess.
+// So both hints come from the layout's own height-for-width at the width the
+// notice actually has, which is the one answer true of what is on screen.
+QSize dlgSystemMessageArea::sizeHint() const
+{
+    return heightAtOwnWidth(QWidget::sizeHint());
+}
+
+QSize dlgSystemMessageArea::minimumSizeHint() const
+{
+    return heightAtOwnWidth(QWidget::minimumSizeHint());
+}
+
+QSize dlgSystemMessageArea::heightAtOwnWidth(const QSize& fallback) const
+{
+    QLayout* pLayout = layout();
+    if (!pLayout || !pLayout->hasHeightForWidth() || width() <= 0) {
+        return fallback;
+    }
+    const int height = pLayout->totalHeightForWidth(width());
+    return height > 0 ? QSize(fallback.width(), height) : fallback;
+}
+
+// A different width is a different number of lines, so the height the two hints
+// answer with is no longer the one whatever holds this was laid out against
+void dlgSystemMessageArea::resizeEvent(QResizeEvent* pEvent)
+{
+    QWidget::resizeEvent(pEvent);
+    if (pEvent->oldSize().width() != pEvent->size().width()) {
+        updateGeometry();
+    }
 }
 
 void dlgSystemMessageArea::slot_applyAppearance()

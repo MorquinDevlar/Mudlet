@@ -137,6 +137,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorKeyGrabShortcutsTest.cpp
     EditorMinimumSizeTest.cpp
     EditorNoticeGlyphTest.cpp
+    EditorNoticeSeamTest.cpp
     EditorOptionsPanelDefaultTest.cpp
     EditorPlacementPersistenceTest.cpp
     EditorSidebarCollapseTest.cpp

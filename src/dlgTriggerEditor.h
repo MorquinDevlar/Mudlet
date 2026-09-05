@@ -138,6 +138,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorKeyGrabShortcutsTest;
     friend class EditorMinimumSizeTest;
     friend class EditorNoticeGlyphTest;
+    friend class EditorNoticeSeamTest;
     friend class EditorOptionsPanelDefaultTest;
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
@@ -344,6 +345,12 @@ public:
     // column's height when it does not
     void applyFormPaneSeamPolicy();
     void holdFormPaneToItsContents();
+    // The column's height at the width it is being read at, rather than at the
+    // width its own layout would like
+    [[nodiscard]] int formColumnHeightForItsWidth() const;
+    // What the notice at the top of the column costs the form under it
+    [[nodiscard]] int noticeRoomInFormColumn() const;
+    void moveSeamByNoticeChange(const int noticeChange);
     [[nodiscard]] QWidget* currentFormArea() const;
     void updateEditorItemCounts();
     void scheduleEditorItemCountUpdate();
@@ -989,6 +996,9 @@ private:
     // Holding the form column to its contents changes the layout it was just
     // measured from, so the pass is barred from re-entering itself
     bool mHoldingFormPaneToItsContents = false;
+    // What the notice took the last time the seam was looked at, so that the
+    // two views whose seam the reader places can be moved by the difference
+    int mNoticeRoomInFormColumn = 0;
 
     QWidget* mpWidget_editorSidebarPane = nullptr;
     QListWidget* mpListWidget_editorSidebar = nullptr;

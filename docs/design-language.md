@@ -443,12 +443,48 @@ session (`mDraggedFormPaneHeights`). In Aliases, Timers, Keys, Scripts and
 Variables the form is a fixed set of fields: `formPaneResizes()` says no, the
 handle is made inert (`GripSplitterHandle::setResizes(false)` - no grip drawn,
 no cursor, no drag), and `holdFormPaneToItsContents()` caps the column
-`mpNonCodeWidgets` at its size hint and gives the code pane the rest, keeping the
-pane's floor `scmEditorSourcePaneFloor`. A `LayoutRequest` on the column re-runs
-the cap, so a notice appearing, a row hidden for a key group or chips wrapping
-onto a second line all move the seam by themselves. `EditorFormShellTest` holds
-both halves: a push on the handle leaves a fixed view's column where it was, and
-still moves the trigger form's.
+`mpNonCodeWidgets` and gives the code pane the rest, keeping the pane's floor
+`scmEditorSourcePaneFloor`. A `LayoutRequest` on the column re-runs the cap, so a
+notice appearing, a row hidden for a key group or chips wrapping onto a second
+line all move the seam by themselves. `EditorFormShellTest` holds both halves: a
+push on the handle leaves a fixed view's column where it was, and still moves the
+trigger form's.
+
+What the column is measured with is `formColumnHeightForItsWidth()`: the
+layout's `heightForWidth()` at the width the column actually has, not its size
+hint. A hint is answered at whatever width the layout would like, and the
+notice's wrapping label would like a narrow one - so the hint carried the height
+those words take in a column a fraction of this one's width. The three places
+that size the seam - the cap, `formPaneHeightForItsContents()` and
+`refitSplitterForTriggerOptions()` - all read that one measurement.
+
+### The notice over the form
+
+`dlgSystemMessageArea` is as tall as its words are at the width it is given and
+no taller: both its hints come from its own layout's height-for-width at its
+current width, and it is `(Ignored, Maximum)` in the column - ignored across so
+the label's guess at a good width cannot widen the column, Maximum down it so
+what it asks for is also the most it can be given. The column is therefore
+notice + `scmEditorColumnSpacing` + form, and a notice appearing moves the
+form down by exactly that and changes nothing else about it. In the two views
+whose seam the reader places, the seam moves by the same amount rather than the
+column being measured afresh. A height the reader dragged is therefore kept net
+of the notice - `slot_rightSplitterMoved()` writes down `sizes[0]` less the
+notice's room and `fitFormPaneToItsContents()` adds whatever notice is up now
+back on - so a notice that comes and goes leaves that height where it was put
+instead of taking its own height off the pattern list each time.
+
+Whenever the code pane is away the cap comes off instead: nothing is chosen, or
+what is chosen has no value to edit - a Lua table - so the column has the pane
+to itself and there is no seam to hold it off. Capped it would be a lone child
+shorter than the splitter, and `QSplitter` centres one of those, which is what
+put first the notice and then the form half way down the window. The five forms
+that are a fixed set of fields carry no stretch in the column, so the trailing
+stretch takes the spare room and leaves them leading the pane at their own
+height; the trigger's and the button's forms keep theirs, because their pattern
+list and options panel do use the room. `EditorNoticeSeamTest` holds all of
+this, along with the pattern list resizing the pane when a row is added or
+deleted.
 
 ## 2. Icons
 

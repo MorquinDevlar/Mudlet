@@ -810,7 +810,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // system message area
     mpSystemMessageArea = new dlgSystemMessageArea(this);
     mpSystemMessageArea->setObjectName(qsl("mpSystemMessageArea"));
-    mpSystemMessageArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+    // Ignored across, so that the wrapped label's guess at a good width for its
+    // words cannot widen the column; Maximum down it, so that the height the
+    // notice asks for - the height of those words at this width, see
+    // dlgSystemMessageArea::sizeHint() - is also the most it can be given.
+    mpSystemMessageArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
     // The notice is the first thing in the column when it is showing, so it
     // starts on the same line as the sidebar's first row and the search field.
     // Its own .ui file leaves the style's default margin round it, which is what
@@ -835,11 +839,17 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mpTriggersMainArea->groupBox_triggerColorizer, &QGroupBox::clicked, this, &dlgTriggerEditor::slot_toggleGroupBoxColorizeTrigger);
     connect(mpTriggersMainArea->toolButton_clearSoundFile, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_clearSoundFile);
 
+    // The five forms that are a fixed set of fields take no stretch: they are
+    // held to the height those fields ask for, so spare room in the column is
+    // never theirs. It goes to the trailing stretch below instead, which is
+    // what keeps them leading the pane where there is no code pane to cap them
+    // against. The trigger's and the button's forms do use the room - the
+    // pattern list and the options panel grow into it - so they keep theirs.
     mpTimersMainArea = new dlgTimersMainArea(this);
-    layoutColumn->addWidget(mpTimersMainArea, 1);
+    layoutColumn->addWidget(mpTimersMainArea, 0);
 
     mpAliasMainArea = new dlgAliasMainArea(this);
-    layoutColumn->addWidget(mpAliasMainArea, 1);
+    layoutColumn->addWidget(mpAliasMainArea, 0);
 
     mpActionsMainArea = new dlgActionMainArea(this);
     layoutColumn->addWidget(mpActionsMainArea, 1);
@@ -850,13 +860,19 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 #endif
 
     mpKeysMainArea = new dlgKeysMainArea(this);
-    layoutColumn->addWidget(mpKeysMainArea, 1);
+    layoutColumn->addWidget(mpKeysMainArea, 0);
 
     mpVarsMainArea = new dlgVarsMainArea(this);
-    layoutColumn->addWidget(mpVarsMainArea, 1);
+    layoutColumn->addWidget(mpVarsMainArea, 0);
 
     mpScriptsMainArea = new dlgScriptsMainArea(this);
-    layoutColumn->addWidget(mpScriptsMainArea, 1);
+    layoutColumn->addWidget(mpScriptsMainArea, 0);
+
+    // Whatever room is left over goes here rather than into the notice or a
+    // form that is a fixed set of fields. It is what keeps a lone notice, and a
+    // form with no code pane under it, at the top of the pane rather than
+    // stretched down it.
+    layoutColumn->addStretch(0);
 
     // source editor area
     mpSourceEditorArea = new dlgSourceEditorArea(this);
@@ -2768,6 +2784,9 @@ void dlgTriggerEditor::slot_addPattern()
     }
 
     showPatternItems(mVisiblePatternCount + 1);
+    // The list is one row longer than the pane was sized for, and the pane's new
+    // height is what the scroll to the new row below is measured against
+    fitFormPaneToItsContents();
     focusPatternItem(mVisiblePatternCount - 1);
 }
 
@@ -8277,6 +8296,10 @@ void dlgTriggerEditor::compactPatternRows()
     const int desiredCount = qMax(lastActive + 1, 1);
     if (desiredCount != mVisiblePatternCount) {
         showPatternItems(desiredCount);
+        // The rows the delete or the move left over are gone, so the room they
+        // were being shown in goes back to the code pane rather than standing
+        // empty until the trigger is chosen afresh
+        fitFormPaneToItsContents();
     } else {
         updatePatternPlaceholders();
     }
@@ -10613,6 +10636,12 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     mpVarsMainArea->setVisible(view == EditorViewType::cmVarsView);
     treeWidget_variables->setVisible(view == EditorViewType::cmVarsView);
     checkBox_displayAllVariables->setVisible(view == EditorViewType::cmVarsView);
+    // The reading beside that switch goes with it. Only the hiding is said here:
+    // inside the Variables view it is updateHiddenVariablesCount() that decides,
+    // and there is nothing to read out while nothing is hidden.
+    if (mpLabel_hiddenVariablesCount && view != EditorViewType::cmVarsView) {
+        mpLabel_hiddenVariablesCount->hide();
+    }
 
     // ...and what the pane under the heading holds changes with it
     if (mpLabel_editorCodeHeaderTitle) {
@@ -10781,14 +10810,57 @@ void dlgTriggerEditor::applyFormPaneSeamPolicy()
     mHoldingFormPaneToItsContents = false;
 }
 
+// The height the column asks for at the width it actually has. A size hint is
+// answered at whatever width the layout would like, and the notice's wrapping
+// label would like a narrow one - so its hint is the height those words take in
+// a column a fraction of this one's width. Height-for-width asks the question
+// the reader is looking at.
+int dlgTriggerEditor::formColumnHeightForItsWidth() const
+{
+    QLayout* pLayout = mpNonCodeWidgets ? mpNonCodeWidgets->layout() : nullptr;
+    if (!pLayout) {
+        return 0;
+    }
+    if (pLayout->hasHeightForWidth() && mpNonCodeWidgets->width() > 0) {
+        const int wanted = pLayout->heightForWidth(mpNonCodeWidgets->width());
+        if (wanted > 0) {
+            return wanted;
+        }
+    }
+    return mpNonCodeWidgets->sizeHint().height();
+}
+
+// What the notice at the top of the column costs the form under it: its own
+// height at the column's width, and the gap between the two. Nothing while it
+// is away.
+int dlgTriggerEditor::noticeRoomInFormColumn() const
+{
+    if (!mpSystemMessageArea || mpSystemMessageArea->isHidden() || !mpNonCodeWidgets) {
+        return 0;
+    }
+    const int height = mpSystemMessageArea->heightForWidth(mpNonCodeWidgets->width());
+    return (height > 0 ? height : mpSystemMessageArea->sizeHint().height()) + scmEditorColumnSpacing;
+}
+
 void dlgTriggerEditor::holdFormPaneToItsContents()
 {
     // Index 1 is the handle over mpSourceEditorArea, which is the one carrying
     // the code pane's heading
     const bool resizes = formPaneResizes(mCurrentView);
     splitter_right->setHandleResizes(1, resizes);
+
+    const int noticeRoom = noticeRoomInFormColumn();
+    const int noticeChange = noticeRoom - mNoticeRoomInFormColumn;
+    mNoticeRoomInFormColumn = noticeRoom;
+
     if (resizes) {
         mpNonCodeWidgets->setMaximumHeight(QWIDGETSIZE_MAX);
+        // A notice put up or taken down is the one change to these two views'
+        // columns that comes without an item change, so nothing else measures
+        // them again. The seam moves by what the notice costs rather than the
+        // column being measured afresh, which is also what leaves a height the
+        // reader dragged where they put it.
+        moveSeamByNoticeChange(noticeChange);
         return;
     }
 
@@ -10800,7 +10872,19 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
     if (QLayout* pLayout = mpNonCodeWidgets->layout()) {
         pLayout->activate();
     }
-    const int wanted = std::max(mpNonCodeWidgets->sizeHint().height(), mpNonCodeWidgets->minimumSizeHint().height());
+    if (mpSourceEditorArea->isHidden()) {
+        // Nothing to edit under the column - no item chosen, or one with no
+        // value of its own, such as a Lua table - so the column has the pane to
+        // itself and there is no seam to hold it off. Capped it would be a lone
+        // child shorter than what holds it, and a splitter centres one of
+        // those, which is what put the notice, and then the form under it, half
+        // way down the window. The trailing stretch keeps what the column holds
+        // at the top of it. isHidden() rather than isVisible(), so that a pass
+        // running while the whole editor is off screen reads the same answer.
+        mpNonCodeWidgets->setMaximumHeight(QWIDGETSIZE_MAX);
+        return;
+    }
+    const int wanted = formColumnHeightForItsWidth();
     if (wanted <= 0) {
         // Everything in the column is hidden - a moment between two views, not
         // a height to hold it to
@@ -10819,6 +10903,30 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
     // total alone, a window too short for both left the code pane with nothing.
     const int paneHeight = std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
     if (paneTotal <= 0 || sizes.at(0) == paneHeight) {
+        return;
+    }
+    sizes[0] = paneHeight;
+    sizes[1] = paneTotal - paneHeight;
+    splitter_right->setSizes(sizes);
+}
+
+// The seam gives the notice the room it has just taken, or takes back the room
+// it has just given up, and leaves the rest of the split alone.
+void dlgTriggerEditor::moveSeamByNoticeChange(const int noticeChange)
+{
+    if (noticeChange == 0 || mpSourceEditorArea->isHidden()) {
+        return;
+    }
+    QList<int> sizes = splitter_right->sizes();
+    if (sizes.size() < 2) {
+        return;
+    }
+    const int paneTotal = sizes.at(0) + sizes.at(1);
+    if (paneTotal <= 0) {
+        return;
+    }
+    const int paneHeight = std::clamp(sizes.at(0) + noticeChange, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+    if (paneHeight == sizes.at(0)) {
         return;
     }
     sizes[0] = paneHeight;
@@ -10861,7 +10969,7 @@ int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
     // of its immediate parent, so the chain up to the column is told first or
     // this measures the form as it was before the panel appeared
     uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
-    int wanted = mpNonCodeWidgets->sizeHint().height();
+    int wanted = formColumnHeightForItsWidth();
     // The pattern rows scroll, and a scrolling area answers with the height it
     // was first asked at rather than the height its contents have since grown
     // to - QScrollArea caches its widget's hint and clears that cache only when
@@ -10923,8 +11031,10 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
         // The height the user put this view's handle at is the base, and
         // whatever the trigger options panel borrowed on top of it stands - so
         // an item change in a view with the panel open does not close the room
-        // the panel is being shown in
-        wanted = std::clamp(dragged.value() + mTriggerOptionsBorrowedHeight, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+        // the panel is being shown in. Their height is held net of any notice,
+        // so whatever one is up now is added back rather than taken out of what
+        // the form was dragged to; see slot_rightSplitterMoved().
+        wanted = std::clamp(dragged.value() + mTriggerOptionsBorrowedHeight + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
     } else {
         // Nothing is on loan in a view that snaps: what the options panel would
         // have borrowed for is measured here as part of the form
@@ -15586,7 +15696,7 @@ void dlgTriggerEditor::refitSplitterForTriggerOptions(const bool shown)
     // the form as it was without it: showing a widget invalidates the layout of
     // its immediate parent and no more
     uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
-    const int wanted = mpNonCodeWidgets->sizeHint().height();
+    const int wanted = formColumnHeightForItsWidth();
     if (sizes.at(0) >= wanted) {
         return;
     }
@@ -15653,7 +15763,12 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
     const QList<int> movedTo = splitter_right->sizes();
     const int formPaneHeight = movedTo.isEmpty() ? 0 : movedTo.constFirst();
     if (mCurrentView != EditorViewType::cmUnknownView && !movedTo.isEmpty()) {
-        mDraggedFormPaneHeights.insert(mCurrentView, formPaneHeight);
+        // Net of whatever notice was up while they dragged. A notice is given
+        // its room out of this same pane - moveSeamByNoticeChange() - so a
+        // height written down with one inside it is read back as room the form
+        // asked for, and the next notice takes its own height off the form all
+        // over again.
+        mDraggedFormPaneHeights.insert(mCurrentView, std::max(0, formPaneHeight - mNoticeRoomInFormColumn));
     }
     if (mpTriggersMainArea->isVisible()) {
         // Whatever the options panel borrowed from the code pane stops being
@@ -17256,10 +17371,9 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // notice brings it out, and that polish writes the application's own
         // ink into the label's palette. A sheet the label carries survives it.
         mpSystemMessageArea->notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(mutedText.name()));
-        // The .ui file sizes the area around a 64px picture; what it holds now
-        // is a line of text beside a small one
-        mpSystemMessageArea->setMinimumSize(0, 0);
-        mpSystemMessageArea->frame_notificationArea->setMinimumHeight(0);
+        // The .ui file puts the close button over a spacer tall enough for a
+        // 64px picture; what the notice holds now is a line or two of text, and
+        // the spacer only has to keep the button on the first of them
         mpSystemMessageArea->verticalSpacer_closeButton->changeSize(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
         if (QLayout* pNoticeLayout = mpSystemMessageArea->frame_notificationArea->layout()) {
             pNoticeLayout->setContentsMargins(10, 8, 10, 8);

@@ -108,6 +108,8 @@ private:
     // different number of layouts deep in its own form
     int leftEdgeOf(QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).x(); }
 
+    int topEdgeOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
+
     void enterView(const EditorViewType view)
     {
         switch (view) {
@@ -187,6 +189,28 @@ private:
             // The interval is a sentence, and the words lead it - so what has
             // to start where the name does is the row, not the first field in it
             return mpEditor->mpWidget_timerInterval;
+        default:
+            return nullptr;
+        }
+    }
+
+    // The form a view puts in the column, which is what the column is holding
+    // whenever an item of that kind is chosen
+    QWidget* formAreaOf(const EditorViewType view) const
+    {
+        switch (view) {
+        case EditorViewType::cmTriggerView:
+            return mpEditor->mpTriggersMainArea;
+        case EditorViewType::cmAliasView:
+            return mpEditor->mpAliasMainArea;
+        case EditorViewType::cmTimerView:
+            return mpEditor->mpTimersMainArea;
+        case EditorViewType::cmKeysView:
+            return mpEditor->mpKeysMainArea;
+        case EditorViewType::cmScriptView:
+            return mpEditor->mpScriptsMainArea;
+        case EditorViewType::cmVarsView:
+            return mpEditor->mpVarsMainArea;
         default:
             return nullptr;
         }
@@ -323,9 +347,16 @@ private slots:
 
     // ...and the column itself is held to the height its fields ask for, so a
     // push on the handle - or a window resize - cannot leave empty room under
-    // the last of them
+    // the last of them. Where the item has nothing to edit - a Lua table - the
+    // code pane is away and there is no seam to hold anything to: what the
+    // column has to promise there is the form at its own height, leading the
+    // pane rather than centred in it.
     void test_aFixedFormColumnStaysAtTheHeightItsFieldsAskFor()
     {
+        // Where a form starts when the column leads the pane, which is the same
+        // y in every one of these views - so it is what a form with no code
+        // pane under it has to be held against
+        int formTopOverACodePane = 0;
         for (const EditorViewType view : fixedViews()) {
             openAndChoose(view);
             // With no notice over the form the column asks for exactly what its
@@ -334,6 +365,28 @@ private slots:
             mpEditor->hideSystemMessageArea();
             QCoreApplication::processEvents();
             QTest::qWait(50ms);
+
+            QWidget* pForm = formAreaOf(view);
+            QVERIFY2(pForm != nullptr && pForm->isVisible(), qPrintable(qsl("the %1 form is not showing, so there is nothing to hold to a height").arg(nameOf(view))));
+            if (mpEditor->mpSourceEditorArea->isHidden()) {
+                const int wantedForm = pForm->sizeHint().height();
+                qInfo().noquote()
+                        << qsl("  %1: no code pane, so the form leads the pane - it starts at %2 where one over a code pane starts at %3, and is %4 tall where its fields ask for %5")
+                                   .arg(nameOf(view), QString::number(topEdgeOf(pForm)), QString::number(formTopOverACodePane), QString::number(pForm->height()), QString::number(wantedForm));
+                QVERIFY2(formTopOverACodePane > 0, "no view in this walk came up with a code pane, so there is nothing to measure a form without one against");
+                QVERIFY2(topEdgeOf(pForm) == topEdgeOf(mpEditor->mpNonCodeWidgets),
+                         qPrintable(qsl("the %1 form starts at %2 in a column starting at %3")
+                                            .arg(nameOf(view), QString::number(topEdgeOf(pForm)), QString::number(topEdgeOf(mpEditor->mpNonCodeWidgets)))));
+                QVERIFY2(topEdgeOf(pForm) == formTopOverACodePane,
+                         qPrintable(qsl("the %1 form starts at %2 with no code pane under it and at %3 with one, so it is being centred in the pane rather than leading it")
+                                            .arg(nameOf(view), QString::number(topEdgeOf(pForm)), QString::number(formTopOverACodePane))));
+                QVERIFY2(pForm->height() == wantedForm,
+                         qPrintable(
+                                 qsl("the %1 form is %2 tall with the pane to itself, where its fields ask for %3").arg(nameOf(view), QString::number(pForm->height()), QString::number(wantedForm))));
+                continue;
+            }
+
+            formTopOverACodePane = topEdgeOf(pForm);
             const int wanted = mpEditor->mpNonCodeWidgets->sizeHint().height();
             QList<int> sizes = mpEditor->splitter_right->sizes();
             QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
