@@ -493,6 +493,21 @@ below that cap. `EditorNoticeSeamTest` holds the three of them: the split the
 panel opens at, the room closing it gives back, and the nudge of the handle that
 must leave it alone.
 
+The panel runs out of room across as well, and there the pattern rows are what
+pays: the cards' column is 280px whatever the window does, so a 1000px editor
+left a row less than the width it needs and the list grew a horizontal bar over
+fields showing a handful of characters. `holdTriggerOptionsToTheFormsWidth()`
+folds the panel away for that too, answering to the width the form is given -
+the one number the fold itself does not move - rather than to the room the rows
+have, which the fold hands the panel's column to. What it writes down is the
+width the form has to be given for a row to fit beside the panel again, and the
+band before it comes back is `scmEditorOptionsRestoreBand`, the same one the
+seam's fold uses. Only a change in that width is heard: opening the panel takes
+the same room off the rows, and folding it away for that would be the Options
+button undoing itself in front of the reader. A panel either fold has put away
+stays away until both of them would give it back, each dropping its own record
+as its own room returns.
+
 What the column is measured with is `formColumnHeightForItsWidth()`: the
 layout's `heightForWidth()` at the width the column actually has, not its size
 hint. A hint is answered at whatever width the layout would like, and the

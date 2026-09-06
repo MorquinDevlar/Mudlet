@@ -21,7 +21,7 @@
  * The notice at the top of the column an item is edited in, and what the
  * pattern list under it does to the seam over the code pane.
  *
- * Nine things this holds them to:
+ * Thirteen things this holds them to:
  *
  * - A notice takes its own height and no more. The column is the notice, the
  *   gap under it and the form, so the fields sit exactly where they sit with
@@ -62,6 +62,19 @@
  * - ...and a pane held at that cap is not a pane too short for the panel: the
  *   spacer under the cards is at zero there by design, and the first nudge of
  *   the handle used to fold the panel away for it.
+ *
+ * - A window too narrow for a pattern row beside the panel folds the panel away
+ *   as well. The panel's column is the same width whatever the window does, so
+ *   the rows were the half that ran out: at 1000px the list grew a horizontal
+ *   bar and the fields under it showed a few characters at a time.
+ *
+ * - ...and it comes back when the width does, since the reader never closed it.
+ *
+ * - A panel the reader closes while it is folded away stays closed when the
+ *   width comes back: their close is the answer, not the room's.
+ *
+ * - ...and a panel they had already closed is not folded, opened or otherwise
+ *   touched by a window that only got narrower.
  *
  * Run with: ctest -R EditorNoticeSeamTest -V
  */
@@ -137,6 +150,13 @@ private:
     // Mirrors the hysteresis slot_rightSplitterMoved() reads the spacer under
     // the cards against, which is local to that function
     static constexpr int scmFoldHysteresis = 10;
+
+    // The window every case here runs in, and the narrower one the last four
+    // take it to: at 1200 the form holds a pattern row beside the options
+    // panel, and at 1000 it does not
+    static constexpr int scmEditorWidth = 1200;
+    static constexpr int scmNarrowEditorWidth = 1000;
+    static constexpr int scmEditorHeight = 800;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -317,6 +337,27 @@ private:
         settle();
     }
 
+    bool theStripStandsInForThePanel() const { return mpEditor->mpButton_triggerOptionsSummary->isVisible(); }
+
+    bool patternListScrollsSideways() const { return mpEditor->mpScrollArea->horizontalScrollBar()->isVisible(); }
+
+    // The room a pattern row is drawn in, and the width one cannot do without.
+    // The list is resized to the viewport but never below that width, so it is
+    // also where the horizontal bar comes from.
+    int roomForAPatternRow() const { return mpEditor->mpScrollArea->viewport()->width(); }
+
+    int whatAPatternRowNeeds() const { return mpEditor->mpWidget_triggerItems->minimumSizeHint().width(); }
+
+    // Settled twice: the width the form is given is answered on the next pass
+    // through the event loop, and the sidebar's own answer to the window's
+    // width can hand the form a different one before that pass is over
+    void resizeTheEditor(const int width)
+    {
+        mpEditor->resize(width, scmEditorHeight);
+        settle();
+        settle();
+    }
+
     // A push on the code heading of a few pixels, the size of the wobble a hand
     // on a mouse leaves behind it. Positive takes the form pane taller.
     void nudgeTheSeam(const int by)
@@ -366,7 +407,7 @@ private slots:
         QTest::qWait(100ms);
         mpEditor = mpHost->mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
-        mpEditor->resize(1200, 800);
+        mpEditor->resize(scmEditorWidth, scmEditorHeight);
         settle();
 
         // A trigger holding three patterns, which is enough of a list that one
@@ -753,6 +794,110 @@ private slots:
         showTheOptionsPanel(false);
         mpEditor->mDraggedFormPaneHeights.remove(EditorViewType::cmTriggerView);
         settle();
+    }
+
+    // The panel's column is the same width whatever the window does, so a
+    // narrow editor takes its room off the pattern rows: at 1000px a row had
+    // less than the width it needs, the list grew a horizontal bar and the
+    // fields under it showed a handful of characters. Nothing folded the panel
+    // for that - the only fold there was answered to a drag of the code
+    // heading. The width folds it now, and the reader's own preference is not
+    // what the fold changes.
+    void test_aNarrowEditorFoldsTheOptionsPanelAway()
+    {
+        // Any row count will do here: these cases are about the panel, not the rows
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(true);
+        QVERIFY2(optionsPanel()->isVisible(), "the options panel is not on show, so there is nothing here for the width to fold away");
+
+        const int aRowNeeds = whatAPatternRowNeeds();
+        const int roomWhenWide = roomForAPatternRow();
+        QVERIFY2(aRowNeeds > 0, "a pattern row asks for no width at all, so nothing here can tell whether one fits");
+        QVERIFY2(roomWhenWide >= aRowNeeds,
+                 qPrintable(qsl("a pattern row wants %1px and has %2px beside the panel in a %3px window, so this case cannot tell a fold from a window that never held one")
+                                    .arg(aRowNeeds)
+                                    .arg(roomWhenWide)
+                                    .arg(scmEditorWidth)));
+
+        resizeTheEditor(scmNarrowEditorWidth);
+        qInfo().noquote() << qsl("  a pattern row wants %1px; it had %2px beside the panel at %3px of window, and the fold left it %4px at %5px")
+                                     .arg(aRowNeeds)
+                                     .arg(roomWhenWide)
+                                     .arg(scmEditorWidth)
+                                     .arg(roomForAPatternRow())
+                                     .arg(scmNarrowEditorWidth);
+
+        QVERIFY2(!optionsPanel()->isVisible(),
+                 qPrintable(qsl("the options panel is still on show in a %1px window, where a pattern row wants %2px and the rows have %3px")
+                                    .arg(scmNarrowEditorWidth)
+                                    .arg(aRowNeeds)
+                                    .arg(roomForAPatternRow())));
+        QVERIFY2(theStripStandsInForThePanel(), "the panel folded away without the strip that stands in for it");
+        QVERIFY2(!patternListScrollsSideways(),
+                 qPrintable(qsl("the pattern list is scrolling sideways with %1px for a row that wants %2px, which is the whole of what the fold is for").arg(roomForAPatternRow()).arg(aRowNeeds)));
+        QVERIFY2(mpEditor->mShowAllTriggerControls, "the fold took the reader's own preference with it, so the panel will not come back when the room does");
+
+        resizeTheEditor(scmEditorWidth);
+        showTheOptionsPanel(false);
+    }
+
+    // ...and it comes back with the width, since the reader never closed it
+    void test_theOptionsPanelComesBackWhenTheWidthDoes()
+    {
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(true);
+        resizeTheEditor(scmNarrowEditorWidth);
+        QVERIFY2(!optionsPanel()->isVisible(), "the panel never folded away for the narrow window, so there is nothing here to come back");
+
+        resizeTheEditor(scmEditorWidth);
+        QVERIFY2(optionsPanel()->isVisible(),
+                 qPrintable(qsl("the options panel stayed folded away in the %1px window it was open in, with %2px for a row that wants %3px")
+                                    .arg(scmEditorWidth)
+                                    .arg(roomForAPatternRow())
+                                    .arg(whatAPatternRowNeeds())));
+        QVERIFY2(!theStripStandsInForThePanel(), "the strip is still standing in for a panel that is back on show");
+
+        showTheOptionsPanel(false);
+    }
+
+    // A close is the reader's answer and outlives the room: a panel closed while
+    // the width had it folded away stays closed when the width comes back
+    void test_aPanelClosedWhileFoldedStaysClosed()
+    {
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(true);
+        resizeTheEditor(scmNarrowEditorWidth);
+        QVERIFY2(!optionsPanel()->isVisible(), "the panel never folded away for the narrow window, so the close this case is about is not the close it means");
+
+        showTheOptionsPanel(false);
+        resizeTheEditor(scmEditorWidth);
+        QVERIFY2(!optionsPanel()->isVisible(), qPrintable(qsl("the panel the reader closed came back with the window's %1px").arg(scmEditorWidth)));
+        QVERIFY2(!mpEditor->mShowAllTriggerControls, "the close was not heard as the reader's own");
+    }
+
+    // ...and a panel they had already closed is not something a narrower window
+    // touches at all: nothing to fold, nothing written down, and so nothing to
+    // open the next time the window is widened
+    void test_aClosedPanelIsLeftAloneByTheWidth()
+    {
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(false);
+        QVERIFY2(theStripStandsInForThePanel(), "the strip that stands in for the closed panel is not on show, so this case cannot tell whether the width changed anything");
+
+        resizeTheEditor(scmNarrowEditorWidth);
+        QVERIFY2(!optionsPanel()->isVisible(), "the closed options panel opened itself when the window was narrowed");
+        QVERIFY2(theStripStandsInForThePanel(), "the strip went away in a window that only got narrower");
+        QVERIFY2(!mpEditor->mShowAllTriggerControls, "narrowing the window wrote down a preference the reader never expressed");
+        QVERIFY2(mpEditor->mTriggerOptionsAutoHiddenAtColumnWidth == 0,
+                 qPrintable(qsl("the width fold wrote down %1px for a panel it never folded, which is what would open it the next time the window is widened")
+                                    .arg(mpEditor->mTriggerOptionsAutoHiddenAtColumnWidth)));
+
+        resizeTheEditor(scmEditorWidth);
+        QVERIFY2(!optionsPanel()->isVisible(), "the closed options panel opened itself when the window was widened again");
     }
 };
 

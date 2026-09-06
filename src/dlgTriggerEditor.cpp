@@ -2056,6 +2056,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         }
     });
 
+    // The pattern rows and the options panel share the form's width, and the
+    // form is the one thing told when that width changes - see
+    // holdTriggerOptionsToTheFormsWidth()
+    mpTriggersMainArea->installEventFilter(this);
+
     mpScrollArea = mpTriggersMainArea->scrollArea;
     // The pattern rows are part of the form, not a well sunk into it. A
     // QAbstractScrollArea fills its viewport with QPalette::Base - the colour a
@@ -13639,6 +13644,26 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         applyFormPaneSeamPolicy();
     }
 
+    // ...and what the trigger form is given across is what says whether a
+    // pattern row still fits beside the options panel. A window dragged
+    // narrower, a splitter taking the column in, or the form arriving in the
+    // view at a width it was not laid out at all reach it as this one event.
+    // Only a change in the width is that: the height changes below the panel
+    // belong to the seam, and the panel's own opening narrows the rows without
+    // the form losing a pixel.
+    if (watched == mpTriggersMainArea && event->type() == QEvent::Resize) {
+        const auto* pResize = static_cast<QResizeEvent*>(event);
+        if (pResize->size().width() != pResize->oldSize().width()) {
+            // Answered once the resize has finished rather than in the middle of
+            // it: this event is delivered from inside the right hand splitter
+            // handing its panes their new geometry, and the fold moves the seam
+            // between those same two panes
+            QTimer::singleShot(0ms, this, [this]() {
+                holdTriggerOptionsToTheFormsWidth();
+            });
+        }
+    }
+
     // Styling the sidebar's rows takes its native focus rectangle away with
     // them; a property puts it back, since a QSS rule cannot ask whether the
     // widget a subcontrol belongs to has the focus
@@ -15737,9 +15762,10 @@ void dlgTriggerEditor::updateTriggerOptionsSummary()
 void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
 {
     mShowAllTriggerControls = shown;
-    // Whatever the drag left recorded is answered here instead: a panel opened
-    // or closed on purpose is no longer one the room decides about
+    // Whatever the drag or the window left recorded is answered here instead: a
+    // panel opened or closed on purpose is no longer one the room decides about
     mTriggerOptionsAutoHiddenAtPaneHeight = 0;
+    mTriggerOptionsAutoHiddenAtColumnWidth = 0;
     slot_showAllTriggerControls(shown);
     refitSplitterForTriggerOptions(shown);
 }
@@ -15829,6 +15855,66 @@ void dlgTriggerEditor::slot_showAllTriggerControls(const bool isShown)
     updatePatternTabOrder();
 }
 
+// The other direction the panel runs out of room in. Its column keeps
+// scmEditorTriggerOptionsWidth whatever the window does, so it is the pattern
+// rows that pay for a narrow editor: at 1000px they were left less than one
+// row's minimum, the list grew a horizontal scroll bar, and the fields under it
+// showed a few characters at a time. Nothing folded the panel for that - the
+// fold in slot_rightSplitterMoved() is the seam's, and answers to a drag of the
+// code heading and to nothing else.
+//
+// Same shape as that one: the reader's own preference is left alone, what the
+// fold answered to is written down, and the panel only comes back a band past
+// it. What is read here is the width the *form* was given, since that is the
+// one number the fold itself does not move.
+//
+// Only a change in that width comes through here. Opening the panel takes the
+// same room off the rows, and folding it away for that would be the Options
+// button undoing itself in front of the reader.
+void dlgTriggerEditor::holdTriggerOptionsToTheFormsWidth()
+{
+    if (mCurrentView != EditorViewType::cmTriggerView || !mEditorFirstShown || mFoldingTriggerOptionsForWidth) {
+        return;
+    }
+    if (!mpTriggersMainArea->isVisible() || !mpScrollArea || !mpWidget_triggerItems) {
+        return;
+    }
+    // What the rows cannot do without. The list is resized to the viewport it
+    // scrolls in but never below this, so it is also the width at which the
+    // horizontal bar appears - the fold and the bar answer to the same number.
+    const int aRowNeeds = mpWidget_triggerItems->minimumSizeHint().width();
+    const int formWidth = mpTriggersMainArea->width();
+    if (aRowNeeds <= 0 || formWidth <= 0) {
+        return;
+    }
+
+    mFoldingTriggerOptionsForWidth = true;
+    if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked()) {
+        // The room a row has with the panel beside it, which is the room it is
+        // actually drawn in
+        const int roomForARow = mpScrollArea->viewport()->width();
+        if (roomForARow < aRowNeeds) {
+            mTriggerOptionsAutoHiddenAtColumnWidth = formWidth + (aRowNeeds - roomForARow);
+            slot_showAllTriggerControls(false);
+            // The form is one panel shorter than it was, which is a different
+            // split - the same refit a deliberate close is followed by
+            refitSplitterForTriggerOptions(false);
+        }
+    } else if (mShowAllTriggerControls && mTriggerOptionsAutoHiddenAtColumnWidth > 0 && formWidth >= mTriggerOptionsAutoHiddenAtColumnWidth + scmEditorOptionsRestoreBand) {
+        // The width has stopped being what keeps the panel away, which is not
+        // the same as the panel coming back: the fold above the code pane keeps
+        // a record of its own and either of the two holds the panel on its own.
+        // Each of them lets go of its own record as its own room comes back, so
+        // that the last one to do so is the one that opens the panel.
+        mTriggerOptionsAutoHiddenAtColumnWidth = 0;
+        if (mTriggerOptionsAutoHiddenAtPaneHeight == 0) {
+            slot_showAllTriggerControls(true);
+            refitSplitterForTriggerOptions(true);
+        }
+    }
+    mFoldingTriggerOptionsForWidth = false;
+}
+
 void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
 {
     /*
@@ -15901,7 +15987,13 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
             // pixels either side of it, never opens them again.
             if (mShowAllTriggerControls && mTriggerOptionsAutoHiddenAtPaneHeight > 0 && formPaneHeight >= mTriggerOptionsAutoHiddenAtPaneHeight + scmEditorOptionsRestoreBand) {
                 mTriggerOptionsAutoHiddenAtPaneHeight = 0;
-                slot_showAllTriggerControls(true);
+                // ...and the room across has to have come back as well, since
+                // the fold in holdTriggerOptionsToTheFormsWidth() holds the
+                // panel away on its own. Its record is dropped by its own
+                // measurement, so the pane growing back never speaks for it.
+                if (mTriggerOptionsAutoHiddenAtColumnWidth == 0) {
+                    slot_showAllTriggerControls(true);
+                }
             }
         }
     }

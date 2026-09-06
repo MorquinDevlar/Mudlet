@@ -338,6 +338,10 @@ public:
     // Opening the panel where the form has no room for it borrows the height
     // from the code pane, and closing it hands that height back
     void refitSplitterForTriggerOptions(const bool shown);
+    // The panel folds away when the form is too narrow to hold a pattern row
+    // beside it, and comes back when the width does: the across answer to the
+    // height-driven fold in slot_rightSplitterMoved()
+    void holdTriggerOptionsToTheFormsWidth();
     // The least the code pane is left with wherever the seam is placed rather
     // than dragged: a third of what the two panes have between them, and never
     // under scmEditorSourcePaneFloor
@@ -1242,6 +1246,25 @@ private:
     // again on the one after, and flicker on every pixel of a drag. A splitter
     // size is what the reader is actually dragging and is unmoved by the fold.
     int mTriggerOptionsAutoHiddenAtPaneHeight = 0;
+
+    // ...and the same mark for the fold across: the width the trigger form has
+    // to be given for a pattern row to fit beside the panel, written down when
+    // the panel was folded away for want of that width. Zero while the panel is
+    // on show, or while it is away because it was closed on purpose.
+    //
+    // The form's width rather than the pattern column's, for the reason the
+    // record above is a splitter size: folding the panel away hands its column
+    // to the pattern rows, so the room they have is a different number the
+    // instant the fold happens, while the width the form was given is unmoved
+    // by it. What is kept is the form's width at the fold plus what the row was
+    // short by, which comes to the same number whenever it is taken - the room
+    // a row has is the form's width less the panel's column, and that column is
+    // the same width whatever the window does.
+    int mTriggerOptionsAutoHiddenAtColumnWidth = 0;
+
+    // Showing or hiding the panel lays the form out again, so the pass that
+    // does it is barred from re-entering itself
+    bool mFoldingTriggerOptionsForWidth = false;
 
     // Whether the reader has asked for the extra trigger controls in this
     // session. Not stored: the editor opens with the panel closed every time,
