@@ -47,6 +47,10 @@ public:
     // longer anything to add
     void setFrameColors(const QColor& resting, const QColor& active, const QColor& disabled);
     void setFrameMargins(const QMargins& margins);
+    // The corner the frame is rounded to: a control's unless told otherwise,
+    // and a chip's for the button that stands at the end of a row of chips as
+    // the outline of the next one
+    void setFrameRadius(const qreal radius);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -56,6 +60,7 @@ private:
     QColor mActiveColor;
     QColor mDisabledColor;
     QMargins mFrameMargins;
+    qreal mFrameRadius;
 };
 
 } // namespace uiDesign

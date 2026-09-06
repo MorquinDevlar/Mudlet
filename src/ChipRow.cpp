@@ -19,6 +19,7 @@
 
 #include "ChipRow.h"
 
+#include "EditorPlaceholderButton.h"
 #include "FlowLayout.h"
 #include "uiDesign.h"
 #include "utils.h"
@@ -197,13 +198,22 @@ ChipRow::ChipRow(QWidget* pParent)
     mpFlow->setContentsMargins(0, 0, 0, 0);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
 
-    mpAdd = new QToolButton(this);
+    // The place the next chip goes, drawn as the outline of one: the same fine
+    // dashed frame the trigger form's Add pattern button is read as a
+    // placeholder by, painted by the button itself rather than asked of a
+    // stylesheet - see PlaceholderButton for why - and rounded to a chip's
+    // corner rather than a control's
+    mpAdd = new PlaceholderButton(this);
     mpAdd->setObjectName(qsl("editorChipAdd"));
     //: Button at the end of a script's row of event chips that opens a field for a new event name
     mpAdd->setText(tr("Add event"));
     //: Tooltip on the button that opens the field for another event a script should listen for
     mpAdd->setToolTip(utils::richText(tr("Listen for another event")));
     mpAdd->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    // The button paints its own frame, and auto-raise would have the style
+    // draw a second one over it under the mouse
+    mpAdd->setAutoRaise(false);
+    mpAdd->setFrameRadius(scmRadiusChip);
     remeasure();
     connect(mpAdd, &QAbstractButton::clicked, this, &ChipRow::beginAdd);
 
@@ -621,6 +631,11 @@ void ChipRow::restyleGlyphs(const ThemeTokens& tokens)
         pChip->setRemoveGlyph(mRemoveGlyph);
     }
     mpAdd->setIcon(tintedIcon(qsl(":/icons/editor-add.svg"), tokens));
+    // The frame is the only thing saying that one more chip goes there, so it
+    // is held to what a control needs rather than to the hairline the chips
+    // beside it are edged with - the same three mixes the Add pattern button
+    // is framed in, so the two placeholders read as one kind of thing
+    mpAdd->setFrameColors(blend(tokens.card, tokens.text, 0.45), tokens.accent, blend(tokens.card, tokens.text, 0.22));
 }
 
 QString ChipRow::styleSheetFor(const ThemeTokens& tokens)
@@ -637,11 +652,14 @@ QString ChipRow::styleSheetFor(const ThemeTokens& tokens)
                "#editorChip:focus { border: 1px solid %6; }"
                "#editorChipRemove { border: none; border-radius: %3px; background: transparent; padding: 0px; }"
                "#editorChipRemove:hover { background-color: %7; }"
-               // Nothing is written in this one yet, which is what the dashed
-               // edge says: the same box as a chip, drawn as an outline of one
-               "#editorChipAdd { border: 1px dashed %2; border-radius: %3px; background: transparent; color: %5;"
+               // Nothing is written in this one yet, which is what its dashed
+               // edge says - the button's own painting, see PlaceholderButton,
+               // so no border is drawn here. The pixel a chip's hairline takes
+               // is padding on this one, so the dashes land where that line
+               // does and the two boxes come out the same size.
+               "#editorChipAdd { border: none; border-radius: %3px; background: transparent; color: %5;"
                " padding: %8px %9px %8px %10px; }"
-               "#editorChipAdd:hover { color: %4; border: 1px dashed %6; }"
+               "#editorChipAdd:hover { color: %4; }"
                "#editorChipNote { background: transparent; color: %11; }")
             .arg(tokens.card.name(),
                  tokens.border.name(),
@@ -650,9 +668,9 @@ QString ChipRow::styleSheetFor(const ThemeTokens& tokens)
                  tokens.mutedText.name(),
                  tokens.accent.name(),
                  tokens.hoverSoft,
-                 QString::number(scmChipPaddingVertical),
-                 QString::number(scmChipPaddingTrailing))
-            .arg(QString::number(scmChipPaddingLeading), noteColor.name());
+                 QString::number(scmChipPaddingVertical + 1),
+                 QString::number(scmChipPaddingTrailing + 1))
+            .arg(QString::number(scmChipPaddingLeading + 1), noteColor.name());
 }
 
 } // namespace uiDesign

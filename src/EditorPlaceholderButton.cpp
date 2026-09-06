@@ -35,6 +35,7 @@ constexpr qreal scmFrameRadius = 6.0;
 
 PlaceholderButton::PlaceholderButton(QWidget* pParent)
 : QToolButton(pParent)
+, mFrameRadius(scmFrameRadius)
 {
 }
 
@@ -49,6 +50,12 @@ void PlaceholderButton::setFrameColors(const QColor& resting, const QColor& acti
 void PlaceholderButton::setFrameMargins(const QMargins& margins)
 {
     mFrameMargins = margins;
+    update();
+}
+
+void PlaceholderButton::setFrameRadius(const qreal radius)
+{
+    mFrameRadius = radius;
     update();
 }
 
@@ -78,7 +85,7 @@ void PlaceholderButton::paintEvent(QPaintEvent* event)
     const qreal inset = scmFramePenWidth / 2.0;
     const QRectF frame = QRectF(rect().marginsRemoved(mFrameMargins)).adjusted(inset, inset, -inset, -inset);
     if (frame.isValid()) {
-        painter.drawRoundedRect(frame, scmFrameRadius, scmFrameRadius);
+        painter.drawRoundedRect(frame, mFrameRadius, mFrameRadius);
     }
     painter.end();
 

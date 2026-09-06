@@ -35,6 +35,7 @@ class QToolButton;
 namespace uiDesign {
 
 class FlowLayout;
+class PlaceholderButton;
 struct ThemeTokens;
 
 // The type a word in a box is set in: the platform's fixed-width face, a shade
@@ -167,7 +168,7 @@ private:
 
     FlowLayout* mpFlow = nullptr;
     QList<Chip*> mChips;
-    QToolButton* mpAdd = nullptr;
+    PlaceholderButton* mpAdd = nullptr;
     QLineEdit* mpField = nullptr;
     QLabel* mpNote = nullptr;
     QTimer* mpNoteTimer = nullptr;
