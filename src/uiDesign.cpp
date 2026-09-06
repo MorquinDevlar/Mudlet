@@ -132,7 +132,6 @@ constexpr qreal scmToneWeightStep = 0.02;
 // How many stops readableOn() tries between the colour it was asked for and the
 // end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
-constexpr int scmInputPaddingHorizontal = 6;
 // The room the arrows are given at a control's right edge, and how big the
 // arrows drawn in it are
 constexpr int scmInputDropDownWidth = 18;

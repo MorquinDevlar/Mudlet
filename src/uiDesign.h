@@ -70,7 +70,6 @@ inline constexpr char scmProp_paneTone[] = "uiPaneTone";
 // This group box is a card. Both windows draw their cards from cardStyleSheet()
 // below, so which property says so is the first of the few things that differ.
 inline constexpr char scmProp_settingsCard[] = "settingsCard";
-inline constexpr char scmProp_editorCard[] = "editorCard";
 inline constexpr char scmProp_aboutCard[] = "aboutCard";
 // ...and a card carrying no heading, and so no room inside for one: a single
 // option in the settings dialog, the thanks and third-party cards on the About
@@ -261,9 +260,12 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
 
 // The height a field's contents are given, what is left round them, and what
 // the whole control therefore comes out at - which a form laying a field into a
-// row of its own has to leave room for
+// row of its own has to leave room for. The horizontal padding is here as well
+// because a form eliding what it puts in a field has to know what room the
+// field leaves it.
 inline constexpr int scmInputContentHeight = 24;
 inline constexpr int scmInputPaddingVertical = 3;
+inline constexpr int scmInputPaddingHorizontal = 6;
 inline constexpr int scmInputBorderWidth = 1;
 inline constexpr int scmInputHeight = scmInputContentHeight + 2 * (scmInputPaddingVertical + scmInputBorderWidth);
 

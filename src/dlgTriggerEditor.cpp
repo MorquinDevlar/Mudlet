@@ -49,6 +49,7 @@
 #include "SingleLineTextEdit.h"
 #include "TrailingWhitespaceMarker.h"
 #include "ChipRow.h"
+#include "FlowLayout.h"
 #include "EditorAddItemCommand.h"
 #include "EditorDeleteItemCommand.h"
 #include "EditorItemXMLHelpers.h"
@@ -128,6 +129,10 @@ using namespace std::chrono_literals;
 // and then reenables the colorizer function (and we "grey out" the color while
 // it is disabled):
 static const char* cButtonBaseColor = "baseColor";
+// The whole path the sound file field stands for. The field shows the file's
+// name, since a path drawn into it is the tail of a directory nobody typed, and
+// the save and load paths read this.
+static const char* cSoundFilePath = "editorSoundFilePath";
 
 // Separates the XML packages of individually copied items on the clipboard so
 // that pasting can import and place each one
@@ -223,17 +228,15 @@ static constexpr int scmEditorFormGridSpacingVertical = 12;
 // same place.
 static constexpr int scmEditorFormNameLabelExtra = scmEditorFormGridSpacingHorizontal - scmEditorFormHeadRowSpacing;
 
-// What is left round the word on the button the trigger's options are opened
-// from. Its height is not left to these: a min-height in a stylesheet is what a
-// tool button's contents are given, and the style then adds its own margins on
-// top - so the button is set to the fields' height outright instead.
-static constexpr int scmEditorRowButtonPaddingVertical = 5;
-static constexpr int scmEditorRowButtonPaddingHorizontal = 12;
+// What is left round the word on one of the two segments a trigger's matching
+// mode is chosen with. Their height is not left to these: a min-height in a
+// stylesheet is what the contents are given and the style then adds its own
+// margins on top, so a segment is set to the fields' height outright instead.
+static constexpr int scmEditorSegmentPaddingVertical = 5;
+static constexpr int scmEditorSegmentPaddingHorizontal = 12;
 
-// How far a control the reader can press is taken while the pointer is on it:
-// a raised one lifts a shade further off what carries it, while an outlined one
-// draws its hairline a shade nearer the words instead
-static constexpr qreal scmEditorRaisedHoverWeight = 0.08;
+// How far an outlined control the reader can press draws its hairline towards
+// the words while the pointer is on it
 static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 
 // What a row of one of those trees holds its contents off its leading edge by.
@@ -265,48 +268,32 @@ static constexpr int scmEditorCodeHeaderGlyphSize = 13;
 static constexpr int scmEditorCodeHeaderInset = 4;
 static constexpr int scmEditorCompileDotDiameter = 8;
 
-// The trigger form's options, as a column of cards beside its patterns. Wide
-// enough for the longest of the four card's rows without the cards having to
-// wrap, and narrow enough to leave the patterns the rest of the form.
-static constexpr int scmEditorTriggerOptionsWidth = 280;
 // A colour button says what it is by the colour it is filled with, so it is
 // sized as a well rather than as a word
 static constexpr int scmEditorColorWellHeight = 26;
-// The boxes the two matching modes are named in, and the gap after them, which
-// is also what the rows of the panel are spaced by
-static constexpr int scmEditorModeChipPadding = 7;
-static constexpr int scmEditorCardRowGap = 8;
-static constexpr int scmEditorModeChipGap = scmEditorCardRowGap;
+static constexpr int scmEditorColorWellWidth = 40;
+// What a control and the words belonging with it are spaced by, wherever a form
+// row holds more than the one thing
+static constexpr int scmEditorRowControlGap = 8;
+// ...and what stands between two such groups on one of the trigger form's
+// option rows, which is what says they are separate things rather than one
+// sentence running on
+static constexpr int scmEditorOptionRowGap = 18;
 // Three digits and a pair of arrows; the rest of the row is the words around it
 static constexpr int scmEditorOptionsSpinBoxWidth = 72;
+// The field naming the sound a trigger plays. Wide enough for a file name and
+// no wider: the path it stands for is in the tooltip, since a path drawn in a
+// field this size is a few characters of a directory nobody typed.
+static constexpr int scmEditorSoundFileWidth = 170;
+// ...and what a field leaves round the words in it, which the name is elided to
+// fit inside
+static constexpr int scmEditorSoundFileTextInset = 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth);
 // How many lines the AND mode can be asked to match within. Nothing in TTrigger
 // bounds mConditionLineDelta, so the number is only a question of what is worth
 // typing - but the visible spin box and the hidden spinBox_lineMargin it writes
 // into have to agree on it, or the hidden one clamps what was typed and echoes
 // the clamped value straight back, eating keystrokes.
 static constexpr int scmEditorMatchWithinLinesMax = 999;
-// What a card leaves round what it holds - tighter than the settings dialog's
-// 16, as the options column is a third of the width a settings page is - and,
-// since the title is the first line inside the frame rather than a heading
-// above it, how far in from the frame the title starts as well
-static constexpr int scmEditorCardPadding = 12;
-
-// ...which, with the property the rules select on, is the whole of what the
-// editor's cards differ from the settings dialog's by; everything else about
-// them is drawn by uiDesign::cardStyleSheet(). This column has no card without
-// a title, and none holding a group box of the .ui file's own. The height of
-// the title's own line is measured under the font the window is running at, so
-// it is the one runtime number here.
-static uiDesign::CardMetrics cardMetrics(const int titleHeight)
-{
-    return {.cardProperty = uiDesign::scmProp_editorCard, .padding = scmEditorCardPadding, .titleHeight = titleHeight};
-}
-// How much further the form pane has to be dragged open, past where the options
-// panel stopped fitting in it, before that panel unfolds again. A band rather
-// than the same position back: the fold changes what the form is made of, so
-// re-opening at the position it folded at is re-opening at a position it does
-// not fit in - which is the flicker this is here to end.
-static constexpr int scmEditorOptionsRestoreBand = 24;
 // A banner's picture, beside a line of text rather than the 64px block the
 // .ui file sizes it as
 static constexpr int scmEditorBannerGlyphSize = 20;
@@ -835,8 +822,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     layoutColumn->addWidget(mpTriggersMainArea, 1);
     connect(mpTriggersMainArea->pushButtonFgColor, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_colorizeTriggerSetFgColor);
     connect(mpTriggersMainArea->pushButtonBgColor, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_colorizeTriggerSetBgColor);
-    connect(mpTriggersMainArea->pushButtonSound, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_soundTrigger);
-    connect(mpTriggersMainArea->groupBox_triggerColorizer, &QGroupBox::clicked, this, &dlgTriggerEditor::slot_toggleGroupBoxColorizeTrigger);
+    connect(mpTriggersMainArea->checkBox_triggerColorizer, &QCheckBox::clicked, this, &dlgTriggerEditor::slot_toggleGroupBoxColorizeTrigger);
     connect(mpTriggersMainArea->toolButton_clearSoundFile, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_clearSoundFile);
 
     // The five forms that are a fixed set of fields take no stretch: they are
@@ -844,7 +830,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // never theirs. It goes to the trailing stretch below instead, which is
     // what keeps them leading the pane where there is no code pane to cap them
     // against. The trigger's and the button's forms do use the room - the
-    // pattern list and the options panel grow into it - so they keep theirs.
+    // pattern list and the stylesheet editor grow into it - so they keep theirs.
     mpTimersMainArea = new dlgTimersMainArea(this);
     layoutColumn->addWidget(mpTimersMainArea, 0);
 
@@ -1235,8 +1221,9 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // between the first two exists to be given its heading
     setupEditorCodeHeader();
 
-    // The trigger form's own options, and the strip that stands in for them
-    buildTriggerOptionsPanel();
+    // The trigger form's own options, as two rows between its head row and its
+    // pattern list
+    buildTriggerOptionRows();
 
     // The events a script listens for, in the cell the .ui file leaves beside
     // the "Events" label. Before the head rows, so that the row it goes into is
@@ -1257,14 +1244,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // ...and the row the other six forms lead with, shelled over the grids
     // their .ui files lay them out in
     buildEditorFormHeadRows();
-
-    // Only explicit clicks change what the session is holding - the space-driven
-    // auto-collapse in slot_rightSplitterMoved must stay transient:
-    connect(mpTriggersMainArea->toolButton_toggleExtraControls, &QAbstractButton::clicked, this, &dlgTriggerEditor::setTriggerOptionsShown);
-    connect(mpButton_triggerOptionsSummary, &QAbstractButton::clicked, this, [this]() {
-        setTriggerOptionsShown(true);
-    });
-    updateExtraControlsToggleIcon();
 
     connect(splitter_right, &QSplitter::splitterMoved, this, &dlgTriggerEditor::slot_rightSplitterMoved);
     // additional settings
@@ -1784,7 +1763,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // triggers
     connect(mpTriggersMainArea->lineEdit_trigger_name, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
     connect(mpTriggersMainArea->lineEdit_trigger_command, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
-    connect(mpTriggersMainArea->pushButtonSound, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_itemEdited);
     connect(mpSourceEditorEdbeeDocument, &edbee::TextDocument::textChanged, this, &dlgTriggerEditor::slot_itemEdited);
 
     // Per-property immediate saves for triggers (creates individual undo entries)
@@ -1794,9 +1772,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mpTriggersMainArea->spinBox_lineMargin, qOverload<int>(&QSpinBox::valueChanged), this, &dlgTriggerEditor::slot_saveProperty_TriggerLineMargin);
     connect(mpTriggersMainArea->checkBox_filterTrigger, &QCheckBox::toggled, this, &dlgTriggerEditor::slot_saveProperty_TriggerFilterTrigger);
     connect(mpTriggersMainArea->checkBox_perlSlashGOption, &QCheckBox::toggled, this, &dlgTriggerEditor::slot_saveProperty_TriggerPerlSlashG);
-    connect(mpTriggersMainArea->groupBox_soundTrigger, &QGroupBox::toggled, this, &dlgTriggerEditor::slot_saveProperty_TriggerSoundEnabled);
-    connect(mpTriggersMainArea->lineEdit_soundFile, &QLineEdit::editingFinished, this, &dlgTriggerEditor::slot_saveProperty_TriggerSoundFile);
-    connect(mpTriggersMainArea->groupBox_triggerColorizer, &QGroupBox::toggled, this, &dlgTriggerEditor::slot_saveProperty_TriggerColorizer);
+    connect(mpTriggersMainArea->checkBox_soundTrigger, &QCheckBox::toggled, this, &dlgTriggerEditor::slot_saveProperty_TriggerSoundEnabled);
+    connect(mpTriggersMainArea->checkBox_triggerColorizer, &QCheckBox::toggled, this, &dlgTriggerEditor::slot_saveProperty_TriggerColorizer);
 
     // aliases
     connect(mpAliasMainArea->lineEdit_alias_name, &QLineEdit::textEdited, this, &dlgTriggerEditor::slot_itemEdited);
@@ -1964,10 +1941,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
 
     readSettings();
-    // The options panel is a disclosure rather than a preference: the editor
-    // opens with it closed however the last session left it, and the summary
-    // strip stands in for it until the reader asks for it back
-    slot_showAllTriggerControls(false);
 
     comboBox_searchTerms->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
@@ -2060,9 +2033,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         }
     });
 
-    // The pattern rows and the options panel share the form's width, and the
-    // form is the one thing told when that width changes - see
-    // holdTriggerOptionsToTheFormsWidth()
+    // The trigger form's two option rows wrap to the width the form is given,
+    // and the form is the one thing told when that width changes
     mpTriggersMainArea->installEventFilter(this);
 
     mpScrollArea = mpTriggersMainArea->scrollArea;
@@ -2086,8 +2058,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // named rule below holds it off as things stand - a styled background is
     // painted in place of the palette brush, not over it - but that rule is
     // written by applyEditorShellStyle(), which the first paint can beat and a
-    // guarded early return can skip. The one line the options column already
-    // does this with is at the foot of buildTriggerOptionsPanel().
+    // guarded early return can skip.
     mpWidget_triggerItems->setAutoFillBackground(false);
 
     lay1->addStretch();
@@ -3296,10 +3267,10 @@ void dlgTriggerEditor::writeSettings()
         settings.remove(retired);
     }
 
-    // The trigger options panel used to be a stored preference and is now a
-    // disclosure the editor opens closed - so the key is cleared rather than
-    // left behind in every configuration that has one, saying something nothing
-    // reads any more
+    // Whether the trigger form's options were on show used to be a stored
+    // preference. They are two rows of the form now and are always there, so
+    // the key is cleared rather than left behind in every configuration that
+    // has one, saying something nothing reads any more
     settings.remove(qsl("showAllTriggerControls"));
 }
 
@@ -6250,7 +6221,7 @@ void dlgTriggerEditor::addTrigger(bool isFolder)
     mpTriggersMainArea->spinBox_lineMargin->setValue(-1);
     mpTriggersMainArea->pushButtonFgColor->setChecked(false);
     mpTriggersMainArea->pushButtonBgColor->setChecked(false);
-    mpTriggersMainArea->groupBox_triggerColorizer->setChecked(false);
+    mpTriggersMainArea->checkBox_triggerColorizer->setChecked(false);
 
     // Finalize selection
     mpCurrentTriggerItem = pNewItem;
@@ -7096,8 +7067,8 @@ void dlgTriggerEditor::saveTrigger()
             pT->setConditionLineDelta(mpTriggersMainArea->spinBox_lineMargin->value());
         }
         pT->mStayOpen = mpTriggersMainArea->spinBox_stayOpen->value();
-        pT->mSoundTrigger = mpTriggersMainArea->groupBox_soundTrigger->isChecked();
-        pT->setSound(mpTriggersMainArea->lineEdit_soundFile->text());
+        pT->mSoundTrigger = mpTriggersMainArea->checkBox_soundTrigger->isChecked();
+        pT->setSound(triggerSoundFilePath());
 
         QColor fgColor(QColorConstants::Transparent);
         QColor bgColor(QColorConstants::Transparent);
@@ -7109,7 +7080,7 @@ void dlgTriggerEditor::saveTrigger()
             bgColor = QColor(mpTriggersMainArea->pushButtonBgColor->property(cButtonBaseColor).toString());
         }
         pT->setColorizerBgColor(bgColor);
-        pT->setIsColorizerTrigger(mpTriggersMainArea->groupBox_triggerColorizer->isChecked());
+        pT->setIsColorizerTrigger(mpTriggersMainArea->checkBox_triggerColorizer->isChecked());
         QString itemDescription;
         if (pT->isFilterChain()) {
             if (pT->isActive()) {
@@ -8430,13 +8401,25 @@ void dlgTriggerEditor::updatePatternTabOrder()
         previous = next;
     };
 
-    // The order the row reads in: the Options button sits at its far end, past
-    // the command and the ID
+    // The head row first - the ID pill is a label and takes no focus - then the
+    // two option rows, each read left to right, and the pattern rows under
+    // them. spinBox_lineMargin is not among them: it is hidden, which
+    // addToChain() takes as reason enough to leave it out, and the two segments
+    // are how the mode it holds is reached.
     addToChain(mpTriggersMainArea->lineEdit_trigger_command);
-    addToChain(mpTriggersMainArea->toolButton_toggleExtraControls);
-    // Only there while the options are away, and addToChain() drops whatever is
-    // not on show
-    addToChain(mpButton_triggerOptionsSummary);
+    addToChain(mpRadioButton_matchAny);
+    addToChain(mpRadioButton_matchAll);
+    addToChain(mpSpinBox_matchWithinLines);
+    addToChain(mpTriggersMainArea->checkBox_perlSlashGOption);
+    addToChain(mpTriggersMainArea->spinBox_stayOpen);
+    addToChain(mpTriggersMainArea->checkBox_filterTrigger);
+    addToChain(mpTriggersMainArea->checkBox_soundTrigger);
+    addToChain(mpTriggersMainArea->lineEdit_soundFile);
+    // Only there while there is a file to forget
+    addToChain(mpTriggersMainArea->toolButton_clearSoundFile);
+    addToChain(mpTriggersMainArea->checkBox_triggerColorizer);
+    addToChain(mpTriggersMainArea->pushButtonFgColor);
+    addToChain(mpTriggersMainArea->pushButtonBgColor);
 
     for (int i = 0; i < mVisiblePatternCount && i < mTriggerPatternEdit.size(); ++i) {
         auto* item = mTriggerPatternEdit.value(i, nullptr);
@@ -8466,22 +8449,6 @@ void dlgTriggerEditor::updatePatternTabOrder()
     // The grip is the one part of the row chrome the keyboard does not reach:
     // reordering is on Ctrl+Alt+Up and Ctrl+Alt+Down instead
     addToChain(mpButton_addPattern);
-    // The four cards, in the order they are read down the panel.
-    // spinBox_lineMargin is not among them: it is hidden, which addToChain()
-    // takes as reason enough to leave it out, and the radios below are how the
-    // mode it holds is reached.
-    addToChain(mpRadioButton_matchAny);
-    addToChain(mpRadioButton_matchAll);
-    addToChain(mpSpinBox_matchWithinLines);
-    addToChain(mpTriggersMainArea->checkBox_perlSlashGOption);
-    addToChain(mpTriggersMainArea->spinBox_stayOpen);
-    addToChain(mpTriggersMainArea->checkBox_filterTrigger);
-    addToChain(mpTriggersMainArea->groupBox_soundTrigger);
-    addToChain(mpTriggersMainArea->toolButton_clearSoundFile);
-    addToChain(mpTriggersMainArea->pushButtonSound);
-    addToChain(mpTriggersMainArea->groupBox_triggerColorizer);
-    addToChain(mpTriggersMainArea->pushButtonFgColor);
-    addToChain(mpTriggersMainArea->pushButtonBgColor);
     addToChain(mpSourceEditorEdbee);
 }
 
@@ -8620,11 +8587,13 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
     clearDocument(mpSourceEditorEdbee); // Trigger Select
     mpTriggersMainArea->checkBox_perlSlashGOption->setChecked(false);
     mpTriggersMainArea->checkBox_filterTrigger->setChecked(false);
-    mpTriggersMainArea->groupBox_triggerColorizer->setChecked(false);
+    mpTriggersMainArea->checkBox_triggerColorizer->setChecked(false);
     mpTriggersMainArea->pushButtonFgColor->setStyleSheet(QString());
     mpTriggersMainArea->pushButtonFgColor->setProperty(cButtonBaseColor, QVariant());
+    describeColourWell(mpTriggersMainArea->pushButtonFgColor);
     mpTriggersMainArea->pushButtonBgColor->setStyleSheet(QString());
     mpTriggersMainArea->pushButtonBgColor->setProperty(cButtonBaseColor, QVariant());
+    describeColourWell(mpTriggersMainArea->pushButtonBgColor);
     mpTriggersMainArea->spinBox_lineMargin->setValue(-1);
 
     const int ID = pItem->data(0, Qt::UserRole).toInt();
@@ -8735,14 +8704,9 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
             mpTriggersMainArea->spinBox_lineMargin->setValue(-1);
         }
         mpTriggersMainArea->spinBox_stayOpen->setValue(pT->mStayOpen);
-        mpTriggersMainArea->groupBox_soundTrigger->setChecked(pT->mSoundTrigger);
-        if (!pT->mSoundFile.isEmpty()) {
-            mpTriggersMainArea->lineEdit_soundFile->setToolTip(pT->mSoundFile);
-        }
-        mpTriggersMainArea->lineEdit_soundFile->setText(pT->mSoundFile);
-        mpTriggersMainArea->lineEdit_soundFile->setCursorPosition(mpTriggersMainArea->lineEdit_soundFile->text().length());
-        mpTriggersMainArea->toolButton_clearSoundFile->setEnabled(!mpTriggersMainArea->lineEdit_soundFile->text().isEmpty());
-        mpTriggersMainArea->groupBox_triggerColorizer->setChecked(pT->isColorizerTrigger());
+        mpTriggersMainArea->checkBox_soundTrigger->setChecked(pT->mSoundTrigger);
+        showTriggerSoundFile(pT->mSoundFile);
+        mpTriggersMainArea->checkBox_triggerColorizer->setChecked(pT->isColorizerTrigger());
 
         const QColor fgColor(pT->getFgColor());
         const QColor bgColor(pT->getBgColor());
@@ -8756,11 +8720,10 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
         mpTriggersMainArea->pushButtonBgColor->setProperty(cButtonBaseColor, transparentBg ? qsl("transparent") : bgColor.name());
         //: Keep the existing colour on matches to highlight. Use shortest word possible so it fits on the button
         mpTriggersMainArea->pushButtonBgColor->setText(transparentBg ? tr("keep") : QString());
+        describeColourWell(mpTriggersMainArea->pushButtonFgColor);
+        describeColourWell(mpTriggersMainArea->pushButtonBgColor);
 
         checkForMoreThanOneTriggerItem();
-        // The controls the strip reads only signal when their value changes, so
-        // a trigger loaded over one that held the same values needs telling
-        updateTriggerOptionsSummary();
 
         clearDocument(mpSourceEditorEdbee, pT->getScript());
         restoreEditorState(EditorViewType::cmTriggerView, ID);
@@ -10954,7 +10917,10 @@ QWidget* dlgTriggerEditor::currentFormArea() const
 {
     switch (mCurrentView) {
     case EditorViewType::cmTriggerView:
-        return mpTriggersMainArea->widget_right;
+        // The last of the form's own rows, which is as deep as a row hidden
+        // inside the form goes: the pattern list under it is measured by the
+        // column itself
+        return mpWidget_triggerFiringRow;
     case EditorViewType::cmTimerView:
         return mpTimersMainArea;
     case EditorViewType::cmAliasView:
@@ -10977,12 +10943,12 @@ QWidget* dlgTriggerEditor::currentFormArea() const
 // rather than dragged. A third of them, and never less than the floor below
 // which the pane stops being one anything can be typed into.
 //
-// A form column is not owed everything it asks for. The trigger options panel
-// is four cards, which at any ordinary window height come to more than the form
-// has room for - given it, the panel took the pane down to the bare floor and
-// left a third of the pattern column empty under the Add pattern button, with
-// six lines of Lua under that. The column is held to two thirds instead and the
-// panel scrolls inside what it is given. A drag by the reader is theirs and is
+// A form column is not owed everything it asks for. A trigger with a long list
+// of patterns and two option rows wrapped onto several lines each asks for more
+// than any ordinary window has - given it, the form took the pane down to the
+// bare floor and left six lines of Lua under it. The column is held to two
+// thirds instead and the pattern list scrolls inside what it is given, which is
+// what it is in a scroll area for. A drag by the reader is theirs and is
 // not held to this; the third is taken back the next time the seam is placed.
 int dlgTriggerEditor::codePaneFloor(const int paneTotal) const
 {
@@ -10993,11 +10959,11 @@ int dlgTriggerEditor::codePaneFloor(const int paneTotal) const
 // between them: however much the form wants, the code pane keeps its share.
 int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
 {
-    // The form's height changes without a view switch - the trigger options
-    // panel opens inside it - and showing a widget only invalidates the layout
-    // of its immediate parent, so the chain up to the column is told first or
-    // this measures the form as it was before the panel appeared
-    uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
+    // The form's height changes without a view switch - a trigger's option rows
+    // wrap onto another line - and a change inside a widget only invalidates the
+    // layout of its immediate parent, so the chain up to the column is told
+    // first or this measures the form as it was before the row wrapped
+    uiDesign::invalidateLayoutsUpTo(mpWidget_triggerFiringRow, mpNonCodeWidgets);
     int wanted = formColumnHeightForItsWidth();
     // The pattern rows scroll, and a scrolling area answers with the height it
     // was first asked at rather than the height its contents have since grown
@@ -11057,17 +11023,12 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     int wanted = 0;
     const auto dragged = mDraggedFormPaneHeights.constFind(mCurrentView);
     if (dragged != mDraggedFormPaneHeights.constEnd()) {
-        // The height the user put this view's handle at is the base, and
-        // whatever the trigger options panel borrowed on top of it stands - so
-        // an item change in a view with the panel open does not close the room
-        // the panel is being shown in. Their height is held net of any notice,
-        // so whatever one is up now is added back rather than taken out of what
-        // the form was dragged to; see slot_rightSplitterMoved().
-        wanted = std::clamp(dragged.value() + mTriggerOptionsBorrowedHeight + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
+        // The height the user put this view's handle at is the base. It is held
+        // net of any notice, so whatever one is up now is added back rather than
+        // taken out of what the form was dragged to; see
+        // slot_rightSplitterMoved().
+        wanted = std::clamp(dragged.value() + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
     } else {
-        // Nothing is on loan in a view that snaps: what the options panel would
-        // have borrowed for is measured here as part of the form
-        mTriggerOptionsBorrowedHeight = 0;
         wanted = formPaneHeightForItsContents(paneTotal);
     }
     if (wanted == sizes.at(0)) {
@@ -13605,6 +13566,10 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
     // is armed, since arming one is what a click on it does. While one is
     // armed this filter is on the application as well, and both passes name
     // the field as the object the event was sent to.
+    if (mpTriggersMainArea && watched == mpTriggersMainArea->lineEdit_soundFile && handleSoundFileFieldEvent(event)) {
+        return true;
+    }
+
     if (mpKeysMainArea && watched == mpKeysMainArea->lineEdit_key_binding && handleKeyBindingFieldEvent(event)) {
         return true;
     }
@@ -13651,22 +13616,24 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         applyFormPaneSeamPolicy();
     }
 
-    // ...and what the trigger form is given across is what says whether a
-    // pattern row still fits beside the options panel. A window dragged
-    // narrower, a splitter taking the column in, or the form arriving in the
-    // view at a width it was not laid out at all reach it as this one event.
-    // Only a change in the width is that: the height changes below the panel
-    // belong to the seam, and the panel's own opening narrows the rows without
-    // the form losing a pixel.
+    // ...and what the trigger form is given across is what says how many lines
+    // its two option rows have wrapped onto, which is a different height for the
+    // column. A window dragged narrower, a splitter taking the column in, or the
+    // form arriving in the view at a width it was not laid out at all reach it
+    // as this one event. Only a change in the width is that: the height changes
+    // under the rows belong to the seam.
+    //
+    // No loop: the refit moves the seam, which changes what the form is given
+    // down the page and never what it is given across.
     if (watched == mpTriggersMainArea && event->type() == QEvent::Resize) {
         const auto* pResize = static_cast<QResizeEvent*>(event);
         if (pResize->size().width() != pResize->oldSize().width()) {
             // Answered once the resize has finished rather than in the middle of
             // it: this event is delivered from inside the right hand splitter
-            // handing its panes their new geometry, and the fold moves the seam
+            // handing its panes their new geometry, and the refit moves the seam
             // between those same two panes
             QTimer::singleShot(0ms, this, [this]() {
-                holdTriggerOptionsToTheFormsWidth();
+                fitFormPaneToItsContents();
             });
         }
     }
@@ -13906,8 +13873,12 @@ void dlgTriggerEditor::slot_colorizeTriggerSetFgColor()
         mpTriggersMainArea->pushButtonFgColor->setStyleSheet(generateButtonStyleSheet(color));
         mpTriggersMainArea->pushButtonFgColor->setText(QString());
         mpTriggersMainArea->pushButtonFgColor->setProperty(cButtonBaseColor, color.name());
+    } else {
+        // Cancel - nothing was chosen, so nothing is turned on
+        return;
     }
-    // else: Cancel - do nothing
+    describeColourWell(mpTriggersMainArea->pushButtonFgColor);
+    turnTriggerHighlightOn();
 }
 
 // Set the background color that will be applied to text that matches the trigger pattern(s)
@@ -13950,8 +13921,12 @@ void dlgTriggerEditor::slot_colorizeTriggerSetBgColor()
         mpTriggersMainArea->pushButtonBgColor->setStyleSheet(generateButtonStyleSheet(color));
         mpTriggersMainArea->pushButtonBgColor->setText(QString());
         mpTriggersMainArea->pushButtonBgColor->setProperty(cButtonBaseColor, color.name());
+    } else {
+        // Cancel - nothing was chosen, so nothing is turned on
+        return;
     }
-    // else: Cancel - do nothing
+    describeColourWell(mpTriggersMainArea->pushButtonBgColor);
+    turnTriggerHighlightOn();
 }
 
 void dlgTriggerEditor::slot_soundTrigger()
@@ -13963,7 +13938,7 @@ void dlgTriggerEditor::slot_soundTrigger()
     const QString fileName = QFileDialog::getOpenFileName(
             this,
             tr("Choose sound file"),
-            mpTriggersMainArea->lineEdit_soundFile->text().isEmpty() ? lastDir : mpTriggersMainArea->lineEdit_soundFile->text(),
+            triggerSoundFilePath().isEmpty() ? lastDir : triggerSoundFilePath(),
             //: This the list of file extensions that are considered for sounds from triggers, the terms inside of the '('...')' and the ";;" are used programmatically and should not be changed.
             tr("Audio files(*.aac *.mp3 *.mp4a *.oga *.ogg *.pcm *.wav *.wma);;"
                "Advanced Audio Coding-stream(*.aac);;"
@@ -13974,15 +13949,31 @@ void dlgTriggerEditor::slot_soundTrigger()
                "Wave(*.wav);;"
                "Windows Media Audio(*.wma);;"
                "All files(*.*)"));
-    if (!fileName.isEmpty()) {
-        // This will only be executed if the user did not press cancel
-        mpTriggersMainArea->lineEdit_soundFile->setToolTip(fileName);
-        mpTriggersMainArea->lineEdit_soundFile->setText(fileName);
-        mpTriggersMainArea->lineEdit_soundFile->setCursorPosition(mpTriggersMainArea->lineEdit_soundFile->text().length());
-        mpTriggersMainArea->toolButton_clearSoundFile->setEnabled(!mpTriggersMainArea->lineEdit_soundFile->text().isEmpty());
-        lastDir = QFileInfo(fileName).absolutePath();
-        settings.setValue("lastFileDialogLocation", lastDir);
+    if (fileName.isEmpty()) {
+        // The dialogue was cancelled, which changes nothing - not the file, and
+        // not whether the trigger plays one
+        return;
     }
+    lastDir = QFileInfo(fileName).absolutePath();
+    settings.setValue("lastFileDialogLocation", lastDir);
+    acceptTriggerSoundFile(fileName);
+}
+
+// What choosing a file in that dialogue comes to, with the dialogue itself left
+// out of it. Two entries on the undo stack, in the order they are read in: the
+// file, and then the trigger playing it.
+void dlgTriggerEditor::acceptTriggerSoundFile(const QString& fileName)
+{
+    showTriggerSoundFile(fileName);
+    // The field is never typed into, so nothing else would ever tell the save
+    // path the file has changed
+    slot_saveProperty_TriggerSoundFile();
+    // ...and choosing a file is asking for it to be played: the switch beside
+    // the field is what says so, and its own save writes the second entry
+    if (!mpTriggersMainArea->checkBox_soundTrigger->isChecked()) {
+        mpTriggersMainArea->checkBox_soundTrigger->setChecked(true);
+    }
+    slot_itemEdited();
 }
 
 // Get the color from the user to use as that to look for as the foreground in
@@ -14656,8 +14647,8 @@ QColor dlgTriggerEditor::parseButtonStyleSheetColors(const QString& styleSheetTe
 
 void dlgTriggerEditor::slot_toggleGroupBoxColorizeTrigger(const bool state)
 {
-    if (mpTriggersMainArea->groupBox_triggerColorizer->isChecked() != state) {
-        mpTriggersMainArea->groupBox_triggerColorizer->setChecked(state);
+    if (mpTriggersMainArea->checkBox_triggerColorizer->isChecked() != state) {
+        mpTriggersMainArea->checkBox_triggerColorizer->setChecked(state);
     }
 
     if (state) {
@@ -14681,9 +14672,22 @@ void dlgTriggerEditor::slot_toggleGroupBoxColorizeTrigger(const bool state)
 
 void dlgTriggerEditor::slot_clearSoundFile()
 {
-    mpTriggersMainArea->lineEdit_soundFile->clear();
-    mpTriggersMainArea->toolButton_clearSoundFile->setEnabled(false);
-    mpTriggersMainArea->lineEdit_soundFile->setToolTip(utils::richText(tr("Sound file to play when the trigger fires.")));
+    showTriggerSoundFile(QString());
+    slot_saveProperty_TriggerSoundFile();
+}
+
+// A colour chosen in either well is asking for the matches to be recoloured, so
+// the switch beside the wells goes on with it - and its own toggled() is what
+// writes the one undo entry, exactly as a click on the switch would
+void dlgTriggerEditor::turnTriggerHighlightOn()
+{
+    if (mpTriggersMainArea->checkBox_triggerColorizer->isChecked()) {
+        // Already on: the wells are drawn at full strength as it is
+        return;
+    }
+    mpTriggersMainArea->checkBox_triggerColorizer->setChecked(true);
+    slot_toggleGroupBoxColorizeTrigger(true);
+    slot_itemEdited();
 }
 
 // The ID beside a trigger's name, drawn as a pill. The type is set on the two
@@ -14716,298 +14720,285 @@ static int styleEditorIdChip(QFrame* pFrameId, QLabel* pIdLabel, QLabel* pIdNumb
     return chipHeight;
 }
 
-// A card in the settings dialog's language. What makes a group box one is the
-// property the shell stylesheet selects on, so nothing else is set here.
-static QGroupBox* makeEditorCard(QWidget* pParent, const QString& title)
+// One of the two rows a trigger's options are read on. A group box rather than
+// a bare widget, and titled with nothing: a screen reader is told a group box
+// is a grouping and is told nothing at all about a plain QWidget, so the words
+// leading the row - which are a label of the form's, not a title of the box's -
+// would otherwise reach it as loose text. What the box is drawn as is nothing,
+// which the form's stylesheet says through the property set here.
+static QGroupBox* makeEditorOptionRow(QWidget* pParent, const QString& objectName, const QString& accessibleName)
 {
-    auto* pCard = new QGroupBox(title, pParent);
-    pCard->setProperty(uiDesign::scmProp_editorCard, true);
-    pCard->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    return pCard;
+    auto* pRow = new QGroupBox(pParent);
+    pRow->setObjectName(objectName);
+    pRow->setTitle(QString());
+    pRow->setAccessibleName(accessibleName);
+    pRow->setProperty("editorOptionRow", true);
+    auto* pFlow = new uiDesign::FlowLayout(pRow, scmEditorOptionRowGap, scmEditorRowControlGap);
+    pFlow->setContentsMargins(0, 0, 0, 0);
+    // A row inside a column must not widen that column by everything it happens
+    // to hold: it asks for its widest group and wraps for the rest
+    pFlow->setWidthPolicy(uiDesign::FlowLayout::Width::WidestItem);
+    return pRow;
 }
 
-// A QScrollArea asks for a couple of dozen lines however tall the thing inside
-// it is, since the rest of it is what scrolling is for. That is the wrong thing
-// to say here: the panel should be given its whole height wherever the form has
-// it, and only scroll where it does not. So this one asks for the height of
-// what it holds, and goes on reporting a minimum of the scroll bars alone -
-// which is the half that keeps the window free to be dragged smaller.
-class OptionsScrollArea : public QScrollArea
+// One thing on such a row: a control and whatever words or wells belong with
+// it, which come and go onto the next line together rather than being broken up
+static QWidget* makeEditorOptionGroup(QWidget* pRow)
 {
-public:
-    using QScrollArea::QScrollArea;
+    auto* pGroup = new QWidget(pRow);
+    pGroup->setProperty("editorPanelSurface", true);
+    auto* pLayout = new QHBoxLayout(pGroup);
+    pLayout->setContentsMargins(0, 0, 0, 0);
+    pLayout->setSpacing(scmEditorRowControlGap);
+    return pGroup;
+}
 
-    QSize sizeHint() const override
-    {
-        const QSize hint = QScrollArea::sizeHint();
-        const QWidget* pPanel = widget();
-        if (!pPanel) {
-            return hint;
-        }
-        return QSize(hint.width(), pPanel->sizeHint().height() + 2 * frameWidth());
-    }
-};
+// A screen reader reads a control's own description, and falls back to its
+// tooltip only where there is none - so the rich text every tooltip in this
+// window is written in would be read out with its tags. Both are set from the
+// one sentence here, each in the form its reader wants.
+static void describeEditorControl(QWidget* pControl, const QString& name, const QString& tip)
+{
+    pControl->setAccessibleName(name);
+    pControl->setAccessibleDescription(tip);
+    pControl->setToolTip(utils::richText(tip));
+}
 
-// The trigger form's options were a column of centre-titled group boxes, each
-// drawing its own frame around one or two controls. They become four cards
-// built around the .ui file's own controls, so that every object name, every
-// connection and every translated string the move does not touch survives it.
-void dlgTriggerEditor::buildTriggerOptionsPanel()
+// The trigger form's options were a 280px column of four cards beside the
+// pattern list, opened and closed by a button on the head row, folded away by
+// the window being short and again by it being narrow. They are two rows of the
+// form's own grid now, always on show - what the patterns are combined into,
+// and what happens once they match - and each row wraps onto another line
+// rather than being squeezed, so a narrow editor costs the options a line
+// instead of costing the pattern rows their width.
+void dlgTriggerEditor::buildTriggerOptionRows()
 {
     auto* pForm = mpTriggersMainArea;
+    auto* pGrid = qobject_cast<QGridLayout*>(pForm->layout());
+    if (!pGrid) {
+        return;
+    }
 
-    // The strip that stands in for the panel while the panel is away. It goes
-    // over the patterns rather than into the row above them: that row is a
-    // grid the panel shares, and a strip the width of the form belongs under it.
-    mpButton_triggerOptionsSummary = new QToolButton(pForm->widget_left);
-    mpButton_triggerOptionsSummary->setObjectName(qsl("editorOptionsSummary"));
-    // Led by the same sliders glyph the Options button carries, so the strip and
-    // the button it stands in for are read as the one thing
-    mpButton_triggerOptionsSummary->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    // As wide as what it says rather than as wide as the form: a row of readings
-    // stretched across the whole width reads as a bar, which it is not
-    mpButton_triggerOptionsSummary->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-    mpButton_triggerOptionsSummary->setFocusPolicy(Qt::StrongFocus);
-    mpButton_triggerOptionsSummary->setCursor(Qt::PointingHandCursor);
-    //: Tooltip on the strip that stands in for a trigger's options while they are hidden
-    mpButton_triggerOptionsSummary->setToolTip(utils::richText(tr("The trigger's options, put away. Click to show them.")));
-    const int summaryGlyphSize = qRound(mpButton_triggerOptionsSummary->fontMetrics().height() * 0.9);
-    mpButton_triggerOptionsSummary->setIconSize(QSize(summaryGlyphSize, summaryGlyphSize));
-    pForm->verticalLayout_left->insertWidget(0, mpButton_triggerOptionsSummary, 0, Qt::AlignLeft);
-
-    // The button beside the name says what it opens, rather than being an arrow
-    // with nothing on it
-    auto* pToggle = pForm->toolButton_toggleExtraControls;
-    pToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    //: Button beside a trigger's name that shows or hides the trigger's options
-    pToggle->setText(tr("Options"));
-    const int toggleGlyphSize = qRound(pToggle->fontMetrics().height() * 0.9);
-    pToggle->setIconSize(QSize(toggleGlyphSize, toggleGlyphSize));
-    // The stylesheet draws the frame the checked state is read from, which
-    // auto-raise would otherwise take away again
-    pToggle->setAutoRaise(false);
-    // ...and it stands on the row at the height of the fields beside it
-    pToggle->setFixedHeight(uiDesign::scmInputHeight);
-
-    // What the two fields on the row are, said quietly: the words are the
+    // What the two fields on the head row are, said quietly: the words are the
     // form's scaffolding and the name typed beside them is its content, so
     // only one of the two is drawn at full strength
     pForm->label_trigger_name->setProperty("editorRowLabel", true);
     pForm->label_trigger_command->setProperty("editorRowLabel", true);
 
-    // Emptying the column takes every control the .ui file put in it out of a
-    // layout in one go, so only what is nested deeper needs detaching by hand
-    auto* pPanelLayout = qobject_cast<QVBoxLayout*>(pForm->widget_right->layout());
-    while (QLayoutItem* pItem = pPanelLayout->takeAt(0)) {
-        delete pItem;
+    // spinBox_lineMargin is what the save and load paths read, and its special
+    // first value is what says which of the two modes a trigger is in. The two
+    // segments and the box beside them are a view of it, so it stays here, out
+    // of sight, and neither path has to know the form changed.
+    //
+    // The .ui file leaves it on QSpinBox's default maximum of 99.
+    pForm->spinBox_lineMargin->setMaximum(scmEditorMatchWithinLinesMax);
+    pForm->spinBox_lineMargin->hide();
+
+    //: Word leading the row of a trigger form that says how the trigger's patterns are combined
+    mpLabel_matchingRow = new QLabel(tr("Matching"), pForm);
+    //: Word leading the row of a trigger form that says what happens once the trigger has matched
+    mpLabel_firingRow = new QLabel(tr("Firing"), pForm);
+    for (QLabel* pLabel : {mpLabel_matchingRow, mpLabel_firingRow}) {
+        // One word, held to the width of that word by
+        // alignEditorFormLeadLabels(), and to the height of one control - so
+        // that it sits level with the first line of a row that has wrapped onto
+        // several rather than half way down the lot
+        pLabel->setWordWrap(false);
+        pLabel->setFixedHeight(uiDesign::scmInputHeight);
     }
-    // Painted by the cards, not by the column behind them
-    pForm->widget_right->setAutoFillBackground(false);
-    // The cards keep this width whether or not a scroll bar has appeared beside
-    // them: the scroll area is the wider of the two by exactly that bar
-    pForm->widget_right->setFixedWidth(scmEditorTriggerOptionsWidth);
-    // The gap between the patterns and the cards is the grid's, so the cards
-    // themselves have the whole width the column was measured for
-    pPanelLayout->setContentsMargins(0, 0, 0, 0);
-    pPanelLayout->setSpacing(scmEditorColumnSpacing);
 
-    // Four cards are taller than a short window, and a column that reports that
-    // height as a minimum drags the whole window open to fit and will not let it
-    // be dragged back down. The column scrolls instead: it keeps its natural
-    // height wherever there is room for it, and where there is not, the window
-    // stays the size the user put it at and the cards move under the viewport.
-    auto* pGrid = qobject_cast<QGridLayout*>(pForm->layout());
-    mpScrollArea_triggerOptions = new OptionsScrollArea(pForm);
-    mpScrollArea_triggerOptions->setObjectName(qsl("editorTriggerOptionsScroll"));
-    mpScrollArea_triggerOptions->setFrameShape(QFrame::NoFrame);
-    mpScrollArea_triggerOptions->setWidgetResizable(true);
-    // Nothing here moves sideways: the cards are drawn at their own width, with
-    // room of its own for the bar beside them, so the only direction there is
-    // to scroll in is the one they are stacked in
-    mpScrollArea_triggerOptions->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    mpScrollArea_triggerOptions->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    // Room for the cards and, beside them, for the bar that scrolls them: they
-    // are drawn at the width they were laid out for whether or not it is there.
-    // applyEditorShellStyle() sets this again once the bar has been given the
-    // width the rest of the editor's are drawn at.
-    mpScrollArea_triggerOptions->setFixedWidth(scmEditorTriggerOptionsWidth + mpScrollArea_triggerOptions->verticalScrollBar()->sizeHint().width());
-    // The grid cell the .ui file put the column in becomes the scroll area's
-    pGrid->removeWidget(pForm->widget_right);
-    mpScrollArea_triggerOptions->setWidget(pForm->widget_right);
-    pGrid->addWidget(mpScrollArea_triggerOptions, 1, 1);
-    // setWidget() fills both from their own palette, and what shows behind the
-    // cards is the page the form is drawn on
-    mpScrollArea_triggerOptions->viewport()->setAutoFillBackground(false);
-    pForm->widget_right->setAutoFillBackground(false);
+    QGroupBox* pMatchingRow = makeEditorOptionRow(pForm, qsl("editorMatchingRow"), mpLabel_matchingRow->text());
+    QGroupBox* pFiringRow = makeEditorOptionRow(pForm, qsl("editorFiringRow"), mpLabel_firingRow->text());
+    mpWidget_triggerFiringRow = pFiringRow;
 
-    //: Title of the card holding how a trigger's patterns are combined
-    auto* pCard_matching = makeEditorCard(pForm->widget_right, tr("Matching"));
-    auto* pMatchingLayout = new QVBoxLayout(pCard_matching);
-    pMatchingLayout->setContentsMargins(0, 0, 0, 0);
-    pMatchingLayout->setSpacing(scmEditorCardRowGap);
-
-    mpWidget_matchModeRows = new QWidget(pCard_matching);
-    mpWidget_matchModeRows->setProperty("editorPanelSurface", true);
-    auto* pModeLayout = new QVBoxLayout(mpWidget_matchModeRows);
-    pModeLayout->setContentsMargins(0, 0, 0, 0);
-    pModeLayout->setSpacing(scmEditorCardRowGap);
-
-    mpLabel_matchAnyChip = new QLabel(mpWidget_matchModeRows);
-    mpLabel_matchAnyChip->setObjectName(qsl("editorModeChip"));
-    mpLabel_matchAnyChip->setAlignment(Qt::AlignCenter);
-    //: Chip beside the "any pattern" choice for a trigger, naming the boolean operator that mode is. Kept short - it is drawn in a small box.
-    mpLabel_matchAnyChip->setText(tr("OR"));
-    mpLabel_matchAllChip = new QLabel(mpWidget_matchModeRows);
-    mpLabel_matchAllChip->setObjectName(qsl("editorModeChip"));
-    mpLabel_matchAllChip->setAlignment(Qt::AlignCenter);
-    //: Chip beside the "all patterns" choice for a trigger, naming the boolean operator that mode is. Kept short - it is drawn in a small box.
-    mpLabel_matchAllChip->setText(tr("AND"));
+    // The two matching modes, drawn as one control of two joined segments.
+    // They stay radio buttons: a screen reader then says which of the two is
+    // chosen and how many there are, which nothing drawn out of labels can.
+    mpWidget_matchModeRows = makeEditorOptionGroup(pMatchingRow);
+    auto* pSegments = qobject_cast<QHBoxLayout*>(mpWidget_matchModeRows->layout());
+    // The two halves of one control, so nothing stands between them
+    pSegments->setSpacing(0);
 
     mpRadioButton_matchAny = new QRadioButton(mpWidget_matchModeRows);
     mpRadioButton_matchAny->setObjectName(qsl("editorMatchAny"));
-    //: One of a trigger's two matching modes: it fires as soon as any one of its patterns matches
-    mpRadioButton_matchAny->setText(tr("Any pattern fires the trigger"));
+    //: One of a trigger's two matching modes, on a segment of a two-part control: the trigger fires as soon as any one of its patterns matches
+    mpRadioButton_matchAny->setText(tr("Any pattern"));
     mpRadioButton_matchAll = new QRadioButton(mpWidget_matchModeRows);
     mpRadioButton_matchAll->setObjectName(qsl("editorMatchAll"));
-    //: The other matching mode: the trigger fires only once every pattern has matched. The row under it says within how many lines.
-    mpRadioButton_matchAll->setText(tr("All patterns must match"));
-    // What each mode does, said in full: the chip beside a row is two or three
-    // letters, and the row itself is only a little longer
-    //: Tooltip on the OR chip and on the "any pattern" choice beside it, saying what that matching mode does
-    const QString anyToolTip = utils::richText(tr("OR: the trigger fires as soon as any one of its patterns matches a line."));
-    //: Tooltip on the AND chip and on the "all patterns" choice beside it, saying what that matching mode does
-    const QString allToolTip = utils::richText(tr("AND: the trigger only fires once every one of its patterns has matched, within the number of lines set below."));
-    mpRadioButton_matchAny->setToolTip(anyToolTip);
-    mpLabel_matchAnyChip->setToolTip(anyToolTip);
-    mpRadioButton_matchAll->setToolTip(allToolTip);
-    mpLabel_matchAllChip->setToolTip(allToolTip);
+    //: The other matching mode, on the second segment of that control: the trigger fires only once every pattern has matched
+    mpRadioButton_matchAll->setText(tr("All patterns"));
+    describeEditorControl(mpRadioButton_matchAny,
+                          mpRadioButton_matchAny->text(),
+                          //: Tooltip on the "Any pattern" segment of a trigger's matching mode
+                          tr("The trigger fires when any one of its patterns matches."));
+    describeEditorControl(mpRadioButton_matchAll,
+                          mpRadioButton_matchAll->text(),
+                          //: Tooltip on the "All patterns" segment of a trigger's matching mode
+                          tr("Every pattern must match, within the lines set beside this, before the trigger fires. Captures go to multimatches."));
+    mpRadioButton_matchAny->setProperty("editorSegment", true);
+    mpRadioButton_matchAny->setProperty("editorSegmentSide", qsl("first"));
+    mpRadioButton_matchAll->setProperty("editorSegment", true);
+    mpRadioButton_matchAll->setProperty("editorSegmentSide", qsl("last"));
+    for (QRadioButton* pSegment : {mpRadioButton_matchAny, mpRadioButton_matchAll}) {
+        // A stylesheet's min-height is what the contents are given and the
+        // style adds its own margins on top, so the height is set outright
+        pSegment->setFixedHeight(uiDesign::scmInputHeight);
+        pSegments->addWidget(pSegment);
+    }
+    pMatchingRow->layout()->addWidget(mpWidget_matchModeRows);
 
-    auto* pAnyRow = new QHBoxLayout();
-    pAnyRow->setSpacing(scmEditorModeChipGap);
-    pAnyRow->addWidget(mpLabel_matchAnyChip);
-    pAnyRow->addWidget(mpRadioButton_matchAny, 1);
-    pModeLayout->addLayout(pAnyRow);
-
-    auto* pAllRow = new QHBoxLayout();
-    pAllRow->setSpacing(scmEditorModeChipGap);
-    pAllRow->addWidget(mpLabel_matchAllChip);
-    pAllRow->addWidget(mpRadioButton_matchAll, 1);
-    pModeLayout->addLayout(pAllRow);
-
-    mpWidget_matchWithinRow = new QWidget(mpWidget_matchModeRows);
-    mpWidget_matchWithinRow->setProperty("editorPanelSurface", true);
-    auto* pWithinLayout = new QHBoxLayout(mpWidget_matchWithinRow);
-    pWithinLayout->setContentsMargins(0, 0, 0, 0);
-    pWithinLayout->setSpacing(scmEditorModeChipGap);
+    // How many lines the All mode has to see every pattern within. Dimmed
+    // rather than taken away in the Any mode: what it is there for is half of
+    // what the All mode means, and a row that comes and goes with a click moves
+    // everything beside it.
+    mpWidget_matchWithinRow = makeEditorOptionGroup(pMatchingRow);
+    auto* pWithinLayout = qobject_cast<QHBoxLayout*>(mpWidget_matchWithinRow->layout());
     mpSpinBox_matchWithinLines = new QSpinBox(mpWidget_matchWithinRow);
     mpSpinBox_matchWithinLines->setObjectName(qsl("editorMatchWithinLines"));
     mpSpinBox_matchWithinLines->setRange(0, scmEditorMatchWithinLinesMax);
-    // The .ui file leaves spinBox_lineMargin on QSpinBox's default maximum of 99
-    pForm->spinBox_lineMargin->setMaximum(scmEditorMatchWithinLinesMax);
     mpSpinBox_matchWithinLines->setAlignment(Qt::AlignCenter);
     mpSpinBox_matchWithinLines->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
-    mpSpinBox_matchWithinLines->setToolTip(pForm->spinBox_lineMargin->toolTip());
-    //: Completes the matching mode chosen above it - all patterns must match - by saying how many lines they have to match within. %1 is replaced by a number box, and the words around it may be reordered to put it wherever the language needs it.
+    describeEditorControl(mpSpinBox_matchWithinLines,
+                          //: Accessible name of the box holding how many lines a trigger's patterns must all match within
+                          tr("Lines all the patterns must match within"),
+                          //: Tooltip on that box
+                          tr("How many lines after the first match the other patterns may still match on. 0 means the same line."));
+    //: Completes the matching mode chosen beside it - all patterns must match - by saying how many lines they have to match within. %1 is replaced by a number box, and the words around it may be reordered to put it wherever the language needs it.
     uiDesign::buildControlSentenceRow(pWithinLayout, tr("within %1 lines"), mpSpinBox_matchWithinLines);
-    pWithinLayout->addStretch(1);
-    pModeLayout->addWidget(mpWidget_matchWithinRow);
-    pMatchingLayout->addWidget(mpWidget_matchModeRows);
-
-    // Sits outside the rows it explains, so that it stays readable while they
-    // are greyed out - checkForMoreThanOneTriggerItem() is what shows it
-    mpLabel_matchModeHint = new QLabel(pCard_matching);
-    mpLabel_matchModeHint->setProperty("editorFieldLabel", true);
-    mpLabel_matchModeHint->setWordWrap(true);
-    //: Caption in a trigger's Matching card, shown while the trigger has only one pattern and the OR / AND choice is therefore greyed out
-    mpLabel_matchModeHint->setText(tr("Add a second pattern to choose how they are combined."));
-    pMatchingLayout->addWidget(mpLabel_matchModeHint);
+    pMatchingRow->layout()->addWidget(mpWidget_matchWithinRow);
 
     //: Trigger option, was called "match all": the script runs once for every place in the line the pattern matches, rather than once for the first
-    pForm->checkBox_perlSlashGOption->setText(tr("Match every occurrence in a line"));
-    pMatchingLayout->addWidget(pForm->checkBox_perlSlashGOption);
+    pForm->checkBox_perlSlashGOption->setText(tr("Every occurrence in a line"));
+    describeEditorControl(pForm->checkBox_perlSlashGOption,
+                          pForm->checkBox_perlSlashGOption->text(),
+                          //: Tooltip on that option
+                          tr("Fire once for each place the pattern matches on a line, not only the first."));
+    pMatchingRow->layout()->addWidget(pForm->checkBox_perlSlashGOption);
 
-    //: Title of the card holding how long a trigger goes on firing for
-    auto* pCard_firing = makeEditorCard(pForm->widget_right, tr("Firing"));
-    auto* pFiringLayout = new QVBoxLayout(pCard_firing);
-    pFiringLayout->setContentsMargins(0, 0, 0, 0);
-    pFiringLayout->setSpacing(scmEditorCardRowGap);
+    // Last on the row, and only there while there is nothing to combine:
+    // checkForMoreThanOneTriggerItem() is what shows it, and it says why the
+    // segments beside it are greyed out
+    mpLabel_matchModeHint = new QLabel(pMatchingRow);
+    mpLabel_matchModeHint->setProperty("editorRowLabel", true);
+    mpLabel_matchModeHint->setWordWrap(false);
+    //: Caption on a trigger's Matching row, shown while the trigger has only one pattern and the Any / All choice is therefore greyed out
+    mpLabel_matchModeHint->setText(tr("Add a second pattern to choose how they are combined."));
+    pMatchingRow->layout()->addWidget(mpLabel_matchModeHint);
 
-    auto* pStayOpenRow = new QHBoxLayout();
-    pStayOpenRow->setSpacing(scmEditorModeChipGap);
-    // The one control that is nested deeper than the column just emptied
-    uiDesign::detachFromLayout(pForm->spinBox_stayOpen);
+    // How long the trigger goes on firing for, said as a sentence round the
+    // .ui file's own spin box
+    QWidget* pStayOpenGroup = makeEditorOptionGroup(pFiringRow);
     pForm->spinBox_stayOpen->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
+    describeEditorControl(pForm->spinBox_stayOpen,
+                          //: Accessible name of the box holding how many more lines a trigger keeps firing for
+                          tr("Lines to keep firing for after a match"),
+                          //: Tooltip on that box
+                          tr("After a match, keep running this trigger's script on the next lines too."));
     //: %1 is replaced by a number box holding how many extra lines the trigger keeps firing for, past the one it matched on. The words around it may be reordered to put it wherever the language needs it.
-    uiDesign::buildControlSentenceRow(pStayOpenRow, tr("Keep firing for %1 more lines"), pForm->spinBox_stayOpen);
-    pStayOpenRow->addStretch(1);
-    pFiringLayout->addLayout(pStayOpenRow);
+    uiDesign::buildControlSentenceRow(qobject_cast<QHBoxLayout*>(pStayOpenGroup->layout()), tr("Keep firing for %1 more lines"), pForm->spinBox_stayOpen);
+    pFiringRow->layout()->addWidget(pStayOpenGroup);
 
     //: Trigger option, was called "only pass matches": the trigger's children see only the part of the line its pattern matched
     pForm->checkBox_filterTrigger->setText(tr("Only pass matches to children"));
-    pFiringLayout->addWidget(pForm->checkBox_filterTrigger);
+    describeEditorControl(pForm->checkBox_filterTrigger,
+                          pForm->checkBox_filterTrigger->text(),
+                          //: Tooltip on that option
+                          tr("Child triggers see only the text that matched, not the whole line."));
+    pFiringRow->layout()->addWidget(pForm->checkBox_filterTrigger);
 
-    // The last two cards are the group boxes themselves: their check box is the
-    // switch the card is titled with, which is what a checkable card is
-    auto* pCard_sound = pForm->groupBox_soundTrigger;
-    pCard_sound->setProperty(uiDesign::scmProp_editorCard, true);
-    pCard_sound->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    //: Title of the card that plays a sound when a trigger fires; it is also the switch that turns the sound on
-    pCard_sound->setTitle(tr("Play a sound"));
-    auto* pSoundGrid = pForm->gridLayout_groupBox_soundTrigger;
-    while (QLayoutItem* pItem = pSoundGrid->takeAt(0)) {
-        delete pItem;
-    }
-    pSoundGrid->setContentsMargins(0, 0, 0, 0);
-    pSoundGrid->setHorizontalSpacing(scmEditorModeChipGap);
-    pSoundGrid->setVerticalSpacing(scmEditorModeChipGap);
-    // What is playing comes first; the button that changes it reads as the
-    // answer to a file already named
-    pSoundGrid->addWidget(pForm->lineEdit_soundFile, 0, 0);
-    pSoundGrid->addWidget(pForm->toolButton_clearSoundFile, 0, 1);
-    pSoundGrid->addWidget(pForm->pushButtonSound, 1, 0, 1, 2);
-    pSoundGrid->setColumnStretch(0, 1);
-    pSoundGrid->setColumnStretch(1, 0);
-    pSoundGrid->setRowStretch(0, 0);
-    pSoundGrid->setRowStretch(1, 0);
-    pForm->lineEdit_soundFile->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    // The sound the trigger plays, as a switch and the file it names. Unlike
+    // the checkable card this was, the field beside the switch is live while
+    // the switch is off: choosing a file is how the switch is turned on.
+    QWidget* pSoundGroup = makeEditorOptionGroup(pFiringRow);
+    auto* pSoundLayout = qobject_cast<QHBoxLayout*>(pSoundGroup->layout());
+    //: Trigger option: a sound file is played whenever the trigger fires
+    pForm->checkBox_soundTrigger->setText(tr("Play a sound"));
+    describeEditorControl(pForm->checkBox_soundTrigger,
+                          pForm->checkBox_soundTrigger->text(),
+                          //: Tooltip on that option
+                          tr("Play a sound file whenever the trigger fires."));
+    QLineEdit* pSoundField = pForm->lineEdit_soundFile;
+    pSoundField->setObjectName(qsl("editorSoundFile"));
+    pSoundField->setReadOnly(true);
+    pSoundField->setFocusPolicy(Qt::StrongFocus);
+    pSoundField->setCursor(Qt::PointingHandCursor);
+    pSoundField->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    pSoundField->setFixedWidth(scmEditorSoundFileWidth);
+    //: Stands in the sound file field for a trigger that plays no sound file yet
+    pSoundField->setPlaceholderText(tr("No sound file"));
+    describeEditorControl(pSoundField,
+                          //: Accessible name of the field naming the sound file a trigger plays
+                          tr("Sound file"),
+                          //: Tooltip on that field, which opens the file chooser when it is clicked
+                          tr("Choose the sound file to play. Choosing one turns the sound on."));
+    pSoundField->installEventFilter(this);
+    describeEditorControl(pForm->toolButton_clearSoundFile,
+                          //: Accessible name of the cross that takes the sound file off a trigger
+                          tr("Remove the sound file"),
+                          //: Tooltip on that cross
+                          tr("Forget the sound file."));
+    pForm->toolButton_clearSoundFile->setAutoRaise(true);
+    pForm->toolButton_clearSoundFile->setFocusPolicy(Qt::StrongFocus);
+    pSoundLayout->addWidget(pForm->checkBox_soundTrigger);
+    pSoundLayout->addWidget(pSoundField);
+    pSoundLayout->addWidget(pForm->toolButton_clearSoundFile);
+    pFiringRow->layout()->addWidget(pSoundGroup);
 
-    auto* pCard_highlight = pForm->groupBox_triggerColorizer;
-    pCard_highlight->setProperty(uiDesign::scmProp_editorCard, true);
-    pCard_highlight->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    //: Title of the card that recolours what a trigger matched; it is also the switch that turns the recolouring on
-    pCard_highlight->setTitle(tr("Highlight matches"));
-    auto* pColorGrid = pForm->gridLayout;
-    pColorGrid->setContentsMargins(0, 0, 0, 0);
-    pColorGrid->setHorizontalSpacing(scmEditorModeChipGap);
-    pColorGrid->setVerticalSpacing(4);
-    pColorGrid->setColumnStretch(0, 1);
-    pColorGrid->setColumnStretch(1, 1);
-    pForm->label_foregroundColor->setProperty("editorFieldLabel", true);
-    pForm->label_backgroundColor->setProperty("editorFieldLabel", true);
+    // ...and the colours the matched text is redrawn in, on the same terms:
+    // choosing one in either well turns the highlight on
+    QWidget* pHighlightGroup = makeEditorOptionGroup(pFiringRow);
+    auto* pHighlightLayout = qobject_cast<QHBoxLayout*>(pHighlightGroup->layout());
+    //: Trigger option: the text the trigger matched is redrawn in the colours beside this
+    pForm->checkBox_triggerColorizer->setText(tr("Highlight matches"));
+    describeEditorControl(pForm->checkBox_triggerColorizer,
+                          pForm->checkBox_triggerColorizer->text(),
+                          //: Tooltip on that option
+                          tr("Recolour the matched text where it appears in the console."));
+    describeEditorControl(pForm->pushButtonFgColor,
+                          //: Accessible name of the well holding the colour a trigger's matched text is drawn in
+                          tr("Foreground colour"),
+                          //: Tooltip on that well
+                          tr("The ink the matched text is drawn in. Choose Keep in the picker to leave the game's own."));
+    describeEditorControl(pForm->pushButtonBgColor,
+                          //: Accessible name of the well holding the colour drawn behind a trigger's matched text
+                          tr("Background colour"),
+                          //: Tooltip on that well
+                          tr("The colour behind the matched text. Choose Keep in the picker to leave the game's own."));
     // A colour button says what it is by the colour it is filled with, so it is
     // sized as a well. slot_triggerSelected() still writes "keep" across one
     // that has no colour to show, which is the only thing it could say.
     for (QPushButton* pWell : {pForm->pushButtonFgColor, pForm->pushButtonBgColor}) {
-        pWell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        pWell->setFixedHeight(scmEditorColorWellHeight);
+        pWell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        pWell->setFixedSize(scmEditorColorWellWidth, scmEditorColorWellHeight);
+        pHighlightLayout->addWidget(pWell);
+    }
+    pHighlightLayout->insertWidget(0, pForm->checkBox_triggerColorizer);
+    pFiringRow->layout()->addWidget(pHighlightGroup);
+
+    // The words a sentence is built out of are the form's scaffolding, the way
+    // the labels leading its rows are, and are written in the same quiet ink
+    for (QWidget* pRow : {static_cast<QWidget*>(mpWidget_matchWithinRow), pStayOpenGroup}) {
+        for (QLabel* pWord : pRow->findChildren<QLabel*>()) {
+            pWord->setProperty("editorRowLabel", true);
+        }
     }
 
-    // spinBox_lineMargin is what the save and load paths read, and its special
-    // first value is what says which of the two modes a trigger is in. The
-    // radio pair is a view of it, so it stays here, out of sight, and neither
-    // path has to know the form changed. The same for the group box that used
-    // to hold the fire length spin box.
-    for (QGroupBox* pRetired : {pForm->groupBox_multiLineTrigger, pForm->groupBox_stayOpen}) {
-        pRetired->hide();
+    // The .ui grid holds the head row at 0 and the pattern list at 1; the two
+    // option rows belong between them, each led by its own word in a column of
+    // its own that alignEditorFormLeadLabels() gives the width every other
+    // form's lead column has.
+    pGrid->removeWidget(pForm->widget_left);
+    pGrid->addWidget(mpLabel_matchingRow, 1, 0, Qt::AlignLeft | Qt::AlignTop);
+    pGrid->addWidget(pMatchingRow, 1, 1);
+    pGrid->addWidget(mpLabel_firingRow, 2, 0, Qt::AlignLeft | Qt::AlignTop);
+    pGrid->addWidget(pFiringRow, 2, 1);
+    pGrid->addWidget(pForm->widget_left, 3, 0, 1, 2);
+    for (int row = 0; row < 3; ++row) {
+        pGrid->setRowStretch(row, 0);
     }
-
-    pPanelLayout->addWidget(pCard_matching);
-    pPanelLayout->addWidget(pCard_firing);
-    pPanelLayout->addWidget(pCard_sound);
-    pPanelLayout->addWidget(pCard_highlight);
-    // slot_rightSplitterMoved reads this spacer's height to tell whether the
-    // form still has room for the panel, so it stays last in the column
-    pPanelLayout->addWidget(pForm->widget_verticalSpacer_right, 1);
+    // The pattern list is the one thing on this form that uses whatever room
+    // the reader gives the column
+    pGrid->setRowStretch(3, 1);
 
     // The radios write the mode into spinBox_lineMargin, which is where the
     // trigger is saved from - so slot_saveProperty_TriggerLineMargin and its
@@ -15021,14 +15012,11 @@ void dlgTriggerEditor::buildTriggerOptionsPanel()
         }
     });
     // ...and the other way round, so that loading a trigger or undoing an edit
-    // shows in the radios without either path knowing they are there
+    // shows in the segments without either path knowing they are there
     connect(mpTriggersMainArea->spinBox_lineMargin, qOverload<int>(&QSpinBox::valueChanged), this, &dlgTriggerEditor::reflectTriggerMatchMode);
 
-    connect(mpTriggersMainArea->spinBox_stayOpen, qOverload<int>(&QSpinBox::valueChanged), this, &dlgTriggerEditor::updateTriggerOptionsSummary);
-    connect(mpTriggersMainArea->groupBox_soundTrigger, &QGroupBox::toggled, this, &dlgTriggerEditor::updateTriggerOptionsSummary);
-    connect(mpTriggersMainArea->groupBox_triggerColorizer, &QGroupBox::toggled, this, &dlgTriggerEditor::updateTriggerOptionsSummary);
-
     reflectTriggerMatchMode();
+    showTriggerSoundFile(QString());
 }
 
 // The row an item's name is typed on, built out of the controls the .ui file
@@ -15181,7 +15169,7 @@ void dlgTriggerEditor::buildTimerIntervalRow()
     mpWidget_timerInterval->setProperty("editorPanelSurface", true);
     auto* pRow = new QHBoxLayout(mpWidget_timerInterval);
     pRow->setContentsMargins(0, 0, 0, 0);
-    pRow->setSpacing(scmEditorModeChipGap);
+    pRow->setSpacing(scmEditorRowControlGap);
 
     int row = 0;
     int column = 0;
@@ -15310,7 +15298,7 @@ void dlgTriggerEditor::buildKeyBindingRow()
     mpWidget_keyBindingRow = pRowWidget;
     auto* pRow = new QHBoxLayout(pRowWidget);
     pRow->setContentsMargins(0, 0, 0, 0);
-    pRow->setSpacing(scmEditorModeChipGap);
+    pRow->setSpacing(scmEditorRowControlGap);
     uiDesign::detachFromLayout(pField);
     pRow->addWidget(pField, 1);
     pRow->addWidget(mpButton_keyClear);
@@ -15362,7 +15350,7 @@ void dlgTriggerEditor::buildVariableTypeRows()
     pRowWidget->setProperty("editorPanelSurface", true);
     auto* pRow = new QHBoxLayout(pRowWidget);
     pRow->setContentsMargins(0, 0, 0, 0);
-    pRow->setSpacing(scmEditorModeChipGap);
+    pRow->setSpacing(scmEditorRowControlGap);
     for (QWidget* pControl : {static_cast<QWidget*>(mpVarsMainArea->comboBox_variable_key_type),
                               static_cast<QWidget*>(mpVarsMainArea->label_variable_value),
                               static_cast<QWidget*>(mpVarsMainArea->comboBox_variable_value_type)}) {
@@ -15408,7 +15396,7 @@ void dlgTriggerEditor::buildActionRows()
     mpWidget_actionRotationRow = pRowWidget;
     auto* pRow = new QHBoxLayout(pRowWidget);
     pRow->setContentsMargins(0, 0, 0, 0);
-    pRow->setSpacing(scmEditorModeChipGap);
+    pRow->setSpacing(scmEditorRowControlGap);
     for (QWidget* pControl : {static_cast<QWidget*>(mpActionsMainArea->comboBox_action_button_rotation), static_cast<QWidget*>(mpActionsMainArea->checkBox_action_button_isPushDown)}) {
         // The .ui grid still holds these, and a widget added to a second layout
         // while a first one has it is a warning per widget on the console
@@ -15566,7 +15554,9 @@ bool dlgTriggerEditor::handleKeyBindingFieldEvent(QEvent* pEvent)
 // written in.
 QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
 {
-    return {mpAliasMainArea->label_alias_name,
+    return {mpLabel_matchingRow,
+            mpLabel_firingRow,
+            mpAliasMainArea->label_alias_name,
             mpTimersMainArea->label_timer_name,
             mpKeysMainArea->label_key_name,
             mpScriptsMainArea->label_script_name,
@@ -15598,7 +15588,9 @@ QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
 // with the rest so that a field is typed at the same x on all seven forms.
 QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
 {
-    return {mpAliasMainArea->label_alias_pattern,
+    return {mpLabel_matchingRow,
+            mpLabel_firingRow,
+            mpAliasMainArea->label_alias_pattern,
             mpTimersMainArea->label_timer_time,
             mpKeysMainArea->label_key_binding,
             mpScriptsMainArea->label_script_registered_event_handlers,
@@ -15666,9 +15658,9 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
     }
 }
 
-// spinBox_lineMargin has changed - by a load, an undo, or the radios below -
-// so the view of it catches up. Blocked both ways round: the radios write back
-// into that same spin box.
+// spinBox_lineMargin has changed - by a load, an undo, or the segments beside
+// it - so the view of it catches up. Blocked both ways round: the segments
+// write back into that same spin box.
 void dlgTriggerEditor::reflectTriggerMatchMode()
 {
     if (!mpRadioButton_matchAny) {
@@ -15683,326 +15675,101 @@ void dlgTriggerEditor::reflectTriggerMatchMode()
         const QSignalBlocker withinBlocker(mpSpinBox_matchWithinLines);
         mpRadioButton_matchAny->setChecked(!allMode);
         mpRadioButton_matchAll->setChecked(allMode);
-        // The OR mode carries no line count; what the AND mode starts from is
+        // The Any mode carries no line count; what the All mode starts from is
         // what the old spin box stepped up to from its special first value
         mpSpinBox_matchWithinLines->setValue(std::max(0, lineDelta));
     }
-    mpWidget_matchWithinRow->setEnabled(allMode);
-
-    restyleTriggerMatchModeChips();
-    updateTriggerOptionsSummary();
+    // Dimmed rather than hidden, and never offered where there is nothing to
+    // combine: checkForMoreThanOneTriggerItem() holds the segments to that, and
+    // the line count is part of the choice they make
+    mpWidget_matchWithinRow->setEnabled(allMode && mpWidget_matchModeRows->isEnabled());
 }
 
-// The chosen mode's chip carries the accent. Both are as wide as the wider of
-// the two words, measured after the stylesheet rather than before it, since
-// that is what says which font they are drawn in.
-void dlgTriggerEditor::restyleTriggerMatchModeChips()
+// What the sound file field says, which is the file's name, and what it stands
+// for, which is the whole path. The path is what the save and load paths read,
+// so it is kept on the field rather than shown in it: a path drawn into 170px
+// is the tail of a directory nobody typed.
+void dlgTriggerEditor::showTriggerSoundFile(const QString& path)
 {
-    if (!mpLabel_matchAnyChip) {
-        return;
-    }
-
-    const QFontMetrics chipMetrics(mpLabel_matchAnyChip->font());
-    const int chipWidth = std::max(chipMetrics.horizontalAdvance(mpLabel_matchAnyChip->text()), chipMetrics.horizontalAdvance(mpLabel_matchAllChip->text())) + 2 * scmEditorModeChipPadding;
-    for (QLabel* pChip : {mpLabel_matchAnyChip, mpLabel_matchAllChip}) {
-        pChip->setFixedWidth(chipWidth);
-    }
-
-    mpLabel_matchAnyChip->setProperty("editorModeChipActive", mpRadioButton_matchAny->isChecked());
-    mpLabel_matchAllChip->setProperty("editorModeChipActive", mpRadioButton_matchAll->isChecked());
-    for (QLabel* pChip : {mpLabel_matchAnyChip, mpLabel_matchAllChip}) {
-        uiDesign::repolish(pChip);
-    }
-
-    // The line under the AND choice starts where that choice's words do: past
-    // the chip, and past whatever the style leaves after a radio's indicator
-    if (QLayout* pWithinLayout = mpWidget_matchWithinRow->layout()) {
-        const int radioTextInset = style()->pixelMetric(QStyle::PM_ExclusiveIndicatorWidth) + style()->pixelMetric(QStyle::PM_CheckBoxLabelSpacing);
-        pWithinLayout->setContentsMargins(chipWidth + scmEditorModeChipGap + radioTextInset, 0, 0, 0);
-    }
+    QLineEdit* pField = mpTriggersMainArea->lineEdit_soundFile;
+    pField->setProperty(cSoundFilePath, path);
+    const QString name = path.isEmpty() ? QString() : QFileInfo(path).fileName();
+    pField->setText(pField->fontMetrics().elidedText(name, Qt::ElideMiddle, scmEditorSoundFileWidth - scmEditorSoundFileTextInset));
+    //: Tooltip on the sound file field, which opens the file chooser when it is clicked
+    const QString tip = tr("Choose the sound file to play. Choosing one turns the sound on.");
+    pField->setToolTip(utils::richText(path.isEmpty() ? tip : qsl("%1<br>%2").arg(path.toHtmlEscaped(), tip)));
+    // A screen reader is told which file this is rather than the sentence about
+    // choosing one, which the name it already carries says
+    pField->setAccessibleDescription(path.isEmpty() ? pField->placeholderText() : name);
+    // Nothing to forget until there is a file to forget
+    mpTriggersMainArea->toolButton_clearSoundFile->setVisible(!path.isEmpty());
 }
 
-// What the options hold, for the strip that shows while they do not
-void dlgTriggerEditor::updateTriggerOptionsSummary()
+QString dlgTriggerEditor::triggerSoundFilePath() const
 {
-    if (!mpButton_triggerOptionsSummary) {
-        return;
-    }
-
-    // Each reading is a whole phrase of its own rather than a fragment slotted
-    // into a frame, so a translator is never handed half a sentence
-    const auto* pForm = mpTriggersMainArea;
-    QStringList readings;
-    if (pForm->spinBox_lineMargin->value() < 0) {
-        //: One reading of a trigger's matching mode on the strip that summarises its options: any one pattern is enough
-        readings << tr("OR mode");
-    } else {
-        //: The other reading of a trigger's matching mode on that strip: every pattern has to match
-        readings << tr("AND mode");
-    }
-
-    //: Part of the strip that summarises a trigger's options: how many lines past the one it matched on it goes on firing for. %n is that number, which can be zero.
-    readings << tr("fires %n extra line(s)", nullptr, pForm->spinBox_stayOpen->value());
-
-    if (pForm->groupBox_soundTrigger->isChecked()) {
-        //: Part of the strip that summarises a trigger's options: it plays a sound
-        readings << tr("sound on");
-    } else {
-        //: Part of the strip that summarises a trigger's options: it plays no sound
-        readings << tr("no sound");
-    }
-
-    if (pForm->groupBox_triggerColorizer->isChecked()) {
-        //: Part of the strip that summarises a trigger's options: it recolours what it matched
-        readings << tr("highlight on");
-    } else {
-        //: Part of the strip that summarises a trigger's options: it does not recolour what it matched
-        readings << tr("no highlight");
-    }
-
-    mpButton_triggerOptionsSummary->setText(readings.join(qsl(" - ")));
+    return mpTriggersMainArea->lineEdit_soundFile->property(cSoundFilePath).toString();
 }
 
-// The one way the panel is opened or closed on purpose, so that the Options
-// button and the summary strip mean the same thing and leave the session
-// holding the same answer
-void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
+// The field opens the chooser rather than being typed into, the way the key
+// binding field arms the key grab: a click on it, or Return or Space while it
+// holds the keyboard
+bool dlgTriggerEditor::handleSoundFileFieldEvent(QEvent* pEvent)
 {
-    mShowAllTriggerControls = shown;
-    // Whatever the drag or the window left recorded is answered here instead: a
-    // panel opened or closed on purpose is no longer one the room decides about
-    mTriggerOptionsAutoHiddenAtPaneHeight = 0;
-    mTriggerOptionsAutoHiddenAtColumnWidth = 0;
-    slot_showAllTriggerControls(shown);
-    refitSplitterForTriggerOptions(shown);
-}
-
-// The panel is as tall as its four cards, and the form holding it is one pane
-// of the right hand splitter. Only the deliberate open and close come through
-// here - the space-driven auto-collapse in slot_rightSplitterMoved happens
-// during a drag, and moving the splitter under the user would fight it.
-//
-// In a view the user has not dragged, an open or a close is only a change in
-// what the form holds, and the snap answers both directions on its own. It is
-// where they have dragged one that a height has to be borrowed: their height is
-// the base, so opening the panel where it does not fit takes the difference off
-// the code pane below, down to the share that pane keeps, and closing it hands
-// back what it took and no more.
-void dlgTriggerEditor::refitSplitterForTriggerOptions(const bool shown)
-{
-    if (mCurrentView != EditorViewType::cmTriggerView) {
-        return;
-    }
-    if (!mDraggedFormPaneHeights.contains(EditorViewType::cmTriggerView)) {
-        mTriggerOptionsBorrowedHeight = 0;
-        fitFormPaneToItsContents();
-        return;
-    }
-    QList<int> sizes = splitter_right->sizes();
-    if (sizes.size() < 2) {
-        return;
-    }
-
-    if (!shown) {
-        if (mTriggerOptionsBorrowedHeight <= 0) {
-            return;
+    switch (pEvent->type()) {
+    case QEvent::MouseButtonPress:
+        if (static_cast<QMouseEvent*>(pEvent)->button() == Qt::LeftButton) {
+            mpTriggersMainArea->lineEdit_soundFile->setFocus(Qt::MouseFocusReason);
+            slot_soundTrigger();
+            return true;
         }
-        const int handedBack = std::min(mTriggerOptionsBorrowedHeight, sizes.at(0));
-        mTriggerOptionsBorrowedHeight = 0;
-        sizes[0] -= handedBack;
-        sizes[1] += handedBack;
-        splitter_right->setSizes(sizes);
-        return;
-    }
+        return false;
 
-    // What the form needs with the panel on show, which by now it is - but only
-    // after the chain above the panel has been told, or the first open measures
-    // the form as it was without it: showing a widget invalidates the layout of
-    // its immediate parent and no more
-    uiDesign::invalidateLayoutsUpTo(mpTriggersMainArea->widget_right, mpNonCodeWidgets);
-    const int wanted = formColumnHeightForItsWidth();
-    if (sizes.at(0) >= wanted) {
-        return;
-    }
+    case QEvent::KeyPress:
+        switch (static_cast<QKeyEvent*>(pEvent)->key()) {
+        case Qt::Key_Return:
+            [[fallthrough]];
+        case Qt::Key_Enter:
+            [[fallthrough]];
+        case Qt::Key_Space:
+            slot_soundTrigger();
+            return true;
+        default:
+            return false;
+        }
 
-    const int spare = std::max(0, sizes.at(1) - codePaneFloor(sizes.at(0) + sizes.at(1)));
-    const int borrowed = std::min(wanted - sizes.at(0), spare);
-    if (borrowed <= 0) {
-        return;
+    default:
+        return false;
     }
-    mTriggerOptionsBorrowedHeight = borrowed;
-    sizes[0] += borrowed;
-    sizes[1] -= borrowed;
-    splitter_right->setSizes(sizes);
 }
 
-void dlgTriggerEditor::slot_showAllTriggerControls(const bool isShown)
+// What a colour well is filled with, said to a screen reader: a well says what
+// it holds by its colour alone, and "keep" is written across it only while it
+// has none to show
+void dlgTriggerEditor::describeColourWell(QPushButton* pWell)
 {
-    if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked() != isShown) {
-        mpTriggersMainArea->toolButton_toggleExtraControls->setChecked(isShown);
-    }
-
-    // Set unconditionally: isVisible() is also false while the whole triggers
-    // main area is hidden (e.g. during construction), which would skip the
-    // explicit hide needed to keep the extra controls hidden once it shows.
-    // The scroll area is what holds the grid column open, so it is the one that
-    // has to go; the panel inside it goes with it either way.
-    mpTriggersMainArea->widget_right->setVisible(isShown);
-    if (mpScrollArea_triggerOptions) {
-        mpScrollArea_triggerOptions->setVisible(isShown);
-    }
-
-    // The strip stands in for the panel whenever the panel is away, whether
-    // that was asked for or the form simply ran out of room for it
-    if (mpButton_triggerOptionsSummary) {
-        mpButton_triggerOptionsSummary->setVisible(!isShown);
-        updateTriggerOptionsSummary();
-    }
-
-    updatePatternTabOrder();
-}
-
-// The other direction the panel runs out of room in. Its column keeps
-// scmEditorTriggerOptionsWidth whatever the window does, so it is the pattern
-// rows that pay for a narrow editor: at 1000px they were left less than one
-// row's minimum, the list grew a horizontal scroll bar, and the fields under it
-// showed a few characters at a time. Nothing folded the panel for that - the
-// fold in slot_rightSplitterMoved() is the seam's, and answers to a drag of the
-// code heading and to nothing else.
-//
-// Same shape as that one: the reader's own preference is left alone, what the
-// fold answered to is written down, and the panel only comes back a band past
-// it. What is read here is the width the *form* was given, since that is the
-// one number the fold itself does not move.
-//
-// Only a change in that width comes through here. Opening the panel takes the
-// same room off the rows, and folding it away for that would be the Options
-// button undoing itself in front of the reader.
-void dlgTriggerEditor::holdTriggerOptionsToTheFormsWidth()
-{
-    if (mCurrentView != EditorViewType::cmTriggerView || !mEditorFirstShown || mFoldingTriggerOptionsForWidth) {
+    const QString colour = pWell->property(cButtonBaseColor).toString();
+    if (colour.isEmpty() || colour == QLatin1String("transparent")) {
+        //: Read out for a trigger's colour well that leaves the game's own colour alone
+        pWell->setAccessibleDescription(tr("keeps the game's colour"));
         return;
     }
-    if (!mpTriggersMainArea->isVisible() || !mpScrollArea || !mpWidget_triggerItems) {
-        return;
-    }
-    // What the rows cannot do without. The list is resized to the viewport it
-    // scrolls in but never below this, so it is also the width at which the
-    // horizontal bar appears - the fold and the bar answer to the same number.
-    const int aRowNeeds = mpWidget_triggerItems->minimumSizeHint().width();
-    const int formWidth = mpTriggersMainArea->width();
-    if (aRowNeeds <= 0 || formWidth <= 0) {
-        return;
-    }
-
-    mFoldingTriggerOptionsForWidth = true;
-    if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked()) {
-        // The room a row has with the panel beside it, which is the room it is
-        // actually drawn in
-        const int roomForARow = mpScrollArea->viewport()->width();
-        if (roomForARow < aRowNeeds) {
-            mTriggerOptionsAutoHiddenAtColumnWidth = formWidth + (aRowNeeds - roomForARow);
-            slot_showAllTriggerControls(false);
-            // The form is one panel shorter than it was, which is a different
-            // split - the same refit a deliberate close is followed by
-            refitSplitterForTriggerOptions(false);
-        }
-    } else if (mShowAllTriggerControls && mTriggerOptionsAutoHiddenAtColumnWidth > 0 && formWidth >= mTriggerOptionsAutoHiddenAtColumnWidth + scmEditorOptionsRestoreBand) {
-        // The width has stopped being what keeps the panel away, which is not
-        // the same as the panel coming back: the fold above the code pane keeps
-        // a record of its own and either of the two holds the panel on its own.
-        // Each of them lets go of its own record as its own room comes back, so
-        // that the last one to do so is the one that opens the panel.
-        mTriggerOptionsAutoHiddenAtColumnWidth = 0;
-        if (mTriggerOptionsAutoHiddenAtPaneHeight == 0) {
-            slot_showAllTriggerControls(true);
-            refitSplitterForTriggerOptions(true);
-        }
-    }
-    mFoldingTriggerOptionsForWidth = false;
+    pWell->setAccessibleDescription(colour);
 }
 
 void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
 {
-    /*
-     * With all widgets shown:              With some hidden:
-     *  +--------------------------------+   +--------------------------------+
-     *  | name / control toggle /command |   | name / control toggle /command |
-     *--+----------------------+---------+ --+----------------------+---------+
-     *  |+--------------------+|         |   |+------------------------------+|
-     *w_||                    ||         |   ||                              ||
-     *il||    scroll area     || widget  |   ||         scroll area          ||
-     *de||                    || _right  |   ||                              ||
-     *gf||                    ||         |   |+------------------------------+|
-     *et||                    ||         | --+--------------------------------+
-     *t ||                    ||         |
-     *=>|+--------------------+|         |
-     *--+----------------------+---------+
-     */
-    const int hysteresis = 10;
     // splitterMoved() comes from a drag and never from setSizes(), so this is
     // the one place the user's own height for a view is heard. From here on
     // that view keeps it as items change, until Mudlet is restarted; every
     // other view goes on snapping to what its item holds.
     const QList<int> movedTo = splitter_right->sizes();
-    const int formPaneHeight = movedTo.isEmpty() ? 0 : movedTo.constFirst();
     if (mCurrentView != EditorViewType::cmUnknownView && !movedTo.isEmpty()) {
         // Net of whatever notice was up while they dragged. A notice is given
         // its room out of this same pane - moveSeamByNoticeChange() - so a
         // height written down with one inside it is read back as room the form
         // asked for, and the next notice takes its own height off the form all
         // over again.
-        mDraggedFormPaneHeights.insert(mCurrentView, std::max(0, formPaneHeight - mNoticeRoomInFormColumn));
-    }
-    if (mpTriggersMainArea->isVisible()) {
-        // Whatever the options panel borrowed from the code pane stops being
-        // ours to hand back the moment the user sizes the two panes themselves
-        mTriggerOptionsBorrowedHeight = 0;
-        // The triggersMainArea is visible
-        if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked()) {
-            // The extra controls are visible in the triggersMainArea. The
-            // spacer is the last thing in the column they are stacked in, so
-            // it is above zero only while every card fits - which is how the
-            // room the form has left for them is read here.
-            //
-            // That on its own is not the question any more. The seam holds the
-            // form to what leaves the code pane its share, and where the cards
-            // want more than that the panel is meant to scroll at the height it
-            // was given - the spacer sits at zero all by itself, and the next
-            // nudge of the handle would have folded a panel nobody asked to be
-            // rid of. So the fold is asked of the reader's own doing as well: a
-            // pane taken a band below the height the seam holds it at. The same
-            // band the restore uses, read the other way, since a hand on a
-            // mouse wobbles either side of wherever it let go.
-            const int paneTotal = movedTo.size() < 2 ? 0 : movedTo.at(0) + movedTo.at(1);
-            const int heldAt = paneTotal - codePaneFloor(paneTotal);
-            const bool noRoomForTheCards = mpTriggersMainArea->widget_verticalSpacer_right->height() <= hysteresis;
-            if (noRoomForTheCards && formPaneHeight < heldAt - scmEditorOptionsRestoreBand) {
-                // Where the pane was when they stopped fitting, taken before
-                // the fold rather than after it - see the member's own note for
-                // why the form's height is the one number this cannot use
-                mTriggerOptionsAutoHiddenAtPaneHeight = formPaneHeight;
-                slot_showAllTriggerControls(false);
-            }
-
-        } else {
-            // And the extra controls are NOT visible. Only auto-restore them if
-            // the reader's preference is to show them - if they explicitly hid
-            // the controls a later splitter expand must not bring them back -
-            // and only once the pane is clearly taller than it was when they
-            // stopped fitting, so that the same position, or a jitter of a few
-            // pixels either side of it, never opens them again.
-            if (mShowAllTriggerControls && mTriggerOptionsAutoHiddenAtPaneHeight > 0 && formPaneHeight >= mTriggerOptionsAutoHiddenAtPaneHeight + scmEditorOptionsRestoreBand) {
-                mTriggerOptionsAutoHiddenAtPaneHeight = 0;
-                // ...and the room across has to have come back as well, since
-                // the fold in holdTriggerOptionsToTheFormsWidth() holds the
-                // panel away on its own. Its record is dropped by its own
-                // measurement, so the pane growing back never speaks for it.
-                if (mTriggerOptionsAutoHiddenAtColumnWidth == 0) {
-                    slot_showAllTriggerControls(true);
-                }
-            }
-        }
+        mDraggedFormPaneHeights.insert(mCurrentView, std::max(0, movedTo.constFirst() - mNoticeRoomInFormColumn));
     }
     if (mpSourceEditorFindArea->isVisible()) {
         slot_sourceFindMove();
@@ -16542,10 +16309,6 @@ void dlgTriggerEditor::restyleEditorIcons()
         headerGlyph.setDevicePixelRatio(glyphRatio);
         mpLabel_editorCodeHeaderIcon->setPixmap(headerGlyph);
     }
-
-    // The trigger form's Options button, whose glyph is a set of sliders rather
-    // than one of the toolbar's actions
-    updateExtraControlsToggleIcon();
 
     // The magnifier on the search field, which is also the button its options
     // drop from, and the chevron that reopens what was searched for before
@@ -17461,71 +17224,47 @@ void dlgTriggerEditor::applyEditorShellStyle()
     }
 
     if (mpTriggersMainArea) {
-        // The check indicator a checkable card's title begins with, drawn the
-        // one way the settings dialog's cards draw theirs
-        const QString cardIndicatorRules = uiDesign::cardIndicatorStyleSheet(uiDesign::scmProp_editorCard, tokens);
-        // How much of the card's top padding is the title's rather than the gap
-        // under it is a line of the type the title is drawn in - and the box
-        // measured against the rules above has to be one they select on
-        const int cardTitleHeight = uiDesign::measuredCardTitleHeight(mpTriggersMainArea, cardIndicatorRules, uiDesign::scmProp_editorCard);
-        // Styling the options column's scroll area takes its scroll bar with
-        // it, the same way the pattern list's does
-        const QString optionsScrollBarRules = uiDesign::scrollBarStyleSheet(qsl("#editorTriggerOptionsScroll"), tokens);
-
-        // A control pressed rather than a surface: the button lifts a shade
-        // further off the row while the pointer is on it, and the outlined strip
-        // under it draws its hairline a shade nearer the words instead
-        const QColor hoveredButton = uiDesign::blend(cardColor, textColor, scmEditorRaisedHoverWeight);
+        // A control pressed rather than a surface: a segment draws its hairline
+        // a shade nearer the words while the pointer is on it
         const QColor hoveredBorder = uiDesign::blend(borderColor, textColor, scmEditorHoveredBorderWeight);
 
-        // The cards the options column is laid out in, drawn the one way the
-        // settings dialog's pages draw theirs
-        mpTriggersMainArea->setStyleSheet(uiDesign::cardStyleSheet(cardMetrics(cardTitleHeight), tokens)
-                                          + qsl(
-                                                    // The rows the cards are built out of show the card through them,
-                                                    // named outright so a profile stylesheet cannot paint a band across one
-                                                    "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
-                                                    "QLabel[editorFieldLabel=\"true\"] { color: %3; font-size: 92%; }"
-                                                    // The box naming a matching mode; the chosen one carries the accent
-                                                    "#editorModeChip { color: %3; border: 1px solid %2; border-radius: %7px; padding: 1px 0px;"
-                                                    " background: transparent; font-family: monospace; font-weight: bold; font-size: 85%; }"
-                                                    "#editorModeChip[editorModeChipActive=\"true\"] { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                    // The button the options are opened from is one to press, so it is
-                                                    // lifted off the row the way a card is lifted off the page; the
-                                                    // strip that stands in for them while they are away is a line of
-                                                    // readings to click, so it is only outlined. Both light up in the
-                                                    // accent under the pointer, which is the ink each of them is
-                                                    // already switched on in - the quiet tone is the resting one.
-                                                    "#toolButton_toggleExtraControls { color: %3; border: 1px solid %2; border-radius: %8px;"
-                                                    " padding: %11px %12px; background-color: %1; }"
-                                                    "#toolButton_toggleExtraControls:hover { color: %5; background-color: %9; }"
-                                                    "#toolButton_toggleExtraControls:checked { color: %5; border: 1px solid %4; background-color: %6; }"
-                                                    "#editorOptionsSummary { color: %3; border: 1px solid %2; border-radius: 6px; padding: 6px 10px;"
-                                                    " background: transparent; text-align: left; }"
-                                                    "#editorOptionsSummary:hover { color: %5; border: 1px solid %10; }"
-                                                    // The button that empties the sound file field, drawn as
-                                                    // the picture alone the way the toolbar's are: a frame
-                                                    // round a glyph this small reads as a second control
-                                                    "#toolButton_clearSoundFile { border: none; border-radius: %7px; background: transparent; padding: 2px; }"
-                                                    "#toolButton_clearSoundFile:hover { background-color: %9; }"
-                                                    // The cards are what is drawn in the options column: the scroll
-                                                    // area holding them and the viewport Qt gives it show the page
-                                                    // through. Named outright, as the pattern rows are, so that a
-                                                    // profile stylesheet cannot put the field colour back behind them.
-                                                    "#editorTriggerOptionsScroll, #editorTriggerOptionsScroll > #qt_scrollarea_viewport, #widget_right"
-                                                    " { background: transparent; border: none; }")
-                                                    .arg(cardColor.name(), borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft)
-                                                    .arg(QString::number(uiDesign::scmRadiusChip))
-                                                    .arg(QString::number(uiDesign::scmRadiusInput), hoveredButton.name(), hoveredBorder.name())
-                                                    .arg(QString::number(scmEditorRowButtonPaddingVertical), QString::number(scmEditorRowButtonPaddingHorizontal))
-                                          + cardIndicatorRules + patternRowStyleSheet() + optionsScrollBarRules + formRules);
-        // The chips are measured in the font the sheet just gave them
-        restyleTriggerMatchModeChips();
-        // ...and the options column against the bar it just sized, so that the
-        // cards keep their own width whether or not that bar is there
-        if (mpScrollArea_triggerOptions) {
-            mpScrollArea_triggerOptions->setFixedWidth(scmEditorTriggerOptionsWidth + mpScrollArea_triggerOptions->verticalScrollBar()->sizeHint().width());
-        }
+        mpTriggersMainArea->setStyleSheet(qsl(
+                                                  // The groups the two option rows are built out of show the form
+                                                  // through them, named outright so a profile stylesheet cannot
+                                                  // paint a band across one
+                                                  "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
+                                                  // A row is a group box only so that a screen reader is told the
+                                                  // things on it belong together; the word leading it is the
+                                                  // form's, so the box itself is drawn as nothing at all
+                                                  "QGroupBox[editorOptionRow=\"true\"] { border: none; margin: 0px; padding: 0px; background: transparent; }"
+                                                  // The two matching modes, drawn as one control of two joined
+                                                  // segments. They stay radio buttons - a screen reader then says
+                                                  // which of the two is chosen and how many there are - so the dot
+                                                  // each would otherwise carry is given no size and no gap after
+                                                  // it, and the box round the words is what says which one is on.
+                                                  "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
+                                                  " padding: %10px %11px; spacing: 0px; }"
+                                                  "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; }"
+                                                  "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
+                                                  "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
+                                                  "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
+                                                  "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
+                                                  // ...and the corners last, so that they outlive the states above
+                                                  // them: the pair takes the fields' corner on its outer edges and
+                                                  // shares one hairline down the middle
+                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
+                                                  " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; border-right-width: 0px; }"
+                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
+                                                  " { border-top-right-radius: %6px; border-bottom-right-radius: %6px; }"
+                                                  // The button that empties the sound file field, drawn as
+                                                  // the picture alone the way the toolbar's are: a frame
+                                                  // round a glyph this small reads as a second control
+                                                  "#toolButton_clearSoundFile { border: none; border-radius: %13px; background: transparent; padding: 2px; }"
+                                                  "#toolButton_clearSoundFile:hover { background-color: %14; }")
+                                                  .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
+                                                  .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
+                                                  .arg(QString::number(scmEditorSegmentPaddingHorizontal), disabledText.name(), QString::number(uiDesign::scmRadiusChip), hoverSoft)
+                                          + patternRowStyleSheet() + formRules);
     }
 
     if (mpScriptsMainArea) {
@@ -17742,25 +17481,6 @@ void dlgTriggerEditor::updateEditorItemCounts()
     mpLabel_statusCounts->setText(countText(total, active));
 }
 
-// One glyph in two colours rather than an arrow pointing two ways: what the
-// button opens is named beside it, so the picture only has to say which control
-// it is and whether it is on.
-void dlgTriggerEditor::updateExtraControlsToggleIcon()
-{
-    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QPixmap source = uiDesign::glyphPixmap(qsl(":/icons/editor-options.svg"));
-    QIcon icon;
-    icon.addPixmap(uiDesign::tintedGlyph(source, tokens.mutedText), QIcon::Normal, QIcon::Off);
-    icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Normal, QIcon::On);
-    mpTriggersMainArea->toolButton_toggleExtraControls->setIcon(icon);
-
-    // The strip that stands in for the options is led by the same glyph, so that
-    // the row and the button it reopens are read as the one thing
-    if (mpButton_triggerOptionsSummary) {
-        mpButton_triggerOptionsSummary->setIcon(icon);
-    }
-}
-
 // Hides QWidget::setFont(), as dlgMapper and dlgNotepad do
 void dlgTriggerEditor::setFont(const QFont& font)
 {
@@ -17808,8 +17528,7 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
     }
 
     // the appearance can be switched between light and dark while the editor is
-    // open; restyleEditorIcons() is where every tinted glyph is redone, the
-    // trigger form's Options button among them
+    // open; restyleEditorIcons() is where every tinted glyph is redone
     if ((e->type() == QEvent::StyleChange || e->type() == QEvent::PaletteChange) && mpTriggersMainArea) {
         applyEditorShellStyle();
     }
@@ -17868,14 +17587,17 @@ void dlgTriggerEditor::checkForMoreThanOneTriggerItem()
         }
     }
 
-    // The hidden group box is where the mode is still saved from; the radio pair
-    // that shows it is the one thing there is to switch off
+    // The hidden spin box is where the mode is still saved from; the two
+    // segments that show it are the one thing there is to switch off
     const bool canCombinePatterns = activeItems > 1;
     if (mpWidget_matchModeRows) {
         mpWidget_matchModeRows->setEnabled(canCombinePatterns);
+        // ...and the line count is half of what the All mode means, so it goes
+        // with them
+        reflectTriggerMatchMode();
     }
-    // ...and with nothing to combine yet, the caption saying so takes the place
-    // of a pair of greyed-out rows with no explanation
+    // With nothing to combine yet, the caption saying so takes the place of a
+    // pair of greyed-out segments with no explanation
     if (mpLabel_matchModeHint) {
         mpLabel_matchModeHint->setVisible(!canCombinePatterns);
     }
@@ -18852,7 +18574,7 @@ void dlgTriggerEditor::slot_saveProperty_TriggerSoundEnabled()
         return;
     }
 
-    const bool newValue = mpTriggersMainArea->groupBox_soundTrigger->isChecked();
+    const bool newValue = mpTriggersMainArea->checkBox_soundTrigger->isChecked();
 
     if (pT->mSoundTrigger == newValue) {
         return;
@@ -18877,7 +18599,7 @@ void dlgTriggerEditor::slot_saveProperty_TriggerSoundFile()
         return;
     }
 
-    const QString newValue = mpTriggersMainArea->lineEdit_soundFile->text();
+    const QString newValue = triggerSoundFilePath();
 
     if (pT->mSoundFile == newValue) {
         return;
@@ -18902,7 +18624,7 @@ void dlgTriggerEditor::slot_saveProperty_TriggerColorizer()
         return;
     }
 
-    const bool newValue = mpTriggersMainArea->groupBox_triggerColorizer->isChecked();
+    const bool newValue = mpTriggersMainArea->checkBox_triggerColorizer->isChecked();
 
     if (pT->isColorizerTrigger() == newValue) {
         return;

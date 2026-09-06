@@ -151,6 +151,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
+    friend class EditorTriggerOptionRowsTest;
     friend class EditorVariablesFormTest;
     friend class EditorVariablesTreeTest;
     friend class ReadabilityAuditTest;
@@ -240,7 +241,6 @@ public:
     void setStyleSheet(const QString& styleSheet);
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* e) override;
-    void updateExtraControlsToggleIcon();
     // The editor's own look, derived from the application palette rather than
     // written out, so that it follows a theme change
     void applyEditorShellStyle();
@@ -277,9 +277,9 @@ public:
     void beginSaveErrorCapture();
     void endSaveErrorCapture();
     // The trigger form's options, moved out of the .ui column of group boxes
-    // and into a column of cards, with a strip that says what they hold while
-    // they are put away
-    void buildTriggerOptionsPanel();
+    // and onto two rows of the form's own grid, between its head row and its
+    // pattern list
+    void buildTriggerOptionRows();
     // The six forms that are not the trigger form, shelled over their .ui
     // grids: a head row of the name, whatever is typed beside it and the ID
     // pill, with what is left of the grid under it
@@ -327,21 +327,25 @@ public:
     // One width for the words leading those forms' rows, so a field starts at
     // the same place whichever row of whichever form it is on
     void alignEditorFormLeadLabels();
-    // The one way the panel is opened or closed on purpose, so that both the
-    // Options button and the summary strip persist the preference
-    void setTriggerOptionsShown(const bool shown);
-    // spinBox_lineMargin stays what the save and load paths read; the radio
-    // pair is a view of it
+    // spinBox_lineMargin stays what the save and load paths read; the two
+    // segments and the box beside them are a view of it
     void reflectTriggerMatchMode();
-    void restyleTriggerMatchModeChips();
-    void updateTriggerOptionsSummary();
-    // Opening the panel where the form has no room for it borrows the height
-    // from the code pane, and closing it hands that height back
-    void refitSplitterForTriggerOptions(const bool shown);
-    // The panel folds away when the form is too narrow to hold a pattern row
-    // beside it, and comes back when the width does: the across answer to the
-    // height-driven fold in slot_rightSplitterMoved()
-    void holdTriggerOptionsToTheFormsWidth();
+    // The sound file field says the file's name and keeps the path it stands
+    // for, which is what the save and load paths read
+    void showTriggerSoundFile(const QString& path);
+    // ...and what choosing one in the file dialogue comes to, the dialogue
+    // itself left out of it
+    void acceptTriggerSoundFile(const QString& fileName);
+    [[nodiscard]] QString triggerSoundFilePath() const;
+    // A click on that field opens the file chooser, and Return or Space does
+    // the same from the keyboard
+    bool handleSoundFileFieldEvent(QEvent* pEvent);
+    // Choosing a colour in either well is asking for the matches to be
+    // recoloured, so the switch beside them goes on with it
+    void turnTriggerHighlightOn();
+    // What a colour well holds, for a screen reader: a well says it in colour
+    // alone otherwise
+    void describeColourWell(QPushButton* pWell);
     // The least the code pane is left with wherever the seam is placed rather
     // than dragged: a third of what the two panes have between them, and never
     // under scmEditorSourcePaneFloor
@@ -506,7 +510,6 @@ public slots:
     void slot_copyXml();
     void slot_pasteXml();
     // Not used:    void slot_choseActionIcon();
-    void slot_showAllTriggerControls(const bool);
     void slot_rightSplitterMoved(const int pos, const int handle);
     void slot_keyGrab();
     void slot_profileSaveAction();
@@ -968,21 +971,23 @@ private:
     // that a test can hold the floor to the same number the code keeps it at.
     static constexpr int scmEditorSourcePaneFloor = 120;
 
-    // The trigger form's options panel. The radio pair and the spin box beside
-    // it are a view of spinBox_lineMargin, which stays where the trigger is
+    // The trigger form's two option rows, and the words leading them
+    QLabel* mpLabel_matchingRow = nullptr;
+    QLabel* mpLabel_firingRow = nullptr;
+    // The last of the two, which is as deep as a change inside the form goes:
+    // what a measurement of the column has to be invalidated from
+    QWidget* mpWidget_triggerFiringRow = nullptr;
+    // The two segments a matching mode is chosen with, and the spin box beside
+    // them, are a view of spinBox_lineMargin, which stays where the trigger is
     // saved from and loaded into.
     QRadioButton* mpRadioButton_matchAny = nullptr;
     QRadioButton* mpRadioButton_matchAll = nullptr;
-    QLabel* mpLabel_matchAnyChip = nullptr;
-    QLabel* mpLabel_matchAllChip = nullptr;
     QSpinBox* mpSpinBox_matchWithinLines = nullptr;
     QWidget* mpWidget_matchWithinRow = nullptr;
     // Enabled only once the trigger has more than one pattern to combine
     QWidget* mpWidget_matchModeRows = nullptr;
     // ...and this says why, for as long as that is the case
     QLabel* mpLabel_matchModeHint = nullptr;
-    // Shown in the panel's place, saying what it holds
-    QToolButton* mpButton_triggerOptionsSummary = nullptr;
     // The events a script is registered for, in the cell beside the "Events"
     // label of the scripts form's grid
     uiDesign::ChipRow* mpChipRow_scriptEvents = nullptr;
@@ -1007,11 +1012,6 @@ private:
     // ...and the cell beside its "Rotation" label, holding the picker and the
     // switch that says whether the button stays down
     QWidget* mpWidget_actionRotationRow = nullptr;
-    // Height the panel borrowed from the code pane when it was opened, so that
-    // closing it can hand back that much and no more. Only a view whose
-    // splitter the user has dragged lends anything: everywhere else the open
-    // and the close are answered by measuring the form again.
-    int mTriggerOptionsBorrowedHeight = 0;
     // Holding the form column to its contents changes the layout it was just
     // measured from, so the pass is barred from re-entering itself
     bool mHoldingFormPaneToItsContents = false;
@@ -1104,9 +1104,6 @@ private:
     EditorViewType mCurrentView = EditorViewType::cmUnknownView;
 
     QScrollArea* mpScrollArea = nullptr;
-    // Holds the trigger options panel, so that a window too short for the four
-    // cards scrolls them instead of being held open by them
-    QScrollArea* mpScrollArea_triggerOptions = nullptr;
     QWidget* mpWidget_triggerItems = nullptr;
     // this widget holds the errors, trigger patterns, and all other widgets that aren't edbee
     // in it, as a workaround for an extra splitter getting created by Qt below the error msg otherwise
@@ -1233,47 +1230,6 @@ private:
 
     // profile autosave interval in minutes
     int mAutosaveInterval = 2;
-
-    // The form pane's own height at the moment the options panel was folded
-    // away for want of room, and the mark that the fold was the space's doing
-    // rather than the reader's. Zero while the panel is on show, or while it is
-    // away because it was closed on purpose.
-    //
-    // The splitter's size rather than the form's: folding the panel away
-    // changes what the form is made of, so the form's height at the same
-    // splitter position is a different number the instant the fold happens -
-    // which is how the panel came to reappear on the next move event, fold
-    // again on the one after, and flicker on every pixel of a drag. A splitter
-    // size is what the reader is actually dragging and is unmoved by the fold.
-    int mTriggerOptionsAutoHiddenAtPaneHeight = 0;
-
-    // ...and the same mark for the fold across: the width the trigger form has
-    // to be given for a pattern row to fit beside the panel, written down when
-    // the panel was folded away for want of that width. Zero while the panel is
-    // on show, or while it is away because it was closed on purpose.
-    //
-    // The form's width rather than the pattern column's, for the reason the
-    // record above is a splitter size: folding the panel away hands its column
-    // to the pattern rows, so the room they have is a different number the
-    // instant the fold happens, while the width the form was given is unmoved
-    // by it. What is kept is the form's width at the fold plus what the row was
-    // short by, which comes to the same number whenever it is taken - the room
-    // a row has is the form's width less the panel's column, and that column is
-    // the same width whatever the window does.
-    int mTriggerOptionsAutoHiddenAtColumnWidth = 0;
-
-    // Showing or hiding the panel lays the form out again, so the pass that
-    // does it is barred from re-entering itself
-    bool mFoldingTriggerOptionsForWidth = false;
-
-    // Whether the reader has asked for the extra trigger controls in this
-    // session. Not stored: the editor opens with the panel closed every time,
-    // and the summary strip says what it would have said. Only changed by
-    // explicit clicks on the toggle button, not by the transient space-driven
-    // auto-collapse - which is what this is read for, since a panel that was
-    // folded away for want of room is one to unfold again when the room comes
-    // back, and one the reader closed is not:
-    bool mShowAllTriggerControls = false;
 
     // The form pane height the user dragged the right hand splitter to, per
     // view. A view named here keeps that height as the item in it changes; one

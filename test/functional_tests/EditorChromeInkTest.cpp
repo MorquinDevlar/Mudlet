@@ -142,7 +142,7 @@ private:
     {
         for (const QWidget* pAt = pWidget; pAt; pAt = pAt->parentWidget()) {
             const QString name = pAt->objectName();
-            if (name == qsl("editorCompileChip") || name == qsl("editorModeChip") || name == qsl("editorChipNote") || name == qsl("editorChipLabel")) {
+            if (name == qsl("editorCompileChip") || name == qsl("editorChipNote") || name == qsl("editorChipLabel")) {
                 return true;
             }
         }
@@ -390,9 +390,6 @@ private slots:
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
         buildThreePatternRows();
-        // The options are what the sound card, the highlight card and the rest
-        // of the form live on, and they open closed
-        mpEditor->setTriggerOptionsShown(true);
         QTest::qWait(100ms);
 
         mpPreferences = new dlgProfilePreferences(mudlet::self(), mpHost);

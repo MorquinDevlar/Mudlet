@@ -2552,11 +2552,11 @@ private slots:
 
     // A new trigger has no patterns, so it opens with one empty row
     QCOMPARE(mpEditor->mVisiblePatternCount, 1);
-    // ...and the OR / AND choice says why it cannot be used yet
+    // ...and the Any / All choice says why it cannot be used yet
     QVERIFY(mpEditor->mpLabel_matchModeHint != nullptr);
     QVERIFY(!mpEditor->mpWidget_matchModeRows->isEnabled());
-    // The options panel may be put away, so what is asked of the caption is
-    // that it is not hidden in its own right
+    // The form may not be on screen, so what is asked of the caption is that it
+    // is not hidden in its own right
     QVERIFY(!mpEditor->mpLabel_matchModeHint->isHidden());
 
     // Typing in the last row no longer grows the form

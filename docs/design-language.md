@@ -93,10 +93,11 @@ tone. Every word the window says outside a field is written in it: the toolbar's
 buttons, the sidebar's names, every row of all seven item trees and their
 headings, the search results' titles, a card's title and everything on the card,
 check boxes, radio buttons, group boxes, the pattern rows' numbers and prompt
-labels, the "Lua script" heading, the summary strip, the Options button and the
-status bar. The full `text` tone is what is *inside* a field - a line edit, a
-spin box, a combo box's displayed value, the code pane, the error console - and
-nothing else has it. Two greys in one window's chrome read as two windows.
+labels, the "Lua script" heading, the words a trigger's option rows are led by
+and the two segments its matching mode is chosen with, and the status bar. The
+full `text` tone is what is *inside* a field - a line edit, a spin box, a combo
+box's displayed value, the code pane, the error console - and nothing else has
+it. Two greys in one window's chrome read as two windows.
 
 Three things keep an ink of their own, and each says a state rather than a tone:
 `accentText` for what is chosen or under the pointer, `disabledText` for what is
@@ -133,7 +134,7 @@ visible, enabled thing in the editor that shows words - labels, buttons with
 text, group box titles, and each view once by its palette - in every one of the
 seven views, with an item on show in each - skipping fields and everything under
 them, the state chips and a chip's own name by object name (`editorCompileChip`,
-`editorModeChip`, `editorChipNote`, `editorChipLabel`), and anything chosen,
+`editorChipNote`, `editorChipLabel`), and anything chosen,
 pressed or under the pointer, and compares each ink against `mutedText` on the
 dark appearance and then the light. It reports how many things it read and fails
 below a pinned floor, so a walk that stopped finding widgets cannot pass. One
@@ -236,9 +237,9 @@ radius of its own.
 
 | Constant | Value | Use it for |
 | --- | --- | --- |
-| `scmRadiusChip` | 4px | A word in a box: the ID beside an item's name (`#frameId`), the kind beside a search result (`SearchResultDelegate`), the OR/AND beside a matching mode (`#editorModeChip`), the compile state over the code pane |
+| `scmRadiusChip` | 4px | A word in a box: the ID beside an item's name (`#frameId`), the kind beside a search result (`SearchResultDelegate`), the compile state over the code pane |
 | `scmRadiusInput` | 5px | The controls a form is filled in through, a little over 30px tall: line edits, combo boxes, spin boxes - every rule in `inputStyleSheet()` |
-| `scmRadiusPanel` | 8px | The boxes a window is laid out in: `settingsCard` and `editorCard` group boxes, the migration banner, the editor's notice frame, the deep-link spotlight ring |
+| `scmRadiusPanel` | 8px | The boxes a window is laid out in: `settingsCard` group boxes, the migration banner, the editor's notice frame, the deep-link spotlight ring |
 | `scmRadiusProminentInput` | 8px | A search field: the one control a panel is headed by rather than one of several filled in on it, and drawn taller than a form control, so it takes the corner of the panel it heads (`#settingsSearchField`, `#editorSearchRow QComboBox`) |
 
 Sizes not in the scale stay literal on purpose: the 6px of a hovered toolbar
@@ -257,8 +258,9 @@ interface font.
 
 Content is grouped into cards: a `QGroupBox` carrying the `settingsCard` dynamic
 property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
-16px padding - 12px in the editor's narrower options column. Pages are a single
-column of cards with 16px spacing (`createScrollPage()`, `buildPage()`).
+16px padding. Pages are a single column of cards with 16px spacing
+(`createScrollPage()`, `buildPage()`). The script editor has no cards: its forms
+are rows.
 
 The card is one component for both windows, the way the sidebar is.
 `cardStyleSheet(metrics, tokens)` draws the frame and the title inside it, and
@@ -266,7 +268,7 @@ The card is one component for both windows, the way the sidebar is.
 card's title begins with - a sheet of its own, because the title height the
 frame reserves room for has to be measured with those rules already in force.
 `CardMetrics` carries what the two windows differ by: the property the rules
-select on (`scmProp_settingsCard` or `scmProp_editorCard`, interpolated into the
+select on (`scmProp_settingsCard` or `scmProp_aboutCard`, interpolated into the
 selectors rather than spelled out again), the padding, that measured title
 height, and the two variants only the settings dialog has so far - a plain
 property (`scmProp_settingsCardPlain`) and the flattening of a group box the
@@ -450,6 +452,46 @@ never moves the Name field. Under it, each row leads with one word.
   the switch, and the Offset row with there being lines to offset into. The
   stylesheet editor holds the grid's vertical stretch, so the room a drag on
   this view's seam gives the column goes to it and never between the rows.
+- **A trigger's options are two of those rows**, Matching and Firing
+  (`editorMatchingRow`, `editorFiringRow`), between the head row and the pattern
+  list and always on show - they were a 280px column of four cards beside the
+  patterns, opened by a button, and folded away again by the window being either
+  short or narrow. Matching holds the mode, the lines it matches within, and
+  "Every occurrence in a line"; Firing holds how long the trigger keeps firing,
+  whether children see only what matched, and the sound and highlight switches.
+  Each row is a titleless `QGroupBox` carrying `editorOptionRow`, drawn as
+  nothing at all: a group box because a screen reader is told it is a grouping
+  and is told nothing about a bare `QWidget`, and the word leading it is the
+  form's own label rather than a title. Inside it a `uiDesign::FlowLayout` holds
+  one widget per group of controls, so a group wraps whole rather than being
+  broken up or squeezed - 18px between groups, 8px inside one.
+- **Two segments rather than two radios.** The matching mode is
+  `mpRadioButton_matchAny` and `mpRadioButton_matchAll` still, so a screen
+  reader says "radio button, 1 of 2, selected", but they carry `editorSegment`
+  and `editorSegmentSide` (`first` / `last`) and are drawn as one joined
+  control: the indicator is given no size and no spacing, the box round the
+  words carries the state, the outer corners take `scmRadiusInput` and the inner
+  edge is one hairline. The corner rules come last in the sheet so they outlive
+  the `:checked`, `:focus` and `:disabled` rules above them. The pair writes
+  into the hidden `spinBox_lineMargin`, which is still what the trigger is saved
+  from and loaded into, and `reflectTriggerMatchMode()` is the view of it.
+  "within %1 lines" is a `buildControlSentenceRow()` sentence that is dimmed in
+  the Any mode rather than taken away, and both it and the segments are greyed
+  out while the trigger has fewer than two patterns, with
+  `mpLabel_matchModeHint` saying why on the end of the row.
+- **A switch does not gate what stands beside it.** "Play a sound" and
+  "Highlight matches" are check boxes rather than checkable cards, so the file
+  field and the two colour wells are live while the switch is off, and making a
+  choice in one of them turns its own switch on - `acceptTriggerSoundFile()` and
+  `turnTriggerHighlightOn()`, each leaving the switch's own `toggled()` to write
+  the undo entry. The sound file is a read-only field (`editorSoundFile`) that
+  opens the file chooser when clicked, or on Return or Space, the way the key
+  binding field arms the key grab; it shows the file's name elided to its width
+  and keeps the whole path in a property, since that is what the save and load
+  paths read, and the cross beside it is there only while there is a file to
+  forget. Every control on both rows carries `setAccessibleName()` and a
+  plain-text `setAccessibleDescription()`: Qt falls back to the tooltip when
+  there is no description, and these tooltips are rich text.
 
 ### The seam over the code pane
 
@@ -474,47 +516,35 @@ them and never less than `scmEditorSourcePaneFloor` - the number below which the
 pane stops being one anything can be typed into, and all a third comes to in a
 window too short for it to come to more. Every place the seam is placed rather
 than dragged reads it: the cap and the split in `holdFormPaneToItsContents()`,
-`formPaneHeightForItsContents()`, the dragged height a view is put back to in
-`fitFormPaneToItsContents()`, and what `refitSplitterForTriggerOptions()` will
-lend the options panel. That panel is what the rule is for: four cards are
-taller than an 800px window has room for, so the form took everything down to
-the bare floor, which left a third of the pattern column empty under the Add
-pattern button and six lines of Lua under that. Held to two thirds, it scrolls
-in what it is given - it is in a scroll area for exactly this, and
-`widget_right` is `Minimum` down the page, so the cards keep their own height
-and a bar appears beside them rather than them being squeezed inside it. The
-reader's own drag is not held to the third: the handle goes where they put it,
-and the third is taken back the next time the seam is placed rather than
-dragged. Nor is the panel folded away for it - the drag-driven fold in
-`slot_rightSplitterMoved()` reads the spacer under the cards for whether they
-still fit, and a pane the seam is holding at its own cap has that spacer at zero
-by design, so the fold asks as well that the reader has taken the pane a band
-below that cap. `EditorNoticeSeamTest` holds the three of them: the split the
-panel opens at, the room closing it gives back, and the nudge of the handle that
-must leave it alone.
+`formPaneHeightForItsContents()`, and the dragged height a view is put back to
+in `fitFormPaneToItsContents()`. What the rule is for is a form that asks for
+more than the window has: a trigger with a long list of patterns and two option
+rows wrapped onto several lines each took the pane down to the bare floor and
+left six lines of Lua under it. Held to two thirds, the pattern list scrolls in
+what it is given. The reader's own drag is not held to the third: the handle
+goes where they put it, and the third is taken back the next time the seam is
+placed rather than dragged.
 
-The panel runs out of room across as well, and there the pattern rows are what
-pays: the cards' column is 280px whatever the window does, so a 1000px editor
-left a row less than the width it needs and the list grew a horizontal bar over
-fields showing a handful of characters. `holdTriggerOptionsToTheFormsWidth()`
-folds the panel away for that too, answering to the width the form is given -
-the one number the fold itself does not move - rather than to the room the rows
-have, which the fold hands the panel's column to. What it writes down is the
-width the form has to be given for a row to fit beside the panel again, and the
-band before it comes back is `scmEditorOptionsRestoreBand`, the same one the
-seam's fold uses. Only a change in that width is heard: opening the panel takes
-the same room off the rows, and folding it away for that would be the Options
-button undoing itself in front of the reader. A panel either fold has put away
-stays away until both of them would give it back, each dropping its own record
-as its own room returns.
+The trigger form answers to the width it is given as well as to the height, and
+what changes there is how many lines its two option rows have wrapped onto - a
+`FlowLayout` gives each group of controls its own size and runs on to the next
+line rather than squeezing them, so a 1000px editor costs the options a line
+instead of costing a pattern row the width it needs. That is a different height
+for the column, so the `QEvent::Resize` on `mpTriggersMainArea` defers
+`fitFormPaneToItsContents()` whenever the width has moved, and the seam follows.
+There is no loop in it: a refit moves the seam, which is the column's height and
+never the form's width. The heights themselves reach the seam because the rows
+answer `heightForWidth()` - a `QGroupBox` over a `FlowLayout` does that on its
+own, and `QGridLayout` carries it up - so `formColumnHeightForItsWidth()`
+measures the wrapped rows without being told they are there.
 
 What the column is measured with is `formColumnHeightForItsWidth()`: the
 layout's `heightForWidth()` at the width the column actually has, not its size
 hint. A hint is answered at whatever width the layout would like, and the
 notice's wrapping label would like a narrow one - so the hint carried the height
-those words take in a column a fraction of this one's width. The three places
-that size the seam - the cap, `formPaneHeightForItsContents()` and
-`refitSplitterForTriggerOptions()` - all read that one measurement.
+those words take in a column a fraction of this one's width. The two places that
+size the seam - the cap and `formPaneHeightForItsContents()` - both read that
+one measurement.
 
 ### The notice over the form
 
@@ -540,7 +570,7 @@ put first the notice and then the form half way down the window. The five forms
 that are a fixed set of fields carry no stretch in the column, so the trailing
 stretch takes the spare room and leaves them leading the pane at their own
 height; the trigger's and the button's forms keep theirs, because their pattern
-list and options panel do use the room. `EditorNoticeSeamTest` holds all of
+list and stylesheet editor do use the room. `EditorNoticeSeamTest` holds all of
 this, along with the pattern list resizing the pane when a row is added or
 deleted.
 
@@ -706,8 +736,8 @@ Stylesheets select on these; setting one after the widget is shown needs an
 | `aboutRichText` | The text a label was given, before its links were inked |
 
 The editor redesign follows the same scheme with an `editor*` prefix:
-`editorShell`, `editorSidebar`, `editorPage_<key>`, `editorCard`, and so on, and
-the About dialog with an `about*` one: `aboutShell`, `aboutArtColumn`,
+`editorShell`, `editorSidebar`, `editorPage_<key>`, `editorMatchingRow`, and so
+on, and the About dialog with an `about*` one: `aboutShell`, `aboutArtColumn`,
 `aboutNav`, `aboutNavButton_<key>`, `aboutStack`, `aboutPage_<key>` and
 `aboutColumn_<key>`.
 
@@ -741,6 +771,9 @@ The editor's forms add these, which its tests reach it by:
 | `editorChipAdd`, `editorChipEditor`, `editorChipNote` | The dashed add button, the inline field, the "already listed" note |
 | `editorTimerInterval` | The sentence row holding a timer's four fields |
 | `editorKeyBindingRow`, `editorKeyHint`, `editorKeyClear` | The key binding field's row, the hint beside it, the cross that forgets the keystroke |
+| `editorMatchingRow`, `editorFiringRow` | The trigger form's two option rows |
+| `editorMatchAny`, `editorMatchAll`, `editorMatchWithinLines` | The two segments a matching mode is chosen with, and the lines the All mode matches within |
+| `editorSoundFile` | The read-only field that names a trigger's sound file and opens the chooser |
 | `editorVariableTypes` | The row holding a variable's key and value pickers |
 | `editorHiddenVariablesCount` | The count beside the "Show hidden variables" switch |
 | `editorCodeHeaderTitle` | The word on the code pane's heading: "Lua script", or "Value" in the variables view |
@@ -751,6 +784,9 @@ The editor's forms add these, which its tests reach it by:
 | `editorRowLabel` | A word leading or joining a form row, written in the quiet ink |
 | `editorIdChip` | The frame drawn as the ID pill |
 | `editorPanelSurface` | A row widget that shows the form through, so a profile stylesheet cannot paint a band across it |
+| `editorOptionRow` | One of the trigger form's two option rows: a group box drawn as nothing, so that a screen reader has a grouping to announce |
+| `editorSegment` | A radio button drawn as one segment of a joined two-part control rather than as a dot beside a word |
+| `editorSegmentSide` | Which end of that pair it is, `first` or `last`, and so which corners it rounds |
 | `editorChipSystem` | A chip holding one of Mudlet's own `sys*` events, read in the quiet ink |
 | `editorListening` | The key binding field while it waits for a keystroke |
 
@@ -881,8 +917,10 @@ owns, another application's brand in a picture of its window. It is not a way
 to keep a colour somebody has not got round to mixing from the tokens.
 
 **`test/functional_tests/ReadabilityAuditTest.cpp`** opens the editor - on a
-trigger with three pattern rows, one of each shape, and its options panel shown
-- and the settings dialog, moves the appearance to dark and then to light, and
+trigger with three pattern rows, one of each shape, a sound file set and the
+highlight switched on, so that both option rows are walked with something beside
+their switches to read - and the settings dialog, moves the appearance to dark
+and then to light, and
 for every visible thing that shows words compares the ink its palette answers
 with against the colour most of the pixels behind it are. A stylesheet's
 `color:` rule reaches the widget through `QStyleSheetStyle::polish()`, which is

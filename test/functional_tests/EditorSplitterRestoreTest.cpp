@@ -43,9 +43,14 @@
  *    now only the backdrop the first-show case is measured against, and
  *    test_nothingOfASessionsDragSurvivesIntoTheNextOne covers the keys going.
  *  - test_theClampMeasuresTheFormWithTheOptionsPanelOpen, which checked that
- *    the clamp measured a form with the panel in it. There is no clamped
- *    restore left to measure; the two options-panel cases below cover the open
- *    and the close in a form that snaps and in one that was dragged.
+ *    the clamp measured a form with the trigger options panel in it. There is
+ *    no clamped restore left to measure, and no panel either: the options are
+ *    two rows of the form, measured with the rest of it.
+ *  - test_theOptionsPanelIsJustMoreFormInAViewThatSnaps and
+ *    test_theOptionsPanelBorrowsAndHandsBackInADraggedView, which covered the
+ *    panel opening and closing, and
+ *    test_theFoldedOptionsPanelDoesNotFlickerOnEveryMoveEvent, which covered
+ *    the drag that folded it away. Nothing opens, closes or folds any more.
  *
  * Run with: ctest -R EditorSplitterRestoreTest -V
  */
@@ -92,7 +97,7 @@ private:
     // Room for a form of eleven pattern rows over a code pane well clear of its
     // floor, so that nothing here ends up measuring the clamp instead of the fit
     static constexpr int scmWindowWidth = 1000;
-    static constexpr int scmWindowHeight = 1250;
+    static constexpr int scmWindowHeight = 1400;
     // Mirrors scmEditorSourcePaneFloor in src/dlgTriggerEditor.cpp, which is
     // file-local to it
     static constexpr int scmSourcePaneFloor = 120;
@@ -384,7 +389,6 @@ private slots:
             return;
         }
         mpEditor->mDraggedFormPaneHeights.clear();
-        mpEditor->mTriggerOptionsBorrowedHeight = 0;
     }
 
     // The first defect from the screenshots: the editor picks its opening item
@@ -462,8 +466,12 @@ private slots:
         chooseTrigger(mpShortTrigger);
         const int panes = panesTotal();
         // As tall as the form is dragged in this case: past what any of the
-        // three items fills on its own, and still clear of the code pane's floor
-        dragFormPaneTo(std::min(tallestFormNeeds + 80, panes - scmSourcePaneFloor - 40));
+        // three items fills on its own, and still inside what the seam will
+        // hand that height back at. A drag may take the code pane under its
+        // share, but the snap that reads the height afterwards keeps that pane
+        // codePaneFloor() of the two - so a drag past it is measured against
+        // the clamp rather than against what this case came to measure.
+        dragFormPaneTo(std::min({tallestFormNeeds + 80, panes - scmSourcePaneFloor - 40, panes - panes / 3}));
         const int draggedTo = mpSplitter->sizes().at(0);
         QVERIFY2(mpEditor->mDraggedFormPaneHeights.value(EditorViewType::cmTriggerView) == draggedTo,
                  qPrintable(qsl("a drag on this view's handle left the form at %1px and was not recorded as the view's own height").arg(QString::number(draggedTo))));
@@ -517,25 +525,31 @@ private slots:
 
     // The other half of the same fault as the shrink: the split was never the
     // wrong size for the view, it was the wrong size for the item. A trigger
-    // with three pattern rows opened after one with a single row was given the
+    // with more pattern rows opened after one with a single row was given the
     // height the single row needed, so the rows scrolled inside a pane a third
     // of the window tall while the code pane under it sat nearly empty.
+    //
+    // The eleven-row item rather than the three-row one: the form's own rows
+    // are taller than they were - the Matching row carries the caption saying
+    // why the modes are greyed out while there is only one pattern - so three
+    // rows now fit in the pane one row leaves, and the case would prove nothing
+    // about growing it.
     void test_choosingATallerItemGivesItsFormTheRoom()
     {
         enterTheTriggerView();
         chooseTrigger(mpOneRowTrigger);
         const QList<int> forOne = mpSplitter->sizes();
         const int panesForOne = forOne.at(0) + forOne.at(1);
-        chooseTrigger(mpShortTrigger);
+        chooseTrigger(mpTallTrigger);
         const QList<int> sizes = mpSplitter->sizes();
 
         const int rowsWant = mpPatterns->widget()->sizeHint().height();
         const int rowsShown = mpPatterns->viewport()->height();
         const bool scrolling = patternsScrolling();
-        qInfo().noquote() << qsl("  one pattern row left the panes at %1; three rows want %2px and are shown %3px, with the panes at %4 - the rows %5")
+        qInfo().noquote() << qsl("  one pattern row left the panes at %1; eleven rows want %2px and are shown %3px, with the panes at %4 - the rows %5")
                                      .arg(describe(forOne), QString::number(rowsWant), QString::number(rowsShown), describe(sizes), scrolling ? qsl("scroll") : qsl("all fit"));
 
-        QVERIFY2(rowsWant > forOne.at(0) - rowsShown, "The three-row list is no taller than the pane it is in, so this case says nothing about growing it");
+        QVERIFY2(rowsWant > forOne.at(0) - rowsShown, "The eleven-row list is no taller than the pane it is in, so this case says nothing about growing it");
         QVERIFY2(sizes.at(0) > forOne.at(0),
                  qPrintable(qsl("the form pane stayed at %1 for an item whose rows want %2px of the %3px it shows them in")
                                     .arg(QString::number(sizes.at(0)), QString::number(rowsWant), QString::number(rowsShown))));
@@ -548,140 +562,6 @@ private slots:
         // The two of them still add up to what they did: the form took its room
         // off the code pane rather than off the error console under it
         QCOMPARE(sizes.at(0) + sizes.at(1), panesForOne);
-    }
-
-    // In a view that snaps, opening the options panel is only a change in what
-    // the form holds, and closing it is the same change back - so the snap
-    // answers both and there is nothing on loan from the code pane
-    void test_theOptionsPanelIsJustMoreFormInAViewThatSnaps()
-    {
-        enterTheTriggerView();
-        chooseTrigger(mpShortTrigger);
-        mpEditor->setTriggerOptionsShown(false);
-        QTest::qWait(50ms);
-        const QList<int> closed = mpSplitter->sizes();
-
-        mpEditor->setTriggerOptionsShown(true);
-        QTest::qWait(50ms);
-        const QList<int> opened = mpSplitter->sizes();
-        const int wantedOpen = formWants();
-        qInfo().noquote()
-                << qsl("  the form is %1 with the options panel closed and %2 with it open, against the %3px it asks for open").arg(describe(closed), describe(opened), QString::number(wantedOpen));
-
-        QVERIFY2(opened.at(0) > closed.at(0), "opening the options panel did not make the form any taller - this case no longer covers what it was written for");
-        QVERIFY2(opened.at(0) == wantedOpen, qPrintable(qsl("the form asks for %1px with the panel open and was given %2px").arg(QString::number(wantedOpen), QString::number(opened.at(0)))));
-        QVERIFY2(mpEditor->mTriggerOptionsBorrowedHeight == 0,
-                 qPrintable(
-                         qsl("a view that snaps took a loan of %1px out of the code pane, which nothing here is keeping the books for").arg(QString::number(mpEditor->mTriggerOptionsBorrowedHeight))));
-
-        mpEditor->setTriggerOptionsShown(false);
-        QTest::qWait(50ms);
-        QVERIFY2(mpSplitter->sizes().at(0) == closed.at(0),
-                 qPrintable(qsl("closing the panel left the form at %1px rather than the %2px it had before it was opened")
-                                    .arg(QString::number(mpSplitter->sizes().at(0)), QString::number(closed.at(0)))));
-    }
-
-    // In a view that was dragged, the user's height is the base: opening the
-    // panel where it does not fit borrows the difference off the code pane and
-    // closing it hands back that much and no more, and an item change in
-    // between keeps both
-    void test_theOptionsPanelBorrowsAndHandsBackInADraggedView()
-    {
-        enterTheTriggerView();
-        chooseTrigger(mpShortTrigger);
-        mpEditor->setTriggerOptionsShown(false);
-        QTest::qWait(50ms);
-        dragFormPaneTo(mpSplitter->sizes().at(0));
-        const QList<int> base = mpSplitter->sizes();
-        QVERIFY2(mpEditor->mDraggedFormPaneHeights.contains(EditorViewType::cmTriggerView), "the drag was not recorded, so the borrow this case is about will not happen");
-
-        mpEditor->setTriggerOptionsShown(true);
-        QTest::qWait(50ms);
-        const int borrowed = mpEditor->mTriggerOptionsBorrowedHeight;
-        const QList<int> opened = mpSplitter->sizes();
-        qInfo().noquote() << qsl("  the form was dragged to %1 and the panel borrowed %2px of the code pane, leaving %3").arg(describe(base), QString::number(borrowed), describe(opened));
-
-        QVERIFY2(borrowed > 0, "the panel was opened over a form dragged too short for it and borrowed nothing");
-        QVERIFY2(opened.at(0) == base.at(0) + borrowed,
-                 qPrintable(qsl("the form should have gone to %1px, the dragged height plus what was borrowed, and is at %2px")
-                                    .arg(QString::number(base.at(0) + borrowed), QString::number(opened.at(0)))));
-
-        // An item change in the middle keeps the user's height and the loan on
-        // top of it, rather than closing the room the panel is shown in
-        chooseTrigger(mpOneRowTrigger);
-        QVERIFY2(mpSplitter->sizes().at(0) == opened.at(0),
-                 qPrintable(qsl("choosing another item pulled the form from %1px to %2px with the options panel still open")
-                                    .arg(QString::number(opened.at(0)), QString::number(mpSplitter->sizes().at(0)))));
-
-        mpEditor->setTriggerOptionsShown(false);
-        QTest::qWait(50ms);
-        QVERIFY2(mpSplitter->sizes().at(0) == base.at(0),
-                 qPrintable(qsl("closing the panel left the form at %1px rather than handing back the %2px it borrowed and returning to %3px")
-                                    .arg(QString::number(mpSplitter->sizes().at(0)), QString::number(borrowed), QString::number(base.at(0)))));
-        QCOMPARE(mpEditor->mTriggerOptionsBorrowedHeight, 0);
-    }
-
-    // The flicker a screen recording caught: dragging the right hand splitter
-    // to make the code pane taller folded the options panel away, and the fold
-    // itself changed what the form is made of - so the next move event read a
-    // form taller than the one the fold had been recorded against, brought the
-    // panel back, and folded it again on the event after. One flip per mouse
-    // move, for the length of the drag.
-    //
-    // What is recorded now is the splitter's own size, which the fold does not
-    // touch, and re-opening asks for the pane to be dragged clearly past where
-    // the panel stopped fitting. The fold happens during a drag, so it must not
-    // be mistaken for the deliberate close that hands a borrowed height back.
-    void test_theFoldedOptionsPanelDoesNotFlickerOnEveryMoveEvent()
-    {
-        // Mirrors scmEditorOptionsRestoreBand in src/dlgTriggerEditor.cpp,
-        // which is file-local to it
-        static constexpr int scmRestoreBand = 24;
-
-        enterTheTriggerView();
-        chooseTrigger(mpShortTrigger);
-        mpEditor->setTriggerOptionsShown(true);
-        QTest::qWait(100ms);
-        QWidget* pPanel = mpEditor->mpTriggersMainArea->widget_right;
-        QVERIFY2(pPanel != nullptr && pPanel->isVisible(), "the options panel is not on show, so there is nothing here for a drag to fold away");
-        QVERIFY2(mpEditor->mpButton_triggerOptionsSummary != nullptr, "the strip that stands in for the panel is missing");
-
-        const QList<int> opened = mpSplitter->sizes();
-
-        int askedFor = opened.at(0);
-        for (int step = 0; step < 200 && pPanel->isVisible(); ++step) {
-            askedFor -= 4;
-            dragFormPaneTo(askedFor);
-        }
-        QVERIFY2(!pPanel->isVisible(), qPrintable(qsl("the options panel never folded away, down to a form pane of %1px").arg(QString::number(askedFor))));
-        const int foldedAt = mpSplitter->sizes().at(0);
-        qInfo().noquote() << qsl("  the panel opened at a form pane of %1px and folded away at %2px; the band before it comes back is %3px")
-                                     .arg(QString::number(opened.at(0)), QString::number(foldedAt), QString::number(scmRestoreBand));
-
-        // The flicker itself: a drag is a hand on a mouse, so the pane sits and
-        // wobbles a few pixels around wherever the panel stopped fitting - and
-        // every one of those events used to bring it back, because the fold had
-        // made the form shorter and the height the fold was recorded against
-        // was one the form had already passed. Back it came, the spacer was at
-        // zero again, and it folded on the event after.
-        for (int nudge = 0; nudge <= scmRestoreBand - 4; nudge += 4) {
-            dragFormPaneTo(foldedAt + nudge);
-            QVERIFY2(!pPanel->isVisible(),
-                     qPrintable(qsl("the options panel came back %1px above where it stopped fitting, inside the %2px band - that is the flicker")
-                                        .arg(QString::number(nudge), QString::number(scmRestoreBand))));
-            QVERIFY2(mpEditor->mpButton_triggerOptionsSummary->isVisible(),
-                     qPrintable(qsl("%1px above where the panel stopped fitting, neither it nor the strip that stands in for it is on show").arg(QString::number(nudge))));
-        }
-
-        // ...and past the band, which is the drag that asks for it back
-        dragFormPaneTo(foldedAt + scmRestoreBand + 4);
-        QVERIFY2(
-                pPanel->isVisible(),
-                qPrintable(
-                        qsl("the options panel stayed folded away %1px above where it stopped fitting, past the %2px band").arg(QString::number(scmRestoreBand + 4), QString::number(scmRestoreBand))));
-
-        mpEditor->setTriggerOptionsShown(false);
-        QTest::qWait(50ms);
     }
 
     // A dragged height lives for the session and no longer. Last of the cases,

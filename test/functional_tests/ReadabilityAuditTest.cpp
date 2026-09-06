@@ -572,9 +572,11 @@ private slots:
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
         buildThreePatternRows();
-        // The options are what the sound card, the highlight card and the rest
-        // of the form live on, and they open closed
-        mpEditor->slot_showAllTriggerControls(true);
+        // A sound file and a highlight colour, so that the two switches on the
+        // Firing row are walked with something beside them to read
+        mpEditor->showTriggerSoundFile(qsl("/tmp/ReadabilityAuditTest.wav"));
+        mpEditor->mpTriggersMainArea->checkBox_soundTrigger->setChecked(true);
+        mpEditor->mpTriggersMainArea->checkBox_triggerColorizer->setChecked(true);
         QTest::qWait(100ms);
 
         openPreferences();

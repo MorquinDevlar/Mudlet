@@ -475,24 +475,10 @@ private slots:
     {
         QPushButton* pWell = mpEditor->mpTriggersMainArea->pushButtonFgColor;
         QVERIFY2(pWell != nullptr, "The trigger form has no foreground colour button");
-        // The options the well is one of open closed, so they are asked for -
-        // and the column they open in is a scrolling one, so the well is
-        // brought into it rather than merely shown
-        mpEditor->slot_showAllTriggerControls(true);
         const QColor filled(0, 128, 0);
         pWell->setStyleSheet(dlgTriggerEditor::generateButtonStyleSheet(filled));
         QTest::qWait(50ms);
-        auto* pScroll = mpEditor->findChild<QScrollArea*>(qsl("editorTriggerOptionsScroll"));
-        QVERIFY2(pScroll != nullptr, "The trigger form has no options column for the well to be scrolled into");
-        pScroll->ensureWidgetVisible(pWell);
-        QTest::qWait(50ms);
         QVERIFY2(pWell->isVisible() && pWell->width() > 8 && pWell->height() > 8, "The colour well is not on show, so there is nothing to measure");
-        const QRect onShow(pWell->mapTo(mpEditor, QPoint(0, 0)), pWell->size());
-        const QRect column(pScroll->viewport()->mapTo(mpEditor, QPoint(0, 0)), pScroll->viewport()->size());
-        QVERIFY2(column.contains(onShow),
-                 qPrintable(qsl("the well at %1 is not inside the column at %2, so what is read below is whatever is painted over it")
-                                    .arg(qsl("%1,%2 %3x%4").arg(QString::number(onShow.x()), QString::number(onShow.y()), QString::number(onShow.width()), QString::number(onShow.height())),
-                                         qsl("%1,%2 %3x%4").arg(QString::number(column.x()), QString::number(column.y()), QString::number(column.width()), QString::number(column.height())))));
 
         const QImage shot = windowShot();
         const auto at = [&](const QPoint& point) {
@@ -520,9 +506,9 @@ private slots:
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QToolButton* pClear = mpEditor->mpTriggersMainArea->toolButton_clearSoundFile;
         QVERIFY2(pClear != nullptr, "The trigger form has no button to empty the sound file field");
-        auto* pScroll = mpEditor->findChild<QScrollArea*>(qsl("editorTriggerOptionsScroll"));
-        QVERIFY2(pScroll != nullptr, "The trigger form has no options column");
-        pScroll->ensureWidgetVisible(pClear);
+        // Only there while the trigger has a file to forget, and this reads the
+        // glyph it is drawn with rather than when it is drawn
+        mpEditor->showTriggerSoundFile(qsl("/tmp/EditorChromeShapeTest.wav"));
         QTest::qWait(50ms);
         QVERIFY2(!pClear->icon().isNull(), "The button carries no picture at all");
 

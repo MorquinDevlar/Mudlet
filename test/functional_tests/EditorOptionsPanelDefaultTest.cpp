@@ -18,22 +18,20 @@
  ***************************************************************************/
 
 /*
- * The trigger form's options panel is a disclosure rather than a preference: it
- * is closed every time the editor opens, whatever the last session did with it,
- * and the strip that summarises it stands in for it until the reader asks for it
- * back.
+ * The trigger form's options were a panel opened and closed by a button, and
+ * whether it was open was stored under showAllTriggerControls. They are two
+ * rows of the form now and are always on show, so nothing reads that key - and
+ * a configuration written by any earlier version is tidied of it rather than
+ * left carrying a setting nothing answers to.
  *
- * It used to be stored under showAllTriggerControls, so an editor closed with
- * the panel open reopened with four cards of options over the form and the code
- * pane pushed down under them. The key is seeded here before the editor is
- * built, which is what a configuration written by any earlier version carries.
+ * The key is seeded here before the editor is built, which is what such a
+ * configuration carries.
  *
  * Run with: ctest -R EditorOptionsPanelDefaultTest -V
  */
 
 #include <QSettings>
 #include <QTemporaryDir>
-#include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
 
@@ -44,7 +42,6 @@
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
 #include "dlgTriggerEditor.h"
-#include "dlgTriggersMainArea.h"
 #include "mudlet.h"
 
 #include "GroupedTest.h"
@@ -85,10 +82,6 @@ private:
             QFAIL("Could not connect with the host.");
         }
     }
-
-    QToolButton* toggle() const { return mpEditor->mpTriggersMainArea->toolButton_toggleExtraControls; }
-    QWidget* optionsPanel() const { return mpEditor->mpTriggersMainArea->widget_right; }
-    QWidget* summaryStrip() const { return mpEditor->mpButton_triggerOptionsSummary; }
 
 private slots:
     void initTestCase()
@@ -152,51 +145,12 @@ private slots:
         mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
     }
 
-    void test_theOptionsPanelOpensClosedDespiteTheStoredSetting()
+    // Nothing writes the retired key back, and opening the editor clears it
+    void test_openingTheEditorClearsTheRetiredKey()
     {
-        QVERIFY2(mudlet::getQSettings()->value(qsl("showAllTriggerControls")).toBool(),
-                 "the stored setting this case is about was cleared before the editor read it, so nothing was proved");
-        qInfo().noquote() << qsl("with showAllTriggerControls=true in the configuration the editor opened: panel shown %1, Options button pressed %2, session asking for the panel %3")
-                                     .arg(optionsPanel()->isVisible() ? qsl("yes") : qsl("no"), toggle()->isChecked() ? qsl("yes") : qsl("no"),
-                                          mpEditor->mShowAllTriggerControls ? qsl("yes") : qsl("no"));
-
-        // What the session is holding, which is the half a window too short to
-        // fit the panel does not show: the space-driven auto-collapse hides the
-        // panel without changing what the reader asked for, so a stored
-        // preference can be read back in and still leave the panel away
-        QVERIFY2(!mpEditor->mShowAllTriggerControls, "the editor started the session asking for the options panel, which is the retired setting being read back in");
-        QVERIFY2(optionsPanel() && !optionsPanel()->isVisible(), "the editor opened with the trigger options panel on show");
-        QVERIFY2(!toggle()->isChecked(), "the Options button opened pressed, so it disagrees with the panel it stands for");
-        QVERIFY2(summaryStrip() && summaryStrip()->isVisible(), "the strip that stands in for the panel is not on show while the panel is away");
-    }
-
-    // Closed on open is not closed for good: the button still opens it, and the
-    // strip goes away while it is open
-    void test_theToggleStillOpensAndClosesThePanel()
-    {
-        toggle()->click();
-        QTest::qWait(50ms);
-        QVERIFY2(optionsPanel()->isVisible(), "the Options button did not open the panel");
-        QVERIFY2(!summaryStrip()->isVisible(), "the strip that stands in for the panel is still on show while the panel is open");
-
-        toggle()->click();
-        QTest::qWait(50ms);
-        QVERIFY2(!optionsPanel()->isVisible(), "the Options button did not close the panel again");
-        QVERIFY2(summaryStrip()->isVisible(), "the strip did not come back when the panel was closed");
-    }
-
-    // ...and nothing writes the retired key back. Last of the cases, because it
-    // closes the editor, which is what stores what a session leaves behind.
-    void test_closingTheEditorClearsTheRetiredKey()
-    {
-        toggle()->click();
-        QTest::qWait(50ms);
-        QVERIFY2(optionsPanel()->isVisible(), "the panel was not open, so closing the editor cannot show the key is not written");
-
         mpEditor->writeSettings();
         QVERIFY2(!mudlet::getQSettings()->contains(qsl("showAllTriggerControls")),
-                 qPrintable(qsl("the editor still keeps showAllTriggerControls, which it is now %1")
-                                    .arg(mudlet::getQSettings()->value(qsl("showAllTriggerControls")).toString())));
+                 qPrintable(qsl("the editor still keeps showAllTriggerControls, which it is now %1").arg(mudlet::getQSettings()->value(qsl("showAllTriggerControls")).toString())));
     }
 };
 
