@@ -151,7 +151,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
-    friend class EditorTriggerOptionRowsTest;
+    friend class EditorTriggerOptionsStripTest;
     friend class EditorVariablesFormTest;
     friend class EditorVariablesTreeTest;
     friend class ReadabilityAuditTest;
@@ -279,7 +279,7 @@ public:
     // The trigger form's options, moved out of the .ui column of group boxes
     // and onto two rows of the form's own grid, between its head row and its
     // pattern list
-    void buildTriggerOptionRows();
+    void buildTriggerOptionsStrip();
     // The six forms that are not the trigger form, shelled over their .ui
     // grids: a head row of the name, whatever is typed beside it and the ID
     // pill, with what is left of the grid under it
@@ -971,12 +971,11 @@ private:
     // that a test can hold the floor to the same number the code keeps it at.
     static constexpr int scmEditorSourcePaneFloor = 120;
 
-    // The trigger form's two option rows, and the words leading them
-    QLabel* mpLabel_matchingRow = nullptr;
-    QLabel* mpLabel_firingRow = nullptr;
-    // The last of the two, which is as deep as a change inside the form goes:
+    // The word leading the trigger form's options strip
+    QLabel* mpLabel_optionsRow = nullptr;
+    // The strip itself, which is as deep as a change inside the form goes:
     // what a measurement of the column has to be invalidated from
-    QWidget* mpWidget_triggerFiringRow = nullptr;
+    QWidget* mpWidget_triggerOptionsRow = nullptr;
     // The two segments a matching mode is chosen with, and the spin box beside
     // them, are a view of spinBox_lineMargin, which stays where the trigger is
     // saved from and loaded into.
@@ -984,7 +983,8 @@ private:
     QRadioButton* mpRadioButton_matchAll = nullptr;
     QSpinBox* mpSpinBox_matchWithinLines = nullptr;
     QWidget* mpWidget_matchWithinRow = nullptr;
-    // Enabled only once the trigger has more than one pattern to combine
+    // The word "Match" and the two segments after it, enabled only once the
+    // trigger has more than one pattern to combine
     QWidget* mpWidget_matchModeRows = nullptr;
     // ...and this says why, for as long as that is the case
     QLabel* mpLabel_matchModeHint = nullptr;

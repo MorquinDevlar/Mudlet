@@ -573,7 +573,7 @@ private slots:
         QTest::qWait(100ms);
         buildThreePatternRows();
         // A sound file and a highlight colour, so that the two switches on the
-        // Firing row are walked with something beside them to read
+        // options strip are walked with something beside them to read
         mpEditor->showTriggerSoundFile(qsl("/tmp/ReadabilityAuditTest.wav"));
         mpEditor->mpTriggersMainArea->checkBox_soundTrigger->setChecked(true);
         mpEditor->mpTriggersMainArea->checkBox_triggerColorizer->setChecked(true);

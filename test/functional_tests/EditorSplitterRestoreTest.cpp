@@ -530,7 +530,7 @@ private slots:
     // of the window tall while the code pane under it sat nearly empty.
     //
     // The eleven-row item rather than the three-row one: the form's own rows
-    // are taller than they were - the Matching row carries the caption saying
+    // are taller than they were - the options strip carries the caption saying
     // why the modes are greyed out while there is only one pattern - so three
     // rows now fit in the pane one row leaves, and the case would prove nothing
     // about growing it.

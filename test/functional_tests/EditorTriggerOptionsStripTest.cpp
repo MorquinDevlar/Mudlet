@@ -18,19 +18,25 @@
  ***************************************************************************/
 
 /*
- * A trigger's options are two rows of its form - Matching and Firing - between
- * the row its name is typed on and the list of its patterns. They were a 280px
- * column of four cards beside those patterns, opened by a button, put away by a
- * button, and folded away again by the window being either short or narrow.
+ * A trigger's options are one row of its form - the options strip, led by the
+ * word "Options" - between the row its name is typed on and the list of its
+ * patterns. They were a 280px column of four cards beside those patterns,
+ * opened by a button, put away by a button, and folded away again by the window
+ * being either short or narrow; then two rows, which still wanted a very wide
+ * window before they stopped wrapping.
  *
- * What the rows are held to here:
+ * What the strip is held to here:
  *
- * - They sit between the head row and the pattern list, and the word leading
- *   each of them starts where every other form's lead word does.
- * - A narrow editor costs the rows a line rather than costing the pattern rows
- *   their width: at 1000px they wrap onto more lines than at 1400px, the list
- *   grows no horizontal bar, and the form pane follows the height.
- * - The code pane still keeps its third of the two panes underneath them.
+ * - It sits between the head row and the pattern list, and the word leading it
+ *   starts where every other form's lead word does.
+ * - A narrow form costs the strip a line rather than costing the pattern rows
+ *   their width: at 1000px of strip it is two lines and no more, taller than at
+ *   1400px, the list grows no horizontal bar, and the form pane follows the
+ *   height.
+ * - Everything on one line of the strip is read at one height: a check box and
+ *   a spin box beside it share a vertical centre rather than the check box
+ *   riding at the top of the line the FlowLayout put them both on.
+ * - The code pane still keeps its third of the two panes underneath it.
  * - The two matching modes are radio buttons drawn as joined segments, so a
  *   screen reader still says which of the two is chosen; they write into
  *   spinBox_lineMargin, which is where the trigger is saved from.
@@ -38,15 +44,17 @@
  *   count are greyed out and the caption saying why is on show.
  * - The switches are not gates: choosing a sound file turns the sound on, and
  *   choosing a colour turns the highlight on.
- * - Every control on the rows carries an accessible name and a plain-text
+ * - Every control on the strip carries an accessible name and a plain-text
  *   description, since Qt would otherwise read a screen reader the rich text a
- *   tooltip is written in.
- * - The tab chain runs the head row, the Matching row, the Firing row and then
- *   the patterns.
+ *   tooltip is written in - and the four check boxes whose words were shortened
+ *   to fit the strip are still named in full to it.
+ * - The tab chain runs the head row, the strip left to right, and then the
+ *   patterns.
  *
- * Run with: ctest -R EditorTriggerOptionRowsTest -V
+ * Run with: ctest -R EditorTriggerOptionsStripTest -V
  */
 
+#include <QAbstractButton>
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QLabel>
@@ -81,7 +89,7 @@
 
 using namespace std::chrono_literals;
 
-class EditorTriggerOptionRowsTest : public QObject
+class EditorTriggerOptionsStripTest : public QObject
 {
     Q_OBJECT
 
@@ -93,18 +101,25 @@ private:
     Host* mpHost = nullptr;
     QTreeWidgetItem* mpThreePatternRow = nullptr;
     QTreeWidgetItem* mpOnePatternRow = nullptr;
-    const QString mProfileName = qsl("EditorTriggerOptionRows-Test-Profile");
+    const QString mProfileName = qsl("EditorTriggerOptionsStrip-Test-Profile");
     QString mPort;
     const QString mLocalhost = qsl("localhost");
 
-    // The two widths every wrapping case is measured between, and the height
-    // the seam is measured at
-    static constexpr int scmWideEditor = 1400;
-    static constexpr int scmNarrowEditor = 1000;
+    // The two widths every wrapping case is measured between are the strip's
+    // own, not the window's: the sidebar and the item tree take a fixed several
+    // hundred pixels off the left of the editor before the form sees any of it,
+    // so a window width says nothing about how much the strip has to wrap in.
+    // resizeToStripWidth() is what turns one into the other.
+    //
+    // 1400px is what the whole strip comes to on one line, which is what makes
+    // a single vertical centre a thing there is to measure; 1000px is about
+    // what a maximised editor leaves the form, and is where it wraps once.
+    static constexpr int scmWideStrip = 1400;
+    static constexpr int scmNarrowStrip = 1000;
     static constexpr int scmTallEditor = 900;
     // Short enough that the form asks for more of the two panes than the code
-    // pane's share leaves it, which is the whole of what the last case measures
-    static constexpr int scmShortEditor = 700;
+    // pane's share leaves it, which is the whole of what that case measures
+    static constexpr int scmShortEditor = 500;
     // The seam is placed by hand often enough to be a pixel or two off what was
     // asked for
     static constexpr int scmSeamTolerance = 2;
@@ -114,6 +129,15 @@ private:
     // it - some twenty pixels - on top of these.
     static constexpr int scmSegmentPadding = 12;
     static constexpr int scmSegmentSlack = 6;
+    // Mirrors scmEditorRowControlGap, which the strip's FlowLayout is given as
+    // its vertical spacing - what stands between one wrapped line and the next
+    static constexpr int scmStripLineGap = 8;
+    // A control mapped into the window lands on a whole pixel, so two that are
+    // laid out level can still be read a pixel apart
+    static constexpr int scmCentreSlack = 1;
+    // What a window sized to leave the strip a given width may be out by, since
+    // what stands to the left of the form is measured rather than named
+    static constexpr int scmStripWidthSlack = 2;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -132,9 +156,7 @@ private:
 
     dlgTriggersMainArea* form() const { return mpEditor->mpTriggersMainArea; }
 
-    QGroupBox* matchingRow() const { return form()->findChild<QGroupBox*>(qsl("editorMatchingRow")); }
-
-    QGroupBox* firingRow() const { return form()->findChild<QGroupBox*>(qsl("editorFiringRow")); }
+    QGroupBox* optionsRow() const { return form()->findChild<QGroupBox*>(qsl("editorOptionsRow")); }
 
     int topEdgeOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
 
@@ -161,25 +183,39 @@ private:
         settle();
     }
 
-    // Every control on the two rows that the keyboard can reach
-    QList<QWidget*> focusableControlsOnTheRows() const
+    // The window width that leaves the strip the width being measured at.
+    // Measured rather than named: what stands to the left of the form is the
+    // sidebar and the item tree, and a case that hard-coded the sum of them
+    // would quietly start measuring a different width the day either moves.
+    void resizeToStripWidth(const int stripWidth, const int height)
+    {
+        resizeTheEditor(stripWidth + 600, height);
+        resizeTheEditor(stripWidth + mpEditor->width() - optionsRow()->width(), height);
+        QVERIFY2(std::abs(optionsRow()->width() - stripWidth) <= scmStripWidthSlack,
+                 qPrintable(qsl("the strip is %1px wide in a %2px window, where %3px was asked for").arg(optionsRow()->width()).arg(mpEditor->width()).arg(stripWidth)));
+    }
+
+    // Every control on the strip that the keyboard can reach
+    QList<QWidget*> focusableControlsOnTheStrip() const
     {
         QList<QWidget*> controls;
-        for (const QGroupBox* pRow : {matchingRow(), firingRow()}) {
-            for (QWidget* pWidget : pRow->findChildren<QWidget*>()) {
-                // Qt's own parts of a control - a spin box's inner line edit -
-                // are the control as far as a screen reader is concerned, and
-                // are named by the control around them
-                if (pWidget->objectName().startsWith(qsl("qt_"))) {
-                    continue;
-                }
-                if (pWidget->focusPolicy() != Qt::NoFocus && pWidget->isVisibleTo(mpEditor)) {
-                    controls << pWidget;
-                }
+        for (QWidget* pWidget : optionsRow()->findChildren<QWidget*>()) {
+            // Qt's own parts of a control - a spin box's inner line edit - are
+            // the control as far as a screen reader is concerned, and are named
+            // by the control around them
+            if (pWidget->objectName().startsWith(qsl("qt_"))) {
+                continue;
+            }
+            if (pWidget->focusPolicy() != Qt::NoFocus && pWidget->isVisibleTo(mpEditor)) {
+                controls << pWidget;
             }
         }
         return controls;
     }
+
+    // Where the middle of a control lands on the editor, which is what two
+    // controls on one line of the strip have to agree on
+    int verticalCentreOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, pWidget->rect().center()).y(); }
 
     // The chain the keyboard actually walks, from the command field onwards,
     // over what is visible and can hold the focus
@@ -234,7 +270,7 @@ private slots:
         QTest::qWait(100ms);
         mpEditor = mpHost->mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
-        mpEditor->resize(scmWideEditor, scmTallEditor);
+        mpEditor->resize(scmWideStrip + 600, scmTallEditor);
         settle();
 
         mpEditor->slot_showTriggers();
@@ -277,83 +313,111 @@ private slots:
         if (!mpEditor) {
             return;
         }
-        resizeTheEditor(scmWideEditor, scmTallEditor);
+        resizeTheEditor(scmWideStrip + 600, scmTallEditor);
     }
 
-    // (a) Where the rows are, and what they line up with
-    void test_theTwoRowsSitBetweenTheNameAndThePatterns()
+    // (a) Where the strip is, and what it lines up with
+    void test_theStripSitsBetweenTheNameAndThePatterns()
     {
         chooseTrigger(mpThreePatternRow);
 
-        QVERIFY2(matchingRow() != nullptr && firingRow() != nullptr, "the trigger form has no option rows");
-        QVERIFY2(matchingRow()->isVisible() && firingRow()->isVisible(), "the option rows are not on show, and nothing puts them away any more");
+        QVERIFY2(optionsRow() != nullptr, "the trigger form has no options strip");
+        QVERIFY2(optionsRow()->isVisible(), "the options strip is not on show, and nothing puts it away any more");
 
         const int headTop = topEdgeOf(form()->widget_top);
-        const int matchingTop = topEdgeOf(matchingRow());
-        const int firingTop = topEdgeOf(firingRow());
+        const int stripTop = topEdgeOf(optionsRow());
         const int patternsTop = topEdgeOf(form()->widget_left);
-        qInfo().noquote() << qsl("  head row at %1, Matching at %2, Firing at %3, patterns at %4").arg(headTop).arg(matchingTop).arg(firingTop).arg(patternsTop);
+        qInfo().noquote() << qsl("  head row at %1, the strip at %2, patterns at %3").arg(headTop).arg(stripTop).arg(patternsTop);
 
-        QVERIFY2(headTop < matchingTop, "the Matching row is not under the row the name is typed on");
-        QVERIFY2(matchingTop < firingTop, "the Firing row is not under the Matching row");
-        QVERIFY2(firingTop < patternsTop, "the pattern list is not under the Firing row");
+        QVERIFY2(headTop < stripTop, "the options strip is not under the row the name is typed on");
+        QVERIFY2(stripTop < patternsTop, "the pattern list is not under the options strip");
 
-        // The word leading each row starts where the Name label does, and the
-        // control after it starts where the Name field does - which is the
-        // whole of what one lead width buys
+        // The word leading the strip starts where the Name label does, and the
+        // strip after it starts where the Name field does - which is the whole
+        // of what one lead width buys
         QLabel* pName = form()->label_trigger_name;
-        for (QLabel* pLead : {mpEditor->mpLabel_matchingRow, mpEditor->mpLabel_firingRow}) {
-            QVERIFY2(pLead->property("editorRowLabel").toBool(), qPrintable(qsl("the word \"%1\" is not written in the quiet ink a form's scaffolding takes").arg(pLead->text())));
-            QCOMPARE(leftEdgeOf(pLead), leftEdgeOf(pName));
-        }
-        qInfo().noquote() << qsl("  the Name label is %1px wide and the lead words %2px, with the Name field at x=%3 and the Matching row at x=%4")
+        QLabel* pLead = mpEditor->mpLabel_optionsRow;
+        QVERIFY2(pLead->property("editorRowLabel").toBool(), qPrintable(qsl("the word \"%1\" is not written in the quiet ink a form's scaffolding takes").arg(pLead->text())));
+        QCOMPARE(leftEdgeOf(pLead), leftEdgeOf(pName));
+        qInfo().noquote() << qsl("  the Name label is %1px wide and the lead word \"%2\" %3px, with the Name field at x=%4 and the strip at x=%5")
                                      .arg(pName->width())
-                                     .arg(mpEditor->mpLabel_matchingRow->width())
+                                     .arg(pLead->text())
+                                     .arg(pLead->width())
                                      .arg(leftEdgeOf(form()->lineEdit_trigger_name))
-                                     .arg(leftEdgeOf(matchingRow()));
-        QCOMPARE(leftEdgeOf(matchingRow()), leftEdgeOf(form()->lineEdit_trigger_name));
-        QCOMPARE(leftEdgeOf(firingRow()), leftEdgeOf(form()->lineEdit_trigger_name));
+                                     .arg(leftEdgeOf(optionsRow()));
+        QCOMPARE(leftEdgeOf(optionsRow()), leftEdgeOf(form()->lineEdit_trigger_name));
+        // ...and the strip is a grouping a screen reader is told about, named
+        // by that same word rather than by a title of its own
+        QCOMPARE(optionsRow()->accessibleName(), pLead->text());
     }
 
-    // (b) A narrow editor costs the rows a line, not the pattern rows their
-    // width. This is what replaces the fold that used to take the options away.
-    void test_aNarrowEditorWrapsTheOptionRowsRatherThanThePatternRows()
+    // (b) A narrow editor costs the strip a line, not the pattern rows their
+    // width - and no more than one line at the width an ordinary editor leaves
+    // the form, which is what the shorter words on it are for. This is what
+    // replaces the fold that used to take the options away.
+    void test_aNarrowFormWrapsTheStripRatherThanThePatternRows()
     {
         chooseTrigger(mpThreePatternRow);
-
-        const int wideMatching = matchingRow()->height();
-        const int wideFiring = firingRow()->height();
+        resizeToStripWidth(scmWideStrip, scmTallEditor);
+        const int wideStrip = optionsRow()->height();
         const int widePane = mpEditor->splitter_right->sizes().at(0);
 
-        resizeTheEditor(scmNarrowEditor, scmTallEditor);
-        const int narrowMatching = matchingRow()->height();
-        const int narrowFiring = firingRow()->height();
+        resizeToStripWidth(scmNarrowStrip, scmTallEditor);
+        const int narrowStrip = optionsRow()->height();
         const int narrowPane = mpEditor->splitter_right->sizes().at(0);
-        qInfo().noquote() << qsl("  at %1px the rows are %2 and %3 tall in a form pane of %4; at %5px they are %6 and %7 in a pane of %8")
-                                     .arg(scmWideEditor)
-                                     .arg(wideMatching)
-                                     .arg(wideFiring)
+        const int twoLines = 2 * uiDesign::scmInputHeight + scmStripLineGap;
+        qInfo().noquote() << qsl("  a %1px strip is %2px tall in a form pane of %3; a %4px one is %5px in a pane of %6, where two lines are %7px")
+                                     .arg(scmWideStrip)
+                                     .arg(wideStrip)
                                      .arg(widePane)
-                                     .arg(scmNarrowEditor)
-                                     .arg(narrowMatching)
-                                     .arg(narrowFiring)
-                                     .arg(narrowPane);
+                                     .arg(scmNarrowStrip)
+                                     .arg(narrowStrip)
+                                     .arg(narrowPane)
+                                     .arg(twoLines);
 
-        QVERIFY2(narrowMatching + narrowFiring > wideMatching + wideFiring,
-                 qPrintable(qsl("the two rows are %1px tall at %2px of window and %3px at %4px - they did not wrap onto another line")
-                                    .arg(narrowMatching + narrowFiring)
-                                    .arg(scmNarrowEditor)
-                                    .arg(wideMatching + wideFiring)
-                                    .arg(scmWideEditor)));
+        QVERIFY2(narrowStrip > wideStrip,
+                 qPrintable(qsl("the strip is %1px tall at %2px wide and %3px at %4px - it did not wrap onto another line").arg(narrowStrip).arg(scmNarrowStrip).arg(wideStrip).arg(scmWideStrip)));
+        QVERIFY2(narrowStrip <= twoLines,
+                 qPrintable(qsl("the strip is %1px tall at %2px wide, which is more than the %3px two lines come to - the words on it are too long for this width")
+                                    .arg(narrowStrip)
+                                    .arg(scmNarrowStrip)
+                                    .arg(twoLines)));
         QVERIFY2(!mpEditor->mpScrollArea->horizontalScrollBar()->isVisible(),
                  qPrintable(qsl("the pattern list is scrolling sideways in a %1px window, with %2px for a row that wants %3px")
-                                    .arg(scmNarrowEditor)
+                                    .arg(mpEditor->width())
                                     .arg(mpEditor->mpScrollArea->viewport()->width())
                                     .arg(mpEditor->mpWidget_triggerItems->minimumSizeHint().width())));
         QVERIFY2(narrowPane > widePane,
-                 qPrintable(qsl("the rows grew by %1px and the form pane stayed at %2px, so the extra lines are being drawn over the patterns")
-                                    .arg(narrowMatching + narrowFiring - wideMatching - wideFiring)
-                                    .arg(narrowPane)));
+                 qPrintable(qsl("the strip grew by %1px and the form pane stayed at %2px, so the extra line is being drawn over the patterns").arg(narrowStrip - wideStrip).arg(narrowPane)));
+    }
+
+    // (b2) A FlowLayout puts every item at the top of the line it lands on, so
+    // a 20px check box beside a 30px spin box would be read a few pixels above
+    // it. Everything on the strip is one control tall, and each group centres
+    // what is inside it, so one line has one middle.
+    void test_everythingOnOneLineOfTheStripSharesAVerticalCentre()
+    {
+        chooseTrigger(mpThreePatternRow);
+        resizeToStripWidth(scmWideStrip, scmTallEditor);
+
+        const QList<QWidget*> controls = focusableControlsOnTheStrip();
+        QVERIFY2(controls.size() >= 9, qPrintable(qsl("only %1 focusable controls were found on the strip, so this walk is not covering it").arg(controls.size())));
+
+        QStringList read;
+        QStringList failures;
+        const int centre = verticalCentreOf(controls.first());
+        for (QWidget* pControl : controls) {
+            const int at = verticalCentreOf(pControl);
+            read << qsl("%1 at %2").arg(describe(pControl)).arg(at);
+            if (std::abs(at - centre) > scmCentreSlack) {
+                failures << qsl("%1 is centred at %2 against %3 for %4, %5px out").arg(describe(pControl)).arg(at).arg(centre).arg(describe(controls.first())).arg(std::abs(at - centre));
+            }
+        }
+        qInfo().noquote() << qsl("  a %1px strip is %2px tall and holds: %3").arg(scmWideStrip).arg(optionsRow()->height()).arg(read.join(qsl(", ")));
+        QVERIFY2(failures.isEmpty(), qPrintable(failures.join(qsl("\n"))));
+        // ...and one line is what they were all on, so that a centre they agree
+        // on is one middle rather than a coincidence between two lines
+        QCOMPARE(optionsRow()->height(), uiDesign::scmInputHeight);
     }
 
     // (c) ...and the code pane still keeps its third of the two panes, in a
@@ -361,14 +425,14 @@ private slots:
     void test_theCodePaneKeepsItsFloorInAShortWindow()
     {
         chooseTrigger(mpThreePatternRow);
-        resizeTheEditor(scmNarrowEditor, scmShortEditor);
+        resizeToStripWidth(scmNarrowStrip, scmShortEditor);
 
         const QList<int> sizes = mpEditor->splitter_right->sizes();
         QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
         const int paneTotal = sizes.at(0) + sizes.at(1);
         const int floor = mpEditor->codePaneFloor(paneTotal);
         qInfo().noquote() << qsl("  in a %1x%2 window the panes are %3 / %4 of %5, where the code pane keeps %6")
-                                     .arg(scmNarrowEditor)
+                                     .arg(mpEditor->width())
                                      .arg(scmShortEditor)
                                      .arg(sizes.at(0))
                                      .arg(sizes.at(1))
@@ -430,7 +494,7 @@ private slots:
     }
 
     // (e) With one pattern there is nothing to combine, so the choice is greyed
-    // out and the caption says why
+    // out and the caption at the end of the strip says why
     void test_onceMorePatternsAreThereTheModesBecomeAvailable()
     {
         chooseTrigger(mpOnePatternRow);
@@ -456,7 +520,7 @@ private slots:
         settle();
         QVERIFY2(!form()->toolButton_clearSoundFile->isVisible(), "the cross that forgets the sound file is there with no file to forget");
 
-        const QString chosen = qsl("/tmp/EditorTriggerOptionRowsTest/water-splash.wav");
+        const QString chosen = qsl("/tmp/EditorTriggerOptionsStripTest/water-splash.wav");
         mpEditor->mpUndoStack->clear();
         mpEditor->acceptTriggerSoundFile(chosen);
         settle();
@@ -482,12 +546,12 @@ private slots:
 
     // (g) A screen reader is told what each control is and what it does, in
     // words rather than in the rich text a tooltip is written in
-    void test_everyControlOnTheRowsNamesItselfToAScreenReader()
+    void test_everyControlOnTheStripNamesItselfToAScreenReader()
     {
         chooseTrigger(mpThreePatternRow);
 
-        const QList<QWidget*> controls = focusableControlsOnTheRows();
-        QVERIFY2(controls.size() >= 9, qPrintable(qsl("only %1 focusable controls were found on the two rows, so this walk is not covering them").arg(controls.size())));
+        const QList<QWidget*> controls = focusableControlsOnTheStrip();
+        QVERIFY2(controls.size() >= 9, qPrintable(qsl("only %1 focusable controls were found on the strip, so this walk is not covering it").arg(controls.size())));
         QStringList failures;
         for (QWidget* pControl : controls) {
             if (pControl->accessibleName().isEmpty()) {
@@ -500,17 +564,27 @@ private slots:
                 failures << qsl("%1 is described as \"%2\", which is markup being read out").arg(describe(pControl), description);
             }
         }
-        qInfo().noquote() << qsl("  %1 focusable controls on the two rows were read").arg(controls.size());
+        qInfo().noquote() << qsl("  %1 focusable controls on the strip were read").arg(controls.size());
         QVERIFY2(failures.isEmpty(), qPrintable(failures.join(qsl("\n"))));
 
-        // ...and the rows themselves are groupings rather than loose text: the
-        // word leading a row is the form's own label and reaches nothing
-        QCOMPARE(matchingRow()->accessibleName(), mpEditor->mpLabel_matchingRow->text());
-        QCOMPARE(firingRow()->accessibleName(), mpEditor->mpLabel_firingRow->text());
+        // The words on the strip are as short as they can be said in; what a
+        // screen reader is given is the whole of what each one is, since it
+        // reaches a check box with nothing else beside it
+        const QList<QPair<QWidget*, QString>> saidInFull{{mpEditor->mpRadioButton_matchAny, qsl("Any pattern")},
+                                                         {mpEditor->mpRadioButton_matchAll, qsl("All patterns")},
+                                                         {form()->checkBox_perlSlashGOption, qsl("Every occurrence in a line")},
+                                                         {form()->checkBox_filterTrigger, qsl("Only pass matches to children")},
+                                                         {form()->checkBox_soundTrigger, qsl("Play a sound")},
+                                                         {form()->checkBox_triggerColorizer, qsl("Highlight matches")}};
+        for (const auto& [pControl, name] : saidInFull) {
+            QVERIFY2(pControl->accessibleName() == name,
+                     qPrintable(qsl("%1 reads \"%2\" and is named \"%3\" to a screen reader rather than \"%4\"")
+                                        .arg(describe(pControl), qobject_cast<QAbstractButton*>(pControl)->text(), pControl->accessibleName(), name)));
+        }
     }
 
     // (h) The keyboard reads the form the way the eye does
-    void test_theTabChainRunsTheRowsBeforeThePatterns()
+    void test_theTabChainRunsTheStripBeforeThePatterns()
     {
         chooseTrigger(mpThreePatternRow);
 
@@ -547,9 +621,9 @@ private slots:
                                                  {qsl("Every occurrence"), everyOccurrence},
                                                  {qsl("Keep firing"), keepFiring},
                                                  {qsl("Only pass matches"), onlyMatches},
-                                                 {qsl("Play a sound"), playSound},
+                                                 {qsl("Sound"), playSound},
                                                  {qsl("sound file"), soundFile},
-                                                 {qsl("Highlight matches"), highlight},
+                                                 {qsl("Highlight"), highlight},
                                                  {qsl("Foreground"), foreground},
                                                  {qsl("Background"), background},
                                                  {qsl("the first pattern"), firstPattern}};
@@ -558,7 +632,7 @@ private slots:
         }
         for (int step = 1; step < ordered.size(); ++step) {
             QVERIFY2(ordered.at(step - 1).second < ordered.at(step).second,
-                     qPrintable(qsl("%1 is reached at %2 and %3 at %4, so the chain does not read left to right down the rows")
+                     qPrintable(qsl("%1 is reached at %2 and %3 at %4, so the chain does not read left to right along the strip")
                                         .arg(ordered.at(step - 1).first)
                                         .arg(ordered.at(step - 1).second)
                                         .arg(ordered.at(step).first)
@@ -590,5 +664,5 @@ private slots:
     }
 };
 
-#include "EditorTriggerOptionRowsTest.moc"
-MUDLET_GROUPED_TEST_MAIN(EditorTriggerOptionRowsTest)
+#include "EditorTriggerOptionsStripTest.moc"
+MUDLET_GROUPED_TEST_MAIN(EditorTriggerOptionsStripTest)
