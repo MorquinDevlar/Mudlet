@@ -21,7 +21,7 @@
  * The notice at the top of the column an item is edited in, and what the
  * pattern list under it does to the seam over the code pane.
  *
- * Six things this holds them to:
+ * Nine things this holds them to:
  *
  * - A notice takes its own height and no more. The column is the notice, the
  *   gap under it and the form, so the fields sit exactly where they sit with
@@ -51,6 +51,18 @@
  * - The count beside the "show hidden variables" switch belongs to the
  *   Variables view and leaves with it.
  *
+ * - The options panel does not get the pane. Its four cards are taller than
+ *   this window can hold, and the form was given the room anyway: 576 above a
+ *   code pane of 120, with 300px of nothing under the Add pattern button. The
+ *   code pane keeps a third of the two panes and the panel scrolls.
+ *
+ * - Closing the panel hands that room back, so the column is the rows it is
+ *   made of again.
+ *
+ * - ...and a pane held at that cap is not a pane too short for the panel: the
+ *   spacer under the cards is at zero there by design, and the first nudge of
+ *   the handle used to fold the panel away for it.
+ *
  * Run with: ctest -R EditorNoticeSeamTest -V
  */
 
@@ -63,6 +75,7 @@
 #include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
+#include <algorithm>
 #include <chrono>
 
 #include "EditorPlaceholderButton.h"
@@ -117,6 +130,13 @@ private:
     // The seam is placed by hand often enough to be a pixel or two off what was
     // asked for, and this holds a height against where it was put
     static constexpr int scmSeamTolerance = 1;
+
+    // The wobble a hand on a mouse leaves behind it, which is all the movement
+    // the options panel has to survive at a pane held at the seam's own cap
+    static constexpr int scmNudge = 10;
+    // Mirrors the hysteresis slot_rightSplitterMoved() reads the spacer under
+    // the cards against, which is local to that function
+    static constexpr int scmFoldHysteresis = 10;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -248,20 +268,68 @@ private:
 
     // The seam over the code pane, pulled down by scmDragTravel in the small
     // steps a real pointer arrives in - which is the only thing that reaches
-    // slot_rightSplitterMoved(), and so the only thing that records a height
-    void dragTheSeamDown()
+    // slot_rightSplitterMoved(), and so the only thing that records a height.
+    //
+    // Not past what the seam will hand that height back at, though: a drag is
+    // free to leave the code pane as little as the reader likes, but the snap
+    // that reads the height afterwards keeps that pane its share of the two
+    // (codePaneFloor()), and a case that drags past the share is measuring the
+    // clamp rather than what it came to measure. roomForANoticeToCome is what
+    // the notice a case will put up afterwards takes out of the same pane.
+    void dragTheSeamDown(const int roomForANoticeToCome = 0)
     {
         QSplitterHandle* pHandle = mpEditor->splitter_right->handle(1);
         QVERIFY2(pHandle != nullptr, "the right hand splitter has no handle over the code pane");
+        const QList<int> sizes = mpEditor->splitter_right->sizes();
+        QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
+        const int paneTotal = sizes.at(0) + sizes.at(1);
+        // What the cap leaves over the pane as it stands, less the notice to
+        // come and a step's worth on top of it: the notice measured now and the
+        // one that goes up later can differ by a pixel of wrapping
+        const int room = paneTotal - mpEditor->codePaneFloor(paneTotal) - sizes.at(0) - roomForANoticeToCome - scmDragStep;
+        const int travel = std::min(scmDragTravel, room - room % scmDragStep);
+        QVERIFY2(travel >= scmDragStep,
+                 qPrintable(qsl("the form pane is at %1 of %2 with %3 to come for a notice, which leaves nothing to drag into before the seam's own cap")
+                                    .arg(sizes.at(0))
+                                    .arg(paneTotal)
+                                    .arg(roomForANoticeToCome)));
         const QPoint on = pHandle->rect().center();
         QPointF at = pHandle->mapToGlobal(QPointF(on));
 
         QTest::mousePress(pHandle, Qt::LeftButton, Qt::NoModifier, on);
-        for (int travelled = 0; travelled < scmDragTravel; travelled += scmDragStep) {
+        for (int travelled = 0; travelled < travel; travelled += scmDragStep) {
             at += QPointF(0, scmDragStep);
             dragTo(pHandle, at);
         }
         QTest::mouseRelease(pHandle, Qt::LeftButton, Qt::NoModifier, pHandle->mapFromGlobal(at).toPoint());
+        settle();
+    }
+
+    // The panel of four cards beside the pattern list, and whether the form has
+    // room for all of it or is showing it through a scroll bar
+    QWidget* optionsPanel() const { return mpEditor->mpTriggersMainArea->widget_right; }
+
+    bool optionsPanelScrolls() const { return mpEditor->mpScrollArea_triggerOptions->verticalScrollBar()->isVisible(); }
+
+    void showTheOptionsPanel(const bool shown)
+    {
+        mpEditor->setTriggerOptionsShown(shown);
+        settle();
+    }
+
+    // A push on the code heading of a few pixels, the size of the wobble a hand
+    // on a mouse leaves behind it. Positive takes the form pane taller.
+    void nudgeTheSeam(const int by)
+    {
+        QSplitterHandle* pHandle = mpEditor->splitter_right->handle(1);
+        QVERIFY2(pHandle != nullptr, "the right hand splitter has no handle over the code pane");
+        const QPoint on = pHandle->rect().center();
+        const QPointF from = pHandle->mapToGlobal(QPointF(on));
+        const QPointF to = from + QPointF(0, by);
+
+        QTest::mousePress(pHandle, Qt::LeftButton, Qt::NoModifier, on);
+        dragTo(pHandle, to);
+        QTest::mouseRelease(pHandle, Qt::LeftButton, Qt::NoModifier, pHandle->mapFromGlobal(to).toPoint());
         settle();
     }
 
@@ -548,9 +616,12 @@ private slots:
     {
         chooseTheTrigger();
         breakTheTriggersScript();
+        // Measured while it is up, since the drag below has to stop short of
+        // the room the same notice will ask for when the item is chosen again
+        const int noticeRoomToCome = mpEditor->noticeRoomInFormColumn();
         takeTheNoticeDown();
 
-        dragTheSeamDown();
+        dragTheSeamDown(noticeRoomToCome);
         const int draggedTo = mpEditor->splitter_right->sizes().at(0);
         QVERIFY2(mpEditor->mDraggedFormPaneHeights.contains(EditorViewType::cmTriggerView), "the drag never reached the splitter, so no height was written down and this case says nothing");
 
@@ -596,6 +667,92 @@ private slots:
         QVERIFY2(!mpEditor->mpLabel_hiddenVariablesCount->isVisible(), qPrintable(qsl("the Triggers view is still being told \"%1\"").arg(mpEditor->mpLabel_hiddenVariablesCount->text())));
 
         QVERIFY2(!mpEditor->checkBox_displayAllVariables->isVisible(), "the switch itself is still showing outside the Variables view");
+    }
+
+    // The options panel is four cards, which in this window are taller than the
+    // form can hold. It used to be given the room anyway: the seam went to 576
+    // over a code pane of 120, the floor below which nothing can be typed in the
+    // thing, and the pattern column carried 300px of nothing under its Add
+    // pattern button. The code pane keeps a third of the two panes instead, and
+    // the panel shows what fits and scrolls the rest.
+    void test_theOptionsPanelLeavesTheCodePaneItsThird()
+    {
+        // Any row count will do here: these cases are about the panel, not the rows
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(true);
+        QVERIFY2(optionsPanel()->isVisible(), "the options panel is not on show, so there is nothing here about the room it takes");
+
+        const QList<int> sizes = mpEditor->splitter_right->sizes();
+        QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
+        const int paneTotal = sizes.at(0) + sizes.at(1);
+        qInfo().noquote() << qsl("  with the options panel open the panes are %1 / %2 of %3, the code pane keeps %4 and the panel %5")
+                                     .arg(sizes.at(0))
+                                     .arg(sizes.at(1))
+                                     .arg(paneTotal)
+                                     .arg(mpEditor->codePaneFloor(paneTotal))
+                                     .arg(optionsPanelScrolls() ? qsl("scrolls") : qsl("fits"));
+
+        QVERIFY2(sizes.at(1) >= paneTotal / 3 - scmSeamTolerance,
+                 qPrintable(qsl("the options panel left the code pane %1 of the %2 the two panes have, where a third of them is %3").arg(sizes.at(1)).arg(paneTotal).arg(paneTotal / 3)));
+        QVERIFY2(optionsPanelScrolls(),
+                 qPrintable(qsl("the panel is %1 tall in a form pane of %2 and is not scrolling - either this window is now tall enough for all four cards, in which case "
+                                "this case says nothing about the third, or the cards are being squeezed to fit")
+                                    .arg(optionsPanel()->height())
+                                    .arg(sizes.at(0))));
+    }
+
+    // ...and closing it is the form losing what it was holding, so the column
+    // goes back to the rows it is made of and the code pane takes the rest
+    void test_closingTheOptionsGivesThePaneBackToTheCodeEditor()
+    {
+        // Any row count will do here: these cases are about the panel, not the rows
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(true);
+        const int codeWithThePanel = mpEditor->splitter_right->sizes().at(1);
+
+        showTheOptionsPanel(false);
+        const int codeWithoutIt = mpEditor->splitter_right->sizes().at(1);
+        qInfo().noquote() << qsl("  the code pane is %1 with the options panel open and %2 with it closed").arg(codeWithThePanel).arg(codeWithoutIt);
+
+        QVERIFY2(!optionsPanel()->isVisible(), "the options panel is still on show after being closed");
+        QVERIFY2(codeWithoutIt > codeWithThePanel,
+                 qPrintable(qsl("closing the options panel left the code pane at %1 against the %2 it had with the panel open - the form kept room it is no longer holding anything in")
+                                    .arg(codeWithoutIt)
+                                    .arg(codeWithThePanel)));
+    }
+
+    // The fold is for a pane the reader has made too short for the panel, and a
+    // pane the seam is holding at its own cap is not that. The spacer under the
+    // cards is what says whether they still fit, and at the cap it is at zero by
+    // design - so the first nudge of the handle, either way, used to fold away a
+    // panel that was doing exactly what it is meant to do.
+    void test_thePaneHeldAtItsCapDoesNotFoldTheOptionsPanel()
+    {
+        // Any row count will do here: these cases are about the panel, not the rows
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        showTheOptionsPanel(true);
+        QVERIFY2(optionsPanel()->isVisible(), "the options panel is not on show, so there is nothing here for a nudge to fold away");
+        QVERIFY2(optionsPanelScrolls(), "the four cards fit in the form as it stands, so the pane is not being held at the cap this case is about");
+        QVERIFY2(mpEditor->mpTriggersMainArea->widget_verticalSpacer_right->height() <= scmFoldHysteresis,
+                 qPrintable(qsl("the spacer under the cards is %1 tall, so the fold this case is about would not have fired anyway")
+                                    .arg(mpEditor->mpTriggersMainArea->widget_verticalSpacer_right->height())));
+
+        nudgeTheSeam(scmNudge);
+        QVERIFY2(optionsPanel()->isVisible(),
+                 qPrintable(qsl("a %1px push down on the code heading folded the options panel away, at a form pane of %2").arg(scmNudge).arg(mpEditor->splitter_right->sizes().at(0))));
+
+        nudgeTheSeam(-scmNudge);
+        QVERIFY2(optionsPanel()->isVisible(),
+                 qPrintable(qsl("a %1px push up on the code heading folded the options panel away, at a form pane of %2").arg(scmNudge).arg(mpEditor->splitter_right->sizes().at(0))));
+
+        // The nudges were drags, and a drag is a height this view keeps for the
+        // rest of the session
+        showTheOptionsPanel(false);
+        mpEditor->mDraggedFormPaneHeights.remove(EditorViewType::cmTriggerView);
+        settle();
     }
 };
 

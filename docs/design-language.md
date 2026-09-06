@@ -462,12 +462,36 @@ session (`mDraggedFormPaneHeights`). In Aliases, Timers, Keys, Scripts and
 Variables the form is a fixed set of fields: `formPaneResizes()` says no, the
 handle is made inert (`GripSplitterHandle::setResizes(false)` - no grip drawn,
 no cursor, no drag), and `holdFormPaneToItsContents()` caps the column
-`mpNonCodeWidgets` and gives the code pane the rest, keeping the pane's floor
-`scmEditorSourcePaneFloor`. A `LayoutRequest` on the column re-runs the cap, so a
-notice appearing, a row hidden for a key group or chips wrapping onto a second
-line all move the seam by themselves. `EditorFormShellTest` holds both halves: a
-push on the handle leaves a fixed view's column where it was, and still moves the
-trigger form's.
+`mpNonCodeWidgets` and gives the code pane the rest. A `LayoutRequest` on the
+column re-runs the cap, so a notice appearing, a row hidden for a key group or
+chips wrapping onto a second line all move the seam by themselves.
+`EditorFormShellTest` holds both halves: a push on the handle leaves a fixed
+view's column where it was, and still moves the trigger form's.
+
+What the form is never given, however much it asks for, is the whole of the two
+panes. `codePaneFloor()` keeps the code pane a third of what they have between
+them and never less than `scmEditorSourcePaneFloor` - the number below which the
+pane stops being one anything can be typed into, and all a third comes to in a
+window too short for it to come to more. Every place the seam is placed rather
+than dragged reads it: the cap and the split in `holdFormPaneToItsContents()`,
+`formPaneHeightForItsContents()`, the dragged height a view is put back to in
+`fitFormPaneToItsContents()`, and what `refitSplitterForTriggerOptions()` will
+lend the options panel. That panel is what the rule is for: four cards are
+taller than an 800px window has room for, so the form took everything down to
+the bare floor, which left a third of the pattern column empty under the Add
+pattern button and six lines of Lua under that. Held to two thirds, it scrolls
+in what it is given - it is in a scroll area for exactly this, and
+`widget_right` is `Minimum` down the page, so the cards keep their own height
+and a bar appears beside them rather than them being squeezed inside it. The
+reader's own drag is not held to the third: the handle goes where they put it,
+and the third is taken back the next time the seam is placed rather than
+dragged. Nor is the panel folded away for it - the drag-driven fold in
+`slot_rightSplitterMoved()` reads the spacer under the cards for whether they
+still fit, and a pane the seam is holding at its own cap has that spacer at zero
+by design, so the fold asks as well that the reader has taken the pane a band
+below that cap. `EditorNoticeSeamTest` holds the three of them: the split the
+panel opens at, the room closing it gives back, and the nudge of the handle that
+must leave it alone.
 
 What the column is measured with is `formColumnHeightForItsWidth()`: the
 layout's `heightForWidth()` at the width the column actually has, not its size

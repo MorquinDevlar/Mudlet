@@ -338,8 +338,12 @@ public:
     // Opening the panel where the form has no room for it borrows the height
     // from the code pane, and closing it hands that height back
     void refitSplitterForTriggerOptions(const bool shown);
+    // The least the code pane is left with wherever the seam is placed rather
+    // than dragged: a third of what the two panes have between them, and never
+    // under scmEditorSourcePaneFloor
+    [[nodiscard]] int codePaneFloor(const int paneTotal) const;
     // What the form column asks for as it stands, floored so the code pane
-    // keeps its own minimum whatever the form wants
+    // keeps its own share whatever the form wants
     int formPaneHeightForItsContents(const int paneTotal) const;
     // The form pane takes the height its contents ask for, unless this view's
     // splitter has been dragged in this session - then it takes that height
@@ -952,10 +956,12 @@ private:
     bool mEditorSaveErrorCaptureOpen = false;
     QString mEditorSaveErrorCaptured;
 
-    // The least the code pane is left with, whatever the form column would
+    // The least the code pane is ever left with, whatever the form column would
     // rather have: below this the editor stops being one anything can be typed
-    // into. On the class rather than in the .cpp so that a test can hold the
-    // floor to the same number the code keeps it at.
+    // into. What the seam actually keeps for it is codePaneFloor(), a third of
+    // the two panes, which only comes down to this number in a window too short
+    // for a third to be worth that much. On the class rather than in the .cpp so
+    // that a test can hold the floor to the same number the code keeps it at.
     static constexpr int scmEditorSourcePaneFloor = 120;
 
     // The trigger form's options panel. The radio pair and the spin box beside

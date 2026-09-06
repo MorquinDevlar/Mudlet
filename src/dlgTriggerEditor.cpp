@@ -10889,18 +10889,17 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
         // a height to hold it to
         return;
     }
-    mpNonCodeWidgets->setMaximumHeight(wanted);
 
     QList<int> sizes = splitter_right->sizes();
-    if (sizes.size() < 2) {
-        return;
-    }
-    const int paneTotal = sizes.at(0) + sizes.at(1);
+    const int paneTotal = sizes.size() < 2 ? 0 : sizes.at(0) + sizes.at(1);
     // The column takes what it asks for out of what the two panes have between
-    // them, and the code pane keeps its floor out of the rest - the way
+    // them, and the code pane keeps its share of the rest - the way
     // formPaneHeightForItsContents() shares the same pair out. Clamped to the
     // total alone, a window too short for both left the code pane with nothing.
-    const int paneHeight = std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+    // The cap carries the same number as the sizes do, since the cap is what a
+    // window resize is laid out against.
+    const int paneHeight = paneTotal <= 0 ? wanted : std::clamp(wanted, 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
+    mpNonCodeWidgets->setMaximumHeight(paneHeight);
     if (paneTotal <= 0 || sizes.at(0) == paneHeight) {
         return;
     }
@@ -10910,7 +10909,10 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
 }
 
 // The seam gives the notice the room it has just taken, or takes back the room
-// it has just given up, and leaves the rest of the split alone.
+// it has just given up, and leaves the rest of the split alone. That is why the
+// hard floor and not codePaneFloor() is what stops it here: this moves the seam
+// by one number and no other, and a split the reader dragged past the share the
+// code pane is otherwise held to is theirs until the seam is next placed.
 void dlgTriggerEditor::moveSeamByNoticeChange(const int noticeChange)
 {
     if (noticeChange == 0 || mpSourceEditorArea->isHidden()) {
@@ -10959,8 +10961,24 @@ QWidget* dlgTriggerEditor::currentFormArea() const
     return mpNonCodeWidgets;
 }
 
+// What the code pane keeps out of the two panes wherever the seam is placed
+// rather than dragged. A third of them, and never less than the floor below
+// which the pane stops being one anything can be typed into.
+//
+// A form column is not owed everything it asks for. The trigger options panel
+// is four cards, which at any ordinary window height come to more than the form
+// has room for - given it, the panel took the pane down to the bare floor and
+// left a third of the pattern column empty under the Add pattern button, with
+// six lines of Lua under that. The column is held to two thirds instead and the
+// panel scrolls inside what it is given. A drag by the reader is theirs and is
+// not held to this; the third is taken back the next time the seam is placed.
+int dlgTriggerEditor::codePaneFloor(const int paneTotal) const
+{
+    return std::max(scmEditorSourcePaneFloor, paneTotal / 3);
+}
+
 // The height the form column is asking for, kept inside what the two panes have
-// between them: however much the form wants, the code pane keeps its floor.
+// between them: however much the form wants, the code pane keeps its share.
 int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
 {
     // The form's height changes without a view switch - the trigger options
@@ -10980,14 +10998,14 @@ int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
     if (mpScrollArea && mpWidget_triggerItems && mpTriggersMainArea->isVisible()) {
         wanted += std::max(0, mpWidget_triggerItems->sizeHint().height() - mpScrollArea->sizeHint().height());
     }
-    return std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+    return std::clamp(wanted, 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
 }
 
 // The form pane snaps to the height its contents ask for, shrinking as readily
 // as growing, whenever the item being edited changes, whenever a view is
 // entered, and once the window has been shown and the panes have real heights.
 // What it takes comes off the code pane, which formPaneHeightForItsContents()
-// has already left its floor.
+// has already left its share.
 //
 // The one exception is a view whose handle the user has dragged in this
 // session. Only a drag emits QSplitter::splitterMoved(), so only a drag records
@@ -11033,7 +11051,7 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
         // the panel is being shown in. Their height is held net of any notice,
         // so whatever one is up now is added back rather than taken out of what
         // the form was dragged to; see slot_rightSplitterMoved().
-        wanted = std::clamp(dragged.value() + mTriggerOptionsBorrowedHeight + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
+        wanted = std::clamp(dragged.value() + mTriggerOptionsBorrowedHeight + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
     } else {
         // Nothing is on loan in a view that snaps: what the options panel would
         // have borrowed for is measured here as part of the form
@@ -15735,8 +15753,8 @@ void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
 // what the form holds, and the snap answers both directions on its own. It is
 // where they have dragged one that a height has to be borrowed: their height is
 // the base, so opening the panel where it does not fit takes the difference off
-// the code pane below, down to a floor, and closing it hands back what it took
-// and no more.
+// the code pane below, down to the share that pane keeps, and closing it hands
+// back what it took and no more.
 void dlgTriggerEditor::refitSplitterForTriggerOptions(const bool shown)
 {
     if (mCurrentView != EditorViewType::cmTriggerView) {
@@ -15774,7 +15792,7 @@ void dlgTriggerEditor::refitSplitterForTriggerOptions(const bool shown)
         return;
     }
 
-    const int spare = std::max(0, sizes.at(1) - scmEditorSourcePaneFloor);
+    const int spare = std::max(0, sizes.at(1) - codePaneFloor(sizes.at(0) + sizes.at(1)));
     const int borrowed = std::min(wanted - sizes.at(0), spare);
     if (borrowed <= 0) {
         return;
@@ -15849,12 +15867,24 @@ void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
         mTriggerOptionsBorrowedHeight = 0;
         // The triggersMainArea is visible
         if (mpTriggersMainArea->toolButton_toggleExtraControls->isChecked()) {
-            // The extra controls are visible in the triggersMainArea
-            if (mpTriggersMainArea->widget_verticalSpacer_right->height() <= hysteresis) {
-                // And it is not tall enough to show the right hand side - so
-                // hide them - we are using the spacer to detect if there is any
-                // space:
-                //
+            // The extra controls are visible in the triggersMainArea. The
+            // spacer is the last thing in the column they are stacked in, so
+            // it is above zero only while every card fits - which is how the
+            // room the form has left for them is read here.
+            //
+            // That on its own is not the question any more. The seam holds the
+            // form to what leaves the code pane its share, and where the cards
+            // want more than that the panel is meant to scroll at the height it
+            // was given - the spacer sits at zero all by itself, and the next
+            // nudge of the handle would have folded a panel nobody asked to be
+            // rid of. So the fold is asked of the reader's own doing as well: a
+            // pane taken a band below the height the seam holds it at. The same
+            // band the restore uses, read the other way, since a hand on a
+            // mouse wobbles either side of wherever it let go.
+            const int paneTotal = movedTo.size() < 2 ? 0 : movedTo.at(0) + movedTo.at(1);
+            const int heldAt = paneTotal - codePaneFloor(paneTotal);
+            const bool noRoomForTheCards = mpTriggersMainArea->widget_verticalSpacer_right->height() <= hysteresis;
+            if (noRoomForTheCards && formPaneHeight < heldAt - scmEditorOptionsRestoreBand) {
                 // Where the pane was when they stopped fitting, taken before
                 // the fold rather than after it - see the member's own note for
                 // why the form's height is the one number this cannot use
