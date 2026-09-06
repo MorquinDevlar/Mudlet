@@ -17195,10 +17195,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // the column the chevron stands in painted by the style, in the platform's
     // saturated selection colour, with the row's pill stuck to the side of it.
     // ...and the chosen one carries the accent bar down its leading edge that
-    // the sidebar's chosen row does, at the same width and in the same colour -
-    // painted over the pill by EditorTreeDelegate, so that it is a straight
-    // rectangle with square ends rather than the arc a border-left is bent into
-    // by the pill's corner radius. The border stays on every row, transparent
+    // the sidebar's chosen row does, at the same width, in the same colour and
+    // in the same shape - painted over the pill by EditorTreeDelegate as the
+    // pill's own leading edge, full width down the row and cut to the pill's
+    // corner at both ends, rather than the arc a border-left is bent into by
+    // that corner's radius. The border stays on every row, transparent
     // and never coloured, because it is what holds the gutter the bar stands in:
     // the row's own padding gives back what it takes, which is what leaves the
     // dot, the chevron and the mark the delegate draws where they were.

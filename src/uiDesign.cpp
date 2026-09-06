@@ -44,6 +44,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmapCache>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -454,6 +455,20 @@ QColor blend(const QColor& from, const QColor& to, const qreal amount)
 QString rgba(const QColor& color, const qreal alpha)
 {
     return qsl("rgba(%1, %2, %3, %4)").arg(QString::number(color.red()), QString::number(color.green()), QString::number(color.blue()), QString::number(alpha, 'f', 3));
+}
+
+void paintAccentBar(QPainter* pPainter, const QRect& row, const QColor& accent)
+{
+    pPainter->save();
+    // A rectangular clip lands on whole pixels, so the bar's trailing edge is a
+    // straight line down the row; the arc at each end is the path's, drawn
+    // antialiased so that it lies on the pill's own
+    pPainter->setClipRect(QRect(row.left(), row.top(), scmAccentBarWidth, row.height()), Qt::IntersectClip);
+    pPainter->setRenderHint(QPainter::Antialiasing);
+    QPainterPath pill;
+    pill.addRoundedRect(row, scmRadiusPanel, scmRadiusPanel);
+    pPainter->fillPath(pill, accent);
+    pPainter->restore();
 }
 
 qreal contrastRatio(const QColor& first, const QColor& second)

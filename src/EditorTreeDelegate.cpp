@@ -442,13 +442,12 @@ void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& o
         return;
     }
 
-    // Over the pill the style has just drawn, and over the corner it is rounded
-    // to: a border-left follows that radius, bending the bar inward at both ends
-    // until it reads as a bracket. An integer rectangle filled with a solid
-    // colour lands on whole pixels whatever the painter was left set to, so what
-    // is drawn instead is one straight stroke from the top of the row to the
-    // bottom, square at both ends.
-    pPainter->fillRect(QRect(option.rect.left(), option.rect.top(), scmAccentBarWidth, option.rect.height()), mAccentBar);
+    // Over the pill the style has just drawn, as the leading edge of that pill:
+    // full width down the row and cut to the pill's corner at both ends, the way
+    // the sidebar's is. A border-left would follow the radius inward until it
+    // read as a bracket, and a plain rectangle would stand square past the
+    // corners the pill is cut to.
+    paintAccentBar(pPainter, option.rect, mAccentBar);
 }
 
 QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const

@@ -41,6 +41,8 @@ class QLayout;
 class QLineEdit;
 class QListWidget;
 class QObject;
+class QPainter;
+class QRect;
 class QTimer;
 class QWidget;
 class TKeySequenceEdit;
@@ -388,6 +390,14 @@ void setSearchMatch(QWidget* pWidget, const QVariant& matched);
 QColor blend(const QColor& from, const QColor& to, const qreal amount);
 
 QString rgba(const QColor& color, const qreal alpha);
+
+// The accent bar down the leading edge of a chosen row, painted over the pill
+// the style has drawn for it: the pill's own rounded rectangle, filled in the
+// accent and cut to the bar's width. So the bar keeps its width down the whole
+// row and takes the pill's corner at both ends - the shape the sidebar draws
+// its bar in from a stop in the pill's gradient, and one a border-left cannot
+// be, since the corner radius bends that into a bracket.
+void paintAccentBar(QPainter* pPainter, const QRect& row, const QColor& accent);
 
 // The shape lives in the alpha channel: filling through it keeps the
 // antialiased edges that recolouring the pixels would harden into a staircase

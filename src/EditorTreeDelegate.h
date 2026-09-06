@@ -82,9 +82,10 @@ public:
     // The row as the style draws it, then the accent bar down its leading edge
     // for a chosen one. The bar is painted rather than written as the pill's
     // border-left, which a corner radius bends into a bracket at both ends; the
-    // sidebar's is straight because it is a stop in the pill's gradient, and a
-    // gradient stop is a fraction of a known width - which a tree row, being as
-    // wide as the panel is dragged to, does not have.
+    // sidebar's keeps its width because it is a stop in the pill's gradient, and
+    // a gradient stop is a fraction of a known width - which a tree row, being
+    // as wide as the panel is dragged to, does not have. Painted, it is the same
+    // shape as the sidebar's: the pill's leading edge, cut to its corners.
     void paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 
     // The dot is the switch the row draws and the chevron is the handle that
