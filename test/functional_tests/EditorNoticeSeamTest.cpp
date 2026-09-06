@@ -108,8 +108,9 @@ private:
 
     // How far the Add pattern button may sit off the code heading before the
     // room between them reads as a void rather than as the gap the column is
-    // laid out with
-    static constexpr int scmRoomUnderTheLastRow = 20;
+    // laid out with: the margins between them, and a pixel or two of
+    // rounding in where the seam is placed
+    static constexpr int scmRoomUnderTheLastRow = 22;
 
     // A drag of the seam, in the small steps a pointer really arrives in
     static constexpr int scmDragTravel = 120;

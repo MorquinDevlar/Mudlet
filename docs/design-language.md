@@ -238,7 +238,7 @@ radius of its own.
 | Constant | Value | Use it for |
 | --- | --- | --- |
 | `scmRadiusChip` | 4px | A word in a box: the ID beside an item's name (`#frameId`), the kind beside a search result (`SearchResultDelegate`), the compile state over the code pane |
-| `scmRadiusInput` | 5px | The controls a form is filled in through, a little over 30px tall: line edits, combo boxes, spin boxes - every rule in `inputStyleSheet()` |
+| `scmRadiusInput` | 5px | The controls a form is filled in through, a little under 30px tall: line edits, combo boxes, spin boxes - every rule in `inputStyleSheet()` |
 | `scmRadiusPanel` | 8px | The boxes a window is laid out in: `settingsCard` group boxes, the migration banner, the editor's notice frame, the deep-link spotlight ring |
 | `scmRadiusProminentInput` | 8px | A search field: the one control a panel is headed by rather than one of several filled in on it, and drawn taller than a form control, so it takes the corner of the panel it heads (`#settingsSearchField`, `#editorSearchRow QComboBox`) |
 

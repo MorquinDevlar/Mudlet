@@ -270,7 +270,7 @@ static constexpr int scmEditorCompileDotDiameter = 8;
 
 // A colour button says what it is by the colour it is filled with, so it is
 // sized as a well rather than as a word
-static constexpr int scmEditorColorWellHeight = 26;
+static constexpr int scmEditorColorWellHeight = 22;
 static constexpr int scmEditorColorWellWidth = 40;
 // What a control and the words belonging with it are spaced by, wherever a form
 // row holds more than the one thing
@@ -310,7 +310,11 @@ static constexpr int scmEditorBannerCloseSize = 12;
 // trigger_pattern_edit.ui's top and bottom margins.
 static constexpr int scmEditorPatternRowMargins = 8;
 static constexpr int scmEditorPatternRowMinimumHeight = uiDesign::scmInputHeight + scmEditorPatternRowMargins;
-static constexpr int scmEditorPatternRowPadding = scmEditorPatternRowMargins;
+// ...and what a row has to be, over the line of the display font it holds, for
+// that line to sit inside the pattern field with its descenders: the row's own
+// margins, and the frame, the padding and the document margin the field puts
+// round its text
+static constexpr int scmEditorPatternRowPadding = scmEditorPatternRowMargins + 2 * (uiDesign::scmInputBorderWidth + uiDesign::scmInputPaddingVertical + SingleLineTextEdit::scmDocumentMargin);
 // How far the row is taken towards the text on it while the mouse is there -
 // the same wash every other hovered row in the two windows gets
 static constexpr qreal scmEditorPatternHoverStrength = 0.07;
@@ -14883,6 +14887,10 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     mpSpinBox_matchWithinLines->setRange(0, scmEditorMatchWithinLinesMax);
     mpSpinBox_matchWithinLines->setAlignment(Qt::AlignCenter);
     mpSpinBox_matchWithinLines->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
+    // The .ui file gives spinBox_stayOpen a policy that lets it fill its line;
+    // this one is made here and would otherwise stop at its own hint, a size
+    // down from the box beside it
+    mpSpinBox_matchWithinLines->setFixedHeight(uiDesign::scmInputHeight);
     describeEditorControl(mpSpinBox_matchWithinLines,
                           //: Accessible name of the box holding how many lines a trigger's patterns must all match within
                           tr("Lines all the patterns must match within"),
@@ -17285,7 +17293,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   // it, and the box round the words is what says which one is on.
                                                   "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
                                                   " padding: %10px %11px; spacing: 0px; }"
-                                                  "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; }"
+                                                  // Given no size and, so that nothing draws the dot into what is
+                                                  // left, no border and no fill of its own either: a rule with
+                                                  // nothing to draw is drawn by the platform style instead
+                                                  "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
                                                   "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
                                                   "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
                                                   "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"

@@ -263,8 +263,8 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
 // row of its own has to leave room for. The horizontal padding is here as well
 // because a form eliding what it puts in a field has to know what room the
 // field leaves it.
-inline constexpr int scmInputContentHeight = 24;
-inline constexpr int scmInputPaddingVertical = 3;
+inline constexpr int scmInputContentHeight = 22;
+inline constexpr int scmInputPaddingVertical = 2;
 inline constexpr int scmInputPaddingHorizontal = 6;
 inline constexpr int scmInputBorderWidth = 1;
 inline constexpr int scmInputHeight = scmInputContentHeight + 2 * (scmInputPaddingVertical + scmInputBorderWidth);

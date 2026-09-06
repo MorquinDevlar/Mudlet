@@ -36,6 +36,7 @@ SingleLineTextEdit::SingleLineTextEdit(QWidget* parent)
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setTabChangesFocus(true);
+    document()->setDocumentMargin(scmDocumentMargin);
 }
 
 // strip whitespace formatting marks (middle dots) when copying,

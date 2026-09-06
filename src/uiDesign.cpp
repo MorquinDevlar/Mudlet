@@ -135,9 +135,9 @@ constexpr int scmReadabilitySteps = 12;
 // The room the arrows are given at a control's right edge, and how big the
 // arrows drawn in it are
 constexpr int scmInputDropDownWidth = 18;
-constexpr int scmInputArrowSize = 9;
+constexpr int scmInputArrowSize = 8;
 constexpr int scmInputStepperWidth = 16;
-constexpr int scmInputStepperArrowSize = 8;
+constexpr int scmInputStepperArrowSize = 7;
 // How far the name beside the accent bar is held off the item's left edge in
 // all. The bar is a border rather than a gap, so the padding written into the
 // rules is what it leaves of that gutter.
@@ -753,7 +753,9 @@ static QPixmap croppedToItsInk(const QPixmap& glyph)
 
 static QString themedArrowFile(const QColor& color, const bool pointingUp, const int size)
 {
-    const QString filePath = glyphCacheFile(qsl("arrow-%1-%2-%3.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size)));
+    // "chevron" rather than the "arrow" these files were first written under:
+    // a cache written by an earlier build holds the stretched shape below
+    const QString filePath = glyphCacheFile(qsl("chevron-%1-%2-%3.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size)));
     if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
         return filePath;
     }
@@ -780,9 +782,12 @@ static QString themedArrowFile(const QColor& color, const bool pointingUp, const
     }
     for (const qreal drawnAt : std::as_const(ratios)) {
         const int drawnSize = qRound(size * drawnAt);
-        const QPixmap arrow = source.scaled(drawnSize, drawnSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        // Fitted into the square at its own proportions: a chevron is twice
+        // as wide as it is tall, and stretched to fill the square it became a
+        // heavy V that read larger than every control it sat in
+        const QPixmap arrow = source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         const QString wanted =
-                drawnAt > 1.0 ? glyphCacheFile(qsl("arrow-%1-%2-%3@%4x.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size), QString::number(qRound(drawnAt))))
+                drawnAt > 1.0 ? glyphCacheFile(qsl("chevron-%1-%2-%3@%4x.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size), QString::number(qRound(drawnAt))))
                               : filePath;
         if (!arrow.save(wanted, "PNG")) {
             return QString();
