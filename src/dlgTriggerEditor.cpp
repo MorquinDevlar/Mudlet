@@ -211,7 +211,7 @@ static constexpr int scmEditorIdChipPaddingHorizontal = 9;
 static constexpr int scmEditorIdChipGap = 4;
 
 // The row an item's name is typed on, taken from the trigger form so that the
-// five forms shelled over their .ui grids come out at its measurements: the
+// six forms shelled over their .ui grids come out at its measurements: the
 // gaps inside the head row, and the ones the grid under it lays its rows out
 // with.
 static constexpr int scmEditorFormHeadRowSpacing = 10;
@@ -1246,8 +1246,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     buildKeyBindingRow();
     // ...and the variable's two type pickers as one row, for the same reason
     buildVariableTypeRows();
+    // ...and the button's rotation and its push-down switch onto one row, out
+    // of the group boxes the Buttons form was three columns of
+    buildActionRows();
 
-    // ...and the row the other five forms lead with, shelled over the grids
+    // ...and the row the other six forms lead with, shelled over the grids
     // their .ui files lay them out in
     buildEditorFormHeadRows();
 
@@ -9254,6 +9257,19 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
     fitFormPaneToItsContents();
 }
 
+// A row of a form is a word and whatever it leads, laid into the grid as two
+// items rather than one - so showing or hiding either alone leaves a word with
+// nothing beside it, or a control with nothing naming it. A grid row is only
+// out of the way when everything on it is.
+static void showEditorFormRow(const bool visible, const QList<QWidget*>& row)
+{
+    for (QWidget* pWidget : row) {
+        if (pWidget) {
+            pWidget->setVisible(visible);
+        }
+    }
+}
+
 void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
 {
     if (!pItem) {
@@ -9307,11 +9323,6 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
         mpActionsMainArea->lineEdit_action_name->setText(pT->getName());
         mpActionsMainArea->label_idNumber->setText(QString::number(ID));
         mpActionsMainArea->checkBox_action_button_isPushDown->setChecked(pT->isPushDownButton());
-        mpActionsMainArea->label_action_button_command_up->hide();
-        mpActionsMainArea->label_action_button_command_down->hide();
-        mpActionsMainArea->lineEdit_action_button_command_up->hide();
-        mpActionsMainArea->lineEdit_action_button_command_down->hide();
-        mpActionsMainArea->label_action_button_command_down->setText(tr("Command:"));
         mpActionsMainArea->lineEdit_action_icon->setText(pT->getIcon());
         mpActionsMainArea->lineEdit_action_button_command_down->setText(pT->getCommandButtonDown());
         mpActionsMainArea->lineEdit_action_button_command_up->setText(pT->getCommandButtonUp());
@@ -9331,53 +9342,41 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
         mpActionsMainArea->spinBox_action_bar_columns->setValue(pT->getButtonColumns());
         mpActionsMainArea->spinBox_action_bar_offsetToFirstButton->setValue(pT->getButtonFillerOffset());
         mpActionsMainArea->plainTextEdit_action_css->setPlainText(pT->css);
-        if (pT->isFolder()) {
-            if (!pT->mPackageName.isEmpty()) {
-                // We have a non-empty package name (Tree<T>::mModuleName
-                // is NEVER used but Tree<T>::mPackageName is for both!)
-                // THUS: We are a module master folder
+        // Which rows this item has is what the item is. A folder carrying a
+        // package name is a module's master folder (Tree<T>::mModuleName is
+        // NEVER used but Tree<T>::mPackageName is for both) - neither pressed
+        // nor laid out, and left with only the stylesheet the module is drawn
+        // with. A folder with no parent, or one whose parent is a module master
+        // folder, is a toolbar; any other folder is a menu; anything that is
+        // not a folder at all is a button.
+        const bool moduleMasterFolder = pT->isFolder() && !pT->mPackageName.isEmpty();
+        const bool toolbar = pT->isFolder() && !moduleMasterFolder && (!pT->getParent() || !pT->getParent()->mPackageName.isEmpty());
+        const bool menu = pT->isFolder() && !moduleMasterFolder && !toolbar;
+        const bool button = !pT->isFolder();
 
-                mpActionsMainArea->groupBox_action_bar->hide();
-                mpActionsMainArea->groupBox_action_button_appearance->hide();
-                mpActionsMainArea->widget_top->hide();
-                mpSourceEditorArea->hide();
-            } else if (!pT->getParent() || (pT->getParent() && !pT->getParent()->mPackageName.isEmpty())) {
-                // We are a top-level folder with no parent
-                // OR: We have a parent and that IS a module master folder
-                // THUS: We are a toolbar
-
-                mpActionsMainArea->groupBox_action_bar->show();
-                mpActionsMainArea->groupBox_action_button_appearance->hide();
-                mpActionsMainArea->widget_top->show();
-                mpSourceEditorArea->show();
-            } else {
-                // We must be a MENU
-
-                mpActionsMainArea->groupBox_action_button_appearance->setTitle(tr("Menu properties"));
-                mpActionsMainArea->groupBox_action_bar->hide();
-                mpActionsMainArea->checkBox_action_button_isPushDown->hide();
-                mpActionsMainArea->groupBox_action_button_appearance->show();
-                mpActionsMainArea->widget_top->show();
-                mpSourceEditorArea->show();
-            }
-        } else {
-            // We are a BUTTON
-
-            mpActionsMainArea->groupBox_action_button_appearance->setTitle(tr("Button properties"));
-            mpActionsMainArea->groupBox_action_bar->hide();
-            mpActionsMainArea->groupBox_action_button_appearance->show();
-            mpActionsMainArea->label_action_button_command_down->show();
-            mpActionsMainArea->lineEdit_action_button_command_down->show();
-            mpActionsMainArea->checkBox_action_button_isPushDown->show();
-            mpSourceEditorArea->show();
-            if (pT->isPushDownButton()) {
-                mpActionsMainArea->label_action_button_command_down->setText(tr("Command (down);"));
-                mpActionsMainArea->lineEdit_action_button_command_up->show();
-                mpActionsMainArea->label_action_button_command_up->show();
-            }
-
-            mpActionsMainArea->widget_top->show();
+        if (mpWidget_actionHeadRow) {
+            mpWidget_actionHeadRow->setVisible(!moduleMasterFolder);
         }
+        mpSourceEditorArea->setVisible(!moduleMasterFolder);
+
+        showEditorFormRow(menu || button, {mpActionsMainArea->label_action_button_rotation, mpWidget_actionRotationRow});
+        // On that row rather than one of its own, and only for a button: a menu
+        // is drawn like one but is never pressed down
+        mpActionsMainArea->checkBox_action_button_isPushDown->setVisible(button);
+        showEditorFormRow(button, {mpActionsMainArea->label_action_button_command_down, mpActionsMainArea->lineEdit_action_button_command_down});
+        showEditorFormRow(button && pT->isPushDownButton(), {mpActionsMainArea->label_action_button_command_up, mpActionsMainArea->lineEdit_action_button_command_up});
+
+        showEditorFormRow(toolbar, {mpActionsMainArea->label_action_bar_location, mpActionsMainArea->comboBox_action_bar_location});
+        showEditorFormRow(toolbar, {mpActionsMainArea->label_action_bar_orientation, mpActionsMainArea->comboBox_action_bar_orientation});
+        showEditorFormRow(toolbar, {mpActionsMainArea->label_action_bar_columns, mpActionsMainArea->spinBox_action_bar_columns});
+        // There is nowhere to offset the first button into where the bar is not
+        // laid out in lines, which is the question
+        // dlgActionMainArea::slot_setMaximumValueForOffset() answers as the
+        // count is typed. The group box that used to take the whole of the
+        // toolbar's rows away has gone, so the row is asked that same question
+        // here rather than being shown outright.
+        showEditorFormRow(toolbar && mpActionsMainArea->spinBox_action_bar_columns->value() > 0,
+                          {mpActionsMainArea->label_action_bar_offsetToFirstButton, mpActionsMainArea->spinBox_action_bar_offsetToFirstButton});
 
         if (!pT->state()) {
             showError(pT->getError());
@@ -13809,17 +13808,12 @@ void dlgTriggerEditor::keyGrabCallback(const Qt::Key key, const Qt::KeyboardModi
     }
 }
 
+// A push-down button has a command for each of the two states it can be left
+// in, so the second row appears with the switch. Nothing is retitled with it
+// any more: each row leads with the word saying which command it holds.
 void dlgTriggerEditor::slot_toggleIsPushDownButton(const int state)
 {
-    if (state == Qt::Checked) {
-        mpActionsMainArea->lineEdit_action_button_command_up->show();
-        mpActionsMainArea->label_action_button_command_up->show();
-        mpActionsMainArea->label_action_button_command_down->setText(tr("Command (down):"));
-    } else {
-        mpActionsMainArea->lineEdit_action_button_command_up->hide();
-        mpActionsMainArea->label_action_button_command_up->hide();
-        mpActionsMainArea->label_action_button_command_down->setText(tr("Command:"));
-    }
+    showEditorFormRow(state == Qt::Checked, {mpActionsMainArea->label_action_button_command_up, mpActionsMainArea->lineEdit_action_button_command_up});
 }
 
 // Set the foreground color that will be applied to text that matches the trigger pattern(s)
@@ -15008,10 +15002,10 @@ static QWidget* buildEditorFormHeadRow(QWidget* pForm, const QList<QPair<QWidget
     return pHeadRow;
 }
 
-// The five forms that are a fixed set of fields are shelled over their .ui
-// grids the way the trigger form was rebuilt over its own: the name, whatever
-// is typed beside it and the ID pill are lifted onto one row at the top, and
-// what is left of the grid follows under it at the trigger form's measurements.
+// The six forms that are not the trigger form are shelled over their .ui grids
+// the way it was rebuilt over its own: the name, whatever is typed beside it
+// and the ID pill are lifted onto one row at the top, and what is left of the
+// grid follows under it at the trigger form's measurements.
 void dlgTriggerEditor::buildEditorFormHeadRows()
 {
     const QList<QPair<QWidget*, QList<QPair<QWidget*, int>>>> heads{
@@ -15034,10 +15028,16 @@ void dlgTriggerEditor::buildEditorFormHeadRows()
               {mpKeysMainArea->lineEdit_key_command, 1},
               {mpKeysMainArea->frameId, 0}}},
             {mpScriptsMainArea, {{mpScriptsMainArea->label_script_name, 0}, {mpScriptsMainArea->lineEdit_script_name, 1}, {mpScriptsMainArea->frameId, 0}}},
+            {mpActionsMainArea, {{mpActionsMainArea->label_action_name, 0}, {mpActionsMainArea->lineEdit_action_name, 1}, {mpActionsMainArea->frameId, 0}}},
             {mpVarsMainArea, {{mpVarsMainArea->label_variable_name, 0}, {mpVarsMainArea->lineEdit_var_name, 1}}}};
 
     for (const auto& [pForm, controls] : heads) {
         QWidget* pHeadRow = buildEditorFormHeadRow(pForm, controls);
+        if (pForm == mpActionsMainArea) {
+            // The one form whose head row is not always there: a module's
+            // master folder has no name of its own to type and no ID to show
+            mpWidget_actionHeadRow = pHeadRow;
+        }
         if (auto* pGrid = qobject_cast<QGridLayout*>(pForm->layout())) {
             uiDesign::insertGridRowAtTop(pGrid, pHeadRow);
         } else if (auto* pColumn = qobject_cast<QBoxLayout*>(pForm->layout())) {
@@ -15054,6 +15054,7 @@ void dlgTriggerEditor::buildEditorFormHeadRows()
                                   mpTimersMainArea,
                                   mpKeysMainArea,
                                   mpScriptsMainArea,
+                                  mpActionsMainArea,
                                   mpVarsMainArea,
                                   // The variables form nests its remaining controls in a
                                   // frame, and that frame's grid is what lays them out
@@ -15328,6 +15329,55 @@ void dlgTriggerEditor::buildVariableTypeRows()
     pGrid->addWidget(pRowWidget, row, column + 1, 1, span);
 }
 
+// The Buttons form was three group boxes - the toolbar's, the button's and the
+// stylesheet's - each with a column of right hand labels of its own, at two
+// different x positions and none of them the one the other six forms type at.
+// They are rows of the form's own grid now. Only the rotation row holds more
+// than one control: the picker and the switch saying whether the button stays
+// down, which are read as one thing about how the button behaves.
+void dlgTriggerEditor::buildActionRows()
+{
+    auto* pGrid = qobject_cast<QGridLayout*>(mpActionsMainArea->layout());
+    const int labelIndex = pGrid ? pGrid->indexOf(mpActionsMainArea->label_action_button_rotation) : -1;
+    if (labelIndex < 0) {
+        return;
+    }
+
+    // Read before anything is taken out of the grid: detaching an item
+    // renumbers the ones after it
+    int row = 0;
+    int column = 0;
+    int rowSpan = 1;
+    int columnSpan = 1;
+    pGrid->getItemPosition(labelIndex, &row, &column, &rowSpan, &columnSpan);
+    const int span = std::max(1, pGrid->columnCount() - column - 1);
+
+    auto* pRowWidget = new QWidget(mpActionsMainArea);
+    pRowWidget->setObjectName(qsl("editorActionRotationRow"));
+    pRowWidget->setProperty("editorPanelSurface", true);
+    mpWidget_actionRotationRow = pRowWidget;
+    auto* pRow = new QHBoxLayout(pRowWidget);
+    pRow->setContentsMargins(0, 0, 0, 0);
+    pRow->setSpacing(scmEditorModeChipGap);
+    for (QWidget* pControl : {static_cast<QWidget*>(mpActionsMainArea->comboBox_action_button_rotation), static_cast<QWidget*>(mpActionsMainArea->checkBox_action_button_isPushDown)}) {
+        // The .ui grid still holds these, and a widget added to a second layout
+        // while a first one has it is a warning per widget on the console
+        uiDesign::detachFromLayout(pControl);
+        pRow->addWidget(pControl);
+    }
+    // The picker is as wide as the longest reading it can show, so what is left
+    // of the row is nothing rather than a box stretched across the form
+    pRow->addStretch(1);
+    pGrid->addWidget(pRowWidget, row, column + 1, 1, span);
+
+    // The stylesheet is the one thing on this form that uses whatever room the
+    // reader gives the column - which is why the Buttons view's seam drags at
+    // all - so the word leading it sits level with its first line rather than
+    // halfway down however tall it has become. The row's stretch is the .ui
+    // file's, and insertGridRowAtTop() carries it down with the row.
+    pGrid->setAlignment(mpActionsMainArea->label_action_css, Qt::AlignLeft | Qt::AlignTop);
+}
+
 // The row drawn from what the key holds: the keystroke in the field, or the
 // field left empty behind the words saying there is none, and beside it what a
 // click will do. A key group is offered none of it - TKey::match() never
@@ -15460,15 +15510,17 @@ bool dlgTriggerEditor::handleKeyBindingFieldEvent(QEvent* pEvent)
     }
 }
 
-// Every label naming a field on one of the five forms: the name at the head of
-// each, whatever is typed beside it, and the ones leading the rows under it.
-// All of them are drawn in the quiet ink a form's scaffolding is written in.
+// Every label naming a field on one of the six shelled forms: the name at the
+// head of each, whatever is typed beside it, and the ones leading the rows
+// under it. All of them are drawn in the quiet ink a form's scaffolding is
+// written in.
 QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
 {
     return {mpAliasMainArea->label_alias_name,
             mpTimersMainArea->label_timer_name,
             mpKeysMainArea->label_key_name,
             mpScriptsMainArea->label_script_name,
+            mpActionsMainArea->label_action_name,
             mpVarsMainArea->label_variable_name,
             mpAliasMainArea->label_alias_command,
             mpTimersMainArea->label_timer_command,
@@ -15478,18 +15530,38 @@ QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
             mpKeysMainArea->label_key_binding,
             mpScriptsMainArea->label_script_registered_event_handlers,
             mpVarsMainArea->label_variable_key,
-            mpVarsMainArea->label_variable_value};
+            mpVarsMainArea->label_variable_value,
+            mpActionsMainArea->label_action_button_rotation,
+            mpActionsMainArea->label_action_button_command_down,
+            mpActionsMainArea->label_action_button_command_up,
+            mpActionsMainArea->label_action_icon,
+            mpActionsMainArea->label_action_bar_location,
+            mpActionsMainArea->label_action_bar_orientation,
+            mpActionsMainArea->label_action_bar_columns,
+            mpActionsMainArea->label_action_bar_offsetToFirstButton,
+            mpActionsMainArea->label_action_css};
 }
 
 // The first label of every row under a head row, which is what the grid's first
-// column is as wide as
+// column is as wide as. The Buttons form brings most of them: it is the one
+// form with more than a couple of rows, and every one of its words is measured
+// with the rest so that a field is typed at the same x on all seven forms.
 QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
 {
     return {mpAliasMainArea->label_alias_pattern,
             mpTimersMainArea->label_timer_time,
             mpKeysMainArea->label_key_binding,
             mpScriptsMainArea->label_script_registered_event_handlers,
-            mpVarsMainArea->label_variable_key};
+            mpVarsMainArea->label_variable_key,
+            mpActionsMainArea->label_action_button_rotation,
+            mpActionsMainArea->label_action_button_command_down,
+            mpActionsMainArea->label_action_button_command_up,
+            mpActionsMainArea->label_action_icon,
+            mpActionsMainArea->label_action_bar_location,
+            mpActionsMainArea->label_action_bar_orientation,
+            mpActionsMainArea->label_action_bar_columns,
+            mpActionsMainArea->label_action_bar_offsetToFirstButton,
+            mpActionsMainArea->label_action_css};
 }
 
 // A field has to start at the same place whichever row of whichever form it is
@@ -15512,15 +15584,16 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
         leadWidth = std::max(leadWidth, pLabel->fontMetrics().horizontalAdvance(pLabel->text()));
     }
 
-    // The six forms all lead with the same word, so one measurement answers for
-    // all of them - and the trigger form is measured with them, since its name
-    // field has to start where the other five do
+    // The seven forms all lead with the same word, so one measurement answers
+    // for all of them - and the trigger form is measured with them, since its
+    // name field has to start where the other six do
     int nameWidth = 0;
     const QList<QLabel*> nameLabels{mpTriggersMainArea->label_trigger_name,
                                     mpAliasMainArea->label_alias_name,
                                     mpTimersMainArea->label_timer_name,
                                     mpKeysMainArea->label_key_name,
                                     mpScriptsMainArea->label_script_name,
+                                    mpActionsMainArea->label_action_name,
                                     mpVarsMainArea->label_variable_name};
     for (QLabel* pLabel : nameLabels) {
         nameWidth = std::max(nameWidth, pLabel->fontMetrics().horizontalAdvance(pLabel->text()));
@@ -17048,8 +17121,8 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                     "#frameId QLabel { color: %2; background: transparent; }")
                                         .arg(disabledText.name(), mutedText.name(), borderColor.name(), QString::number(idChipHeight / 2));
 
-    // The five forms that are a fixed set of fields keep their lead labels at
-    // one width, which is measured in the font the sheet is being written for
+    // The six forms shelled over their .ui grids keep their lead labels at one
+    // width, which is measured in the font the sheet is being written for
     alignEditorFormLeadLabels();
 
     restyleEditorIcons();

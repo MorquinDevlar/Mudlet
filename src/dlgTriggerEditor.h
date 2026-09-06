@@ -280,7 +280,7 @@ public:
     // and into a column of cards, with a strip that says what they hold while
     // they are put away
     void buildTriggerOptionsPanel();
-    // The five forms that are a fixed set of fields, shelled over their .ui
+    // The six forms that are not the trigger form, shelled over their .ui
     // grids: a head row of the name, whatever is typed beside it and the ID
     // pill, with what is left of the grid under it
     void buildEditorFormHeadRows();
@@ -302,6 +302,9 @@ public:
     // A variable's key and value types as one row under the head row, with the
     // switch that keeps it out of the tree on the row under that
     void buildVariableTypeRows();
+    // A button's rotation and the switch saying whether it stays down as one
+    // row, out of the group boxes the Buttons form was three columns of
+    void buildActionRows();
     // The field, the hint and the clear button drawn from what the key holds.
     // A group is offered none of them - TKey::match() never matches one.
     void showKeyBinding();
@@ -988,6 +991,12 @@ private:
     // The three of them together in the cell beside the "Key" label, hidden as
     // one for a key group so that the grid row goes with them
     QPointer<QWidget> mpWidget_keyBindingRow;
+    // The Buttons form's head row, which is the one head row that is not always
+    // there: a module's master folder has no name to type and no ID to show
+    QWidget* mpWidget_actionHeadRow = nullptr;
+    // ...and the cell beside its "Rotation" label, holding the picker and the
+    // switch that says whether the button stays down
+    QWidget* mpWidget_actionRotationRow = nullptr;
     // Height the panel borrowed from the code pane when it was opened, so that
     // closing it can hand back that much and no more. Only a view whose
     // splitter the user has dragged lends anything: everywhere else the open

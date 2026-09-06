@@ -72,6 +72,7 @@
 #include "TTrigger.h"
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
+#include "dlgActionMainArea.h"
 #include "dlgKeysMainArea.h"
 #include "dlgAboutDialog.h"
 #include "dlgProfilePreferences.h"
@@ -102,9 +103,10 @@ private:
     dlgProfilePreferences* mpPreferences = nullptr;
     dlgAboutDialog* mpAbout = nullptr;
     Host* mpHost = nullptr;
-    // The two items the forms walked on their own below are shown from
+    // The three items the forms walked on their own below are shown from
     QTreeWidgetItem* mpKeyItem = nullptr;
     QTreeWidgetItem* mpTimerItem = nullptr;
+    QTreeWidgetItem* mpActionItem = nullptr;
 
     // Looked up rather than kept: every entry into the Variables view rebuilds
     // the tree, so a row held from one case dangles by the next
@@ -140,14 +142,18 @@ private:
     // name, the command, the ID pill's two words, the word leading the key row,
     // the placeholder standing in for the keystroke it has not been given, and
     // the hint beside it), 14 on the timers form, where the words of the
-    // interval's sentence are read beside the four fields they name, and 7 on
-    // the variables form (the name, the two words leading the type pickers,
-    // what each picker is showing, and the switch that hides the variable from
-    // the tree)
+    // interval's sentence are read beside the four fields they name, 7 on the
+    // variables form (the name, the two words leading the type pickers, what
+    // each picker is showing, and the switch that hides the variable from the
+    // tree), and 8 on the buttons form (the name and what is typed in it, the
+    // ID pill's two words, the words leading the rotation, command and
+    // stylesheet rows, what the rotation picker is showing, and the push-down
+    // switch)
     static constexpr int scmLeastAuditedOnTheScriptsForm = 6;
     static constexpr int scmLeastAuditedOnTheKeysForm = 6;
     static constexpr int scmLeastAuditedOnTheTimersForm = 12;
     static constexpr int scmLeastAuditedOnTheVariablesForm = 6;
+    static constexpr int scmLeastAuditedOnTheButtonsForm = 6;
     static constexpr int scmLeastAuditedInTheAbout = 28;
 
     // A button filled with the colour it stands for. Its fill is a value rather
@@ -546,6 +552,14 @@ private slots:
         mpTimerItem = mpEditor->mpCurrentTimerItem;
         QVERIFY2(mpTimerItem != nullptr, "addTimer() left no current timer item");
 
+        // ...and a button, whose form is the one with a row for every way a
+        // button can be set up rather than a couple of fields
+        mpEditor->slot_showActions();
+        mpEditor->addAction(false);
+        QTest::qWait(100ms);
+        mpActionItem = mpEditor->mpCurrentActionItem;
+        QVERIFY2(mpActionItem != nullptr, "addAction() left no current button");
+
         // ...and a variable of the profile's own, so that the form walked below
         // shows the two type pickers and the switch beside them rather than the
         // notice a root row puts up
@@ -747,6 +761,35 @@ private slots:
             QVERIFY2(read >= scmLeastAuditedOnTheVariablesForm,
                      qPrintable(qsl("only %1 things were read on the variables form on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheVariablesForm))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // ...and the buttons form, which is rows of one grid rather than the three
+    // group boxes it was: the words leading them, the picker and the switch that
+    // share the row under the name, and the stylesheet editor under all of it
+    void test_theButtonsFormIsReadableInBothAppearances()
+    {
+        mpEditor->slot_showActions();
+        mpEditor->slot_actionSelected(mpActionItem);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpWidget_actionRotationRow != nullptr && mpEditor->mpWidget_actionRotationRow->isVisible(), "the button this walks is not showing the row its rotation is set on");
+
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int read = auditWithin(mpEditor, mpEditor->mpActionsMainArea, qsl("the editor's buttons form"), appearance.first, failures);
+            counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
+            QVERIFY2(read >= scmLeastAuditedOnTheButtonsForm,
+                     qPrintable(qsl("only %1 things were read on the buttons form on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheButtonsForm))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

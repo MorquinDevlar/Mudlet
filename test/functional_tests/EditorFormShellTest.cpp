@@ -34,12 +34,18 @@
  *   holding the last timer's script.
  *
  * - Every view's first field starts at the same x, and inside a form the field
- *   on a row under the head row starts where the name field above it does.
+ *   on a row under the head row starts where the name field above it does. The
+ *   Buttons form is walked with them, though its column is not a fixed one: its
+ *   rows line up with the rest, and the room a drag gives the column goes to the
+ *   stylesheet editor rather than between those rows.
  *
  * Run with: ctest -R EditorFormShellTest -V
  */
 
+#include <QGridLayout>
+#include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -52,6 +58,7 @@
 #include "ProfileTestHelper.h"
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
+#include "dlgActionMainArea.h"
 #include "dlgAliasMainArea.h"
 #include "dlgKeysMainArea.h"
 #include "dlgScriptsMainArea.h"
@@ -131,6 +138,9 @@ private:
         case EditorViewType::cmVarsView:
             mpEditor->slot_showVariables();
             break;
+        case EditorViewType::cmActionView:
+            mpEditor->slot_showActions();
+            break;
         default:
             QFAIL("this test knows nothing about that view");
         }
@@ -167,6 +177,8 @@ private:
             return mpEditor->mpScriptsMainArea->lineEdit_script_name;
         case EditorViewType::cmVarsView:
             return mpEditor->mpVarsMainArea->lineEdit_var_name;
+        case EditorViewType::cmActionView:
+            return mpEditor->mpActionsMainArea->lineEdit_action_name;
         default:
             return nullptr;
         }
@@ -189,6 +201,10 @@ private:
             // The interval is a sentence, and the words lead it - so what has
             // to start where the name does is the row, not the first field in it
             return mpEditor->mpWidget_timerInterval;
+        case EditorViewType::cmActionView:
+            // The rotation row leads the Buttons form, and the picker is the
+            // first thing on it - so the two start at the same x
+            return mpEditor->mpActionsMainArea->comboBox_action_button_rotation;
         default:
             return nullptr;
         }
@@ -211,6 +227,8 @@ private:
             return mpEditor->mpScriptsMainArea;
         case EditorViewType::cmVarsView:
             return mpEditor->mpVarsMainArea;
+        case EditorViewType::cmActionView:
+            return mpEditor->mpActionsMainArea;
         default:
             return nullptr;
         }
@@ -231,6 +249,8 @@ private:
             return qsl("scripts");
         case EditorViewType::cmVarsView:
             return qsl("variables");
+        case EditorViewType::cmActionView:
+            return qsl("buttons");
         default:
             return qsl("an unknown view");
         }
@@ -241,6 +261,17 @@ private:
     static QList<EditorViewType> fixedViews()
     {
         return {EditorViewType::cmAliasView, EditorViewType::cmTimerView, EditorViewType::cmKeysView, EditorViewType::cmScriptView, EditorViewType::cmVarsView};
+    }
+
+    // ...and those five with the Buttons form, which is every view shelled over
+    // its .ui grid. It is not one of the fixed five - its stylesheet editor uses
+    // whatever room the column is given - but its name and its rows are laid out
+    // to the same measurements, so the two walks below take it with them.
+    static QList<EditorViewType> shelledViews()
+    {
+        QList<EditorViewType> views = fixedViews();
+        views.append(EditorViewType::cmActionView);
+        return views;
     }
 
     void openAndChoose(const EditorViewType view)
@@ -264,6 +295,9 @@ private:
             break;
         case EditorViewType::cmVarsView:
             chooseTheFirstItem(mpEditor->treeWidget_variables);
+            break;
+        case EditorViewType::cmActionView:
+            chooseTheFirstItem(mpEditor->treeWidget_actions);
             break;
         default:
             break;
@@ -315,7 +349,10 @@ private slots:
         mpEditor->addKey(false);
         mpEditor->slot_showScripts();
         mpEditor->addScript(false);
+        mpEditor->slot_showActions();
+        mpEditor->addAction(false);
         QTest::qWait(100ms);
+        QVERIFY2(mpEditor->mpCurrentActionItem != nullptr, "addAction() left no current button, so the buttons form has nothing to show");
     }
 
     void cleanupTestCase()
@@ -453,7 +490,7 @@ private slots:
         const int triggerEdge = leftEdgeOf(nameFieldOf(EditorViewType::cmTriggerView));
         QVERIFY2(triggerEdge > 0, "the trigger form's name field is not on the window");
 
-        for (const EditorViewType view : fixedViews()) {
+        for (const EditorViewType view : shelledViews()) {
             openAndChoose(view);
             const int edge = leftEdgeOf(nameFieldOf(view));
             qInfo().noquote() << qsl("  %1: the name field starts at %2, the trigger form's at %3").arg(nameOf(view), QString::number(edge), QString::number(triggerEdge));
@@ -466,7 +503,7 @@ private slots:
     // where the name field above it does
     void test_aRowUnderTheHeadRowStartsWhereTheNameDoes()
     {
-        for (const EditorViewType view : fixedViews()) {
+        for (const EditorViewType view : shelledViews()) {
             QWidget* pLeadField = leadFieldOf(view);
             if (!pLeadField) {
                 continue;
@@ -495,6 +532,74 @@ private slots:
 
         QVERIFY2(!mpEditor->mpKeysMainArea->lineEdit_key_binding->isVisible(), "a key group is still offered a keystroke it can never match");
         QVERIFY2(!mpEditor->mpLabel_keyHint->isVisible(), "a key group is still told how to set a keystroke");
+    }
+
+    // The Buttons form was the one that never joined the rest: a group box of
+    // toolbar settings beside a group box of button settings, their words
+    // right-aligned at two x positions of their own and every one of them ending
+    // in a colon. It is rows of one grid now, led at the width every other
+    // form's words are held to - and what a drag on this view's seam gives the
+    // column goes to the stylesheet editor rather than between those rows.
+    void test_theButtonsFormIsBuiltLikeTheOtherForms()
+    {
+        openAndChoose(EditorViewType::cmActionView);
+        // The case before this one left a fixed view's column capped to its
+        // contents; the cap comes off on the layout request this view's entry
+        // posts, which has to arrive before anything here is measured
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        auto* pGrid = qobject_cast<QGridLayout*>(mpEditor->mpActionsMainArea->layout());
+        QVERIFY2(pGrid != nullptr, "the buttons form is not laid out as a grid, so it was never shelled over its .ui file");
+
+        // Measured off one of the other forms rather than named here, since what
+        // the width comes to is the font the window turns out to be running at
+        const int leadWidth = mpEditor->mpAliasMainArea->label_alias_pattern->minimumWidth();
+        QVERIFY2(leadWidth > 0, "the alias form's lead word has no width of its own, so there is nothing to hold the buttons form's to");
+
+        QStringList words;
+        for (int i = 0; i < pGrid->count(); ++i) {
+            int row = 0;
+            int column = 0;
+            int rowSpan = 1;
+            int columnSpan = 1;
+            pGrid->getItemPosition(i, &row, &column, &rowSpan, &columnSpan);
+            // The head row spans the whole grid; a word leading a row is the
+            // first column of it and nothing else
+            if (column != 0 || columnSpan != 1) {
+                continue;
+            }
+            auto* pLabel = qobject_cast<QLabel*>(pGrid->itemAt(i)->widget());
+            if (!pLabel || !pLabel->isVisible()) {
+                continue;
+            }
+            words << pLabel->text();
+            QVERIFY2(!pLabel->text().trimmed().endsWith(QChar(':')), qPrintable(qsl("the buttons form leads a row with \"%1\", which ends in a colon").arg(pLabel->text())));
+            QVERIFY2(
+                    pLabel->width() == leadWidth,
+                    qPrintable(qsl("the buttons form's \"%1\" is %2 wide where every other form's lead word is %3").arg(pLabel->text(), QString::number(pLabel->width()), QString::number(leadWidth))));
+        }
+        qInfo().noquote() << qsl("  the buttons form leads its rows with %1").arg(words.join(qsl(", ")));
+        QVERIFY2(words.size() >= 3, qPrintable(qsl("a chosen button shows %1 row(s) of the buttons form, where rotation, command and the stylesheet are three").arg(QString::number(words.size()))));
+
+        QPlainTextEdit* pStyleSheet = mpEditor->mpActionsMainArea->plainTextEdit_action_css;
+        QVERIFY2(pStyleSheet->isVisible(), "the buttons form is not showing the stylesheet editor, so there is nothing for the column's room to go to");
+        const int formBefore = mpEditor->mpActionsMainArea->height();
+        const int styleSheetBefore = pStyleSheet->height();
+        QList<int> sizes = mpEditor->splitter_right->sizes();
+        QVERIFY2(sizes.size() >= 2 && sizes.at(1) > scmPush + 150, "not enough code pane to take the push off for this case");
+        sizes[0] += scmPush;
+        sizes[1] -= scmPush;
+        mpEditor->splitter_right->setSizes(sizes);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+
+        const int formGrew = mpEditor->mpActionsMainArea->height() - formBefore;
+        const int styleSheetGrew = pStyleSheet->height() - styleSheetBefore;
+        qInfo().noquote() << qsl("  pushed by %1: the form grew by %2 and the stylesheet by %3").arg(QString::number(scmPush), QString::number(formGrew), QString::number(styleSheetGrew));
+        QVERIFY2(formGrew > 0, "the buttons form column did not take the push, so there is no room for anything on it to have been given");
+        QVERIFY2(
+                styleSheetGrew == formGrew,
+                qPrintable(qsl("the buttons form grew by %1 and its stylesheet by %2, so the rest of it went between the rows above").arg(QString::number(formGrew), QString::number(styleSheetGrew))));
     }
 };
 

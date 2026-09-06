@@ -385,13 +385,20 @@ of chips) leaves the `.ui` file, and the runtime builds its replacement into the
 cell the label leads. The `.ui` files did lose their colons and their caps on
 field heights in that pass: a string that changes anyway is not churn.
 
+The Buttons form is the sixth, and its `.ui` file was rewritten rather than only
+shelled: its three group boxes were a column of toolbar settings beside a column
+of button settings with a stylesheet box under both, which left its labels at
+two x positions and neither of them the one the other forms type at. They are
+rows of one grid now, and `buildActionRows()` builds the only cell holding more
+than one control - the rotation picker with the push-down switch beside it.
+
 ### The rows of a form
 
 Every form the editor fills in leads with the same row: the name, whatever is
 typed beside it (a command, where the item has one), and the ID pill. The
 trigger form's `widget_top` is the original; `buildEditorFormHeadRows()` gives
-the five field-only forms the same row at the same measurements, so a view
-switch never moves the Name field. Under it, each row leads with one word.
+the other six forms the same row at the same measurements, so a view switch
+never moves the Name field. Under it, each row leads with one word.
 
 - **Lead labels share one width.** `alignEditorFormLeadLabels()` measures the
   widest lead word across the forms in the font the window is running at and
@@ -431,6 +438,18 @@ switch never moves the Name field. Under it, each row leads with one word.
   (`editorChipSystem`). `chipFont()` is the one recipe for a word in a box: the
   ID pill, the chips, the hidden-variables count, the value preview in the
   variables tree.
+- **Rows rather than boxes.** The Buttons form's rows are Rotation - with the
+  push-down switch beside the picker - Command, Command up, Icon (built but
+  never shown, until Mudlet can put pictures on buttons again), Location,
+  Orientation, Rows (Columns, where the toolbar stands on its side), Offset and
+  Stylesheet. Which of them an item has is what the item is: a toolbar is laid
+  out, a menu and a button are pressed, a module's master folder is neither and
+  carries only the stylesheet the module is drawn with. `showEditorFormRow()`
+  takes a word and what it leads away together, since a grid row is only out of
+  the way when everything on it is; the Command up row also comes and goes with
+  the switch, and the Offset row with there being lines to offset into. The
+  stylesheet editor holds the grid's vertical stretch, so the room a drag on
+  this view's seam gives the column goes to it and never between the rows.
 
 ### The seam over the code pane
 
