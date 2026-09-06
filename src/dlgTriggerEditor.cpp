@@ -876,6 +876,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // source editor area
     mpSourceEditorArea = new dlgSourceEditorArea(this);
+    // The floor the seam keeps for the code pane whenever it places it, made a
+    // minimum here so that a drag of the heading stops at it as well rather
+    // than at whatever the pane's widgets would shrink to
+    mpSourceEditorArea->setMinimumHeight(scmEditorSourcePaneFloor);
     splitter_right->addWidget(mpSourceEditorArea);
 
     // And the edbee widget
@@ -8714,8 +8718,11 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
             patternItem->spinBox_lineSpacer->hide();
             patternItem->comboBox_patternType->setCurrentIndex(0);
         }
-        // Scroll to the last used pattern:
-        mpScrollArea->ensureWidgetVisible(mTriggerPatternEdit.at(qBound(0, patternList.size(), mVisiblePatternCount - 1)));
+        // A trigger with more rows than the pane has room for opens at its
+        // first pattern, which is what the reader came to see - it used to open
+        // scrolled to the empty row after the last one, with the first rows out
+        // of sight. Add pattern still scrolls to the row it adds.
+        mpScrollArea->verticalScrollBar()->setValue(0);
         const QString command = pT->getCommand();
         mpTriggersMainArea->lineEdit_trigger_name->setText(pItem->text(0));
         mpTriggersMainArea->label_idNumber->setText(QString::number(ID));

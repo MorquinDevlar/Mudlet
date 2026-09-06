@@ -899,6 +899,65 @@ private slots:
         resizeTheEditor(scmEditorWidth);
         QVERIFY2(!optionsPanel()->isVisible(), "the closed options panel opened itself when the window was widened again");
     }
+
+    // A trigger with more rows than the pane has room for used to open scrolled
+    // to the empty row after its last pattern, with the first ones out of sight;
+    // the reader came to see the patterns from the top. Adding a row still
+    // scrolls to the row it adds.
+    void test_aTriggerWithMoreRowsThanFitOpensAtItsFirstRow()
+    {
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        constexpr int rows = 16;
+        mpEditor->showPatternItems(rows);
+        for (int row = 0; row < rows; ++row) {
+            mpEditor->mTriggerPatternEdit.at(row)->singleLineTextEdit_pattern->setPlainText(qsl("^row %1$").arg(row + 1));
+        }
+        mpEditor->slot_saveEdits();
+        settle();
+        chooseTheTrigger();
+        takeTheNoticeDown();
+
+        QScrollBar* pBar = mpEditor->mpScrollArea->verticalScrollBar();
+        QVERIFY2(pBar->maximum() > 0, "sixteen rows fit the pane, so there is nothing to scroll and this case says nothing");
+        QVERIFY2(pBar->value() == 0, qPrintable(qsl("the pattern list opened scrolled to %1 of %2 rather than at its first row").arg(pBar->value()).arg(pBar->maximum())));
+
+        // Back to the three rows the other cases are written for
+        mpEditor->showPatternItems(3);
+        mpEditor->slot_saveEdits();
+        settle();
+    }
+
+    // The seam keeps the code pane its floor whenever it places it; a drag of
+    // the heading used to be free to take it under, down to whatever the pane's
+    // widgets would shrink to
+    void test_aDragCannotTakeTheCodePaneUnderItsFloor()
+    {
+        chooseTheTrigger();
+        takeTheNoticeDown();
+        QSplitterHandle* pHandle = mpEditor->splitter_right->handle(1);
+        QVERIFY2(pHandle != nullptr, "the right hand splitter has no handle over the code pane");
+        const QList<int> before = mpEditor->splitter_right->sizes();
+        QVERIFY2(before.size() >= 2, "the right hand splitter has lost a pane");
+        const int paneTotal = before.at(0) + before.at(1);
+
+        // Further than the pane can go, so wherever the drag stops is the limit
+        const QPoint on = pHandle->rect().center();
+        QPointF at = pHandle->mapToGlobal(QPointF(on));
+        QTest::mousePress(pHandle, Qt::LeftButton, Qt::NoModifier, on);
+        for (int travelled = 0; travelled < paneTotal; travelled += scmDragStep) {
+            at += QPointF(0, scmDragStep);
+            dragTo(pHandle, at);
+        }
+        QTest::mouseRelease(pHandle, Qt::LeftButton, Qt::NoModifier, pHandle->mapFromGlobal(at).toPoint());
+        settle();
+
+        const QList<int> after = mpEditor->splitter_right->sizes();
+        qInfo().noquote() << qsl("  dragged the seam from %1 / %2 to %3 / %4").arg(before.at(0)).arg(before.at(1)).arg(after.at(0)).arg(after.at(1));
+        QVERIFY2(after.at(0) > before.at(0), "the drag did not move the seam at all, so this case says nothing");
+        QVERIFY2(after.at(1) >= dlgTriggerEditor::scmEditorSourcePaneFloor,
+                 qPrintable(qsl("a drag took the code pane down to %1, under its floor of %2").arg(after.at(1)).arg(dlgTriggerEditor::scmEditorSourcePaneFloor)));
+    }
 };
 
 #include "EditorNoticeSeamTest.moc"
