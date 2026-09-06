@@ -875,6 +875,28 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
                  + qsl(" { subcontrol-origin: border; subcontrol-position: bottom right; width: %1px; border: none; background: transparent; }").arg(QString::number(scmInputStepperWidth))
                  + scoped({qsl("QAbstractSpinBox::up-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(stepperUpArrow, QString::number(scmInputStepperArrowSize))
                  + scoped({qsl("QAbstractSpinBox::down-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(stepperDownArrow, QString::number(scmInputStepperArrowSize));
+
+        // A stepper and a drop-down are the two things on a field that are
+        // pressed rather than typed into, so each says it is being used: the
+        // chevron takes the accent under the pointer and holds it while the
+        // button is down, and the stepper's own square lights the hover wash
+        // and then the accent's. A tint the cache could not write leaves the
+        // rule out rather than pointing it at nothing.
+        const QString accentArrow = themedArrowFile(tokens.accent, false, scmInputArrowSize);
+        const QString accentStepperDownArrow = themedArrowFile(tokens.accent, false, scmInputStepperArrowSize);
+        const QString accentStepperUpArrow = themedArrowFile(tokens.accent, true, scmInputStepperArrowSize);
+        if (!accentArrow.isEmpty()) {
+            rules += scoped({qsl("QComboBox::down-arrow:hover"), qsl("QComboBox::down-arrow:pressed")})
+                     + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(accentArrow, QString::number(scmInputArrowSize));
+        }
+        if (!accentStepperUpArrow.isEmpty() && !accentStepperDownArrow.isEmpty()) {
+            rules += scoped({qsl("QAbstractSpinBox::up-arrow:hover"), qsl("QAbstractSpinBox::up-arrow:pressed")})
+                     + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(accentStepperUpArrow, QString::number(scmInputStepperArrowSize))
+                     + scoped({qsl("QAbstractSpinBox::down-arrow:hover"), qsl("QAbstractSpinBox::down-arrow:pressed")})
+                     + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(accentStepperDownArrow, QString::number(scmInputStepperArrowSize));
+        }
+        rules += scoped({qsl("QAbstractSpinBox::up-button:hover"), qsl("QAbstractSpinBox::down-button:hover")}) + qsl(" { background-color: %1; }").arg(tokens.hoverSoft)
+                 + scoped({qsl("QAbstractSpinBox::up-button:pressed"), qsl("QAbstractSpinBox::down-button:pressed")}) + qsl(" { background-color: %1; }").arg(tokens.accentSoft);
     }
     return rules;
 }

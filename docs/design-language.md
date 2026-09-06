@@ -173,6 +173,14 @@ surface, a 1px border, `scmRadiusInput`, an accent frame on focus. Framing a
 platform draws inside it, so the sheet claims those two only once it has tinted
 arrow PNGs cached to point at, and otherwise leaves them the platform's frame.
 
+Those chevrons are the one part of a field that is pressed rather than typed
+into, so they say so: a stepper's or a drop-down's chevron takes the accent
+under the pointer and holds it while the button is down, and the stepper's own
+square lights the `hoverSoft` wash and then `accentSoft`. A segmented control
+follows the same reading - the one hairline its two halves share belongs to
+whichever of them is chosen, so the accent runs all the way round it, and the
+other half takes that pixel back as padding so nothing moves.
+
 Scope it, never set it on a window: the editor sets it on each of its seven
 forms, the settings dialog passes `#settingsStack` so the rules stop at the
 pages. Unscoped it would take the search field, the sidebar's editors and every

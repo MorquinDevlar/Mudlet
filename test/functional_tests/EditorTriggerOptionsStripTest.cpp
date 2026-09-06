@@ -40,6 +40,11 @@
  * - The two matching modes are radio buttons drawn as joined segments, so a
  *   screen reader still says which of the two is chosen; they write into
  *   spinBox_lineMargin, which is where the trigger is saved from.
+ * - The one hairline those two share belongs to whichever of them is chosen, so
+ *   the accent goes all the way round it; neither segment moves when the choice
+ *   changes.
+ * - A spin box says it is being used: the chevron under the pointer takes the
+ *   accent, and gives it back when the pointer leaves.
  * - With one pattern there is nothing to combine, so the segments and the line
  *   count are greyed out and the caption saying why is on show.
  * - The switches are not gates: choosing a sound file turns the sound on, and
@@ -65,6 +70,8 @@
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QStyle>
+#include <QStyleOptionSpinBox>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -138,6 +145,22 @@ private:
     // What a window sized to leave the strip a given width may be out by, since
     // what stands to the left of the form is measured rather than named
     static constexpr int scmStripWidthSlack = 2;
+    // An ink read off a grab is held to nearness rather than to a match, summed
+    // over the three channels. A hairline is drawn flat, so it comes out as the
+    // colour itself and this is only slack; the segment beside it is 379 away.
+    static constexpr int scmInkSlack = 40;
+    // A chevron 7px across is all edge, so its darkest pixel is a blend rather
+    // than the tint it was drawn in: measured 64 from the accent under the
+    // pointer against 152 at rest, so this sits between the two rather than
+    // near zero
+    static constexpr int scmChevronInkSlack = 100;
+    // ...and what the pointer is worth on top of that, so that a chevron which
+    // never changed cannot pass by sitting near the line
+    static constexpr int scmChevronInkShift = 40;
+    // How far into a segment its own fill is read at: well inside the padding,
+    // so that neither a hairline at the edge nor the word in the middle is what
+    // comes back
+    static constexpr int scmFillDepth = 4;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -152,6 +175,21 @@ private:
         QCoreApplication::processEvents();
         QTest::qWait(80ms);
         QCoreApplication::processEvents();
+    }
+
+    // Qt measures a control once and keeps the answer, and a check state
+    // changing does not ask it again - so a segment whose padding did not make
+    // up for the hairline it gave up would only be caught out the next time
+    // something re-laid the form. This is that moment, brought forward: a style
+    // change is what clears the cached hint, and the layout is run again after.
+    void remeasure(const QList<QWidget*>& widgets)
+    {
+        for (QWidget* pWidget : widgets) {
+            QEvent styleChange(QEvent::StyleChange);
+            QCoreApplication::sendEvent(pWidget, &styleChange);
+            pWidget->updateGeometry();
+        }
+        settle();
     }
 
     dlgTriggersMainArea* form() const { return mpEditor->mpTriggersMainArea; }
@@ -236,6 +274,44 @@ private:
     }
 
     static QString describe(const QWidget* pWidget) { return pWidget->objectName().isEmpty() ? QString::fromLatin1(pWidget->metaObject()->className()) : pWidget->objectName(); }
+
+    // How far apart two inks are, summed over the three channels: a hairline
+    // and a chevron are both drawn against a fill of their own, so what is
+    // measured is nearness rather than a match
+    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
+
+    // A widget's box in the pixels a grab is made of, which are the widget's
+    // own multiplied by whatever the screen doubles them by
+    static QRect inTheGrabsPixels(const QImage& shot, const QRect& box)
+    {
+        const qreal ratio = shot.devicePixelRatio();
+        return QRect(QPoint(qRound(box.left() * ratio), qRound(box.top() * ratio)), QPoint(qRound((box.right() + 1) * ratio) - 1, qRound((box.bottom() + 1) * ratio) - 1)).intersected(shot.rect());
+    }
+
+    // The ink at a given depth into one side of a segment, taken from a grab of
+    // the pair and read at the height the segment's middle is at. A depth of 0
+    // is the outermost pixel, which is where a border a pixel wide is drawn; a
+    // few pixels in is well inside the padding, so it is the fill that border
+    // is drawn against and nothing else
+    static QColor colourInsideTheEdge(const QImage& shot, const QWidget* pSegment, const bool rightHandSide, const int depth)
+    {
+        const QRect box = inTheGrabsPixels(shot, pSegment->geometry().adjusted(depth, 0, -depth, 0));
+        return shot.pixelColor(rightHandSide ? box.right() : box.left(), box.center().y());
+    }
+
+    // How near the accent the nearest pixel inside a box comes - a chevron
+    // tinted with it reaches it, one tinted with the quiet ink does not
+    static int nearestToTheAccentIn(const QImage& shot, const QRect& box, const QColor& accent)
+    {
+        int nearest = 3 * 255;
+        const QRect scanned = inTheGrabsPixels(shot, box);
+        for (int y = scanned.top(); y <= scanned.bottom(); ++y) {
+            for (int x = scanned.left(); x <= scanned.right(); ++x) {
+                nearest = std::min(nearest, distanceBetween(shot.pixelColor(x, y), accent));
+            }
+        }
+        return nearest;
+    }
 
 private slots:
     void initTestCase()
@@ -661,6 +737,132 @@ private slots:
         QVERIFY2(!form()->pushButtonFgColor->text().isEmpty(), "the foreground well with no colour of its own says nothing at all");
         QVERIFY2(!form()->pushButtonBgColor->text().isEmpty(), "the background well with no colour of its own says nothing at all");
         QVERIFY2(!form()->pushButtonFgColor->accessibleDescription().isEmpty(), "the foreground well tells a screen reader nothing about what it holds");
+    }
+
+    // (j) The two segments meet on one hairline, and it belongs to whichever of
+    // them is chosen: the accent runs all the way round the chosen segment
+    // rather than stopping at the seam and being closed by its neighbour's
+    // grey. The segment that gives the edge up takes its width back as padding,
+    // so the pair does not shift under the pointer as the choice changes.
+    void test_theChosenSegmentIsOutlinedOnEverySide()
+    {
+        chooseTrigger(mpThreePatternRow);
+        QRadioButton* pAny = mpEditor->mpRadioButton_matchAny;
+        QRadioButton* pAll = mpEditor->mpRadioButton_matchAll;
+        QWidget* pPair = mpEditor->mpWidget_matchModeRows;
+        const QColor accent = uiDesign::themeTokens().accent;
+
+        pAny->setChecked(true);
+        settle();
+        remeasure({pAny, pAll});
+        const int anyWidth = pAny->width();
+        const int allWidth = pAll->width();
+        const int pairWidth = pPair->width();
+        QVERIFY2(pAny->geometry().right() + 1 == pAll->geometry().left(), "the two segments no longer meet, so there is no shared hairline to measure");
+
+        // Four inks say the whole of it for one choice: the chosen segment's two
+        // vertical edges, which are the seam and the outer edge it has to be
+        // closed by the same colour on, and the unchosen segment's edge at the
+        // seam against its own fill a few pixels further in - equal to it means
+        // the seam carries one hairline rather than two
+        QImage shot = pPair->grab().toImage();
+        const QColor anysSeam = colourInsideTheEdge(shot, pAny, true, 0);
+        const QColor anysOuterEdge = colourInsideTheEdge(shot, pAny, false, 0);
+        const QColor allsEdgeUnderAny = colourInsideTheEdge(shot, pAll, false, 0);
+        const QColor allsFillUnderAny = colourInsideTheEdge(shot, pAll, false, scmFillDepth);
+
+        pAll->setChecked(true);
+        settle();
+        remeasure({pAny, pAll});
+        shot = pPair->grab().toImage();
+        const QColor allsSeam = colourInsideTheEdge(shot, pAll, false, 0);
+        const QColor allsOuterEdge = colourInsideTheEdge(shot, pAll, true, 0);
+        const QColor anysEdgeUnderAll = colourInsideTheEdge(shot, pAny, true, 0);
+        const QColor anysFillUnderAll = colourInsideTheEdge(shot, pAny, true, scmFillDepth);
+
+        qInfo().noquote() << qsl("  the accent is %1; Any chosen reads %2 at the seam and %3 outside, with All at %4 against a fill of %5; All chosen reads %6 at the seam and %7 outside, with Any at "
+                                 "%8 against a fill of %9")
+                                     .arg(accent.name(),
+                                          anysSeam.name(),
+                                          anysOuterEdge.name(),
+                                          allsEdgeUnderAny.name(),
+                                          allsFillUnderAny.name(),
+                                          allsSeam.name(),
+                                          allsOuterEdge.name(),
+                                          anysEdgeUnderAll.name(),
+                                          anysFillUnderAll.name());
+
+        QVERIFY2(distanceBetween(anysSeam, accent) <= scmInkSlack,
+                 qPrintable(qsl("with Any chosen its edge at the seam reads %1 against an accent of %2, so its outline is open there").arg(anysSeam.name(), accent.name())));
+        QVERIFY2(distanceBetween(anysOuterEdge, accent) <= scmInkSlack,
+                 qPrintable(qsl("with Any chosen its outer edge reads %1 rather than the accent, so the two sides are not one outline").arg(anysOuterEdge.name())));
+        QVERIFY2(distanceBetween(allsEdgeUnderAny, allsFillUnderAny) <= scmInkSlack,
+                 qPrintable(qsl("with Any chosen, All reads %1 at the seam against its own fill of %2 - it is still drawing a hairline of its own, so the seam is two lines")
+                                    .arg(allsEdgeUnderAny.name(), allsFillUnderAny.name())));
+
+        QVERIFY2(distanceBetween(allsSeam, accent) <= scmInkSlack,
+                 qPrintable(qsl("with All chosen its edge at the seam reads %1 against an accent of %2, so its outline is open there").arg(allsSeam.name(), accent.name())));
+        QVERIFY2(distanceBetween(allsOuterEdge, accent) <= scmInkSlack,
+                 qPrintable(qsl("with All chosen its outer edge reads %1 rather than the accent, so the two sides are not one outline").arg(allsOuterEdge.name())));
+        QVERIFY2(distanceBetween(anysEdgeUnderAll, anysFillUnderAll) <= scmInkSlack,
+                 qPrintable(qsl("with All chosen, Any reads %1 at the seam against its own fill of %2 - it kept a hairline there, so the seam is two lines")
+                                    .arg(anysEdgeUnderAll.name(), anysFillUnderAll.name())));
+
+        // ...and the hairline changing hands moved nothing: what one segment
+        // gives up in border the other takes back in padding
+        qInfo().noquote() << qsl("  the segments are %1px and %2px in a %3px pair with Any chosen, and %4px and %5px in a %6px pair with All chosen")
+                                     .arg(anyWidth)
+                                     .arg(allWidth)
+                                     .arg(pairWidth)
+                                     .arg(pAny->width())
+                                     .arg(pAll->width())
+                                     .arg(pPair->width());
+        QCOMPARE(pAny->width(), anyWidth);
+        QCOMPARE(pAll->width(), allWidth);
+        QCOMPARE(pPair->width(), pairWidth);
+    }
+
+    // (k) A spin box's steppers say they are being used: the chevron under the
+    // pointer takes the accent, and gives it back when the pointer leaves
+    void test_theStepperChevronTakesTheAccentUnderThePointer()
+    {
+        chooseTrigger(mpThreePatternRow);
+        QSpinBox* pBox = form()->spinBox_stayOpen;
+        QVERIFY2(pBox->isVisible(), "the spin box these steppers belong to is not on show");
+
+        QStyleOptionSpinBox option;
+        option.initFrom(pBox);
+        option.subControls = QStyle::SC_All;
+        const QRect upButton = pBox->style()->subControlRect(QStyle::CC_SpinBox, &option, QStyle::SC_SpinBoxUp, pBox);
+        QVERIFY2(!upButton.isEmpty(), "the spin box draws no stepper at all, so there is no chevron to light up");
+        const QColor accent = uiDesign::themeTokens().accent;
+
+        // Somewhere on the box that is not a stepper, which is where the
+        // pointer is taken to put the chevron back
+        const QPoint field(2, pBox->height() / 2);
+        QTest::mouseMove(pBox, field);
+        settle();
+        const int atRest = nearestToTheAccentIn(pBox->grab().toImage(), upButton, accent);
+
+        QTest::mouseMove(pBox, upButton.center());
+        settle();
+        const int hovered = nearestToTheAccentIn(pBox->grab().toImage(), upButton, accent);
+
+        QTest::mouseMove(pBox, field);
+        settle();
+        const int afterwards = nearestToTheAccentIn(pBox->grab().toImage(), upButton, accent);
+
+        qInfo().noquote() << qsl("  the up stepper is %1 and its nearest pixel to the accent %2 is %3 away at rest, %4 under the pointer and %5 after it left")
+                                     .arg(qsl("%1x%2+%3+%4").arg(upButton.width()).arg(upButton.height()).arg(upButton.x()).arg(upButton.y()), accent.name())
+                                     .arg(atRest)
+                                     .arg(hovered)
+                                     .arg(afterwards);
+
+        QVERIFY2(atRest > scmChevronInkSlack, qPrintable(qsl("the resting stepper already has a pixel %1 from the accent, so nothing here says the pointer did anything").arg(atRest)));
+        QVERIFY2(hovered <= scmChevronInkSlack, qPrintable(qsl("the stepper under the pointer comes no nearer the accent than %1, so its chevron did not light up").arg(hovered)));
+        QVERIFY2(atRest - hovered >= scmChevronInkShift,
+                 qPrintable(qsl("the pointer took the stepper from %1 to %2 of the accent, which is inside what the wash behind the chevron moves on its own").arg(atRest).arg(hovered)));
+        QVERIFY2(afterwards > scmChevronInkSlack, qPrintable(qsl("the stepper is still %1 from the accent with the pointer off it, so the chevron never went back").arg(afterwards)));
     }
 };
 

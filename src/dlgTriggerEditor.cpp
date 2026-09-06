@@ -17301,13 +17301,21 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
                                                   "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
                                                   "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
-                                                  // ...and the corners last, so that they outlive the states above
-                                                  // them: the pair takes the fields' corner on its outer edges and
-                                                  // shares one hairline down the middle
+                                                  // ...and the corners and the shared hairline last, so that they
+                                                  // outlive the states above them: the pair takes the fields'
+                                                  // corner on its outer edges, and the one hairline down the
+                                                  // middle belongs to whichever segment is chosen, so that the
+                                                  // accent goes all the way round it rather than stopping at the
+                                                  // seam. The segment giving that edge up takes its width back as
+                                                  // padding, so neither moves when the choice changes.
                                                   "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
-                                                  " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; border-right-width: 0px; }"
+                                                  " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; }"
                                                   "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
                                                   " { border-top-right-radius: %6px; border-bottom-right-radius: %6px; }"
+                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]:!checked"
+                                                  " { border-right-width: 0px; padding-right: %15px; }"
+                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]:!checked"
+                                                  " { border-left-width: 0px; padding-left: %15px; }"
                                                   // The button that empties the sound file field, drawn as
                                                   // the picture alone the way the toolbar's are: a frame
                                                   // round a glyph this small reads as a second control
@@ -17315,7 +17323,11 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                                   "#toolButton_clearSoundFile:hover { background-color: %14; }")
                                                   .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
                                                   .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
-                                                  .arg(QString::number(scmEditorSegmentPaddingHorizontal), disabledText.name(), QString::number(uiDesign::scmRadiusChip), hoverSoft)
+                                                  .arg(QString::number(scmEditorSegmentPaddingHorizontal),
+                                                       disabledText.name(),
+                                                       QString::number(uiDesign::scmRadiusChip),
+                                                       hoverSoft,
+                                                       QString::number(scmEditorSegmentPaddingHorizontal + uiDesign::scmInputBorderWidth))
                                           + patternRowStyleSheet() + formRules);
     }
 
