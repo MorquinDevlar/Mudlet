@@ -47,6 +47,7 @@ set(mudlet_SRCS
     AliasUnit.cpp
     AltFocusMenuBarDisable.cpp
     ChipRow.cpp
+    ContentScrollArea.cpp
     CredentialManager.cpp
     ctelnet.cpp
     CustomLineDrawContextMenuHandler.cpp
@@ -309,6 +310,7 @@ set(mudlet_HDRS
     AliasUnit.h
     AltFocusMenuBarDisable.h
     ChipRow.h
+    ContentScrollArea.h
     CredentialManager.h
     ctelnet.h
     CustomLineDrawContextMenuHandler.h

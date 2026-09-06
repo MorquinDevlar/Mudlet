@@ -795,7 +795,13 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // different split - see applyFormPaneSeamPolicy()
     mpNonCodeWidgets->installEventFilter(this);
     auto* layoutColumn = new QVBoxLayout(mpNonCodeWidgets);
-    layoutColumn->setContentsMargins(0, 0, 0, 0);
+    // The last row of the form is held off the heading of the code pane under it
+    // by the same gap the notice is held off the form: the column's own bottom
+    // margin, which is in the height the column asks for, so a form held to its
+    // contents carries the gap down with it. The strip the heading is on begins
+    // at the column's very edge, and without this a form that is a fixed set of
+    // fields ended with its last field touching that strip.
+    layoutColumn->setContentsMargins(0, 0, 0, scmEditorColumnSpacing);
     layoutColumn->setSpacing(scmEditorColumnSpacing);
     splitter_right->addWidget(mpNonCodeWidgets);
 
@@ -10965,19 +10971,19 @@ int dlgTriggerEditor::codePaneFloor(const int paneTotal) const
 int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
 {
     // The form's height changes without a view switch - a trigger's options
-    // strip wraps onto another line - and a change inside a widget only
-    // invalidates the layout of its immediate parent, so the chain up to the
-    // column is told first or this measures the form as it was before it wrapped
+    // strip wraps onto another line, its pattern list gains or loses a row -
+    // and a change inside a widget only invalidates the layout of its immediate
+    // parent, so the chain up to the column is told first from both, or this
+    // measures the form as it was before the change
     uiDesign::invalidateLayoutsUpTo(mpWidget_triggerOptionsRow, mpNonCodeWidgets);
+    uiDesign::invalidateLayoutsUpTo(mpScrollArea, mpNonCodeWidgets);
     int wanted = formColumnHeightForItsWidth();
-    // The pattern rows scroll, and a scrolling area answers with the height it
-    // was first asked at rather than the height its contents have since grown
-    // to - QScrollArea caches its widget's hint and clears that cache only when
-    // it is handed a different widget. So the form's own hint carries the rows
-    // of whichever trigger was open when that answer was cached, and what the
-    // rows want over it is asked for on top. This is what stops a trigger with
-    // three patterns opening with two of them on show and a scroll bar beside
-    // them, under a code pane with the rest of the window to itself.
+    // The pattern rows scroll, and the area they scroll in answers with their
+    // height only up to the cap Qt puts on a scroll area's hint - a couple of
+    // dozen lines of text - so what the rows want over that is asked for on top.
+    // This is what stops a long trigger opening with some of its patterns on
+    // show and a scroll bar beside them, under a code pane with the rest of the
+    // window to itself.
     if (mpScrollArea && mpWidget_triggerItems && mpTriggersMainArea->isVisible()) {
         wanted += std::max(0, mpWidget_triggerItems->sizeHint().height() - mpScrollArea->sizeHint().height());
     }

@@ -183,7 +183,7 @@
        <number>0</number>
       </property>
       <item>
-       <widget class="QScrollArea" name="scrollArea">
+       <widget class="uiDesign::ContentScrollArea" name="scrollArea">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
           <horstretch>0</horstretch>
@@ -274,6 +274,13 @@
    </property>
   </widget>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>uiDesign::ContentScrollArea</class>
+   <extends>QScrollArea</extends>
+   <header>ContentScrollArea.h</header>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="../mudlet.qrc"/>
  </resources>

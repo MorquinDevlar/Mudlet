@@ -106,12 +106,6 @@ private:
     QString mPort;
     const QString mLocalhost = qsl("localhost");
 
-    // How far the Add pattern button may sit off the code heading before the
-    // room between them reads as a void rather than as the gap the column is
-    // laid out with: the margins between them, and a pixel or two of
-    // rounding in where the seam is placed
-    static constexpr int scmRoomUnderTheLastRow = 22;
-
     // A drag of the seam, in the small steps a pointer really arrives in
     static constexpr int scmDragTravel = 120;
     static constexpr int scmDragStep = 20;
@@ -149,6 +143,14 @@ private:
     {
         QLayout* pLayout = mpEditor->mpNonCodeWidgets->layout();
         return pLayout ? pLayout->spacing() : 0;
+    }
+
+    // ...and what the column holds its last piece off the code heading by,
+    // which is in the height a column held to its contents is given
+    int columnBottomMargin() const
+    {
+        QLayout* pLayout = mpEditor->mpNonCodeWidgets->layout();
+        return pLayout ? pLayout->contentsMargins().bottom() : 0;
     }
 
     // The package warning, word for word, so that a case measures the notice
@@ -203,8 +205,16 @@ private:
     bool patternListScrolls() const { return mpEditor->mpScrollArea->verticalScrollBar()->isVisible(); }
 
     // Where the Add pattern button sits against the list it is the last thing
-    // in: negative while it is above the bottom of what can be seen
+    // in: negative while it is above the bottom of what can be seen, and zero
+    // when it ends on that bottom exactly, which is a list sized to its rows
     int addPatternButtonOverhang() const { return bottomEdgeOf(mpEditor->mpButton_addPattern) - bottomEdgeOf(mpEditor->mpScrollArea->viewport()); }
+
+    // The empty rows between the Add pattern button and the code heading. What
+    // the column holds its last piece off the heading by, and nothing more: the
+    // pattern list used to keep a scroll bar's row under its last row as well,
+    // because a scroll area's minimum hint counts that bar in whether or not it
+    // is showing.
+    int roomUnderAddPattern() const { return topEdgeOf(mpEditor->mpWidget_editorCodeHeader) - bottomEdgeOf(mpEditor->mpButton_addPattern) - 1; }
 
     // The row a global of this name is on, which the Variables tree keeps under
     // its one root
@@ -378,12 +388,14 @@ private slots:
 
         const int noticeHeight = mpEditor->mpSystemMessageArea->height();
         const int columnHeight = mpEditor->mpNonCodeWidgets->height();
-        qInfo().noquote() << qsl("  notice %1, gap %2, form %3 -> column %4").arg(noticeHeight).arg(columnSpacing()).arg(formHeight).arg(columnHeight);
+        qInfo().noquote() << qsl("  notice %1, gap %2, form %3, margin under it %4 -> column %5").arg(noticeHeight).arg(columnSpacing()).arg(formHeight).arg(columnBottomMargin()).arg(columnHeight);
 
         QVERIFY2(mpEditor->mpAliasMainArea->height() == formHeight,
                  qPrintable(qsl("the alias form is %1 tall under a notice and %2 tall without one").arg(mpEditor->mpAliasMainArea->height()).arg(formHeight)));
-        QVERIFY2(columnHeight == noticeHeight + columnSpacing() + formHeight,
-                 qPrintable(qsl("the column is %1 tall while the notice, the gap and the form come to %2").arg(columnHeight).arg(noticeHeight + columnSpacing() + formHeight)));
+        QVERIFY2(columnHeight == noticeHeight + columnSpacing() + formHeight + columnBottomMargin(),
+                 qPrintable(qsl("the column is %1 tall while the notice, the gap, the form and the margin under it come to %2")
+                                    .arg(columnHeight)
+                                    .arg(noticeHeight + columnSpacing() + formHeight + columnBottomMargin())));
 
         const int shift = noticeHeight + columnSpacing();
         QVERIFY2(topEdgeOf(mpEditor->mpAliasMainArea->lineEdit_alias_name) == nameTop + shift,
@@ -502,19 +514,25 @@ private slots:
 
     // The trigger form's pattern list keeps its room under a notice: the seam
     // moves by what the notice takes rather than the list being squeezed under
-    // it, so Add pattern still sits on the code heading
+    // it, so Add pattern still sits the column's gap above the code heading
     void test_theAddPatternButtonKeepsItsPlaceUnderANotice()
     {
         openTheTrigger();
         QVERIFY2(mpEditor->mpTriggersMainArea->isVisible(), "the trigger form is not showing, so there is nothing to measure");
 
-        const int roomWithout = topEdgeOf(mpEditor->mpWidget_editorCodeHeader) - bottomEdgeOf(mpEditor->mpButton_addPattern);
+        const int roomWithout = roomUnderAddPattern();
         raiseTheNotice();
-        const int roomWith = topEdgeOf(mpEditor->mpWidget_editorCodeHeader) - bottomEdgeOf(mpEditor->mpButton_addPattern);
-        qInfo().noquote() << qsl("  Add pattern sits %1 above the code heading without a notice and %2 with one").arg(roomWithout).arg(roomWith);
+        const int roomWith = roomUnderAddPattern();
+        qInfo().noquote() << qsl("  Add pattern has %1 empty rows under it before the code heading without a notice and %2 with one, where the column holds it off by %3")
+                                     .arg(roomWithout)
+                                     .arg(roomWith)
+                                     .arg(columnBottomMargin());
 
-        QVERIFY2(roomWith > 0 && roomWith <= scmRoomUnderTheLastRow && qAbs(roomWith - roomWithout) <= 2,
-                 qPrintable(qsl("Add pattern sits %1 above the code heading with a notice up, where without one it sits %2 above it").arg(roomWith).arg(roomWithout)));
+        QVERIFY2(roomWith >= 0 && roomWith <= columnBottomMargin() + scmSeamTolerance && qAbs(roomWith - roomWithout) <= 2,
+                 qPrintable(qsl("Add pattern has %1 empty rows under it with a notice up and %2 without one, where the column holds it off the code heading by %3")
+                                    .arg(roomWith)
+                                    .arg(roomWithout)
+                                    .arg(columnBottomMargin())));
         QVERIFY2(!patternListScrolls(), "the pattern list is scrolling with a notice up, so the rows lost the room the notice took");
 
         takeTheNoticeDown();
@@ -534,7 +552,7 @@ private slots:
 
         qInfo().noquote() << qsl("  %1 rows became %2, and Add pattern overhangs the list by %3").arg(rowsBefore).arg(mpEditor->mVisiblePatternCount).arg(addPatternButtonOverhang());
         QCOMPARE(mpEditor->mVisiblePatternCount, rowsBefore + 1);
-        QVERIFY2(addPatternButtonOverhang() < 0, qPrintable(qsl("Add pattern hangs %1 pixels past the bottom of the pattern list after one row was added").arg(addPatternButtonOverhang())));
+        QVERIFY2(addPatternButtonOverhang() <= 0, qPrintable(qsl("Add pattern hangs %1 pixels past the bottom of the pattern list after one row was added").arg(addPatternButtonOverhang())));
         QVERIFY2(!patternListScrolls(), "a scroll bar came up beside the pattern list after one row was added");
     }
 
