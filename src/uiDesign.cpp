@@ -38,6 +38,7 @@
 #include <QFileInfo>
 #include <QFontComboBox>
 #include <QFontDatabase>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -55,6 +56,7 @@
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionGroupBox>
+#include <QStyleOptionViewItem>
 #include <QSvgRenderer>
 #include <QTimer>
 #include <QToolButton>
@@ -145,6 +147,7 @@ constexpr int scmInputStepperArrowSize = 7;
 // all. The bar is a border rather than a gap, so the padding written into the
 // rules is what it leaves of that gutter.
 constexpr int scmSidebarItemGutter = 10;
+constexpr int scmSidebarItemPadding = scmSidebarItemGutter - scmAccentBarWidth;
 // The ring drawn round the pill while the list holds the keyboard. It is taken
 // out of the item rather than added to it, a pixel off either side, so the
 // padding gives both back and the name stays where it was.
@@ -650,8 +653,8 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
     const QString separator = QLatin1Char('#') + separatorName;
     const QString accentBar = QString::number(scmAccentBarWidth);
     const QString focusRing = QString::number(scmSidebarFocusRingWidth);
-    const QString itemPadding = QString::number(scmSidebarItemGutter - scmAccentBarWidth);
-    const QString focusedItemPadding = QString::number(scmSidebarItemGutter - scmAccentBarWidth - 2 * scmSidebarFocusRingWidth);
+    const QString itemPadding = QString::number(scmSidebarItemPadding);
+    const QString focusedItemPadding = QString::number(scmSidebarItemPadding - 2 * scmSidebarFocusRingWidth);
     const QString railProperty = QLatin1StringView(scmProp_rail);
     const QString focusedProperty = QLatin1StringView(scmProp_focused);
     // Or the platform style draws its own selection as a square box inside the
@@ -677,6 +680,42 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
            + qsl("[%1=\"true\"]::item:selected { background: %2; }").arg(railProperty, pillFill(barStop(metrics.railWidth, metrics.railPadding))) + separator
            + qsl(" { border: none; background-color: %1; margin: 8px %2px; }").arg(tokens.border.name(), QString::number(metrics.separatorInset)) + separator
            + qsl("[%1=\"true\"] { margin: 8px 2px; }").arg(railProperty);
+}
+
+int sidebarRowWidth(const QListWidget* pList, const QString& name)
+{
+    if (!pList) {
+        return 0;
+    }
+    QStyleOptionViewItem option;
+    option.initFrom(pList);
+    // The chosen row is drawn bold, so it is the bold name that has to fit
+    QFont nameFont = pList->font();
+    nameFont.setBold(true);
+    option.font = nameFont;
+    option.fontMetrics = QFontMetrics(nameFont);
+    option.text = name;
+    option.features |= QStyleOptionViewItem::HasDisplay | QStyleOptionViewItem::HasDecoration;
+    // The list's own icon size rather than the design language's: the editor
+    // offers a preference that moves it, and a bigger glyph takes its extra out
+    // of the row rather than out of the name
+    option.decorationSize = pList->iconSize();
+    option.decorationPosition = QStyleOptionViewItem::Left;
+    option.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
+    // A picture of the right size and nothing else: it is the space a glyph is
+    // given that is being measured, never the glyph
+    QPixmap blank(pList->iconSize());
+    blank.fill(Qt::transparent);
+    option.icon = QIcon(blank);
+    // Neither the option nor the call names the list, so a stylesheet style
+    // wrapping it hands the question straight to the style underneath - which
+    // is the one whose margins the rows are actually drawn with
+    option.widget = nullptr;
+    const int fromTheStyle = qApp->style()->sizeFromContents(QStyle::CT_ItemViewItem, &option, QSize(), nullptr).width();
+    // ...and what the sheet above adds to every row: the accent bar, drawn as a
+    // transparent left border on an unchosen one, and the padding that stands
+    // the glyph off it
+    return fromTheStyle + scmAccentBarWidth + scmSidebarItemPadding;
 }
 
 bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& separatorName, const bool collapsed, const SidebarMetrics& metrics)

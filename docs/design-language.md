@@ -323,13 +323,14 @@ carry a tooltip naming their shortcut.
 Most of the measurements are the component's rather than a window's, and live
 beside the recipe in `src/uiDesign.h`: `scmSidebarRailWidth` (46),
 `scmSidebarPadding` (12), `scmSidebarRailPadding` (6),
-`scmSidebarSeparatorInset` (12), `scmSidebarRowHeight` (36),
-`scmSidebarIconSize` (18) and `scmSidebarRowChrome` (40) - what a row costs
-beside its name at that glyph. `SidebarMetrics` then carries what a window has a
-reason of its own for: the expanded width, which each measures for itself, and
-the vertical padding, which is the inset that window's own columns start at (12
-in the editor, `scmEditorColumnTopInset`; 16 in the settings dialog, whose
-sidebar leads with the wordmark row). The `itemColor` parameter beside it
+`scmSidebarSeparatorInset` (12), `scmSidebarRowHeight` (36) and
+`scmSidebarIconSize` (18), the glyph both draw a row with. What a row comes to
+beside its name is measured rather than written down - `sidebarRowWidth()`,
+below. `SidebarMetrics` then carries what a window has a reason of its own for:
+the expanded width, which each measures for itself, and the vertical padding,
+which is the inset that window's own columns start at (12 in the editor,
+`scmEditorColumnTopInset`; 16 in the settings dialog, whose sidebar leads with
+the wordmark row). The `itemColor` parameter beside it
 carries the only other difference, the colour an unchosen name is written in:
 muted in the editor where all the chrome is, full strength in the settings
 dialog where the sidebar is the navigation. The accent bar is a gradient stop
@@ -337,13 +338,24 @@ rather than a `border-left`, which would be drawn as an arc where the pill's
 corner radius is and pinched to nothing at both ends; a stop is a *fraction* of
 the item, which is why those widths have to be known numbers.
 
-Both windows measure their expanded width off the widest name they hold, in the
-bold a chosen row is drawn in, plus `scmSidebarRowChrome` and the pane's padding
-- `editorSidebarWidths()` and `measuredSidebarWidth()` - clamped between the
-rail width and a ceiling of their own (180 in the editor, 232 in the settings
-dialog, which is the flat width that dialog used to be held to). An interface
-font or a translation's longer names move the answer, so both drop it on a
-language, style or font change and take it again.
+Both windows measure their expanded width off the widest of their rows -
+`editorSidebarWidths()` and `measuredSidebarWidth()` - and a row is measured by
+`uiDesign::sidebarRowWidth()`, plus the pane's padding, clamped between the rail
+width and a ceiling of their own (180 in the editor, 232 in the settings dialog,
+which is the flat width that dialog used to be held to). A row is what the base
+style says an item of that name, in the bold a chosen row is drawn in, and the
+list's own icon needs - `sizeFromContents(CT_ItemViewItem)`, asked with no
+widget so a stylesheet style defers to the style underneath - plus the two
+things the sheet above puts on a row and no style can know about: the accent
+bar and the `::item` padding beside it. Not a constant, because what a style
+leaves round an item's text is its own: the same row of the same name measures
+88px under the dark theme's Fusion proxy and 96px under the platform style
+macOS light uses, which leaves two pixels either side against four
+(`PM_FocusFrameHMargin`, which `QCommonStyle` then draws the name inside again).
+Held to one number for both, the editor's sidebar drew "Statistics" and
+"Variables" as "Statist..." and "Variabl..." in light. An interface font, a
+translation's longer names and the style itself all move the answer, so both
+windows drop it on a language, style or font change and take it again.
 
 Both also carry the same control on the seam: `uiDesign::SidebarToggle`
 (`src/SidebarToggle.h`), a painted pill with a chevron pointing the way the

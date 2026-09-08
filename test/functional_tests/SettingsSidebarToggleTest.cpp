@@ -41,10 +41,18 @@
  */
 
 #include <QAbstractButton>
+#include <QComboBox>
 #include <QDir>
+#include <QIcon>
 #include <QLabel>
 #include <QListWidget>
+#include <QPixmap>
+#include <QProxyStyle>
+#include <QScopeGuard>
 #include <QSettings>
+#include <QStyle>
+#include <QStyleFactory>
+#include <QStyleOptionViewItem>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -63,6 +71,26 @@
 #include "GroupedTest.h"
 
 using namespace std::chrono_literals;
+
+// What a style leaves round an item's text is the whole of what the two
+// appearances differ by on a desktop - two pixels either side under the dark
+// theme's Fusion proxy, four under the platform's own style on macOS - and it
+// is what decides whether a row's name is drawn out or elided. Under the
+// offscreen platform these run on both appearances are Fusion, so the
+// difference is installed rather than waited for.
+namespace {
+class WiderTextMarginStyle : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    int pixelMetric(PixelMetric metric, const QStyleOption* pOption, const QWidget* pWidget) const override
+    {
+        const int given = QProxyStyle::pixelMetric(metric, pOption, pWidget);
+        return metric == PM_FocusFrameHMargin ? given + 4 : given;
+    }
+};
+} // namespace
 
 class SettingsSidebarToggleTest : public QObject
 {
@@ -111,6 +139,76 @@ private:
             widest = std::max(widest, nameMetrics.horizontalAdvance(categories()->item(row)->text()));
         }
         return widest;
+    }
+
+    // What each row leaves for its name against what the name comes to, in the
+    // bold a chosen row is drawn in. The text rect is not the answer on its
+    // own: QCommonStyle draws inside it shrunk by PM_FocusFrameHMargin + 1 on
+    // each side, so a name that only just fits the rect is still elided.
+    QStringList namesTooNarrowForTheirRows(QStringList& measured) const
+    {
+        QListWidget* pList = categories();
+        QFont nameFont = pList->font();
+        nameFont.setBold(true);
+        const QFontMetrics nameMetrics(nameFont);
+
+        QStyleOptionViewItem option;
+        option.initFrom(pList);
+        option.font = nameFont;
+        option.fontMetrics = nameMetrics;
+        option.features |= QStyleOptionViewItem::HasDisplay | QStyleOptionViewItem::HasDecoration;
+        option.decorationSize = pList->iconSize();
+        option.decorationPosition = QStyleOptionViewItem::Left;
+        option.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
+        // Any picture of the right size: what a row costs beside its name is
+        // the space the glyph is given, not the glyph
+        QPixmap blank(pList->iconSize());
+        blank.fill(Qt::transparent);
+        option.icon = QIcon(blank);
+
+        const int drawingMargin = 2 * (pList->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, &option, pList) + 1);
+        QStringList squeezed;
+        int tightest = 0;
+        QString tightestName;
+        for (int row = 0, rows = pList->count(); row < rows; ++row) {
+            QListWidgetItem* pItem = pList->item(row);
+            // The divider rows, which have a frame in place of a name
+            if (pItem->text().isEmpty()) {
+                continue;
+            }
+            option.text = pItem->text();
+            option.rect = pList->visualItemRect(pItem);
+            const int room = pList->style()->subElementRect(QStyle::SE_ItemViewItemText, &option, pList).width() - drawingMargin;
+            const int needed = nameMetrics.horizontalAdvance(pItem->text());
+            if (tightestName.isEmpty() || room - needed < tightest) {
+                tightest = room - needed;
+                tightestName = pItem->text();
+            }
+            if (room < needed) {
+                squeezed << qsl("\"%1\" has %2px of a row %3px wide for a name %4px across").arg(pItem->text(), QString::number(room), QString::number(option.rect.width()), QString::number(needed));
+            }
+        }
+        measured << qsl("sidebar %1px, style %2, %3px of margin, tightest row \"%4\" with %5px to spare")
+                            .arg(QString::number(sidebar()->width()),
+                                 QString::number(pList->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, &option, pList)),
+                                 QString::number(drawingMargin),
+                                 tightestName,
+                                 QString::number(tightest));
+        return squeezed;
+    }
+
+    // The dialog's own control, which is the path that restyles every open
+    // window rather than only this one
+    void takeTheDialogTo(const enums::Appearance appearance)
+    {
+        if (mpPreferences->comboBox_appearance->currentIndex() == appearance) {
+            mpPreferences->comboBox_appearance->setCurrentIndex(appearance == enums::Appearance::dark ? enums::Appearance::light : enums::Appearance::dark);
+            QCoreApplication::sendPostedEvents();
+            QTest::qWait(100ms);
+        }
+        mpPreferences->comboBox_appearance->setCurrentIndex(appearance);
+        QCoreApplication::sendPostedEvents();
+        QTest::qWait(100ms);
     }
 
     void openPreferences()
@@ -353,6 +451,59 @@ private slots:
         openPreferences();
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(!railShowing(), qPrintable(qsl("a fresh dialog forgot that the names had been asked for: %1").arg(state())));
+    }
+
+    // The width has to hold the names under whichever style is drawing the
+    // rows. The two appearances are two different base styles on a desktop - a
+    // Fusion proxy on dark, the platform's own on light - and they leave
+    // different margins round an item's text, so a sidebar measured with one
+    // number for both draws the names out in one appearance and elides them in
+    // the other. Under the offscreen platform this runs on both appearances are
+    // Fusion, which is why the last pass installs the difference outright.
+    void test_everyNameFitsItsRowUnderTheStyleDrawingThem()
+    {
+        const auto appearanceBefore = mudlet::self()->mAppearance;
+        auto restore = qScopeGuard([appearanceBefore]() {
+            // The appearance builds a style of its own, whatever was put in its
+            // place; the loading flag is what makes it do that for an
+            // appearance already in force
+            mudlet::self()->setAppearance(appearanceBefore, true);
+        });
+        if (railShowing()) {
+            pressTheToggle();
+        }
+        QVERIFY2(!railShowing(), qPrintable(qsl("this case needs the names showing: %1").arg(state())));
+        resizeDialog(mWideEnough);
+
+        QStringList squeezed;
+        const auto walkTheRows = [this, &squeezed](const QString& drawnBy) {
+            QCoreApplication::sendPostedEvents();
+            QTest::qWait(100ms);
+            // Reported rather than asserted: a return out of a lambda is
+            // all QVERIFY2 can do here, and a silent one would leave the walk
+            // below unrun and the case passing on an empty list
+            if (railShowing()) {
+                squeezed << qsl("%1: the sidebar gave its names up altogether (%2)").arg(drawnBy, state());
+                return;
+            }
+
+            QStringList measured;
+            const QStringList tooNarrow = namesTooNarrowForTheirRows(measured);
+            qInfo().noquote() << qsl("  %1: %2").arg(drawnBy, measured.join(qsl("; ")));
+            for (const QString& complaint : tooNarrow) {
+                squeezed << qsl("%1: %2").arg(drawnBy, complaint);
+            }
+        };
+
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            takeTheDialogTo(appearance.second);
+            walkTheRows(appearance.first);
+        }
+
+        qApp->setStyle(new WiderTextMarginStyle(QStyleFactory::create(qsl("Fusion"))));
+        walkTheRows(qsl("a style with wider text margins"));
+
+        QVERIFY2(squeezed.isEmpty(), qPrintable(qsl("the settings dialog's sidebar does not hold its names under every style: %1").arg(squeezed.join(qsl("; ")))));
     }
 };
 

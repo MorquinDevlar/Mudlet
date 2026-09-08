@@ -2036,11 +2036,12 @@ void dlgProfilePreferences::invalidateSidebarWidth()
 }
 
 // What the sidebar is drawn at with its names showing, measured the way the
-// editor measures its own: the widest of the names it actually holds, plus what
-// a row costs beside one. An interface font or a translation's longer category
-// names both move it, so it is taken from the rows rather than written down
-// here. Kept once measured, as a resize asks for the answer on every frame of a
-// drag and nothing that would change it can happen in the middle of one.
+// editor measures its own: the widest of the rows it holds, at the names it
+// holds. An interface font, a translation's longer category names and the style
+// drawing the rows all move it, so it is taken from the rows rather than
+// written down here. Kept once measured, as a resize asks for
+// the answer on every frame of a drag and nothing that would change it can
+// happen in the middle of one.
 int dlgProfilePreferences::measuredSidebarWidth() const
 {
     if (mSidebarWidthKnown) {
@@ -2052,15 +2053,14 @@ int dlgProfilePreferences::measuredSidebarWidth() const
         return uiDesign::scmSidebarRailWidth;
     }
 
-    // The chosen row is drawn bold, so it is the bold name that has to fit
-    QFont nameFont = mpListWidget_categories->font();
-    nameFont.setBold(true);
-    const QFontMetrics nameMetrics(nameFont);
-    int widestName = 0;
+    // What the style in force says each row needs at its own name and glyph,
+    // which is a different number in each appearance - see
+    // uiDesign::sidebarRowWidth()
+    int widestRow = 0;
     for (int row = 0, rows = mpListWidget_categories->count(); row < rows; ++row) {
-        widestName = std::max(widestName, nameMetrics.horizontalAdvance(mpListWidget_categories->item(row)->text()));
+        widestRow = std::max(widestRow, uiDesign::sidebarRowWidth(mpListWidget_categories, mpListWidget_categories->item(row)->text()));
     }
-    int wanted = 2 * uiDesign::scmSidebarPadding + uiDesign::scmSidebarRowChrome + widestName;
+    int wanted = 2 * uiDesign::scmSidebarPadding + widestRow;
     // ...and the row of names is not the only thing in the pane: the wordmark
     // over it is the Mudlet icon, the gap after it and a word set larger than
     // the names are, and it is drawn out rather than elided

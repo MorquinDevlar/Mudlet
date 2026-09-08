@@ -206,12 +206,9 @@ inline constexpr int scmSidebarRailPadding = 6;
 inline constexpr int scmSidebarSeparatorInset = 12;
 inline constexpr int scmSidebarRowHeight = 36;
 // The design language's glyph, which both sidebars draw their rows with. The
-// editor's icon size preference moves its own away from this, and takes the
-// difference out of the name's share of the row.
+// editor's icon size preference moves its own away from this, which the
+// measurement below reads off the list rather than assuming.
 inline constexpr int scmSidebarIconSize = 18;
-// What a row costs beside its name at that glyph: the pill's accent bar and
-// padding, the icon, and the gap the view leaves after it.
-inline constexpr int scmSidebarRowChrome = 40;
 
 // The measurements one window's sidebar differs from the other's by; the colour
 // an unchosen name is written in is the only other difference, and travels
@@ -245,6 +242,18 @@ struct SidebarMetrics
 // two windows answer differently: the editor's chrome is muted throughout,
 // while the settings sidebar is the whole of that dialog's navigation.
 QString sidebarStyleSheet(const QString& listName, const QString& separatorName, const QColor& itemColor, const SidebarMetrics& metrics, const ThemeTokens& tokens);
+
+// What one row of that sidebar comes to at a given name, which is what both
+// windows measure their expanded width off. Not a constant: what a style leaves
+// round an item's text is a different number in each appearance - two pixels
+// either side under the dark theme's Fusion proxy, four under the platform's
+// own style on macOS - and QCommonStyle draws the name inside that again, so a
+// row wide enough in one appearance elides in the other. Asked of the base
+// style rather than the list's, so the answer does not turn on whether the
+// sheet above has been built yet: the editor measures before it builds one,
+// since the accent bar is a fraction of the width being measured. What the
+// sheet then puts on a row, and no style can know about, is added here.
+int sidebarRowWidth(const QListWidget* pList, const QString& name);
 
 // Collapsing that sidebar to a rail of icons and back: the pane's width and
 // margins, and the property both the shared delegate and the rules above read

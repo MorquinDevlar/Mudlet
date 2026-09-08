@@ -174,7 +174,6 @@ static constexpr int scmEditorSidebarRailWidth = uiDesign::scmSidebarRailWidth;
 static constexpr int scmEditorSidebarRailPadding = uiDesign::scmSidebarRailPadding;
 static constexpr int scmEditorSidebarSeparatorInset = uiDesign::scmSidebarSeparatorInset;
 static constexpr int scmEditorSidebarRowHeight = uiDesign::scmSidebarRowHeight;
-static constexpr int scmEditorSidebarIconSize = uiDesign::scmSidebarIconSize;
 // "Icon size toolbars" is a step from 1 to 4 rather than a pixel count, and 3 is
 // what a profile that has never touched it holds. Six pixels a step is what
 // makes that default the 18px the design language draws a glyph at everywhere
@@ -185,10 +184,6 @@ static constexpr int scmEditorSidebarIconSize = uiDesign::scmSidebarIconSize;
 // bigger target: 1 to 4 now spans 6px to 24px, the top of which is what the
 // default used to draw.
 static constexpr int scmEditorIconSizeStep = 6;
-// What a row costs beside its name at the 18px glyph above: the pill's accent
-// bar and padding, the icon and the gap the view leaves after it. A larger
-// glyph moves it by the difference - see editorSidebarWidths().
-static constexpr int scmEditorSidebarRowChrome = uiDesign::scmSidebarRowChrome;
 // What the grip at the leading end of the actions toolbar is given: the six
 // dots are five pixels across, and the rest is what holds them off the bar's
 // edge and off the first button
@@ -16322,10 +16317,10 @@ void dlgTriggerEditor::invalidateEditorSidebarWidths()
     mEditorSidebarWidthsKnown = false;
 }
 
-// Measured rather than a number in the source: an interface font or a
-// translation's longer names both move it. Kept once measured, as a resize asks
-// for the answer on every frame of a drag and nothing that would change it can
-// happen in the middle of one.
+// Measured rather than a number in the source: an interface font, a
+// translation's longer names and the style drawing the rows all move it. Kept
+// once measured, as a resize asks for the answer on every frame of a drag and
+// nothing that would change it can happen in the middle of one.
 dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() const
 {
     if (mEditorSidebarWidthsKnown) {
@@ -16338,19 +16333,14 @@ dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() co
     if (!mpListWidget_editorSidebar) {
         return widths;
     }
-    // The chosen row is drawn bold, so it is the bold name that has to fit
-    QFont nameFont = mpListWidget_editorSidebar->font();
-    nameFont.setBold(true);
-    const QFontMetrics nameMetrics(nameFont);
-    int widestName = 0;
+    // What the style in force says each row needs at its own name and glyph,
+    // which is a different number in each appearance - see
+    // uiDesign::sidebarRowWidth()
+    int widestRow = 0;
     for (int row = 0, rows = mpListWidget_editorSidebar->count(); row < rows; ++row) {
-        widestName = std::max(widestName, nameMetrics.horizontalAdvance(mpListWidget_editorSidebar->item(row)->text()));
+        widestRow = std::max(widestRow, uiDesign::sidebarRowWidth(mpListWidget_editorSidebar, mpListWidget_editorSidebar->item(row)->text()));
     }
-    // The chrome is measured at the design language's 18px glyph, so a
-    // preference asking for a bigger one takes the difference out of the name's
-    // share of the row
-    const int rowChrome = scmEditorSidebarRowChrome + (mEditorIconSize - scmEditorSidebarIconSize);
-    widths.expanded = std::clamp(2 * scmEditorSidebarPadding + rowChrome + widestName, scmEditorSidebarRailWidth, scmEditorSidebarMaximumWidth);
+    widths.expanded = std::clamp(2 * scmEditorSidebarPadding + widestRow, scmEditorSidebarRailWidth, scmEditorSidebarMaximumWidth);
 
     // Deliberately not the width above: held equal, the sidebar had its names at
     // exactly one window width and the first pixel of a drag inwards took them

@@ -58,8 +58,10 @@ script editor (`src/dlgTriggerEditor.cpp`) is the reference look; the settings d
     `uiDesign::repolish()`. Full tables: `docs/design-language.md` section 3.
 11. **Human copy.** Controls say what happens in a player's words; every user-visible string
     is `tr()` with a `//:` translator note on the line above.
-12. **Measured responsiveness.** Breakpoints come from font metrics and `sizeHint()`s, with a
-    different collapse and restore threshold so nothing oscillates.
+12. **Measured responsiveness.** Breakpoints come from font metrics, the style's own metrics
+    and `sizeHint()`s, with a different collapse and restore threshold so nothing oscillates.
+    What a style leaves round what it draws is the style's, not a constant: it changes with the
+    appearance, so anything measured against it is taken again on `QEvent::StyleChange`.
 
 ## Tokens
 
@@ -90,7 +92,7 @@ State colours (ok, warning, error) come from `stateColor(scmStateHue_*, darkPage
 | Check box, radio button, checkable card mark | `choiceStyleSheet(tokens, prefix)` | One mark: field fill, hairline, accent when set, a dash for `Qt::PartiallyChecked`; cards get it through `cardIndicatorStyleSheet()`. Then `keepClickFocusOffControls(container)` on the container the sheet was set on, or a click leaves the focus accent behind on every base style that answers `SH_Button_FocusPolicy` with `Qt::StrongFocus` |
 | Push button, button with a menu | `buttonStyleSheet(tokens, prefix)` | Same height and radius as a field; Lucide chevron as the menu indicator. Colour wells keep their own per-widget sheet. Same follow-up call as the row above - one `keepClickFocusOffControls()` covers both recipes |
 | Card with a title inside the frame | `cardStyleSheet(CardMetrics, tokens)` + `cardIndicatorStyleSheet()` + `measuredCardTitleHeight()` | Measure the title height with the indicator rules in force, or the first control paints over the title |
-| Sidebar list with rail collapse | `sidebarStyleSheet(...)` + `setSidebarCollapsed(...)` + `SidebarItemDelegate` + `SidebarToggle` | The rail width, the paddings, the row height and the glyph are the component's own `scmSidebar*` constants; `SidebarMetrics` carries only what a window has a reason to differ by - the expanded width, which each measures off its widest row name in bold, and the vertical padding. `SidebarToggle` is the chevron on the seam, a child of the shell holding both panes, kept under `<window>SidebarLabelsShown` |
+| Sidebar list with rail collapse | `sidebarStyleSheet(...)` + `setSidebarCollapsed(...)` + `sidebarRowWidth(...)` + `SidebarItemDelegate` + `SidebarToggle` | The rail width, the paddings, the row height and the glyph are the component's own `scmSidebar*` constants; `SidebarMetrics` carries only what a window has a reason to differ by - the expanded width, which each measures off its widest row, and the vertical padding. A row is never a constant: `sidebarRowWidth()` asks the *base* style what an item of that name in bold and that icon needs (`CT_ItemViewItem`, widget `nullptr`, so a stylesheet style defers to the style underneath) and adds the accent bar and `::item` padding the sheet writes - a style leaves its own margins round an item's text, four pixels either side on macOS light against two under the dark theme, and a row measured for one elides in the other. `SidebarToggle` is the chevron on the seam, a child of the shell holding both panes, kept under `<window>SidebarLabelsShown` |
 | Scrollbars on a surface | `scrollBarStyleSheet(prefix, tokens, surface)` | A scroll area's bars answer only to a descendant selector |
 | Toolbar or sidebar glyphs | `tintedIcon(glyph, tokens)` / `restyleActionGlyphs(ActionGlyph ledger, tokens)` | Re-run on every appearance change |
 | A word in a box (chip) | `uiDesign::ChipRow` / `Chip` (`src/ChipRow.h`), `chipFont()` | `scmRadiusChip` |
