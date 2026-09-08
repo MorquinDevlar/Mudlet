@@ -667,8 +667,13 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
            // stepping sideways under its accent bar; outline:none drops a
            // focus rectangle drawn square inside a round pill
            + list + qsl("::item { border-radius: 8px; border-left: %1px solid transparent; padding-left: %2px; color: %3; outline: none; }").arg(accentBar, itemPadding, itemColor.name()) + list
-           + qsl("::item:hover { background-color: %1; }").arg(tokens.hoverSoft) + list
-           + qsl("::item:selected { color: %1; font-weight: bold; background: %2; }").arg(tokens.accentText.name(), pillFill(barStop(metrics.expandedWidth, metrics.padding)))
+           + qsl("::item:hover { background-color: %1; }").arg(tokens.hoverSoft)
+           + list
+           // No font-weight here: a chosen row is drawn bold, but a sheet's
+           // font on an item never reaches the painter, which lays the name out
+           // in the option's own font. SidebarItemDelegate sets the weight, and
+           // sidebarRowWidth() below measures every row in it.
+           + qsl("::item:selected { color: %1; background: %2; }").arg(tokens.accentText.name(), pillFill(barStop(metrics.expandedWidth, metrics.padding)))
            // Keyboard focus is otherwise indistinguishable from the selection;
            // an event filter on the list puts scmProp_focused on
            + list

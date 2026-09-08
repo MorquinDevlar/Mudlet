@@ -21,7 +21,9 @@
 
 #include "uiDesign.h"
 
+#include <QFontMetrics>
 #include <QListWidget>
+#include <QStyle>
 #include <QStyleOptionViewItem>
 
 namespace uiDesign {
@@ -35,6 +37,14 @@ SidebarItemDelegate::SidebarItemDelegate(QListWidget* pList)
 void SidebarItemDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const
 {
     QStyledItemDelegate::initStyleOption(pOption, index);
+    // The weight the chosen row is drawn in, and the weight sidebarRowWidth()
+    // measures every row against. It is set here rather than in the sheet
+    // because a font on an ::item never reaches the painter: the display text
+    // is laid out with this option's own font.
+    if (pOption->state & QStyle::State_Selected) {
+        pOption->font.setBold(true);
+        pOption->fontMetrics = QFontMetrics(pOption->font);
+    }
     if (!mpList->property(scmProp_rail).toBool()) {
         return;
     }

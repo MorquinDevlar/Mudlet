@@ -347,10 +347,13 @@ style says an item of that name, in the bold a chosen row is drawn in, and the
 list's own icon needs - `sizeFromContents(CT_ItemViewItem)`, asked with no
 widget so a stylesheet style defers to the style underneath - plus the two
 things the sheet above puts on a row and no style can know about: the accent
-bar and the `::item` padding beside it. Not a constant, because what a style
-leaves round an item's text is its own: the same row of the same name measures
-88px under the dark theme's Fusion proxy and 96px under the platform style
-macOS light uses, which leaves two pixels either side against four
+bar and the `::item` padding beside it. That bold is `SidebarItemDelegate`'s
+rather than the sheet's, because a stylesheet's font on an `::item` never
+reaches the painter, which lays a row's name out in the style option's own font.
+Not a constant, because what a style leaves round an item's text is its own: the
+same row of the same name measures 88px under the dark theme's Fusion proxy and
+96px under the platform style macOS light uses, which leaves two pixels either
+side against four
 (`PM_FocusFrameHMargin`, which `QCommonStyle` then draws the name inside again).
 Held to one number for both, the editor's sidebar drew "Statistics" and
 "Variables" as "Statist..." and "Variabl..." in light. An interface font, a

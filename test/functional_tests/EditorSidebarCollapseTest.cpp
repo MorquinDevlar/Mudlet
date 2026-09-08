@@ -42,7 +42,9 @@
  * points the way the sidebar will go.
  */
 
+#include <QColor>
 #include <QIcon>
+#include <QImage>
 #include <QListWidget>
 #include <QPixmap>
 #include <QProxyStyle>
@@ -86,6 +88,40 @@ public:
         return metric == PM_FocusFrameHMargin ? given + 4 : given;
     }
 };
+
+// How much more of a row's name is inked once it is the chosen one. Bold stems
+// cover more pixels than regular ones of the same size, and this is two thirds
+// of the way from no difference at all to the 1.64x measured here - a name
+// drawn at one weight in both states comes to 1.16x, which is the whole of what
+// the colours and the pill under them are worth.
+constexpr double scmBoldInkFloor = 1.40;
+
+// A name is painted with a solid pen, so its stems come back opaque whatever
+// they are drawn over. Only the antialiased edges are part of the way there,
+// and those follow the background rather than the weight.
+constexpr int scmOpaqueInk = 192;
+constexpr int scmInkSpread = 24;
+
+// The pixels of one colour a rect holds. A weight cannot be read back off a
+// widget, so the picture is the only witness there is.
+int inkPixels(const QImage& picture, const QRect& area, const QColor& ink)
+{
+    int found = 0;
+    const QRect inPicture = area.intersected(picture.rect());
+    for (int y = inPicture.top(); y <= inPicture.bottom(); ++y) {
+        for (int x = inPicture.left(); x <= inPicture.right(); ++x) {
+            const QColor pixel = picture.pixelColor(x, y);
+            if (pixel.alpha() < scmOpaqueInk) {
+                continue;
+            }
+            const int spread = qMax(qMax(qAbs(pixel.red() - ink.red()), qAbs(pixel.green() - ink.green())), qAbs(pixel.blue() - ink.blue()));
+            if (spread <= scmInkSpread) {
+                ++found;
+            }
+        }
+    }
+    return found;
+}
 } // namespace
 
 class EditorSidebarCollapseTest : public QObject
@@ -223,6 +259,70 @@ private:
                                  tightestName,
                                  QString::number(tightest));
         return squeezed;
+    }
+
+    // Where a row's name is drawn, in the list's own coordinates. Taken with the
+    // bold the chosen row is written in, so that the same rect covers the name
+    // in either state and the two pictures are read at the same place.
+    QRect nameAreaOf(const int row) const
+    {
+        QListWidget* pList = mpEditor->mpListWidget_editorSidebar;
+        QFont nameFont = pList->font();
+        nameFont.setBold(true);
+
+        QStyleOptionViewItem option;
+        option.initFrom(pList);
+        option.font = nameFont;
+        option.fontMetrics = QFontMetrics(nameFont);
+        option.features |= QStyleOptionViewItem::HasDisplay | QStyleOptionViewItem::HasDecoration;
+        option.decorationSize = pList->iconSize();
+        option.decorationPosition = QStyleOptionViewItem::Left;
+        option.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
+        QPixmap blank(pList->iconSize());
+        blank.fill(Qt::transparent);
+        option.icon = QIcon(blank);
+        option.text = pList->item(row)->text();
+        option.rect = pList->visualItemRect(pList->item(row));
+        // visualItemRect answers in the viewport's coordinates and grab() takes
+        // the whole list, frame included
+        return pList->style()->subElementRect(QStyle::SE_ItemViewItemText, &option, pList).translated(pList->viewport()->mapTo(pList, QPoint(0, 0)));
+    }
+
+    // The selectable row with the longest name, where a change of weight has the
+    // most to show for itself
+    int longestNamedRow() const
+    {
+        QListWidget* pList = mpEditor->mpListWidget_editorSidebar;
+        int longest = -1;
+        for (int row = 0, rows = pList->count(); row < rows; ++row) {
+            QListWidgetItem* pItem = pList->item(row);
+            if (pItem->text().isEmpty() || !(pItem->flags() & Qt::ItemIsSelectable)) {
+                continue;
+            }
+            if (longest < 0 || pItem->text().length() > pList->item(longest)->text().length()) {
+                longest = row;
+            }
+        }
+        return longest;
+    }
+
+    int aNamedRowOtherThan(const int row) const
+    {
+        QListWidget* pList = mpEditor->mpListWidget_editorSidebar;
+        for (int other = 0, rows = pList->count(); other < rows; ++other) {
+            QListWidgetItem* pItem = pList->item(other);
+            if (other != row && !pItem->text().isEmpty() && (pItem->flags() & Qt::ItemIsSelectable)) {
+                return other;
+            }
+        }
+        return -1;
+    }
+
+    void chooseRow(const int row)
+    {
+        mpEditor->mpListWidget_editorSidebar->setCurrentRow(row);
+        QCoreApplication::sendPostedEvents();
+        QTest::qWait(50ms);
     }
 
     QString state() const
@@ -450,6 +550,76 @@ private slots:
 
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(railShowing(), qPrintable(qsl("A fresh editor forgot that the names had been given up: %1").arg(state())));
+    }
+
+    // The chosen row is drawn bold, which is the weight the sidebar's width was
+    // measured in - sidebarRowWidth() asks the style for a name in bold, so a
+    // row rendered at regular weight is a pane wider than what it holds. The
+    // weight is SidebarItemDelegate's: a font-weight on an ::item never reaches
+    // the painter, which lays the name out in the style option's own font. So
+    // nothing structural can prove it and the picture is asked instead - the
+    // same rect of the same row, once while it is chosen and once while it is
+    // not.
+    void test_theChosenRowIsDrawnBold()
+    {
+        if (railShowing()) {
+            pressTheToggle();
+        }
+        QVERIFY2(!railShowing(), qPrintable(qsl("this case needs the names showing: %1").arg(state())));
+
+        QListWidget* pList = mpEditor->mpListWidget_editorSidebar;
+        const int chosen = longestNamedRow();
+        const int other = aNamedRowOtherThan(chosen);
+        QVERIFY2(chosen >= 0 && other >= 0, "the editor's sidebar has too few named rows to tell a chosen one from the rest");
+        const QString name = pList->item(chosen)->text();
+        const QRect nameArea = nameAreaOf(chosen);
+
+        // The pane is already measured against a bold name, so drawing one must
+        // not move it - a width that changed with the selection would shift
+        // every row under the pointer
+        const int paneBefore = mpEditor->mpWidget_editorSidebarPane->width();
+        const int rowBefore = pList->visualItemRect(pList->item(chosen)).width();
+
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        chooseRow(chosen);
+        QCOMPARE(pList->currentRow(), chosen);
+        const int inkWhenChosen = inkPixels(pList->grab().toImage(), nameArea, tokens.accentText);
+        const int paneChosen = mpEditor->mpWidget_editorSidebarPane->width();
+        const int rowChosen = pList->visualItemRect(pList->item(chosen)).width();
+
+        // The editor's unchosen names are written in the quiet tone the rest of
+        // its chrome takes, which is what sidebarStyleSheet() is handed as the
+        // item colour
+        chooseRow(other);
+        QCOMPARE(pList->currentRow(), other);
+        const int inkWhenNot = inkPixels(pList->grab().toImage(), nameArea, tokens.mutedText);
+
+        const double ratio = inkWhenNot > 0 ? static_cast<double>(inkWhenChosen) / inkWhenNot : 0.0;
+        qInfo().noquote() << qsl("  \"%1\" is inked with %2px chosen against %3px unchosen (%4x, floor %5x); pane %6px throughout, row %7px")
+                                     .arg(name,
+                                          QString::number(inkWhenChosen),
+                                          QString::number(inkWhenNot),
+                                          QString::number(ratio, 'f', 2),
+                                          QString::number(scmBoldInkFloor, 'f', 2),
+                                          QString::number(paneBefore),
+                                          QString::number(rowChosen));
+
+        QVERIFY2(inkWhenChosen > 0 && inkWhenNot > 0,
+                 qPrintable(qsl("\"%1\" was read in a %2x%3 rect at %4,%5 and holds no ink in either state (%6px chosen, %7px unchosen), so the two pictures say nothing")
+                                    .arg(name,
+                                         QString::number(nameArea.width()),
+                                         QString::number(nameArea.height()),
+                                         QString::number(nameArea.x()),
+                                         QString::number(nameArea.y()),
+                                         QString::number(inkWhenChosen),
+                                         QString::number(inkWhenNot))));
+        QVERIFY2(ratio >= scmBoldInkFloor,
+                 qPrintable(
+                         qsl("\"%1\" is drawn with %2px of ink when it is the chosen row and %3px when it is not - %4x, under the %5x a bold name comes to, so the chosen row is not being drawn bold")
+                                 .arg(name, QString::number(inkWhenChosen), QString::number(inkWhenNot), QString::number(ratio, 'f', 2), QString::number(scmBoldInkFloor, 'f', 2))));
+        QVERIFY2(paneChosen == paneBefore && rowChosen == rowBefore,
+                 qPrintable(qsl("choosing \"%1\" moved the sidebar: pane %2px to %3px, row %4px to %5px")
+                                    .arg(name, QString::number(paneBefore), QString::number(paneChosen), QString::number(rowBefore), QString::number(rowChosen))));
     }
 
     // The width has to hold the names under whichever style is drawing the
