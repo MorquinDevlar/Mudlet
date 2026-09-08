@@ -88,12 +88,9 @@ void TriggerHighlighter::rebuildRules()
     if (!theme) {
         // A theme is only registered once its file has been read, and the file
         // can be gone - a downloaded theme deleted out from under the profile,
-        // or a name that no longer answers to anything. edbee hands back a null
-        // pointer for one it has never seen, so the rows go unhighlighted rather
-        // than the window going down with them.
-        qWarning().nospace() << "TriggerHighlighter::rebuildRules() WARN - no editor theme called \"" << mThemeName << "\" has been loaded, leaving the pattern rows unhighlighted.";
-        rehighlight();
-        return;
+        // or a name that no longer answers to anything. edbee's own editor
+        // paints with the fallback theme in that case, so the rows follow it.
+        theme = themeManager->fallbackTheme();
     }
 
     // set defaults from chosen theme. The theme's own background is not among

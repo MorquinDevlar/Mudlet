@@ -45,6 +45,7 @@
 #include "TEncodingHelper.h"
 #include "utils.h"
 #include "TTextEdit.h"
+#include "discord.h"
 #include "dlgComposer.h"
 #include "dlgMapper.h"
 #include "mudlet.h"
@@ -77,6 +78,12 @@ constexpr int AUTO_LOGIN_MAX_DELAY_MS = 60000;
 // character-at-a-time rather than a password mask - see
 // cTelnet::checkCharacterModePattern():
 constexpr auto CHARACTER_MODE_DETECT = 3s;
+
+// How long the console has to hold still before its size is reported to the
+// game - see cTelnet::checkNAWS(). Has to outlast the 0.2s timer an adjustable
+// Geyser container re-reserves its border on, which is the longest step of a
+// resize:
+constexpr auto NAWS_SETTLE_TIME = 300ms;
 
 // How long to leave a game alone after a connection attempt to it failed, before
 // trying again for a profile that reconnects automatically. A refused connection
@@ -200,6 +207,11 @@ void cTelnet::reset()
     // Stop any pending character-at-a-time detection
     if (mTimerCharacterModeDetect) {
         mTimerCharacterModeDetect->stop();
+    }
+    // A window size waiting to be reported belongs to the connection being
+    // reset, and mNaws_x/mNaws_y are about to be zeroed for the next one
+    if (mTimerNawsUpdate) {
+        mTimerNawsUpdate->stop();
     }
     // Ensure we do not think that the game server is echoing for us:
     mpHost->setRemoteEchoingActive(false);
@@ -1724,13 +1736,29 @@ void cTelnet::abandonNetworkLatencyMeasurement()
 
 void cTelnet::checkNAWS()
 {
+    // A window resize reaches the console as a burst rather than as one event:
+    // Qt lays it out, then any Geyser container attached to a border re-reserves
+    // that border from a timer of its own, which lays the console out again.
+    // Reporting each step would publish widths the window only ever had in
+    // passing - and the game wraps whatever it sends next to them - so wait for
+    // the burst to finish and report the size once.
+    if (!mTimerNawsUpdate) {
+        mTimerNawsUpdate = new QTimer(this);
+        mTimerNawsUpdate->setSingleShot(true);
+        connect(mTimerNawsUpdate, &QTimer::timeout, this, &cTelnet::sendCurrentNAWS);
+    }
+    mTimerNawsUpdate->start(NAWS_SETTLE_TIME);
+}
+
+void cTelnet::sendCurrentNAWS()
+{
     Host* pHost = mpHost;
     if (!pHost || !pHost->mpConsole) {
         return;
     }
     // Use the smaller of the screen width or the wrapAt, then subtract the
     // width of the time stamps if they are showing:
-    int naws_x = std::min(pHost->mScreenWidth, pHost->mWrapAt) - (pHost->mpConsole->showTimeStamps() ? mudlet::smTimeStampFormat.size() : 0);
+    int naws_x = std::min(pHost->mScreenWidth, pHost->mWrapAt) - (pHost->mpConsole->showTimeStamps() ? TBuffer::smTimeStampFormat.size() : 0);
     int naws_y = pHost->mScreenHeight;
     if ((naws_y > 0) && (myOptionState.test(static_cast<size_t>(OPT_NAWS))) && ((mNaws_x != naws_x) || (mNaws_y != naws_y))) {
         sendNAWS(naws_x, naws_y);
@@ -3184,7 +3212,7 @@ void cTelnet::processTelnetCommand(const std::string& telnetCommand)
             output += OPT_GMCP;
             {
                 std::string supportsList = R"(Core.Supports.Set [ "Char 1", "Char.Skills 1", "Char.Items 1", "Room 1", "IRE.Rift 1", "IRE.Composer 1")";
-                if (mpHost->mDiscordMode == Host::DiscordShowGameDetails && mudlet::self()->mDiscord.libraryLoaded()) {
+                if (mpHost->mDiscordMode == Host::DiscordShowGameDetails && Discord::self()->libraryLoaded()) {
                     supportsList += R"(, "External.Discord 1")";
                 }
                 supportsList += R"(, "Client.Media 1", "Char.Login 2"])";
@@ -3194,7 +3222,7 @@ void cTelnet::processTelnetCommand(const std::string& telnetCommand)
             output += TN_SE;
             socketOutRaw(output);
 
-            if (mpHost->mDiscordMode == Host::DiscordShowGameDetails && mudlet::self()->mDiscord.libraryLoaded()) {
+            if (mpHost->mDiscordMode == Host::DiscordShowGameDetails && Discord::self()->libraryLoaded()) {
                 sendDiscordHello();
                 sendDiscordGet();
             }
@@ -3718,8 +3746,10 @@ void cTelnet::processTelnetCommand(const std::string& telnetCommand)
             // used values:
             mNaws_x = 0;
             mNaws_y = 0;
-            // thus sending of the values is performed when we check them:
-            checkNAWS();
+            // Answer the negotiation itself rather than going through the
+            // resize debounce: the game asked for the size now, and games that
+            // draw their login screen from it get one chance to be told.
+            sendCurrentNAWS();
         }
         break;
     }
@@ -4005,12 +4035,21 @@ void cTelnet::processTelnetCommand(const std::string& telnetCommand)
                                    "(url='%3').")
                                         .arg(version, mpHost->mServerGUI_Package_version, url));
 
-                    // Uninstall the old version
-                    mpHost->uninstallPackage(mpHost->mServerGUI_Package_name != qsl("nothing") ? mpHost->mServerGUI_Package_name : packageName, enums::PackageModuleType::Package);
-
-                    // Download and install the new version
-                    mpHost->mServerGUI_Package_version = version;
-                    downloadAndInstallGUIPackage(packageName, fileName, url);
+                    // Uninstall the old version, and leave the installed one alone if that is
+                    // refused: installing over it fails as "already installed", so the upgrade
+                    // would go missing while the version recorded below claimed otherwise. A
+                    // name that is not installed has nothing to refuse and nothing to remove,
+                    // and must not hold the upgrade up.
+                    const QString oldPackageName = mpHost->mServerGUI_Package_name != qsl("nothing") ? mpHost->mServerGUI_Package_name : packageName;
+                    const bool clearedTheWay = !mpHost->mInstalledPackages.contains(oldPackageName) || mpHost->uninstallPackage(oldPackageName, enums::PackageModuleType::Package);
+                    if (clearedTheWay) {
+                        // Download and install the new version
+                        mpHost->mServerGUI_Package_version = version;
+                        downloadAndInstallGUIPackage(packageName, fileName, url);
+                    } else {
+                        //: %1 is the name of the GUI package the game offered to upgrade
+                        postMessage(tr("[ WARN ]  - Could not remove \"%1\" to upgrade it while the profile is being saved. The game will offer the upgrade again.").arg(oldPackageName));
+                    }
                 }
             }
             return;
@@ -4421,12 +4460,21 @@ void cTelnet::handleGUIPackageInstallationAndUpgrade(QJsonDocument document)
                        "(url='%3').")
                             .arg(version, mpHost->mServerGUI_Package_version, url));
 
-        // Uninstall the old version
-        mpHost->uninstallPackage(mpHost->mServerGUI_Package_name != qsl("nothing") ? mpHost->mServerGUI_Package_name : packageName, enums::PackageModuleType::Package);
-
-        // Download and install the new version
-        mpHost->mServerGUI_Package_version = version;
-        downloadAndInstallGUIPackage(packageName, fileName, url);
+        // Uninstall the old version, and leave the installed one alone if that is
+        // refused: installing over it fails as "already installed", so the upgrade
+        // would go missing while the version recorded below claimed otherwise. A
+        // name that is not installed has nothing to refuse and nothing to remove,
+        // and must not hold the upgrade up.
+        const QString oldPackageName = mpHost->mServerGUI_Package_name != qsl("nothing") ? mpHost->mServerGUI_Package_name : packageName;
+        const bool clearedTheWay = !mpHost->mInstalledPackages.contains(oldPackageName) || mpHost->uninstallPackage(oldPackageName, enums::PackageModuleType::Package);
+        if (clearedTheWay) {
+            // Download and install the new version
+            mpHost->mServerGUI_Package_version = version;
+            downloadAndInstallGUIPackage(packageName, fileName, url);
+        } else {
+            //: %1 is the name of the GUI package the game offered to upgrade
+            postMessage(tr("[ WARN ]  - Could not remove \"%1\" to upgrade it while the profile is being saved. The game will offer the upgrade again.").arg(oldPackageName));
+        }
     }
 }
 
@@ -5257,9 +5305,7 @@ bool cTelnet::loadReplay(const QString& name, QString* pErrMsg)
             mIsReplayRunFromLua = true;
         }
         replayStream.setDevice(&replayFile);
-        if (QVersionNumber::fromString(QString(qVersion())) >= QVersionNumber(5, 13, 0)) {
-            replayStream.setVersion(mudlet::scmQDataStreamFormat_5_12);
-        }
+        replayStream.setVersion(QDataStream::Qt_5_12);
         loadingReplay = true;
         if (mudlet::self()->replayStart()) {
             auto [ok, modifiedFormat] = testReadReplayFile();
@@ -5444,11 +5490,35 @@ void cTelnet::slot_socketReadyToBeRead()
         finishNetworkLatencyMeasurement();
     }
 
+    readPendingSocketData();
+}
+
+// Reads one BUFFER_SIZE chunk, and comes back through the event loop for
+// whatever is left. readyRead() is only emitted when fresh bytes reach the
+// socket, so a burst's remainder past one read would sit unseen until the
+// server happened to send again - a game that pushes 100 KB in one go and then
+// waits for input stops part-way through it. The leftovers are deliberately
+// drained from here rather than from slot_socketReadyToBeRead(): they were
+// already buffered before any command a trigger has since sent, so treating
+// them as that command's reply would report a latency of nearly nothing.
+void cTelnet::readPendingSocketData()
+{
+    if (!mpHost || mpHost->isClosingDown() || !mpSocket || mDeferredReconnect) {
+        return;
+    }
+
     // TODO: https://github.com/Mudlet/Mudlet/issues/5780 (2 of 7) - investigate switching from using `char[]` to `std::array<char>`
     char in_buffer[BUFFER_SIZE + 10];
 
     int amount = mpSocket->read(in_buffer, BUFFER_SIZE);
     processSocketData(in_buffer, amount);
+
+    // amount > 0 as well as bytesAvailable(): a read that yields nothing while the
+    // socket still reports bytes would otherwise requeue forever, spinning a core
+    // for as long as the connection stayed in that state.
+    if (amount > 0 && mpSocket && mpSocket->bytesAvailable() > 0) {
+        QMetaObject::invokeMethod(this, &cTelnet::readPendingSocketData, Qt::QueuedConnection);
+    }
 }
 
 void cTelnet::processSocketData(char* in_buffer, int amount, const bool loopbackTesting)

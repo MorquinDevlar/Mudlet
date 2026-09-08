@@ -128,6 +128,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorCaretReadingTest;
     friend class EditorChromeInkTest;
     friend class EditorChromeShapeTest;
+    friend class EditorClipboardXmlTest;
     friend class EditorCodeHeadingTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorColumnFontTest;
@@ -141,6 +142,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorNoticeGlyphTest;
     friend class EditorNoticeSeamTest;
     friend class EditorOptionsPanelDefaultTest;
+    friend class EditorSearchTest;
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorStatusBarTest;
@@ -157,6 +159,8 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorVariablesTreeTest;
     friend class ReadabilityAuditTest;
     friend class ScriptEventHandlerLifetimeTest;
+    friend class TreeWidgetItemMoveTest;
+    friend class TriggerEditorDisclosureTest;
     friend class VariableEditorWriteBackTest;
 
     enum SearchDataRole {
