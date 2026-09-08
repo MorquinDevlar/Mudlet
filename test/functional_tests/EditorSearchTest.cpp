@@ -25,6 +25,7 @@
  */
 
 #include <QComboBox>
+#include <QLineEdit>
 #include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
@@ -38,6 +39,7 @@
 #include "AliasUnit.h"
 #include "KeyUnit.h"
 #include "ScriptUnit.h"
+#include "SearchResultDelegate.h"
 #include "TAction.h"
 #include "TAlias.h"
 #include "TKey.h"
@@ -86,20 +88,27 @@ private:
         mpEditor->slot_searchMudletItems(0);
     }
 
-    // The result tree is two deep: the first field matched in an item becomes
-    // that item's top-level row, the rest hang off it
+    // The result tree is two deep and one column wide: an item that matched is a
+    // heading row carrying its kind and its name, and every place inside it that
+    // matched - the first one included - hangs off that heading. What each row
+    // shows is drawn by uiDesign::SearchResultDelegate out of the roles below
+    // rather than written into columns.
+    static QString typeOf(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::TypeLabelRole).toString(); }
+    static QString titleOf(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::TitleRole).toString(); }
+    static QString whereOf(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::WhereRole).toString(); }
+    static bool isNotice(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::RowKindRole).toInt() == uiDesign::SearchResultDelegate::NoticeRow; }
+
     QStringList resultsFor(const QString& itemType) const
     {
         QStringList found;
         auto* results = mpEditor->treeWidget_searchResults;
         for (int i = 0, total = results->topLevelItemCount(); i < total; ++i) {
             QTreeWidgetItem* top = results->topLevelItem(i);
-            if (top->text(0) != itemType) {
+            if (isNotice(top) || typeOf(top) != itemType) {
                 continue;
             }
-            found << top->text(2);
             for (int j = 0, children = top->childCount(); j < children; ++j) {
-                found << top->child(j)->text(2);
+                found << whereOf(top->child(j));
             }
         }
         return found;
@@ -120,19 +129,26 @@ private:
     {
         auto* results = mpEditor->treeWidget_searchResults;
         for (int i = 0, total = results->topLevelItemCount(); i < total; ++i) {
-            if (results->topLevelItem(i)->text(0) == itemType) {
-                return results->topLevelItem(i);
+            QTreeWidgetItem* top = results->topLevelItem(i);
+            if (!isNotice(top) && typeOf(top) == itemType) {
+                return top;
             }
         }
         return nullptr;
     }
 
+    // A search that found nothing still leaves one row - the line saying so -
+    // and that line is not a result
     int totalResultRows() const
     {
         auto* results = mpEditor->treeWidget_searchResults;
         int total = 0;
         for (int i = 0, tops = results->topLevelItemCount(); i < tops; ++i) {
-            total += 1 + results->topLevelItem(i)->childCount();
+            QTreeWidgetItem* top = results->topLevelItem(i);
+            if (isNotice(top)) {
+                continue;
+            }
+            total += 1 + top->childCount();
         }
         return total;
     }
@@ -256,12 +272,12 @@ private slots:
     {
         search(mNeedle);
 
-        QCOMPARE(resultsFor(qsl("Trigger")), QStringList({qsl("Command"), qsl("Pattern {1}"), qsl("Lua code (1:4)"), qsl("Pattern {1}")}));
+        QCOMPARE(resultsFor(qsl("Trigger")), QStringList({qsl("Command"), qsl("Pattern 1"), qsl("Lua 1:4"), qsl("Pattern 1")}));
         QCOMPARE(resultsFor(qsl("Alias")), QStringList({qsl("Command"), qsl("Pattern")}));
-        QCOMPARE(resultsFor(qsl("Script")), QStringList({qsl("Event Handler"), qsl("Lua code (1:4)")}));
+        QCOMPARE(resultsFor(qsl("Script")), QStringList({qsl("Event"), qsl("Lua 1:4")}));
         QCOMPARE(resultsFor(qsl("Timer")), QStringList({qsl("Command")}));
         QCOMPARE(resultsFor(qsl("Key")), QStringList({qsl("Command")}));
-        QCOMPARE(resultsFor(qsl("Button")), QStringList({qsl("Command {Down}"), qsl("Command {Up}"), qsl("Stylesheet {L: 2 C: 21}")}));
+        QCOMPARE(resultsFor(qsl("Button")), QStringList({qsl("Command (down)"), qsl("Command (up)"), qsl("Style 2:21")}));
     }
 
     // A match inside a folder is only found by the recursive walk, not by the
@@ -272,8 +288,9 @@ private slots:
 
         auto* result = topLevelResultFor(qsl("Trigger"));
         QVERIFY2(result, "the nested trigger was not found at all");
-        QCOMPARE(result->text(1), qsl("qaNestedTrigger"));
-        QCOMPARE(result->text(2), qsl("Pattern {1}"));
+        QCOMPARE(titleOf(result), qsl("qaNestedTrigger"));
+        QCOMPARE(result->childCount(), 1);
+        QCOMPARE(whereOf(result->child(0)), qsl("Pattern 1"));
     }
 
     // Every row carries the item type, its id and which field matched, so that
@@ -284,7 +301,10 @@ private slots:
 
         auto* result = topLevelResultFor(qsl("Button"));
         QVERIFY(result);
-        QCOMPARE(result->text(2), qsl("Name"));
+        // The heading carries the first match's navigation data as well as its
+        // own, so clicking it goes where the first match under it goes
+        QVERIFY(result->childCount() > 0);
+        QCOMPARE(whereOf(result->child(0)), qsl("Name"));
         QCOMPARE(static_cast<EditorViewType>(result->data(0, dlgTriggerEditor::ItemRole).toInt()), EditorViewType::cmActionView);
         QCOMPARE(result->data(0, dlgTriggerEditor::TypeRole).toInt(), static_cast<int>(dlgTriggerEditor::SearchResultIsName));
         QCOMPARE(result->data(0, dlgTriggerEditor::NameRole).toString(), qsl("qaSearchButton"));
@@ -332,7 +352,7 @@ private slots:
         search(qsl("qaSearchVariable"));
         auto* result = topLevelResultFor(qsl("Variable"));
         QVERIFY2(result, "the variable was not found with the option set");
-        QCOMPARE(result->text(1), qsl("qaSearchVariable"));
+        QCOMPARE(titleOf(result), qsl("qaSearchVariable"));
         QCOMPARE(result->data(0, dlgTriggerEditor::TypeRole).toInt(), static_cast<int>(dlgTriggerEditor::SearchResultIsName));
     }
 
@@ -395,15 +415,24 @@ private slots:
         search(mNeedle);
         QVERIFY(totalResultRows() > 0);
 
-        // An empty combo entry leaves the previous results alone rather than
-        // clearing them, which is what makes the guard worth having
-        mpEditor->comboBox_searchTerms->clear();
-        mpEditor->comboBox_searchTerms->addItem(QString());
-        mpEditor->slot_searchMudletItems(0);
-        QVERIFY(totalResultRows() > 0);
+        // Emptying the field is how the panel is put back to the profile's own
+        // items, so the results go with it rather than being left behind
+        mpEditor->comboBox_searchTerms->lineEdit()->clear();
+        QCOMPARE(totalResultRows(), 0);
+
+        // The slot's own guard is the other half: an entry with nothing in it,
+        // and no entry at all, both leave whatever was found alone
+        search(mNeedle);
+        const int found = totalResultRows();
+        QVERIFY(found > 0);
+
+        auto* box = mpEditor->comboBox_searchTerms;
+        box->addItem(QString());
+        mpEditor->slot_searchMudletItems(box->count() - 1);
+        QCOMPARE(totalResultRows(), found);
 
         mpEditor->slot_searchMudletItems(-1);
-        QVERIFY(totalResultRows() > 0);
+        QCOMPARE(totalResultRows(), found);
     }
 };
 

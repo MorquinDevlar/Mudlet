@@ -32,6 +32,7 @@
 #include <chrono>
 
 #include "AliasUnit.h"
+#include "EditorTreeDelegate.h"
 #include "Host.h"
 #include "MudletInstanceCoordinator.h"
 #include "PortableModeTestHelper.h"
@@ -70,6 +71,27 @@ private:
         if (dir.exists()) {
             dir.removeRecursively();
         }
+    }
+
+    // A row's state is not an icon it carries: uiDesign::EditorTreeDelegate reads
+    // the item out of its unit on every paint, and hands back the square its
+    // switch can be clicked in only for a row it found there. So a moved row
+    // that still has one is a moved row the delegate still draws from the item -
+    // which is what the icon it used to be given stood for.
+    static bool rowStillDrawsItsSwitch(TTreeWidget* tree, QTreeWidgetItem* item)
+    {
+        auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(tree->itemDelegateForIndex(QModelIndex()));
+        if (!pDelegate) {
+            return false;
+        }
+        // The rectangle is measured off the row as the view laid it out, so the
+        // folder it went into has to be open and the layout has to have run
+        if (item->parent()) {
+            item->parent()->setExpanded(true);
+        }
+        tree->show();
+        QCoreApplication::processEvents();
+        return !pDelegate->dotHitRect(tree->indexFromItem(item)).isNull();
     }
 
     QTreeWidgetItem* itemNamed(QTreeWidget* tree, const QString& name) const
@@ -220,7 +242,8 @@ private slots:
 
         QCOMPARE(folderItem->childCount(), 1);
         QCOMPARE(folderItem->child(0), triggerItem);
-        QVERIFY2(!triggerItem->icon(0).isNull(), "the moved trigger was left with no icon");
+
+        QVERIFY2(rowStillDrawsItsSwitch(tree, triggerItem), "the moved trigger's row no longer resolves to the trigger it stands for");
     }
 
     void test_droppingAnAliasOnAFolderReparentsItInTheUnit()
@@ -255,8 +278,8 @@ private slots:
         TTimer* pTimer = mpHost->getTimerUnit()->getTimer(timerItem->data(0, Qt::UserRole).toInt());
         QVERIFY(pFolder && pTimer);
         QVERIFY2(!pTimer->getParent(), "the timer was already inside something before the move");
-        // Only the active-timer icons are exercised here: the inactive one is
-        // painted from an icon path that does not exist (#10401)
+        // The mark the row draws is the timer's own state, so both are switched
+        // on before the move for the assertion below to have one to find
         pFolder->setShouldBeActive(true);
         pTimer->setShouldBeActive(true);
 
@@ -265,7 +288,8 @@ private slots:
 
         QCOMPARE(pTimer->getParent(), pFolder);
         QCOMPARE(movedSpy.count(), 1);
-        QVERIFY2(!folderItem->child(0)->icon(0).isNull(), "the moved timer was left with no icon");
+
+        QVERIFY2(rowStillDrawsItsSwitch(tree, folderItem->child(0)), "the moved timer's row no longer resolves to the timer it stands for");
     }
 
     // Outside a drag the tree is a plain view, so rearranging it must not write

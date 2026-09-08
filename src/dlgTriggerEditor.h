@@ -160,7 +160,6 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class ReadabilityAuditTest;
     friend class ScriptEventHandlerLifetimeTest;
     friend class TreeWidgetItemMoveTest;
-    friend class TriggerEditorDisclosureTest;
     friend class VariableEditorWriteBackTest;
 
     enum SearchDataRole {

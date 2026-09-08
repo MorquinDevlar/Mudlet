@@ -177,7 +177,6 @@ set(EDITOR_GROUP_TEST_SOURCES
     ScriptEventHandlerLifetimeTest.cpp
     EditorSearchTest.cpp
     TreeWidgetItemMoveTest.cpp
-    TriggerEditorDisclosureTest.cpp
     TriggerEditorTest.cpp
     VariableEditorWriteBackTest.cpp
 )
