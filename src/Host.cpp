@@ -31,6 +31,7 @@
 #include "dlgNotepad.h"
 #include "dlgPackageManager.h"
 #include "dlgProfilePreferences.h"
+#include "EventNames.h"
 #include "GifTracker.h"
 #include "GMCPAuthenticator.h"
 #include "LuaInterface.h"
@@ -39,11 +40,14 @@
 #include "MMCPServer.h"
 #include "mudlet.h"
 #include "TCommandLine.h"
+#include "TAction.h"
+#include "TAlias.h"
 #include "TConsole.h"
 #include "TConsoleModel.h"
 #include "TDebug.h"
 #include "TDockWidget.h"
 #include "TEvent.h"
+#include "TKey.h"
 #include "TLabel.h"
 #include "TMainConsole.h"
 #include "TMap.h"
@@ -53,7 +57,9 @@
 #include "TScript.h"
 #include "TTextBox.h"
 #include "TTextEdit.h"
+#include "TTimer.h"
 #include "TToolBar.h"
+#include "TTrigger.h"
 #include "VarUnit.h"
 #include "XMLexport.h"
 #include "XMLimport.h"
@@ -78,11 +84,13 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScopeGuard>
+#include <QSet>
 #include <QSettings>
 #include <QTemporaryFile>
 #include <QTextStream>
 #include <QThread>
 #include <zip.h>
+#include <algorithm>
 #include <memory>
 
 // We are now using code that won't work with really old versions of libzip;
@@ -2240,6 +2248,10 @@ void Host::raiseEvent(const TEvent& pE)
     if (pE.mArgumentList.isEmpty()) {
         return;
     }
+
+    // Before the handlers rather than after them: an event nobody is listening
+    // for is exactly the one the editor has no other way of knowing about
+    mEventNamesSeen.insert(pE.mArgumentList.at(0));
 
     static const QString star = qsl("*");
 
@@ -5997,4 +6009,68 @@ bool Host::shouldStripOscHyperlinkConfigParam()
 bool Host::shouldStripOscHyperlinkPresetParam()
 {
     return mTelnet.oscHyperlinkPresetsEnabled();
+}
+
+QList<eventNames::Entry> Host::knownEventNames()
+{
+    QSet<QString> found;
+    auto add = [&found](const QStringList& names) {
+        for (const QString& name : names) {
+            if (!name.isEmpty()) {
+                found.insert(name);
+            }
+        }
+    };
+
+    add(eventNames::systemEvents());
+    // A script says outright what it listens for, which no other item does
+    for (TScript* pScript : mScriptUnit.getScriptList()) {
+        add(pScript->getEventHandlerList());
+        add(eventNames::namesInCode(pScript->getScript()));
+    }
+    for (TTrigger* pTrigger : mTriggerUnit.getTriggerList()) {
+        add(eventNames::namesInCode(pTrigger->getScript()));
+    }
+    for (TAlias* pAlias : mAliasUnit.getAliasList()) {
+        add(eventNames::namesInCode(pAlias->getScript()));
+    }
+    for (TTimer* pTimer : mTimerUnit.getTimerList()) {
+        add(eventNames::namesInCode(pTimer->getScript()));
+    }
+    for (TKey* pKey : mKeyUnit.getKeyList()) {
+        add(eventNames::namesInCode(pKey->getScript()));
+    }
+    for (TAction* pAction : mActionUnit.getActionList()) {
+        add(eventNames::namesInCode(pAction->getScript()));
+    }
+    // What the profile has actually seen go past, which is the only place the
+    // names a game sends are come by
+    for (const QString& name : mEventNamesSeen) {
+        if (!name.isEmpty()) {
+            found.insert(name);
+        }
+    }
+
+    // The hand-kept list as a set, built once, since every name found is looked
+    // up in it
+    static const QSet<QString> raisedByMudlet = []() {
+        const QStringList system = eventNames::systemEvents();
+        return QSet<QString>(system.constBegin(), system.constEnd());
+    }();
+
+    QList<eventNames::Entry> entries;
+    entries.reserve(found.size());
+    for (const QString& name : found) {
+        eventNames::Source source = eventNames::Source::Script;
+        if (raisedByMudlet.contains(name)) {
+            source = eventNames::Source::Mudlet;
+        } else if (eventNames::fromGame(name)) {
+            source = eventNames::Source::Game;
+        }
+        entries.append({name, source});
+    }
+    std::sort(entries.begin(), entries.end(), [](const eventNames::Entry& left, const eventNames::Entry& right) {
+        return QString::compare(left.name, right.name, Qt::CaseInsensitive) < 0;
+    });
+    return entries;
 }

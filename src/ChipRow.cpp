@@ -24,6 +24,9 @@
 #include "uiDesign.h"
 #include "utils.h"
 
+#include <QAbstractItemView>
+#include <QApplication>
+#include <QCompleter>
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QHBoxLayout>
@@ -31,7 +34,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QResizeEvent>
+#include <QStandardItemModel>
+#include <QStyledItemDelegate>
 #include <QTimer>
 #include <QToolButton>
 
@@ -60,6 +66,16 @@ static constexpr int scmChipNoteMilliseconds = 2000;
 // Mudlet's own events all start with this, and a script's own read stronger
 // than the ones it is only listening for
 static constexpr char scmSystemEventPrefix[] = "sys";
+// What the list of offered names is held off its own edges by, and how much
+// room past the longest of them the popup asks for
+static constexpr int scmSuggestionPaddingVertical = 2;
+static constexpr int scmSuggestionPaddingHorizontal = 6;
+static constexpr int scmSuggestionSlack = 32;
+// The least that stands between a name and the word saying where it is from,
+// which is what keeps the two reading as two things rather than as one phrase
+static constexpr int scmSuggestionNoteGap = 16;
+// Which role of the model the word beside a name is kept in
+static constexpr int scmSuggestionNoteRole = Qt::UserRole;
 
 QFont chipFont(const QWidget* pOn)
 {
@@ -133,7 +149,10 @@ void Chip::remeasure()
     const int glyphSize = chipGlyphSizeOn(pOn);
     mpRemove->setIconSize(QSize(glyphSize, glyphSize));
     mpRemove->setFixedSize(glyphSize, glyphSize);
-    setFixedHeight(chipHeightOn(pOn));
+    // The row's line rather than the chip's own recipe: the field the row
+    // types into stands on the same line, and is the taller of the two
+    const auto* pRow = qobject_cast<const ChipRow*>(pOn);
+    setFixedHeight(pRow ? pRow->lineHeight() : chipHeightOn(pOn));
     updateGeometry();
 }
 
@@ -214,7 +233,6 @@ ChipRow::ChipRow(QWidget* pParent)
     // draw a second one over it under the mouse
     mpAdd->setAutoRaise(false);
     mpAdd->setFrameRadius(scmRadiusChip);
-    remeasure();
     connect(mpAdd, &QAbstractButton::clicked, this, &ChipRow::beginAdd);
 
     mpField = new QLineEdit(this);
@@ -223,6 +241,7 @@ ChipRow::ChipRow(QWidget* pParent)
     mpField->setPlaceholderText(tr("event name"));
     mpField->installEventFilter(this);
     mpField->hide();
+    remeasure();
     connect(mpField, &QLineEdit::textEdited, this, [this](const QString& text) {
         // A comma is how a list is written out, so typing one says the name
         // before it is finished
@@ -319,7 +338,11 @@ void ChipRow::beginAdd()
 
 int ChipRow::lineHeight() const
 {
-    return chipHeightOn(this);
+    // A chip's own height, or the field's if the form's rule for a field makes
+    // that the taller: the chips and the add button grow to meet the field
+    // rather than the field being cut down to them
+    const int fieldHeight = mpField ? mpField->sizeHint().height() : 0;
+    return std::max(chipHeightOn(this), fieldHeight);
 }
 
 QSize ChipRow::sizeHint() const
@@ -348,19 +371,25 @@ int ChipRow::heightForWidth(int width) const
 void ChipRow::remeasure()
 {
     mpAdd->setFont(chipFont(this));
-    mpAdd->setFixedHeight(chipHeightOn(this));
+    const int line = lineHeight();
+    mpAdd->setFixedHeight(line);
+    // Never shorter than the sheet makes it, since the line is at least that
+    mpField->setFixedHeight(line);
     const int glyphSize = chipGlyphSizeOn(this);
     mpAdd->setIconSize(QSize(glyphSize, glyphSize));
     for (Chip* pChip : mChips) {
         pChip->remeasure();
     }
+    measureSuggestions();
     updateGeometry();
 }
 
 void ChipRow::changeEvent(QEvent* pEvent)
 {
     QWidget::changeEvent(pEvent);
-    if (pEvent->type() == QEvent::FontChange) {
+    // A sheet landing on the form changes what the field comes to, and the
+    // line with it
+    if (pEvent->type() == QEvent::FontChange || pEvent->type() == QEvent::StyleChange) {
         remeasure();
     }
 }
@@ -377,6 +406,26 @@ void ChipRow::resizeEvent(QResizeEvent* pEvent)
 
 bool ChipRow::eventFilter(QObject* pWatched, QEvent* pEvent)
 {
+    if (mpCompleter && pWatched == mpCompleter->popup()) {
+        // While the list is up the keys go to it, and QCompleter passes on what
+        // it does not want with a direct widget->event() call - which goes round
+        // every event filter, so the field's own branch below never hears this
+        // Return. Nothing highlighted means the user typed a name rather than
+        // arrowing into the list, and the typed name is what wins: a name nobody
+        // has used before is then still one Return away. Everything else, the
+        // arrows and Escape included, is left to QCompleter - and so is a Return
+        // on a highlighted row, which comes back through its activated().
+        if (pEvent->type() == QEvent::KeyPress) {
+            auto* pKey = static_cast<QKeyEvent*>(pEvent);
+            const bool returning = pKey->key() == Qt::Key_Return || pKey->key() == Qt::Key_Enter;
+            if (returning && !mpCompleter->popup()->currentIndex().isValid()) {
+                mpCompleter->popup()->hide();
+                commitField(true);
+                return true;
+            }
+        }
+        return QWidget::eventFilter(pWatched, pEvent);
+    }
     if (pWatched != mpField) {
         return QWidget::eventFilter(pWatched, pEvent);
     }
@@ -470,6 +519,7 @@ void ChipRow::openField(const int index)
     hideNote();
     mEditingIndex = index;
     mFieldOpen = true;
+    refreshSuggestionModel();
     const Chip* pChip = qobject_cast<Chip*>(chipAt(index));
     mpField->setText(pChip ? pChip->name() : QString());
     rebuild();
@@ -485,6 +535,11 @@ void ChipRow::closeField(const bool keepNote)
     mFieldOpen = false;
     mEditingIndex = -1;
     mpField->clear();
+    // The list of names stands in a window of its own, so it does not go with
+    // the field it was opened over unless it is told to
+    if (mpCompleter) {
+        mpCompleter->popup()->hide();
+    }
     if (!keepNote) {
         hideNote();
     }
@@ -543,6 +598,13 @@ void ChipRow::commitField(const bool stillTyping)
         // again between each is the whole of what made the old pair of controls
         // tedious
         mpField->clear();
+        // The name just taken is a chip now, so it goes off the offer with the
+        // rest of them rather than waiting for the field to be opened again -
+        // and the list goes with it, since it was answering the old name
+        if (mpCompleter) {
+            mpCompleter->popup()->hide();
+        }
+        refreshSuggestionModel();
         rebuild();
         mpField->setFocus(Qt::OtherFocusReason);
     } else {
@@ -622,6 +684,219 @@ QString ChipRow::cleaned(const QString& name)
         trimmed.chop(1);
     }
     return trimmed.trimmed();
+}
+
+// One row of the list is two things read together: the name on the left and, on
+// the right, the quiet word saying where it is from. A stylesheet cannot draw
+// that - a row of a list is one string - so the row is painted here, the
+// background and the wash on the chosen row still being the style's work.
+class SuggestionDelegate final : public QStyledItemDelegate
+{
+public:
+    Q_DISABLE_COPY(SuggestionDelegate)
+    explicit SuggestionDelegate(QObject* pParent)
+    : QStyledItemDelegate(pParent)
+    {
+    }
+
+    void setNoteColors(const QColor& resting, const QColor& chosen)
+    {
+        mNote = resting;
+        mNoteChosen = chosen;
+    }
+
+    void paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        const QString name = opt.text;
+        // Taken off the option so that the style paints the row it stands on and
+        // nothing else, both words being drawn below in their own inks
+        opt.text.clear();
+        const QWidget* pOn = opt.widget;
+        QStyle* pStyle = pOn ? pOn->style() : QApplication::style();
+        pStyle->drawControl(QStyle::CE_ItemViewItem, &opt, pPainter, pOn);
+
+        const bool chosen = opt.state.testFlag(QStyle::State_Selected);
+        const QRect inside = opt.rect.adjusted(scmSuggestionPaddingHorizontal, scmSuggestionPaddingVertical, -scmSuggestionPaddingHorizontal, -scmSuggestionPaddingVertical);
+        const QFontMetrics metrics(opt.font);
+        const QString note = index.data(scmSuggestionNoteRole).toString();
+
+        pPainter->save();
+        pPainter->setFont(opt.font);
+        int noteRoom = 0;
+        if (!note.isEmpty()) {
+            noteRoom = metrics.horizontalAdvance(note) + scmSuggestionNoteGap;
+            const QColor ink = chosen ? mNoteChosen : mNote;
+            if (ink.isValid()) {
+                pPainter->setPen(ink);
+                pPainter->drawText(inside, Qt::AlignRight | Qt::AlignVCenter, note);
+            }
+        }
+        const QRect nameRoom = inside.adjusted(0, 0, -noteRoom, 0);
+        pPainter->setPen(opt.palette.color(QPalette::Normal, chosen ? QPalette::HighlightedText : QPalette::Text));
+        pPainter->drawText(nameRoom, Qt::AlignLeft | Qt::AlignVCenter, metrics.elidedText(name, Qt::ElideRight, nameRoom.width()));
+        pPainter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        const QFontMetrics metrics(opt.font);
+        const QString note = index.data(scmSuggestionNoteRole).toString();
+        int width = metrics.horizontalAdvance(opt.text) + 2 * scmSuggestionPaddingHorizontal;
+        if (!note.isEmpty()) {
+            width += scmSuggestionNoteGap + metrics.horizontalAdvance(note);
+        }
+        return QSize(width, metrics.height() + 2 * scmSuggestionPaddingVertical);
+    }
+
+private:
+    QColor mNote;
+    QColor mNoteChosen;
+};
+
+// Attached to the field here rather than in the constructor, and that order is
+// the whole point: QCompleter puts an event filter of its own on the widget in
+// setWidget(), Qt runs the filter installed last first, and QCompleter's is what
+// swallows the FocusOut the field takes while the popup stands over it. Were the
+// row's own filter reached first it would read that focus-out as the user going
+// elsewhere and commit the half-typed name out from under the list they were
+// reading.
+void ChipRow::makeCompleter()
+{
+    if (mpCompleter) {
+        return;
+    }
+    mpCompleter = new QCompleter(this);
+    mpSuggestionModel = new QStandardItemModel(mpCompleter);
+    mpCompleter->setModel(mpSuggestionModel);
+    mpCompleter->setCompletionMode(QCompleter::PopupCompletion);
+    // A name is looked for wherever it stands in the word, since what the user
+    // remembers of an event is as often its end as its beginning
+    mpCompleter->setFilterMode(Qt::MatchContains);
+    mpCompleter->setCaseSensitivity(Qt::CaseInsensitive);
+    // Said outright rather than left at the default, since a row now carries a
+    // second string: what is matched against, and what is put into the field
+    // when a row is chosen, is the name alone
+    mpCompleter->setCompletionRole(Qt::DisplayRole);
+    mpField->setCompleter(mpCompleter);
+
+    QAbstractItemView* pPopup = mpCompleter->popup();
+    pPopup->installEventFilter(this);
+    if (!mSuggestionSheet.isEmpty()) {
+        pPopup->setStyleSheet(mSuggestionSheet);
+    }
+    // After setCompleter(), which is what makes the popup - and QCompleter puts
+    // a delegate of its own on it as it does, which this has to come after
+    mpSuggestionDelegate = new SuggestionDelegate(pPopup);
+    pPopup->setItemDelegate(mpSuggestionDelegate);
+    inkSuggestionNotes();
+
+    // Choosing a name off the list is the same as having typed it: the chip is
+    // taken and the field is left open for the next one. Queued, because
+    // QLineEdit connects to this signal itself to put the chosen name in the
+    // field, and that connection is direct - so anything reading the field has
+    // to come after it.
+    connect(
+            mpCompleter,
+            qOverload<const QString&>(&QCompleter::activated),
+            this,
+            [this](const QString& name) {
+                if (!mFieldOpen) {
+                    return;
+                }
+                mpField->setText(name);
+                commitField(true);
+            },
+            Qt::QueuedConnection);
+}
+
+void ChipRow::refreshSuggestionModel()
+{
+    if (!mpSuggestionModel) {
+        return;
+    }
+    QStringList taken;
+    taken.reserve(mChips.size());
+    for (int i = 0; i < mChips.size(); ++i) {
+        // The chip being renamed is not in its own way
+        if (i != mEditingIndex) {
+            taken << mChips.at(i)->name();
+        }
+    }
+    mpSuggestionModel->removeRows(0, mpSuggestionModel->rowCount());
+    for (const Suggestion& suggestion : mSuggestions) {
+        if (taken.contains(suggestion.name)) {
+            continue;
+        }
+        auto* pRow = new QStandardItem(suggestion.name);
+        pRow->setData(suggestion.note, scmSuggestionNoteRole);
+        pRow->setEditable(false);
+        mpSuggestionModel->appendRow(pRow);
+    }
+}
+
+void ChipRow::setSuggestions(const QList<Suggestion>& suggestions)
+{
+    mSuggestions = suggestions;
+    makeCompleter();
+    refreshSuggestionModel();
+    measureSuggestions();
+}
+
+void ChipRow::measureSuggestions()
+{
+    if (!mpCompleter) {
+        return;
+    }
+    // The offered names are set in the type the chips they will become are, so
+    // a font change re-measures the list along with them
+    const QFont font = chipFont(this);
+    mpCompleter->popup()->setFont(font);
+
+    // The field is only as wide as the gap the next chip goes in, and the popup
+    // takes the field's width unless it is told a wider one. QCompleter's
+    // showPopup() gives the list a geometry that respects a minimum width, and
+    // holds that within the screen itself.
+    // A row is the name, the gap and the word beside it, so the widest of each
+    // rather than the widest row: the two are rarely on the same row
+    const QFontMetrics metrics(font);
+    int widestName = 0;
+    int widestNote = 0;
+    for (const Suggestion& suggestion : mSuggestions) {
+        widestName = std::max(widestName, metrics.horizontalAdvance(suggestion.name));
+        widestNote = std::max(widestNote, metrics.horizontalAdvance(suggestion.note));
+    }
+    const int widest = widestName + (widestNote > 0 ? scmSuggestionNoteGap + widestNote : 0);
+    mpCompleter->popup()->setMinimumWidth(widest + scmSuggestionSlack);
+}
+
+void ChipRow::inkSuggestionNotes()
+{
+    if (mpSuggestionDelegate && mSuggestionNote.isValid()) {
+        mpSuggestionDelegate->setNoteColors(mSuggestionNote, mSuggestionNoteChosen);
+    }
+}
+
+void ChipRow::restyleSuggestions(const ThemeTokens& tokens)
+{
+    // No padding on the item: the delegate holds both words off the row's edges
+    // itself, and a sheet that said so as well would move the background it is
+    // drawn on without moving them
+    mSuggestionSheet = qsl("QListView { background-color: %1; color: %2; border: 1px solid %3;"
+                           " selection-background-color: %4; selection-color: %5; outline: none; }")
+                               .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), tokens.accentSoft, tokens.accentText.name());
+    // The chosen row is washed in the accent and its name set in the ink mixed
+    // to be read on that wash, so the word beside it is held to the same ink
+    // rather than to the quiet one it is set in on every other row
+    mSuggestionNote = tokens.mutedText;
+    mSuggestionNoteChosen = tokens.accentText;
+    if (mpCompleter) {
+        mpCompleter->popup()->setStyleSheet(mSuggestionSheet);
+    }
+    inkSuggestionNotes();
 }
 
 void ChipRow::restyleGlyphs(const ThemeTokens& tokens)

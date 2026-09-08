@@ -28,6 +28,7 @@
 
 #include "ActionUnit.h"
 #include "AliasUnit.h"
+#include "EventNames.h"
 #include "KeyUnit.h"
 #include "ScriptUnit.h"
 #include "GifTracker.h"
@@ -48,6 +49,7 @@
 #include <QMargins>
 #include <QPointer>
 #include <QRect>
+#include <QSet>
 #include <QStack>
 #include <QTextStream>
 
@@ -264,6 +266,18 @@ public:
     KeyUnit* getKeyUnit() { return &mKeyUnit; }
     ScriptUnit* getScriptUnit() { return &mScriptUnit; }
     GifTracker* getGifTracker() { return &mGifTracker; }
+
+    // Every event name this profile has any reason to know about: the ones
+    // Mudlet raises, the ones its scripts are registered for, the ones any of
+    // its items name in Lua, and the ones actually raised this session. Each
+    // carries where it is from. Sorted by name without regard to case and free
+    // of repeats, for the editor to offer while one is being typed. Not const
+    // because the units hand their contents out through non-const accessors.
+    QList<eventNames::Entry> knownEventNames();
+
+    // Every event name raised in this profile since it was opened, whoever
+    // raised it - which is the only place a name the game sends is written down
+    const QSet<QString>& eventNamesSeen() const { return mEventNamesSeen; }
 
     void send(QString cmd, bool wantPrint = true, bool dontExpandAliases = false);
 
@@ -1114,6 +1128,11 @@ private:
     std::map<int, std::unique_ptr<stopWatch>> mStopWatchMap;
 
     QMap<QString, QStringList> mAnonymousEventHandlerFunctions;
+
+    // Filled in by raiseEvent() and kept no longer than the session: a name the
+    // game sends is written down nowhere else, and what one game sends is of no
+    // use to the next profile the user opens
+    QSet<QString> mEventNamesSeen;
 
     QStringList mActiveModules;
 

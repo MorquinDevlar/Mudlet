@@ -20,6 +20,7 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <QColor>
 #include <QFont>
 #include <QFrame>
 #include <QIcon>
@@ -27,8 +28,10 @@
 #include <QString>
 #include <QStringList>
 
+class QCompleter;
 class QLabel;
 class QLineEdit;
+class QStandardItemModel;
 class QTimer;
 class QToolButton;
 
@@ -36,7 +39,19 @@ namespace uiDesign {
 
 class FlowLayout;
 class PlaceholderButton;
+// Draws one offered name and the word beside it. Defined in ChipRow.cpp, since
+// nothing outside the row has anything to say to it.
+class SuggestionDelegate;
 struct ThemeTokens;
+
+// One name the field can offer, and the short word set beside it saying where
+// the name is from. The word is whatever the caller wants read; the row only
+// paints it.
+struct Suggestion
+{
+    QString name;
+    QString note;
+};
 
 // The type a word in a box is set in: the platform's fixed-width face, a shade
 // smaller than the words around it. One recipe rather than one per chip family,
@@ -116,8 +131,19 @@ public:
     // Opens the field for a name that is not there yet
     void beginAdd();
 
-    // What one line of chips is tall, so that whatever leads the row can be set
-    // level with the first of them
+    // The names offered as one is typed into the field, matched anywhere in the
+    // name without regard to case, each with the word set beside it. Whatever is
+    // already a chip is left out of the offer, since adding it again would only
+    // be refused.
+    void setSuggestions(const QList<Suggestion>& suggestions);
+    // The popup the suggestions are listed in is a window of its own, so the
+    // sheet the form is styled by never reaches it - it is inked here instead
+    void restyleSuggestions(const ThemeTokens& tokens);
+
+    // What one line of chips is tall - the field the row types into stands on
+    // the same line and is never cut down to a chip, so a chip grows to meet it
+    // where the form's sheet makes the field the taller - so that whatever leads
+    // the row can be set level with the first of them
     [[nodiscard]] int lineHeight() const;
 
     // Every colour a chip, the field and the note are drawn in, mixed at the
@@ -163,6 +189,17 @@ private:
     void removeAt(const int index);
     void showNote(const QString& name);
     void hideNote();
+    // Built the first time names are handed over, since a row that is never
+    // offered any has no popup to keep
+    void makeCompleter();
+    // Everything on offer bar the chips already showing, which is what the
+    // popup is filled from every time the field opens
+    void refreshSuggestionModel();
+    // The popup's type and the width it asks for, both the chip font's business
+    void measureSuggestions();
+    // The word beside a name, in the two inks it is read in: a resting row and
+    // the chosen one, which is washed in the accent
+    void inkSuggestionNotes();
     // Trimmed of what surrounds it and of the comma that may have ended it
     [[nodiscard]] static QString cleaned(const QString& name);
 
@@ -172,6 +209,16 @@ private:
     QLineEdit* mpField = nullptr;
     QLabel* mpNote = nullptr;
     QTimer* mpNoteTimer = nullptr;
+    QCompleter* mpCompleter = nullptr;
+    QStandardItemModel* mpSuggestionModel = nullptr;
+    SuggestionDelegate* mpSuggestionDelegate = nullptr;
+    // Every name on offer, in the order they were handed over
+    QList<Suggestion> mSuggestions;
+    // The popup's sheet and the notes' two inks, all kept for a restyle that
+    // came before there was a popup to put them on
+    QString mSuggestionSheet;
+    QColor mSuggestionNote;
+    QColor mSuggestionNoteChosen;
     QIcon mRemoveGlyph;
     // Which chip the open field stands in the place of; -1 while it is a name
     // being added rather than one being changed

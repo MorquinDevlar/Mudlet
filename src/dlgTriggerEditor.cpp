@@ -27,6 +27,7 @@
 
 #include "dlgTriggerEditor.h"
 
+#include "EventNames.h"
 #include "Host.h"
 #include "LuaInterface.h"
 #include "TConsole.h"
@@ -9417,6 +9418,33 @@ void dlgTriggerEditor::slot_treeSelectionChanged()
 }
 
 
+// The word set beside each offered event name, which is where the profile's
+// reading of its own names is put into the user's
+static QList<uiDesign::Suggestion> eventSuggestions(const QList<eventNames::Entry>& known)
+{
+    QList<uiDesign::Suggestion> suggestions;
+    suggestions.reserve(known.size());
+    for (const eventNames::Entry& entry : known) {
+        QString note;
+        switch (entry.source) {
+        case eventNames::Source::Mudlet:
+            //: Word beside an event name the script editor offers, saying Mudlet itself raises it
+            note = dlgTriggerEditor::tr("Mudlet");
+            break;
+        case eventNames::Source::Game:
+            //: Word beside an event name the script editor offers, saying the game sent it
+            note = dlgTriggerEditor::tr("game");
+            break;
+        case eventNames::Source::Script:
+            //: Word beside an event name the script editor offers, saying a script in this profile raises or listens for it
+            note = dlgTriggerEditor::tr("script");
+            break;
+        }
+        suggestions.append({entry.name, note});
+    }
+    return suggestions;
+}
+
 void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
 {
     if (!pItem) {
@@ -9454,6 +9482,7 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
     if (pT) {
         const QString name = pT->getName();
         mpChipRow_scriptEvents->setItems(pT->getEventHandlerList());
+        mpChipRow_scriptEvents->setSuggestions(eventSuggestions(mpHost->knownEventNames()));
         const QString script = pT->getScript();
         clearDocument(mpSourceEditorEdbee, script);
         restoreEditorState(EditorViewType::cmScriptView, ID);
@@ -16349,6 +16378,7 @@ void dlgTriggerEditor::restyleEditorIcons()
     // button that opens the field for another one
     if (mpChipRow_scriptEvents) {
         mpChipRow_scriptEvents->restyleGlyphs(tokens);
+        mpChipRow_scriptEvents->restyleSuggestions(tokens);
     }
 
     // ...and the same cross beside a key's keystroke, which is what takes it

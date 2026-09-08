@@ -92,6 +92,7 @@ set(mudlet_SRCS
     EditorPlaceholderButton.cpp
     EditorToggleActiveCommand.cpp
     EditorSidebarToggle.cpp
+    EventNames.cpp
     EditorTreeDelegate.cpp
     EditorTreeRowMetrics.cpp
     EditorUndoStack.cpp
@@ -356,6 +357,7 @@ set(mudlet_HDRS
     EditorPlaceholderButton.h
     EditorToggleActiveCommand.h
     EditorSidebarToggle.h
+    EventNames.h
     EditorTreeDelegate.h
     EditorTreeRowMetrics.h
     EditorUndoStack.h

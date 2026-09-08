@@ -37,6 +37,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     ConsoleModelExtractionTest.cpp
     CopyAsImageTest.cpp
     DebugConsoleFilterTest.cpp
+    DebugFilterBarGlyphTest.cpp
     FrontendRefreshSeamTest.cpp
     DetachedWindowMenuShortcutsTest.cpp
     FramePacingTest.cpp
@@ -154,6 +155,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorTriggerOptionsStripTest.cpp
     EditorVariablesFormTest.cpp
     EditorVariablesTreeTest.cpp
+    EventNamesTest.cpp
     ReadabilityAuditTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     TriggerEditorTest.cpp

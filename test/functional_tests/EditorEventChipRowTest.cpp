@@ -30,6 +30,8 @@
  * Run with: ctest -R EditorEventChipRowTest -V
  */
 
+#include <QAbstractItemView>
+#include <QCompleter>
 #include <QFontInfo>
 #include <QLabel>
 #include <QLineEdit>
@@ -44,7 +46,10 @@
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
 #include "ScriptUnit.h"
+#include "TEvent.h"
 #include "TScript.h"
+#include "TTrigger.h"
+#include "TriggerUnit.h"
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
 #include "dlgScriptsMainArea.h"
@@ -147,6 +152,98 @@ private:
         QCoreApplication::processEvents();
     }
 
+    QCompleter* completer() const
+    {
+        QLineEdit* pField = row()->findChild<QLineEdit*>(qsl("editorChipEditor"));
+        return pField ? pField->completer() : nullptr;
+    }
+
+    QAbstractItemView* suggestionList() const
+    {
+        QCompleter* pCompleter = completer();
+        return pCompleter ? pCompleter->popup() : nullptr;
+    }
+
+    // What the list is showing for what has been typed so far, which is the
+    // completer's filtered model rather than everything on offer
+    QStringList offered() const
+    {
+        QAbstractItemView* pList = suggestionList();
+        if (!pList || !pList->model()) {
+            return {};
+        }
+        QStringList rows;
+        for (int i = 0; i < pList->model()->rowCount(); ++i) {
+            rows << pList->model()->index(i, 0).data(Qt::DisplayRole).toString();
+        }
+        return rows;
+    }
+
+    // The word beside a name in the list, off the row that name is showing on -
+    // empty for a name the list is not offering at all
+    QString noteFor(const QString& name) const
+    {
+        QAbstractItemView* pList = suggestionList();
+        if (!pList || !pList->model()) {
+            return {};
+        }
+        for (int i = 0; i < pList->model()->rowCount(); ++i) {
+            const QModelIndex row = pList->model()->index(i, 0);
+            if (row.data(Qt::DisplayRole).toString() == name) {
+                return row.data(Qt::UserRole).toString();
+            }
+        }
+        return {};
+    }
+
+    // Key input rather than setText: the completer is driven by what the field
+    // is typed into, and a name put there in one go never reaches it
+    void keyIntoField(const QString& text)
+    {
+        QLineEdit* pField = field();
+        if (!pField) {
+            QTest::qFail("the field is not open, so there is nothing to type into", __FILE__, __LINE__);
+            return;
+        }
+        QTest::keyClicks(pField, text);
+        QCoreApplication::processEvents();
+    }
+
+    // Typing over everything that is there, so the completer hears the change
+    void retypeField(const QString& text)
+    {
+        QLineEdit* pField = field();
+        if (!pField) {
+            QTest::qFail("the field is not open, so there is nothing to type into", __FILE__, __LINE__);
+            return;
+        }
+        pField->selectAll();
+        QTest::keyClicks(pField, text);
+        QCoreApplication::processEvents();
+    }
+
+    // One event through the profile, carrying a payload the way a protocol's
+    // does, so that it is raised exactly as the game's are
+    void raiseInProfile(const QString& name)
+    {
+        TEvent event{};
+        event.mArgumentList.append(name);
+        event.mArgumentTypeList.append(ARGUMENT_TYPE_STRING);
+        event.mArgumentList.append(qsl("{}"));
+        event.mArgumentTypeList.append(ARGUMENT_TYPE_STRING);
+        mpHost->raiseEvent(event);
+    }
+
+    // The row put back to a known set of chips with the field open on an empty
+    // name, since each of the cases below leaves the last one's chips behind
+    void reopenFieldOn(const QStringList& chips)
+    {
+        row()->setItems(chips);
+        QCoreApplication::processEvents();
+        row()->beginAdd();
+        QCoreApplication::processEvents();
+    }
+
 private slots:
     void initTestCase()
     {
@@ -234,6 +331,13 @@ private slots:
         }
         QVERIFY2(addButton() != nullptr, "the row has no button to add an event with");
         QVERIFY2(field() == nullptr, "the row opens with its field already showing");
+
+        // As the form first comes up, before any font or theme has changed: the
+        // word leading the row is held to the line the chips stand on, which is
+        // only known once the form's sheet has landed on the field
+        const QLabel* pLead = mpEditor->mpScriptsMainArea->label_script_registered_event_handlers;
+        QCOMPARE(pLead->height(), row()->lineHeight());
+        QCOMPARE(addButton()->height(), row()->lineHeight());
     }
 
     // A name typed into the field is a fourth chip, and saving the script puts
@@ -546,15 +650,19 @@ private slots:
         const int wasLine = row()->lineHeight();
         const QFont was = row()->font();
 
+        // Twelve points rather than a few: a line of chips is never shorter than
+        // the field the row types into, and the form's sheet gives that field a
+        // floor a small font sits well under, so a small step would leave the
+        // line on that floor and prove nothing
         QFont bigger = was;
-        bigger.setPointSizeF(QFontInfo(was).pointSizeF() + 4.0);
+        bigger.setPointSizeF(QFontInfo(was).pointSizeF() + 12.0);
         row()->setFont(bigger);
         mpEditor->setFont(bigger);
         QCoreApplication::processEvents();
         QTest::qWait(100ms);
 
         const int line = row()->lineHeight();
-        QVERIFY2(line > wasLine, qPrintable(qsl("a font four points larger left a line of chips at %1, which is what it was").arg(QString::number(line))));
+        QVERIFY2(line > wasLine, qPrintable(qsl("a font twelve points larger left a line of chips at %1, which is what it was").arg(QString::number(line))));
         for (int i = 0; i < row()->count(); ++i) {
             QVERIFY2(row()->chipAt(i)->height() == line,
                      qPrintable(qsl("chip %1 is %2 tall while a line of chips is now %3").arg(QString::number(i), QString::number(row()->chipAt(i)->height()), QString::number(line))));
@@ -568,6 +676,199 @@ private slots:
         mpEditor->setFont(was);
         QCoreApplication::processEvents();
         QTest::qWait(100ms);
+    }
+
+    // Typing searches three sets of names at once: the ones Mudlet raises
+    // itself, the ones another script in the profile listens for, and the ones
+    // any item's Lua names. What this script is already showing is left out,
+    // since offering it would only be to have it refused.
+    void test_typingOffersTheEventsTheProfileKnows()
+    {
+        // A second script listening for a name of its own...
+        mpEditor->addScript(false);
+        QCoreApplication::processEvents();
+        QTest::qWait(100ms);
+        QTreeWidgetItem* pOtherItem = mpEditor->mpCurrentScriptItem;
+        QVERIFY2(pOtherItem != nullptr && pOtherItem != mpScriptItem, "addScript() left no second script to listen for anything");
+        mpEditor->mpScriptsMainArea->lineEdit_script_name->setText(qsl("SuggestionScript"));
+        mpEditor->slot_saveSelectedItem();
+        QTest::qWait(50ms);
+        const int otherID = pOtherItem->data(0, Qt::UserRole).toInt();
+
+        // ...and a trigger that names one in its own Lua rather than listening
+        // for it
+        auto* pTrigger = new TTrigger(qsl("SuggestionTrigger"), QStringList(), QList<int>(), false, mpHost);
+        pTrigger->registerTrigger();
+        pTrigger->setScript(qsl("raiseEvent(\"CustomRaised\", 1)"));
+
+        // Back to the script under test before the second one's list is
+        // written, so that leaving it is not what saves the row over it
+        mpEditor->slot_scriptsSelected(mpScriptItem);
+        QTest::qWait(50ms);
+        TScript* pOther = mpHost->getScriptUnit()->getScript(otherID);
+        QVERIFY2(pOther != nullptr, "the second script is not in the script unit");
+        pOther->setEventHandlerList({qsl("MyOtherEvent")});
+        TScript* pScript = mpHost->getScriptUnit()->getScript(mpScriptItem->data(0, Qt::UserRole).toInt());
+        QVERIFY2(pScript != nullptr, "the script under test is not in the script unit");
+        pScript->setEventHandlerList(startingEvents());
+
+        // Selecting the same item again reloads the form without saving over
+        // it, which is what fills the row and hands over the names to offer
+        mpEditor->slot_scriptsSelected(mpScriptItem);
+        QTest::qWait(50ms);
+        QCOMPARE(row()->items(), startingEvents());
+
+        row()->beginAdd();
+        QCoreApplication::processEvents();
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        keyIntoField(qsl("sys"));
+
+        QVERIFY2(suggestionList() != nullptr && suggestionList()->isVisible(), "typing part of an event name offered nothing");
+        const QStringList onSys = offered();
+        QVERIFY2(!onSys.isEmpty(), "the list of offered names is empty");
+        for (const QString& name : onSys) {
+            QVERIFY2(name.contains(qsl("sys"), Qt::CaseInsensitive), qPrintable(qsl("%1 was offered for \"sys\", which it does not carry").arg(name)));
+        }
+        QVERIFY2(onSys.contains(qsl("sysLoadEvent")), "an event Mudlet raises itself was not offered");
+        QVERIFY2(!onSys.contains(qsl("sysConnectionEvent")), "a name the script is already showing was offered, which adding would only have refused");
+
+        retypeField(qsl("myother"));
+        QVERIFY2(offered().contains(qsl("MyOtherEvent")), qPrintable(qsl("what another script listens for was not offered: %1").arg(offered().join(qsl(", ")))));
+
+        retypeField(qsl("custom"));
+        QVERIFY2(offered().contains(qsl("CustomRaised")), qPrintable(qsl("what a trigger's Lua raises was not offered: %1").arg(offered().join(qsl(", ")))));
+
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+    }
+
+    // Arrowing into the list and pressing Return takes the name that was
+    // highlighted, and leaves the field open for the next one
+    void test_aChosenSuggestionBecomesAChip()
+    {
+        reopenFieldOn(startingEvents());
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        keyIntoField(qsl("sysLoa"));
+        QAbstractItemView* pList = suggestionList();
+        QVERIFY2(pList != nullptr && pList->isVisible(), "typing part of an event name offered nothing");
+
+        // The keys go to the list while it is up, which is where they go in the
+        // window as well - it takes the keyboard when it is shown
+        QTest::keyClick(pList, Qt::Key_Down);
+        QCoreApplication::processEvents();
+        QVERIFY2(pList->currentIndex().isValid(), "Down did not walk into the list");
+        QTest::keyClick(pList, Qt::Key_Return);
+
+        // The chip is taken through a queued connection, since QLineEdit fills
+        // the field from the chosen name first
+        QTRY_VERIFY2(row()->items().contains(qsl("sysLoadEvent")), "the name chosen off the list did not become a chip");
+        QVERIFY2(!pList->isVisible(), "the list is still up after a name was taken off it");
+        QVERIFY2(field() != nullptr, "the field closed after a name was chosen, so the next one costs another click");
+        QCOMPARE(field()->text(), QString());
+
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+    }
+
+    // Return with nothing highlighted keeps what was typed, which is what makes
+    // a name nobody has used before still one keystroke away
+    void test_returnKeepsTheTypedNameOverTheList()
+    {
+        reopenFieldOn(startingEvents());
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        keyIntoField(qsl("sysLoa"));
+        QAbstractItemView* pList = suggestionList();
+        QVERIFY2(pList != nullptr && pList->isVisible(), "typing part of an event name offered nothing");
+        QVERIFY2(!pList->currentIndex().isValid(), "typing alone walked into the list, so this case cannot tell the two apart");
+
+        QTest::keyClick(pList, Qt::Key_Return);
+        QCoreApplication::processEvents();
+
+        QVERIFY2(row()->items().contains(qsl("sysLoa")), qPrintable(qsl("the typed name was not what was taken - the row shows %1").arg(row()->items().join(qsl(", ")))));
+        QVERIFY2(!row()->items().contains(qsl("sysLoadEvent")), "the offered name was taken over the one that was typed");
+        QVERIFY2(!pList->isVisible(), "the list is still up after the typed name was taken");
+
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+    }
+
+    // An event that has gone past is offered afterwards, which is the only way
+    // the names a game sends are come by: nothing in a profile writes them down,
+    // and the same holds for a name a script raises at run time
+    // The field, the chips and the add button stand on one line. The field is
+    // never cut down to a chip's height: where the form's sheet makes it the
+    // taller, the chips and the button grow to meet it.
+    void test_theChipsStandAsTallAsTheField()
+    {
+        QWidget* pForm = row()->parentWidget();
+        QVERIFY2(pForm != nullptr, "the row is not on a form to style");
+        const QString formSheet = pForm->styleSheet();
+        // A field a head taller than any chip, the way the editor's own field
+        // rule makes it on a real screen
+        pForm->setStyleSheet(formSheet + qsl(" QLineEdit { min-height: 40px; }"));
+        QCoreApplication::processEvents();
+
+        reopenFieldOn(startingEvents());
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+        QWidget* pChip = row()->chipAt(0);
+        QVERIFY2(pChip != nullptr, "the row has no chip to measure against the field");
+
+        QTRY_VERIFY2(field()->height() >= 40, qPrintable(qsl("the field was cut down to %1px").arg(field()->height())));
+        QVERIFY2(field()->height() >= field()->sizeHint().height(), "the field stands shorter than its sheet makes it");
+        QCOMPARE(pChip->height(), field()->height());
+        QCOMPARE(addButton()->minimumHeight(), field()->height());
+        QCOMPARE(row()->lineHeight(), field()->height());
+
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+        pForm->setStyleSheet(formSheet);
+        QCoreApplication::processEvents();
+        QCOMPARE(row()->lineHeight(), pChip->height());
+    }
+
+    void test_anEventTheGameSentIsOffered()
+    {
+        raiseInProfile(qsl("gmcp.Char.Vitals"));
+        raiseInProfile(qsl("RaisedAtRuntime"));
+
+        // The names are handed over as the script is loaded into the form, so
+        // the row hears about either of these only on the way back in
+        mpEditor->slot_scriptsSelected(mpScriptItem);
+        QTest::qWait(50ms);
+        reopenFieldOn(startingEvents());
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+
+        keyIntoField(qsl("vitals"));
+        QVERIFY2(offered().contains(qsl("gmcp.Char.Vitals")), qPrintable(qsl("what the game sent was not offered: %1").arg(offered().join(qsl(", ")))));
+        QCOMPARE(noteFor(qsl("gmcp.Char.Vitals")), qsl("game"));
+
+        retypeField(qsl("raisedat"));
+        QVERIFY2(offered().contains(qsl("RaisedAtRuntime")), qPrintable(qsl("a name raised at run time was not offered: %1").arg(offered().join(qsl(", ")))));
+        QCOMPARE(noteFor(qsl("RaisedAtRuntime")), qsl("script"));
+
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+    }
+
+    // Every offered name carries the one word saying where it is from, so that
+    // an unfamiliar name can be placed without leaving the field
+    void test_eachNameSaysWhereItIsFrom()
+    {
+        reopenFieldOn(startingEvents());
+        QVERIFY2(field() != nullptr, "beginAdd() did not open the field");
+
+        keyIntoField(qsl("sysload"));
+        QVERIFY2(offered().contains(qsl("sysLoadEvent")), qPrintable(qsl("an event Mudlet raises was not offered: %1").arg(offered().join(qsl(", ")))));
+        QCOMPARE(noteFor(qsl("sysLoadEvent")), qsl("Mudlet"));
+
+        // What another script in the profile listens for, put there by
+        // test_typingOffersTheEventsTheProfileKnows
+        retypeField(qsl("myother"));
+        QVERIFY2(offered().contains(qsl("MyOtherEvent")), qPrintable(qsl("what another script listens for was not offered: %1").arg(offered().join(qsl(", ")))));
+        QCOMPARE(noteFor(qsl("MyOtherEvent")), qsl("script"));
+
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
     }
 };
 

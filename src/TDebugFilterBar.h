@@ -21,11 +21,13 @@
  ***************************************************************************/
 
 #include "TDebug.h"
+#include "uiDesign.h"
 
 #include <QMap>
 #include <QToolBar>
 
 class QAction;
+class QEvent;
 class QLabel;
 class QLineEdit;
 class QMenu;
@@ -57,6 +59,9 @@ private slots:
     void slot_caseSensitivityChanged(const bool);
     void slot_updatePausedCount();
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void addCategoryMenu();
     void addProfileMenu();
@@ -66,6 +71,7 @@ private:
     void refreshItemList();
     QStringList itemNames() const;
     void applyTypedItemFilter();
+    void restyleIcons();
     static QString allItemsLabel();
 
     QAction* mpActionPause = nullptr;
@@ -82,6 +88,7 @@ private:
     QAction* mpActionPausedLabel = nullptr;
     QTimer* mpPausedLabelTimer = nullptr;
     QMap<TDebug::Category, QAction*> mCategoryActions;
+    QList<uiDesign::ActionGlyph> mActionGlyphs;
 };
 
 #endif // MUDLET_TDEBUGFILTERBAR_H
