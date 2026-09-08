@@ -184,7 +184,7 @@ private slots:
     {
         TDebug::setPaused(false);
         TDebug::discardPausedMessages();
-        mudlet::smDebugMode = false;
+        TDebug::smDebugMode = false;
 
         delete mpServer;
         mpServer = nullptr;
@@ -294,7 +294,7 @@ private:
         auto* host = mudlet::self()->getActiveHost();
 
         mudlet::self()->attachDebugArea(host->getName());
-        mudlet::smDebugMode = true;
+        TDebug::smDebugMode = true;
         TDebug::flushMessageQueue();
         return host;
     }
