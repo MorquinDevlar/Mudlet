@@ -172,5 +172,8 @@ Nothing about a stylesheet can be judged from the source. Grab the window:
 `DesignColourLiteralTest`, `ReadabilityAuditTest`, `EditorChromeInkTest`, `EditorSurfaceToneTest`,
 `SettingsAppearanceTest`, `SettingsShellNavigationTest`, and the shell test of whichever window
 you touched. When a stylesheet builder is refactored, diff the generated sheets before and after
-in both appearances with `test/functional_tests/StyleSheetDumpTest.cpp` (wired in by hand, then
-removed) - see "Verifying a stylesheet extraction" in `docs/design-language.md`.
+in both appearances. The harness for that is not kept in the tree: it was a functional test that
+opened the settings dialog and the editor and wrote every generated stylesheet to the file named
+by `MUDLET_STYLESHEET_DUMP`, so two trees could be compared byte for byte. Recover it with
+`git log --all --diff-filter=D -- test/functional_tests/StyleSheetDumpTest.cpp`, wire it in by
+hand, then remove it again - see "Verifying a stylesheet extraction" in `docs/design-language.md`.

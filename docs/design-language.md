@@ -1092,13 +1092,15 @@ every consumer before the change, make the change, dump again, and diff.
 Do it in both themes - a wrong substitution can land on two colours that
 happen to match on dark and diverge on light.
 
-`test/functional_tests/StyleSheetDumpTest.cpp` is that harness. It is
-deliberately not in `test/functional_tests/CMakeLists.txt`: it asserts
-nothing and always passes, so wiring it into the suite would buy a profile
-boot per run and prove nothing. Add it to the group sources by hand for the
-comparison, take the two dumps, and drop it again. What ships is the diff
-being empty, not the dumps - they are worth nothing once the question is
-answered.
+The harness that does it is not kept in the tree. It was a functional test
+that opened the settings dialog and the editor and wrote every generated
+stylesheet to the file named by `MUDLET_STYLESHEET_DUMP`, so two trees could
+be compared byte for byte. It asserted nothing and always passed, which is
+why it is not carried in `test/functional_tests/CMakeLists.txt`: wiring it
+into the suite would buy a profile boot per run and prove nothing. Recover it
+with `git log --all --diff-filter=D -- test/functional_tests/StyleSheetDumpTest.cpp`,
+add it to the group sources by hand for the comparison, take the two dumps,
+and drop it again. What ships is the diff being empty, not the dumps.
 
 ### Guards
 

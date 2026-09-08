@@ -48,11 +48,15 @@
 
 #include <cctype>
 
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+
+#include <algorithm>
 
 // QStringLiteral rather than utils.h's qsl(): like its two siblings this test
 // links no Mudlet code, so that header is not on its include path.
@@ -141,26 +145,50 @@ class DesignColourLiteralTest : public QObject
     // table of ANSI defaults without repeating the reason on every row of it.
     static constexpr char scmMarker[] = "theme-fixed:";
 
-    // The colour names a stylesheet can be written in. Not the whole SVG set:
-    // the ones a person reaches for when they mean "make this grey", plus
-    // enough of the rest that a copied rule does not slip through.
+    // Every colour name Qt itself knows, taken off QColor at run time rather
+    // than written out here: a list kept by hand is a list of the names
+    // somebody thought of, and "lightsalmon" is a colour whether or not anybody
+    // did. "transparent" is not one of them - it is the absence of a colour,
+    // and every sheet in the tree that clears a background says it.
+    static const QSet<QString>& namedColours()
+    {
+        static const QSet<QString> names = [] {
+            QSet<QString> gathered;
+            for (const QString& name : QColor::colorNames()) {
+                if (name.compare(QStringLiteral("transparent"), Qt::CaseInsensitive) != 0) {
+                    gathered.insert(name.toLower());
+                }
+            }
+            return gathered;
+        }();
+        return names;
+    }
+
+    // ...and the same set as one alternation, for reading a name out of the
+    // middle of a declaration. Longest first, so that "darkgreen" is read whole
+    // rather than as "green" with a tail left over.
     static const QRegularExpression& cssColourName()
     {
-        static const QRegularExpression pattern(
-                QStringLiteral("\\b(?:black|white|gray|grey|darkgray|darkgrey|lightgray|lightgrey|dimgray|dimgrey|silver|red|darkred|crimson|salmon|tomato|coral|orange|gold|yellow|khaki|olive|"
-                               "lime|green|darkgreen|teal|aqua|cyan|turquoise|azure|navy|blue|darkblue|indigo|violet|purple|fuchsia|magenta|orchid|plum|thistle|lavender|pink|brown|maroon|"
-                               "sienna|peru|tan|wheat|beige|ivory|linen|snow)\\b"),
-                QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression pattern = [] {
+            QStringList names(namedColours().cbegin(), namedColours().cend());
+            std::sort(names.begin(), names.end(), [](const QString& one, const QString& other) {
+                return one.size() != other.size() ? one.size() > other.size() : one < other;
+            });
+            return QRegularExpression(QStringLiteral("\\b(?:%1)\\b").arg(names.join(QLatin1Char('|'))), QRegularExpression::CaseInsensitiveOption);
+        }();
         return pattern;
     }
+
+    // The colour names Qt's own enum carries, which is the other half of the
+    // same list
+    static QString qtColourNames() { return QStringLiteral("white|black|red|green|blue|cyan|magenta|yellow|gray|darkGray|lightGray|darkRed|darkGreen|darkBlue|darkCyan|darkMagenta|darkYellow"); }
 
     // Qt::white, Qt::black and Qt::transparent are the ends of the scale rather
     // than colours of a theme, so they are let through where they are used as
     // such - see exemptEndpoints() - and caught everywhere else.
     static const QRegularExpression& qtColourName()
     {
-        static const QRegularExpression pattern(
-                QStringLiteral("Qt::(white|black|red|green|blue|cyan|magenta|yellow|gray|darkGray|lightGray|darkRed|darkGreen|darkBlue|darkCyan|darkMagenta|darkYellow)\\b"));
+        static const QRegularExpression pattern(QStringLiteral("Qt::(%1)\\b").arg(qtColourNames()));
         return pattern;
     }
 
@@ -236,15 +264,7 @@ class DesignColourLiteralTest : public QObject
     // A literal that is a colour name and nothing else, which is how a name
     // reaches a sheet through .arg() - qsl("lightsalmon") - with the
     // declaration it lands in written somewhere else entirely.
-    static bool wholeLiteralIsAColourName(const QString& literal)
-    {
-        const QString trimmed = literal.trimmed();
-        if (trimmed.isEmpty()) {
-            return false;
-        }
-        const QRegularExpressionMatch match = cssColourName().match(trimmed);
-        return match.hasMatch() && match.capturedStart() == 0 && match.capturedLength() == trimmed.size();
-    }
+    static bool wholeLiteralIsAColourName(const QString& literal) { return namedColours().contains(literal.trimmed().toLower()); }
 
     // A colour written into a stylesheet: the hex, the channels, a literal that
     // is a colour name outright, or the name in a declaration that is about
@@ -298,9 +318,15 @@ class DesignColourLiteralTest : public QObject
         // A Qt colour name reaching anything that paints with it. The call and
         // the name are looked for separately because the two are routinely a
         // couple of nested calls apart - setForeground(0, QBrush(Qt::gray)).
-        static const QRegularExpression painter(QStringLiteral("\\b(?:QColor|QBrush|QPen|setColor|setForeground|setBackground)\\s*\\("));
+        static const QRegularExpression painter(QStringLiteral("\\b(?:QColor|QBrush|QPen|setPen|setColor|setForeground|setBackground)\\s*\\("));
         if (const QRegularExpressionMatch named = qtColourName().match(probe); named.hasMatch() && painter.match(probe).hasMatch()) {
             return QStringLiteral("Qt::%1 handed to something that paints with it").arg(named.captured(1));
+        }
+        // ...and one assigned rather than handed to anything, which reaches a
+        // painter on some later line the call above never sees
+        static const QRegularExpression assigned(QStringLiteral("(?<![=!<>])=\\s*Qt::(%1)\\b").arg(qtColourNames()));
+        if (const QRegularExpressionMatch named = assigned.match(probe); named.hasMatch()) {
+            return QStringLiteral("Qt::%1 assigned outright").arg(named.captured(1));
         }
         static const QRegularExpression fromString(QStringLiteral("QColor\\s*\\(\\s*(?:qsl|QStringLiteral|QLatin1String)?\\s*\\(?\\s*\""));
         if (fromString.match(probe).hasMatch()) {
@@ -312,6 +338,12 @@ class DesignColourLiteralTest : public QObject
         static const QRegularExpression fromChannels(QStringLiteral("QColor::fromRgb\\s*\\(|QColor\\s*\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+"));
         if (fromChannels.match(probe).hasMatch()) {
             return QStringLiteral("a QColor built from written channel values");
+        }
+        // All three channels in one number - QColor(0xff8800) - which the
+        // reading of a "#" never sees and the channel rule above does not either
+        static const QRegularExpression fromPacked(QStringLiteral("QColor\\s*\\(\\s*(0x[0-9a-fA-F]{6,8})\\s*\\)"));
+        if (const QRegularExpressionMatch packed = fromPacked.match(probe); packed.hasMatch()) {
+            return QStringLiteral("a QColor built from the written %1").arg(packed.captured(1));
         }
         static const QRegularExpression constant(QStringLiteral("QColorConstants::(\\w+)"));
         if (const QRegularExpressionMatch named = constant.match(probe); named.hasMatch() && named.captured(1) != QStringLiteral("Transparent")) {

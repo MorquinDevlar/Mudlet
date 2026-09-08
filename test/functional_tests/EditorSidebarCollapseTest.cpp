@@ -173,6 +173,10 @@ private:
 
     bool storedLabelsShown() const { return mudlet::getQSettings()->value(qsl("editorSidebarLabelsShown"), true).toBool(); }
 
+    // Whether there is a stored answer at all, as against the default the
+    // reading above falls back to: only the toolbar's toggle writes one
+    static bool anythingStored() { return mudlet::getQSettings()->contains(qsl("editorSidebarLabelsShown")); }
+
     // The chevron on the seam, which is the widget a pointer and a screen
     // reader both reach
     uiDesign::SidebarToggle* toggle() const { return mpEditor->mpToggle_editorSidebar; }
@@ -403,6 +407,12 @@ private slots:
     {
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(!railShowing(), qPrintable(qsl("A fresh profile opened as a rail: %1").arg(state())));
+        // The property above is what the rules read; this is what the reader
+        // sees, and a sidebar that kept the rail's width while saying it was
+        // not one would pass on the property alone
+        QVERIFY2(mpEditor->mpWidget_editorSidebarPane->width() > uiDesign::scmSidebarRailWidth,
+                 qPrintable(qsl("the sidebar is at the rail's %1px with its names showing: %2").arg(QString::number(uiDesign::scmSidebarRailWidth), state())));
+        QVERIFY2(!anythingStored(), "opening the editor wrote a sidebar preference nobody chose, so what a later run opens with is not the default this case reads");
         QVERIFY2(toggle() != nullptr, "The editor has no sidebar toggle");
         QVERIFY2(toggle()->isEnabled(), "The sidebar toggle cannot be pressed on a window with room for the names");
     }

@@ -142,9 +142,7 @@ private slots:
         mpEditor->resize(1200, 800);
         // Everything below reads what is on show and where it is, and a window
         // the compositor has not put up yet has none of it
-        if (!QTest::qWaitForWindowExposed(mpEditor, 2000)) {
-            QSKIP("the editor window was never put on screen, so nothing on its code pane's heading is showing");
-        }
+        QVERIFY2(QTest::qWaitForWindowExposed(mpEditor, 2000), "the editor window was never put on screen, so nothing on its code pane's heading is showing");
         QVERIFY2(codeHeadingHandle() != nullptr, "The right hand splitter has no handle over the code pane");
         QVERIFY2(heading() != nullptr, "The handle over the code pane carries no heading");
     }

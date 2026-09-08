@@ -218,9 +218,7 @@ private slots:
         mpEditor->resize(1200, 800);
         // Everything below reads what is on show and where it is, and a window
         // the compositor has not put up yet has none of it
-        if (!QTest::qWaitForWindowExposed(mpEditor, 2000)) {
-            QSKIP("the editor window was never put on screen, so nothing on its code pane's heading is showing");
-        }
+        QVERIFY2(QTest::qWaitForWindowExposed(mpEditor, 2000), "the editor window was never put on screen, so nothing on its code pane's heading is showing");
         QVERIFY2(codeHeadingHandle() != nullptr, "The right hand splitter has no handle over the code pane");
         QVERIFY2(heading() != nullptr, "The handle over the code pane carries no heading");
     }
@@ -293,17 +291,51 @@ private slots:
     }
 
     // ...and being part of the pane, it comes and goes with it rather than
-    // being hidden and shown by hand
+    // being hidden and shown by hand. Which handle is on show is the splitter's
+    // own business, so what is read here is the heading's two pieces: they hang
+    // off that handle, so hiding the pane takes them with it.
     void test_theHeadingGoesWithThePane()
     {
         QSplitterHandle* pHandle = codeHeadingHandle();
-        QTRY_VERIFY2(pHandle->isVisible(), "the code pane's heading is not on show while a trigger is being edited");
+        QLabel* pCaret = caretReading();
+        QWidget* pNote = compileNote();
+        QVERIFY2(pCaret != nullptr, "the code pane's heading has no label named editorCodeCaret on it");
+        QVERIFY2(pNote != nullptr, "the code pane's heading has no widget named editorCompileNote on it");
+        QVERIFY2(pHandle->isAncestorOf(pCaret), "the caret reading does not hang off the handle over the code pane, so nothing takes it away with the pane");
+        QVERIFY2(pHandle->isAncestorOf(pNote), "the compile note does not hang off the handle over the code pane, so nothing takes it away with the pane");
 
-        mpEditor->clearTriggerForm();
+        QTRY_VERIFY2(pHandle->isVisible(), "the code pane's heading is not on show while a trigger is being edited");
+        QTRY_VERIFY2(pCaret->isVisible(), "the caret reading is not on show while a trigger is being edited");
+
+        // The note is only on show when there is something to say, so it is
+        // given something: read while it was hidden anyway it would answer the
+        // same whether or not it goes with the pane. Taking the pane away by
+        // hand rather than by clearing the form, which is the one production
+        // path that hides it - clearing the form also clears the compile state,
+        // so the note would then be hidden by that rather than by the pane.
+        typeAndSave(qsl("local a = 1\nlocal b = 1 +* 2\n"));
+        QTRY_VERIFY2(pNote->isVisible(), "a save that did not compile left no note on the heading");
+
+        mpEditor->mpSourceEditorArea->hide();
+        QCoreApplication::processEvents();
         QTRY_VERIFY2(!pHandle->isVisible(), "the heading stayed behind after the code pane it belongs to was taken away");
+        QVERIFY2(!pCaret->isVisible(), "the caret reading stayed on screen after the code pane it belongs to was taken away");
+        QVERIFY2(!pNote->isVisible(), "the compile note stayed on screen after the code pane it belongs to was taken away");
+
+        mpEditor->mpSourceEditorArea->show();
+        QCoreApplication::processEvents();
+        QTRY_VERIFY2(pHandle->isVisible(), "the heading did not come back with the code pane");
+        QVERIFY2(pCaret->isVisible(), "the caret reading did not come back with the code pane");
+        QVERIFY2(pNote->isVisible(), "the compile note did not come back with the code pane, so the heading's pieces are being shown by hand rather than riding on it");
+
+        // ...and the same round trip through the path the editor itself takes
+        mpEditor->clearTriggerForm();
+        QTRY_VERIFY2(!pHandle->isVisible(), "clearing the form left the heading behind");
+        QVERIFY2(!pCaret->isVisible(), "clearing the form left the caret reading on screen");
 
         mpEditor->addTrigger(false);
         QTRY_VERIFY2(pHandle->isVisible(), "the heading did not come back with the code pane");
+        QVERIFY2(pCaret->isVisible(), "the caret reading did not come back with the code pane");
     }
 
     // A save that compiled is said by there being nothing to say: the heading

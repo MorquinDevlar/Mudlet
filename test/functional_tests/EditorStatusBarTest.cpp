@@ -177,9 +177,7 @@ private slots:
         // Everything below reads which of the bar's widgets are on show, and a
         // window the compositor has not put up yet has none of them showing -
         // so the cases say so rather than reading nothing and failing
-        if (!QTest::qWaitForWindowExposed(mpEditor, 2000)) {
-            QSKIP("the editor window was never put on screen, so nothing in its status bar is showing");
-        }
+        QVERIFY2(QTest::qWaitForWindowExposed(mpEditor, 2000), "the editor window was never put on screen, so nothing in its status bar is showing");
         QVERIFY2(statusBar() != nullptr, "The editor window has no status bar");
     }
 

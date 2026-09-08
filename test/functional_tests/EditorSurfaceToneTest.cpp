@@ -41,6 +41,7 @@
 #include <QLineEdit>
 #include <QPalette>
 #include <QPixmap>
+#include <QScopeGuard>
 #include <QSplitterHandle>
 #include <QTemporaryDir>
 #include <QTreeWidget>
@@ -140,6 +141,35 @@ private:
         return pixelOfWindowUnder(pSidebar, QPoint(4, pSidebar->height() - 5));
     }
 
+    // Window and Base both white, which is the palette the three readings below
+    // are actually about. themeTokens() then keeps the card at the window's
+    // colour and steps the page down under it, so the page tone stops being
+    // QPalette::Window - and a surface nobody paints, which falls back on
+    // Window, stops answering the page tone by accident. Under the palette these
+    // run with otherwise the two agree and the readings hold whether or not
+    // anything painted the surface.
+    static QPalette theWhiteOnWhitePalette()
+    {
+        QPalette palette(QApplication::palette());
+        palette.setColor(QPalette::Window, QColor(Qt::white));
+        palette.setColor(QPalette::Base, QColor(Qt::white));
+        palette.setColor(QPalette::WindowText, QColor(Qt::black));
+        return palette;
+    }
+
+    // The editor restyles off a PaletteChange - dlgTriggerEditor::changeEvent()
+    // calls applyEditorShellStyle() on one - and setting the application's
+    // palette is what sends it, which is the same path an appearance change
+    // takes
+    void restyleWith(const QPalette& palette) const
+    {
+        QApplication::setPalette(palette);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        QCoreApplication::processEvents();
+        mpEditor->grab();
+    }
+
     QColor itemPanelTone() const
     {
         QWidget* pTreeViewport = mpEditor->treeWidget_triggers->viewport();
@@ -207,8 +237,19 @@ private slots:
         QVERIFY2(pPatternList, "the widget the pattern rows are held in has gone, or been renamed");
         QVERIFY2(pPatternList->height() > 20 && pPatternList->width() > 20, "the pattern list is too small to read a pixel out of");
 
+        const QPalette savedPalette = QApplication::palette();
+        const auto putBack = qScopeGuard([this, savedPalette] {
+            restyleWith(savedPalette);
+        });
+        restyleWith(theWhiteOnWhitePalette());
+
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        QVERIFY2(tokens.page.rgb() != QApplication::palette().color(QPalette::Window).rgb(),
+                 qPrintable(qsl("the page is %1 and QPalette::Window %2 - they agree, so a surface nothing painted would read as the page and this case would measure nothing")
+                                    .arg(tokens.page.name(), QApplication::palette().color(QPalette::Window).name())));
+
         const QColor measured = pixelOfWindowUnder(pPatternList, QPoint(pPatternList->width() - 3, pPatternList->height() - 3));
+        qInfo().noquote() << qsl("  the form behind the patterns is painted %1").arg(describe(measured, tokens));
 
         QVERIFY2(distanceBetween(measured, tokens.page) < distanceBetween(measured, tokens.field),
                  qPrintable(qsl("the form behind the patterns is painted %1 - it is nearer the field colour than the page, which is the sunken box the edit column used to read as")
@@ -222,16 +263,46 @@ private slots:
     // how the form came to differ from the panel - is caught here.
     void test_theSidebarAndTheEditColumnAreBothThePage()
     {
+        const QPalette savedPalette = QApplication::palette();
+        const auto putBack = qScopeGuard([this, savedPalette] {
+            restyleWith(savedPalette);
+        });
+        restyleWith(theWhiteOnWhitePalette());
+
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        const QColor windowColour = QApplication::palette().color(QPalette::Window);
+        QVERIFY2(tokens.page.rgb() != windowColour.rgb(),
+                 qPrintable(qsl("the page is %1 and QPalette::Window %2 - they agree, so a column nothing painted would read as the page").arg(tokens.page.name(), windowColour.name())));
+
         const QColor sidebar = sidebarTone();
         const QColor form = editColumnTone();
         QVERIFY2(sidebar.isValid() && form.isValid(), "the sidebar or the edit column is too small to read a pixel out of");
 
-        qInfo().noquote() << qsl("measured: sidebar %1, edit column %2, panel %3; tokens: page %4, pane %5, separator %6, card %7")
-                                     .arg(sidebar.name(), form.name(), itemPanelTone().name(), tokens.page.name(), tokens.pane.name(), tokens.separator.name(), tokens.card.name());
+        // What a surface the editor paints nothing on reads as, put on the shell
+        // beside the two being measured. Its palette is named rather than
+        // inherited: a stylesheet's background-color lands on the polished
+        // widget's QPalette::Window, so a child filling itself from the shell's
+        // palette would take the page tone from the shell rather than stand for
+        // a surface outside the editor's own painting.
+        QWidget* pShell = mpEditor->findChild<QWidget*>(qsl("editorShell"));
+        QVERIFY2(pShell, "the editor shell has gone, or been renamed");
+        QWidget unpaintedProbe(pShell);
+        unpaintedProbe.setPalette(QApplication::palette());
+        unpaintedProbe.setAutoFillBackground(true);
+        unpaintedProbe.setGeometry(pShell->width() / 2 - 20, pShell->height() / 2 - 20, 40, 40);
+        unpaintedProbe.show();
+        QCoreApplication::processEvents();
+        const QColor unpainted = pixelOfWindowUnder(&unpaintedProbe, QPoint(unpaintedProbe.width() / 2, unpaintedProbe.height() / 2));
+
+        qInfo().noquote() << qsl("measured: sidebar %1, edit column %2, panel %3, an unpainted widget %4; tokens: page %5, pane %6, separator %7, card %8")
+                                     .arg(sidebar.name(), form.name(), itemPanelTone().name(), unpainted.name(), tokens.page.name(), tokens.pane.name(), tokens.separator.name(), tokens.card.name());
 
         QVERIFY2(sidebar.rgb() == form.rgb(), qPrintable(qsl("the sidebar is painted %1 and the column an item is edited in %2").arg(sidebar.name(), form.name())));
         QVERIFY2(sidebar.rgb() == tokens.page.rgb(), qPrintable(qsl("the sidebar is painted %1").arg(describe(sidebar, tokens))));
+        QVERIFY2(form.rgb() == tokens.page.rgb(), qPrintable(qsl("the column an item is edited in is painted %1").arg(describe(form, tokens))));
+        QVERIFY2(
+                unpainted.rgb() != tokens.page.rgb(),
+                qPrintable(qsl("a widget nothing paints reads %1, which is the page tone - so the two readings above would hold for a column nobody painted either").arg(describe(unpainted, tokens))));
     }
 
     // ...and the panel between them, which is a surface of its own: lifted off
@@ -282,14 +353,23 @@ private slots:
         QLineEdit* pName = mpEditor->mpTriggersMainArea->lineEdit_trigger_name;
         QVERIFY2(pName->height() > 8 && pName->width() > 40, "the trigger name field is too small to read a pixel out of");
 
+        const QPalette savedPalette = QApplication::palette();
+        const auto putBack = qScopeGuard([this, savedPalette] {
+            restyleWith(savedPalette);
+        });
+        restyleWith(theWhiteOnWhitePalette());
+
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        QVERIFY2(tokens.field.rgb() != tokens.page.rgb(),
+                 qPrintable(qsl("the field surface and the page are both %1 on this palette, so a field painted as neither would still pass").arg(tokens.field.name())));
+
         // Inside the field's own border and clear of whatever is typed in it,
         // which is drawn from the leading edge - the middle of the field is a
         // letter of the item's name as soon as the name is long enough for it
         const QColor measured = pixelOfWindowUnder(pName, QPoint(pName->width() - 6, pName->height() / 2));
+        qInfo().noquote() << qsl("  the trigger name field is painted %1").arg(describe(measured, tokens));
 
-        QVERIFY2(distanceBetween(measured, tokens.field) < distanceBetween(measured, tokens.page),
-                 qPrintable(qsl("the trigger name field is painted %1 - it has lost the sunken colour a field is filled with").arg(describe(measured, tokens))));
+        QVERIFY2(measured.rgb() == tokens.field.rgb(), qPrintable(qsl("the trigger name field is painted %1 - it has lost the sunken colour a field is filled with").arg(describe(measured, tokens))));
     }
 
     // The page tone is painted on the shell, which is Mudlet's own scaffolding

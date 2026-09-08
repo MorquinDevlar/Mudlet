@@ -421,9 +421,18 @@ private slots:
 
     // The keyboard reaches the same folding, and never went through the arrow
     // the view drew - so it has to be unaffected by the arrow having moved into
-    // the row
+    // the row. What is guarded is the delegate's event filter: it sits on the
+    // tree's viewport and eats some of what the pointer does there, and a key
+    // has to pass straight through it.
     void testArrowKeysStillFoldTheRow()
     {
+        uiDesign::EditorTreeDelegate* pDelegate = dotDelegate();
+        QVERIFY2(pDelegate != nullptr, "the triggers tree is not drawn by an EditorTreeDelegate, so there is no filter here for a key to be swallowed by");
+        QVERIFY2(tree()->itemDelegate() == pDelegate, "the tree's rows are drawn by something other than the delegate that carries the filter");
+        // Qt reads back no list of the filters on a widget, so that the filter
+        // is on tree()->viewport() is taken from the delegate's constructor,
+        // which installs it there - the clicks below are the guard on it
+
         QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
         tree()->setCurrentItem(pGroup);
         tree()->setFocus();

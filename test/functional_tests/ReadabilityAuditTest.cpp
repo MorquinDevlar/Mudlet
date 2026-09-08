@@ -613,8 +613,34 @@ private slots:
     // The whole of what this test is built on: a rule that says what colour a
     // widget's words are reaches the widget through its palette, so reading the
     // palette reads what the sheet asked for. Proved on a label the editor's
-    // own sheet colours rather than assumed.
-    void test_aStyleSheetsColourReachesTheWidgetsPalette() { setAppearance(enums::Appearance::dark); }
+    // own sheet colours rather than assumed - the status bar's counts, which
+    // the shell sheet names with
+    // "QStatusBar#editorStatusBar QLabel { color: <mutedText> }" - and read in
+    // both appearances, since two readings that agreed would be of something
+    // the theme does not move rather than of the sheet.
+    void test_aStyleSheetsColourReachesTheWidgetsPalette()
+    {
+        QLabel* pLabel = mpEditor->mpLabel_statusCounts;
+        QVERIFY2(pLabel != nullptr, "the editor's status bar carries no counts label, so there is nothing here the shell sheet colours by name");
+
+        QMap<QString, QColor> answered;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const QColor asked = uiDesign::themeTokens().mutedText;
+            const QColor read = pLabel->palette().color(pLabel->foregroundRole());
+            qInfo().noquote() << qsl("  %1: the sheet asks for %2, the palette answers %3").arg(appearance.first, asked.name(), read.name());
+            QVERIFY2(read.rgb() == asked.rgb(),
+                     qPrintable(qsl("on the %1 appearance the editor's sheet writes the status bar in %2, but the label's palette answers %3 - a sheet's colour is not reaching the palette this "
+                                    "whole test reads")
+                                        .arg(appearance.first, asked.name(), read.name())));
+            answered.insert(appearance.first, read);
+        }
+
+        QVERIFY2(answered.value(qsl("dark")).rgb() != answered.value(qsl("light")).rgb(),
+                 qPrintable(qsl("both appearances read %1 back off the label, so the palette is answering something the appearance does not move and the reading above would hold whatever the "
+                                "sheet said")
+                                    .arg(answered.value(qsl("dark")).name())));
+    }
 
     // One case for both windows and both appearances, and one list at the end:
     // a run that stopped at the first unreadable thing would take as many runs

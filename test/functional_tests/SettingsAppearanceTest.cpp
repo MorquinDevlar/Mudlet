@@ -50,7 +50,11 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPixmap>
+#include <QCheckBox>
+#include <QRadioButton>
+#include <QScrollBar>
 #include <QStackedWidget>
+#include <QVBoxLayout>
 
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
@@ -501,8 +505,10 @@ private slots:
         QVERIFY2(pCard, "the Appearance card this case reads its colours off is not there any more");
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QColor fill = pixelOf(pCard, QPoint(pCard->width() / 2, pCard->height() - 4));
-        QVERIFY2(distanceBetween(fill, tokens.card) < distanceBetween(fill, tokens.field),
-                 qPrintable(qsl("a card is painted %1, nearer the field surface's %2 than the card's own %3").arg(fill.name(), tokens.field.name(), tokens.card.name())));
+        // The colour itself rather than the nearer of two: the card sheet fills
+        // a card with the card tone outright, and a nearest-of-two reading would
+        // pass a card left in whatever the platform paints a group box
+        QVERIFY2(fill.rgb() == tokens.card.rgb(), qPrintable(qsl("a card is painted %1 rather than the card tone's %2").arg(fill.name(), tokens.card.name())));
     }
 
     // The fields are claimed under the stack of pages and nowhere else. Named
@@ -537,15 +543,47 @@ private slots:
     }
 
     // The shared recipe draws fields; everything else on a card is drawn by the
-    // card's own rules, the check indicators among them
+    // card's own rules, the check indicators among them. Read off what the rules
+    // paint rather than off the text of the rules: a selector list says nothing
+    // about which controls a sheet actually reaches, and a rule that quietly
+    // grew a subcontrol nobody named would pass a reading of the words.
     void test_theInputRulesNameNothingButFields()
     {
-        const QStringList claimedByTheCards{
-                qsl("indicator"), qsl("QCheckBox"), qsl("QRadioButton"), qsl("QGroupBox"), qsl("QAbstractButton"), qsl("QListWidget"), qsl("QTreeWidget"), qsl("QScrollBar")};
-        const QString inputRules = uiDesign::inputStyleSheet(uiDesign::themeTokens(), qsl("#settingsStack"));
-        for (const QString& claimed : claimedByTheCards) {
-            QVERIFY2(!inputRules.contains(claimed), qPrintable(qsl("the input rules name %1, which is not a field and is drawn by something else").arg(claimed)));
-        }
+        QWidget stack;
+        stack.setObjectName(qsl("settingsStack"));
+        auto* pLayout = new QVBoxLayout(&stack);
+        auto* pCheck = new QCheckBox(qsl("a choice"), &stack);
+        auto* pRadio = new QRadioButton(qsl("one of several"), &stack);
+        auto* pBar = new QScrollBar(Qt::Vertical, &stack);
+        auto* pField = new QLineEdit(qsl("typed in"), &stack);
+        pLayout->addWidget(pCheck);
+        pLayout->addWidget(pRadio);
+        pLayout->addWidget(pBar);
+        pLayout->addWidget(pField);
+        // Held at a size the rules cannot move: the field's rule carries a
+        // min-height, and a control that grew by a pixel would come back as a
+        // picture of a different size whether or not anything repainted it
+        pCheck->setFixedSize(180, 24);
+        pRadio->setFixedSize(180, 24);
+        pBar->setFixedSize(16, 90);
+        pField->setFixedSize(180, 30);
+        stack.resize(260, 220);
+        stack.show();
+        QVERIFY2(QTest::qWaitForWindowExposed(&stack), "the throwaway stack was never put on screen, so there is nothing here to grab");
+
+        const QImage bareCheck = pCheck->grab().toImage();
+        const QImage bareRadio = pRadio->grab().toImage();
+        const QImage bareBar = pBar->grab().toImage();
+        const QImage bareField = pField->grab().toImage();
+
+        stack.setStyleSheet(uiDesign::inputStyleSheet(uiDesign::themeTokens(), qsl("#settingsStack")));
+        QCoreApplication::processEvents();
+        QTest::qWait(50);
+
+        QVERIFY2(pField->grab().toImage() != bareField, "the input rules left the field exactly as the platform drew it, so this case is reading a sheet that reaches nothing");
+        QVERIFY2(pCheck->grab().toImage() == bareCheck, "the input rules redrew a check box, which is not a field and is drawn by the card's own rules");
+        QVERIFY2(pRadio->grab().toImage() == bareRadio, "the input rules redrew a radio button, which is not a field and is drawn by the card's own rules");
+        QVERIFY2(pBar->grab().toImage() == bareBar, "the input rules redrew a scroll bar, which is chrome and is drawn by the shared scroll bar recipe");
     }
 
     // The list a combo box drops down is a window of its own, parented to the

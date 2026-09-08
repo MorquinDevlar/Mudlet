@@ -134,7 +134,9 @@ set_tests_properties(CMakeListsConsistencyTest PROPERTIES
 # Colours written out on the surfaces that have adopted the design language.
 # Reads those sources the same way, so it links nothing either.
 add_executable(DesignColourLiteralTest DesignColourLiteralTest.cpp)
-target_link_libraries(DesignColourLiteralTest PRIVATE Qt6::Test)
+# Qt6::Gui for QColor::colorNames(), which is where the colour names it looks
+# for come from rather than a list kept by hand in the test
+target_link_libraries(DesignColourLiteralTest PRIVATE Qt6::Test Qt6::Gui)
 target_compile_definitions(DesignColourLiteralTest PRIVATE MUDLET_SRC_DIR="${CMAKE_SOURCE_DIR}/src")
 add_test(NAME DesignColourLiteralTest COMMAND $<TARGET_FILE:DesignColourLiteralTest>)
 set_tests_properties(DesignColourLiteralTest PROPERTIES

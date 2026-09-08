@@ -37,6 +37,11 @@ class EventNamesTest : public QObject
 {
     Q_OBJECT
 
+private:
+    // What the hand-kept list is held to: 89 names today, and a floor well
+    // under that so an event being added does not fail a run
+    static constexpr int scmLeastSystemEvents = 70;
+
 private slots:
     // Both calls that raise one and both that register a handler for one, in
     // either quote; a name that is worked out at run time is not there to be
@@ -80,6 +85,9 @@ private slots:
         QVERIFY2(!eventNames::fromGame(QString()), "a name with nothing in it was read as the game's");
     }
 
+    // The hand-kept list, read for the three things a hand-kept list loses:
+    // a name written twice, a name that is not one, and the order it is offered
+    // in
     void test_theSystemEventsAreListedOnceEach()
     {
         const QStringList system = eventNames::systemEvents();
@@ -87,6 +95,25 @@ private slots:
         QVERIFY2(system.contains(qsl("sysConnectionEvent")), "the list is missing an event Mudlet raises from C++");
         QVERIFY2(system.contains(qsl("sysSpeedwalkStarted")), "the list is missing an event Mudlet raises from its own Lua");
         QCOMPARE(QSet<QString>(system.constBegin(), system.constEnd()).size(), system.size());
+        // A list that quietly lost most of itself would still pass everything
+        // above; measured at 89 names
+        QVERIFY2(system.size() >= scmLeastSystemEvents,
+                 qPrintable(qsl("the list offers %1 names, against the %2 it is kept at - it has lost entries rather than gained them").arg(system.size()).arg(scmLeastSystemEvents)));
+
+        for (const QString& name : system) {
+            QVERIFY2(!name.isEmpty(), "the list carries an entry with nothing in it");
+            QVERIFY2(!name.trimmed().isEmpty() && name.trimmed() == name, qPrintable(qsl("\"%1\" is padded with whitespace, which is not the name anything is raised under").arg(name)));
+            // Not every one of Mudlet's own starts with sys - the map, the
+            // speech and the channel 102 events are Mudlet's too - so what is
+            // read is the other way round: none of them is the game's
+            QVERIFY2(!eventNames::fromGame(name), qPrintable(qsl("\"%1\" is named after a protocol table, so it is an event the game sends rather than one Mudlet raises").arg(name)));
+        }
+
+        // Sorted without regard to case, which is the order they are offered in
+        for (int step = 1; step < system.size(); ++step) {
+            QVERIFY2(system.at(step - 1).compare(system.at(step), Qt::CaseInsensitive) < 0,
+                     qPrintable(qsl("\"%1\" is listed before \"%2\", so the list is not in the order it is offered in").arg(system.at(step - 1), system.at(step))));
+        }
     }
 };
 

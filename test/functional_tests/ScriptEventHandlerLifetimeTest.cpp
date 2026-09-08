@@ -274,10 +274,19 @@ private slots:
         QTest::qWait(50ms);
         QCOMPARE(eventRow()->items(), QStringList{qsl("myTestEvent")});
 
+        // The same words on a chip built again are the same words, so the chip
+        // itself is what is held onto: a row torn down and rebuilt hands back a
+        // different widget, and says so on the way
+        QWidget* pChipBefore = eventRow()->chipAt(0);
+        QVERIFY2(pChipBefore != nullptr, "the row shows no chip for the event the script handles");
+        QSignalSpy rebuilds(eventRow(), &uiDesign::ChipRow::itemsChanged);
+
         emit mpEditor->treeWidget_scripts->itemClicked(pScript, 0);
         QTest::qWait(50ms);
 
         QCOMPARE(eventRow()->items(), QStringList{qsl("myTestEvent")});
+        QVERIFY2(eventRow()->chipAt(0) == pChipBefore, "choosing the same script again handed back a different chip, so the row was torn down and built again under the user");
+        QVERIFY2(rebuilds.isEmpty(), qPrintable(qsl("choosing the same script again changed the row's items %1 time(s)").arg(rebuilds.count())));
 
         mpEditor->slot_saveSelectedItem();
         QTest::qWait(50ms);

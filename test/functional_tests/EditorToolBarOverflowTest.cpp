@@ -349,6 +349,9 @@ private slots:
         qInfo().noquote() << qsl("  narrowing to %1px: the fold is first reached at %2px, by which width both groups are pictures")
                                      .arg(QString::number(sweep.narrowest), sweep.folded < 0 ? qsl("no width swept") : QString::number(sweep.folded));
 
+        QVERIFY2(sweep.folded > 0,
+                 qPrintable(qsl("the sweep down to %1px never reached a fold, so the reading below is of a bar that was never asked to post anything away and the case measured nothing")
+                                    .arg(QString::number(sweep.narrowest))));
         QVERIFY2(sweep.foldedWithANameStillWritten < 0,
                  qPrintable(qsl("At %1px of window the bar posted actions into its overflow menu with names still written out on it - the fit had room left to make and did not take it. "
                                 "Both groups only became pictures at %2px.")
@@ -526,8 +529,9 @@ private slots:
             // Whatever the fold costs, it is only ever paid below the length a
             // bar of pictures wants: everything above it is the fit's to hold,
             // and both groups have given their names up before it is reached
-            QVERIFY2(sweep.folded < 0 || sweep.folded <= pictureBar, qPrintable(measured.constLast()));
-            QVERIFY2(sweep.folded < 0 || (sweep.bothGaveUp > 0 && sweep.bothGaveUp > sweep.folded), qPrintable(measured.constLast()));
+            QVERIFY2(sweep.folded > 0, qPrintable(qsl("the sweep never reached a fold, so the case measured nothing: %1").arg(measured.constLast())));
+            QVERIFY2(sweep.folded <= pictureBar, qPrintable(measured.constLast()));
+            QVERIFY2(sweep.bothGaveUp > 0 && sweep.bothGaveUp > sweep.folded, qPrintable(measured.constLast()));
         }
         qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("\n  ")));
         setPreference(scmDefaultPreference);

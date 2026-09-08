@@ -174,22 +174,15 @@ private slots:
         QVERIFY2(mpEditor->pos() == mSeededPos, qPrintable(qsl("The editor was stored at %1 but opened at %2 - showing it moved it").arg(describe(mSeededPos), describe(mpEditor->pos()))));
     }
 
-    // The move stands in for a drag: moveEvent() cannot tell the two apart, and
-    // it is what marks the placement as the user's own
-    void test_draggingTheEditorSticks()
-    {
-        mpEditor->move(mDraggedPos);
-        QCoreApplication::processEvents();
-        report("after move");
-
-        QVERIFY2(mpEditor->pos() == mDraggedPos, qPrintable(qsl("Asked the editor to move to %1, it went to %2").arg(describe(mDraggedPos), describe(mpEditor->pos()))));
-    }
-
     // The reported symptom: toggle the editor away and back, and it is centred
     // again. The size always survived this, which is why it is asserted too -
     // the two have to behave the same way
     void test_hidingAndShowingKeepsThePlacement()
     {
+        // The move stands in for a drag: moveEvent() cannot tell the two apart,
+        // and it is what marks the placement as the user's own
+        mpEditor->move(mDraggedPos);
+        QCoreApplication::processEvents();
         const QSize sizeBefore = mpEditor->size();
 
         mpEditor->hide();
@@ -207,6 +200,8 @@ private slots:
     // editor is hidden when it runs
     void test_theTriggerSlotKeepsThePlacementToo()
     {
+        mpEditor->move(mDraggedPos);
+        QCoreApplication::processEvents();
         mpEditor->hide();
         QCoreApplication::processEvents();
         mudlet::self()->slot_showTriggerDialog();

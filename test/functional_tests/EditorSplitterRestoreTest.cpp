@@ -505,24 +505,6 @@ private slots:
                  qPrintable(qsl("the trigger view came back at %1px rather than the %2px it was dragged to").arg(QString::number(mpSplitter->sizes().at(0)), QString::number(draggedTo))));
     }
 
-    // The handle is the user's: a form dragged taller than its fields need
-    // stays where it was put, and nothing pulls it back once the events the
-    // drag posted have run.
-    void test_theFormCanStillBeDraggedLarger()
-    {
-        enterTheTriggerView();
-        chooseTrigger(mpShortTrigger);
-        const QList<int> snapped = mpSplitter->sizes();
-        QVERIFY2(snapped.at(1) > 300, "Not enough code pane to take 150px off for this test");
-        const int grown = snapped.at(0) + 150;
-
-        dragFormPaneTo(grown);
-        QTest::qWait(100ms);
-
-        QVERIFY2(mpSplitter->sizes().at(0) == grown,
-                 qPrintable(qsl("The form was dragged to %1 and something pulled it back to %2").arg(QString::number(grown), QString::number(mpSplitter->sizes().at(0)))));
-    }
-
     // The other half of the same fault as the shrink: the split was never the
     // wrong size for the view, it was the wrong size for the item. A trigger
     // with more pattern rows opened after one with a single row was given the

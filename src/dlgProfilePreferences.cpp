@@ -4964,9 +4964,12 @@ void dlgProfilePreferences::slot_resetColors()
     if (!pHost) {
         return;
     }
+    // theme-fixed: the console's own default palette down to the blank line
+    // below - the colours the game's text is drawn in, rather than the window's
+    // chrome
     pHost->mCommandLineFgColor = Qt::darkGray;
     pHost->mCommandLineBgColor = Qt::black;
-    pHost->mCommandFgColor = QColor(113, 113, 0); // theme-fixed: the console's own default palette, which is the game's text rather than the window's chrome
+    pHost->mCommandFgColor = QColor(113, 113, 0);
     pHost->mCommandBgColor = Qt::black;
     pHost->mFgColor = Qt::lightGray;
     pHost->mBgColor = Qt::black;

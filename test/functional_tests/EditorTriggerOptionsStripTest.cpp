@@ -845,9 +845,15 @@ private slots:
                                           form()->pushButtonBgColor->text(),
                                           form()->pushButtonFgColor->accessibleDescription(),
                                           form()->pushButtonBgColor->accessibleDescription());
-        QVERIFY2(!form()->pushButtonFgColor->text().isEmpty(), "the foreground well with no colour of its own says nothing at all");
-        QVERIFY2(!form()->pushButtonBgColor->text().isEmpty(), "the background well with no colour of its own says nothing at all");
-        QVERIFY2(!form()->pushButtonFgColor->accessibleDescription().isEmpty(), "the foreground well tells a screen reader nothing about what it holds");
+        // The words themselves, not merely that there are some: a well left
+        // saying the last colour it held, or described by its own name, reads
+        // as something it is not
+        const QString keep = QCoreApplication::translate("dlgTriggerEditor", "keep");
+        const QString keepsTheGamesColour = QCoreApplication::translate("dlgTriggerEditor", "keeps the game's colour");
+        QCOMPARE(form()->pushButtonFgColor->text(), keep);
+        QCOMPARE(form()->pushButtonBgColor->text(), keep);
+        QCOMPARE(form()->pushButtonFgColor->accessibleDescription(), keepsTheGamesColour);
+        QCOMPARE(form()->pushButtonBgColor->accessibleDescription(), keepsTheGamesColour);
     }
 
     // (j) The two segments meet on one hairline, and it belongs to whichever of

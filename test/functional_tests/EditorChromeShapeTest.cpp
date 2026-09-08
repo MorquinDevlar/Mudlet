@@ -431,8 +431,11 @@ private slots:
                 const QColor measured = shot.pixelColor(pToolBar->mapTo(mpEditor, QPoint(x, y)));
                 // How far the pixel is from the bar towards the tone the grip
                 // is inked in: a dot two pixels across is drawn with antialiased
-                // edges, so even its strongest pixel is short of the full ink
-                const qreal towardsTheInk = static_cast<qreal>(tokens.page.green() - measured.green()) / std::max(1, tokens.page.green() - tokens.mutedText.green());
+                // edges, so even its strongest pixel is short of the full ink.
+                // Read as a distance rather than as a drop, since on a dark page
+                // the quiet tone is lighter than the bar and a subtraction the
+                // one way round clamps to nothing.
+                const qreal towardsTheInk = static_cast<qreal>(qAbs(measured.green() - tokens.page.green())) / std::max(1, qAbs(tokens.mutedText.green() - tokens.page.green()));
                 if (towardsTheInk < 0.1) {
                     continue;
                 }
@@ -514,14 +517,17 @@ private slots:
 
         // How far the strongest pixel of the glyph is from the card it is drawn
         // on towards the words on that card: a stroke a pixel and a half wide is
-        // antialiased, so its own tone is read as a fraction rather than matched
+        // antialiased, so its own tone is read as a fraction rather than
+        // matched. A distance rather than a drop, since on a dark page the words
+        // are lighter than the card and a subtraction the one way round clamps
+        // to nothing.
         const auto strongestInk = [&]() {
             const QImage shot = windowShot();
             qreal strongest = 0.0;
             for (int x = 0; x < pClear->width(); ++x) {
                 for (int y = 0; y < pClear->height(); ++y) {
                     const QColor measured = shot.pixelColor(pClear->mapTo(mpEditor, QPoint(x, y)));
-                    strongest = std::max(strongest, static_cast<qreal>(tokens.card.green() - measured.green()) / std::max(1, tokens.card.green() - tokens.text.green()));
+                    strongest = std::max(strongest, static_cast<qreal>(qAbs(measured.green() - tokens.card.green())) / std::max(1, qAbs(tokens.text.green() - tokens.card.green())));
                 }
             }
             return strongest;

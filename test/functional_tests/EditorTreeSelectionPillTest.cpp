@@ -104,6 +104,10 @@ private:
     // the arc.
     static constexpr int scmClearOfTheCorners = 12;
 
+    // What a channel read off a shot may be out by against the colour the
+    // design mixes: the fill is composited and then rounded to eight bits
+    static constexpr int scmChannelSlack = 2;
+
     void deleteProfileDirectory(const QString& profileName)
     {
         QDir dir(mudlet::getMudletPath(enums::profileHomePath, profileName));
@@ -265,8 +269,7 @@ private slots:
             }
         }
         QVERIFY2(uneven.isEmpty(),
-                 qPrintable(qsl("the chosen row is not one tone from end to end: it is %1 at the arrow column and %2 elsewhere")
-                                    .arg(arrowColumn.name(), uneven.mid(0, 12).join(qsl(", ")))));
+                 qPrintable(qsl("the chosen row is not one tone from end to end: it is %1 at the arrow column and %2 elsewhere").arg(arrowColumn.name(), uneven.mid(0, 12).join(qsl(", ")))));
     }
 
     // ...and it is a pill: the four extreme corners of the band are cut away to
@@ -299,8 +302,8 @@ private slots:
         for (const auto& corner : corners) {
             measured << qsl("%1 %2").arg(corner.first, corner.second.name());
         }
-        qInfo().noquote() << qsl("corners of the chosen row: %1; its fill is %2, the middle of its top edge %3, the pane %4")
-                                     .arg(measured.join(qsl(", ")), fill.name(), topMiddle.name(), tokens.pane.name());
+        qInfo().noquote()
+                << qsl("corners of the chosen row: %1; its fill is %2, the middle of its top edge %3, the pane %4").arg(measured.join(qsl(", ")), fill.name(), topMiddle.name(), tokens.pane.name());
 
         QVERIFY2(topMiddle.rgb() != tokens.pane.rgb(),
                  qPrintable(qsl("the chosen row does not reach the top of its band, so the corners below say nothing: the middle of that edge is %1").arg(describe(topMiddle, tokens))));
@@ -493,36 +496,25 @@ private slots:
     }
 
     // The tone itself is mixed from the two colours the window is drawn out of,
-    // rather than being whatever the platform fills a selected row with. Checked
-    // without naming how much of the accent goes in: every channel has to be the
-    // same fraction of the way from the pane to the accent.
+    // rather than being whatever the platform fills a selected row with - and at
+    // the weight the design names it at. Read against what uiDesign mixes rather
+    // than against a fraction taken off the pixel, which would hold at any
+    // weight and so say nothing about the one that shipped.
     void test_theToneIsTheAccentMixedIntoThePane()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QRect band = rowBand(mpInnerGroup);
         const QColor measured = windowShot().pixelColor(inViewport(QPoint(band.center().x(), band.top() + 1)));
+        const QColor wanted = uiDesign::blend(tokens.pane, tokens.accent, uiDesign::scmAccentWashStrength);
 
-        const int channels[3][3] = {{tokens.pane.red(), tokens.accent.red(), measured.red()},
-                                    {tokens.pane.green(), tokens.accent.green(), measured.green()},
-                                    {tokens.pane.blue(), tokens.accent.blue(), measured.blue()}};
-        // The channel the two colours are furthest apart in is the one the
-        // fraction can be read off with any accuracy
-        int widest = 0;
-        for (int channel = 1; channel < 3; ++channel) {
-            if (std::abs(channels[channel][1] - channels[channel][0]) > std::abs(channels[widest][1] - channels[widest][0])) {
-                widest = channel;
-            }
-        }
-        const int spread = channels[widest][1] - channels[widest][0];
-        QVERIFY2(std::abs(spread) > 16, "the pane and the accent are too close together on this theme to read a mixture of them");
-        const qreal fraction = static_cast<qreal>(channels[widest][2] - channels[widest][0]) / spread;
-        QVERIFY2(fraction > 0.05 && fraction < 0.95, qPrintable(qsl("the chosen row is painted %1, which is not a mixture of the pane and the accent at all").arg(describe(measured, tokens))));
+        qInfo().noquote() << qsl("  the chosen row is painted %1 against the %2 the design mixes at %3 of the way from the pane to the accent")
+                                     .arg(describe(measured, tokens), wanted.name(), QString::number(uiDesign::scmAccentWashStrength, 'f', 2));
 
+        const int channels[3][2] = {{measured.red(), wanted.red()}, {measured.green(), wanted.green()}, {measured.blue(), wanted.blue()}};
         for (const auto& channel : channels) {
-            const int wanted = qRound(channel[0] + fraction * (channel[1] - channel[0]));
-            QVERIFY2(std::abs(channel[2] - wanted) <= 2,
-                     qPrintable(qsl("the chosen row is painted %1, which is not the accent mixed into the pane - at %2 of the way it would be %3")
-                                        .arg(describe(measured, tokens), QString::number(fraction, 'f', 2), QString::number(wanted))));
+            QVERIFY2(std::abs(channel[0] - channel[1]) <= scmChannelSlack,
+                     qPrintable(qsl("the chosen row is painted %1, which is not the pane with %2 of the accent mixed into it - that is %3")
+                                        .arg(describe(measured, tokens), QString::number(uiDesign::scmAccentWashStrength, 'f', 2), wanted.name())));
         }
     }
 };
