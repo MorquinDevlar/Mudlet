@@ -130,6 +130,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorCodeHeadingTest.cpp
     EditorColumnAlignmentTest.cpp
     EditorColumnFontTest.cpp
+    EditorDefaultSizeTest.cpp
     EditorEventChipRowTest.cpp
     EditorFormShellTest.cpp
     EditorGeometryWriteGuardTest.cpp
@@ -217,6 +218,7 @@ set(SETTINGS_GROUP_TEST_SOURCES
     SettingsLiveSyncTest.cpp
     SettingsSearchTest.cpp
     SettingsShellNavigationTest.cpp
+    SettingsSidebarToggleTest.cpp
 )
 
 # Teardown: who owns a profile's dialogs and windows, and what becomes of them when it closes

@@ -17,7 +17,7 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "EditorSidebarToggle.h"
+#include "SidebarToggle.h"
 
 #include "uiDesign.h"
 
@@ -41,7 +41,7 @@ constexpr qreal scmChevronPenWidth = 1.5;
 constexpr qreal scmHoverWeight = 0.07;
 } // namespace
 
-EditorSidebarToggle::EditorSidebarToggle(QWidget* pSeam, QWidget* pParent)
+SidebarToggle::SidebarToggle(QWidget* pSeam, QWidget* pParent)
 : QAbstractButton(pParent)
 , mpSeam(pSeam)
 {
@@ -57,7 +57,7 @@ EditorSidebarToggle::EditorSidebarToggle(QWidget* pSeam, QWidget* pParent)
     reposition();
 }
 
-void EditorSidebarToggle::setPointingLeft(const bool pointingLeft)
+void SidebarToggle::setPointingLeft(const bool pointingLeft)
 {
     if (mPointingLeft == pointingLeft) {
         return;
@@ -66,7 +66,7 @@ void EditorSidebarToggle::setPointingLeft(const bool pointingLeft)
     update();
 }
 
-void EditorSidebarToggle::reposition()
+void SidebarToggle::reposition()
 {
     QWidget* pParent = parentWidget();
     if (!mpSeam || !pParent) {
@@ -83,7 +83,7 @@ void EditorSidebarToggle::reposition()
     raise();
 }
 
-bool EditorSidebarToggle::eventFilter(QObject* pWatched, QEvent* pEvent)
+bool SidebarToggle::eventFilter(QObject* pWatched, QEvent* pEvent)
 {
     switch (pEvent->type()) {
     case QEvent::Resize:
@@ -97,19 +97,19 @@ bool EditorSidebarToggle::eventFilter(QObject* pWatched, QEvent* pEvent)
     return QAbstractButton::eventFilter(pWatched, pEvent);
 }
 
-void EditorSidebarToggle::enterEvent(TEnterEvent* event)
+void SidebarToggle::enterEvent(TEnterEvent* event)
 {
     QAbstractButton::enterEvent(event);
     update();
 }
 
-void EditorSidebarToggle::leaveEvent(QEvent* event)
+void SidebarToggle::leaveEvent(QEvent* event)
 {
     QAbstractButton::leaveEvent(event);
     update();
 }
 
-void EditorSidebarToggle::paintEvent(QPaintEvent*)
+void SidebarToggle::paintEvent(QPaintEvent*)
 {
     const ThemeTokens tokens = themeTokens();
     const bool lit = isEnabled() && (underMouse() || isDown());

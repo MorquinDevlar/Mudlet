@@ -10,6 +10,13 @@ The helpers live in `src/uiDesign.h` (namespace `uiDesign`), implemented in
 `src/SidebarItemDelegate.h`. Consume them - do not copy them out into a new
 file.
 
+This document is the reasoning. The working reference - the rules in one list,
+the recipe index, which windows have adopted the design and which have not, and
+the checklist for bringing one in - is the `design-language` skill in
+`.agents/skills/design-language/SKILL.md`, which every coding assistant reads
+before touching a window. Keep the two in step: a new recipe or a newly adopted
+window goes into both.
+
 ## 1. Principles
 
 ### Colour comes from the palette, at runtime
@@ -45,7 +52,7 @@ whole of what says how deep the thing it draws sits. Pick by what the widget
 | Token | Recipe | Use it for |
 | --- | --- | --- |
 | `page` | `QPalette::Window` | The window itself and every piece of it: toolbar, status bar, sidebar pane, the column an item is edited in, scroll areas |
-| `card` | `page` lifted towards white (6% on dark, 55% on light) | A panel raised off the page: the options cards, popup and menu surfaces |
+| `card` | `page` lifted towards white (6% on dark, 55% on light) | A panel raised off the page: the options cards, menu surfaces |
 | `field` | `QPalette::Base`, lifted 30% towards `page` on dark | Anything the user types into or picks a value in: line edits, combo boxes, spin boxes, the search field, a check indicator's fill |
 
 The order is fixed - `field` is sunk into `card`, `card` is lifted off `page` -
@@ -173,6 +180,29 @@ surface, a 1px border, `scmRadiusInput`, an accent frame on focus. Framing a
 platform draws inside it, so the sheet claims those two only once it has tinted
 arrow PNGs cached to point at, and otherwise leaves them the platform's frame.
 
+The list a combo box drops down is the field opened up: the same surface, the
+same hairline and the same `scmRadiusInput` corner as the box it came out of,
+with the accent under the chosen row. It was the card once, and on a card -
+which is where every settings combo box sits - that opened a list in the card's
+own grey, lifted off nothing. The frame the platform draws round that list is a
+`QFrame` of its own, named away by the same rule, since its bevel is the one
+part of a field nothing else reaches. On macOS the light appearance drops a
+menu-style list instead, which the platform draws; the rule is there for the
+list, wherever a style shows one.
+
+That frame is also a window, and a window is filled before what is in it is
+drawn - so a radius on the list alone leaves the window's own square corners
+showing through in the fill, and the arc has to be cut out of the window as
+well. `letPopupsTakeTheFieldsCorner(container)` is what cuts it: the window is
+asked to be see-through and the frame's brushes are named as nothing, which the
+sheet cannot say for itself, since a stylesheet gives a `QFrame` subclass no
+styled background and its rule for the container reaches only that widget's
+palette. Both have to be said before the popup's first show - a platform makes
+the window's surface then and never again - so it runs from the shell's style
+pass and again wherever a window builds a combo box after that pass, the way
+`keepClickFocusOffControls()` does. The list's own 2px padding is what keeps its
+square viewport inside the arc, so nothing else needs clipping.
+
 Those chevrons are the one part of a field that is pressed rather than typed
 into, so they say so: a stepper's or a drop-down's chevron takes the accent
 under the pointer and holds it while the button is down, and the stepper's own
@@ -185,6 +215,95 @@ Scope it, never set it on a window: the editor sets it on each of its seven
 forms, the settings dialog passes `#settingsStack` so the rules stop at the
 pages. Unscoped it would take the search field, the sidebar's editors and every
 tree's inline editor with it.
+
+### One mark for every choice
+
+`choiceStyleSheet(tokens, selectorPrefix)` draws the three controls a choice is
+made on as one mark: a check box's box, a radio button's circle and the box a
+checkable card's title begins with. `scmChoiceIndicatorSize` across, the `field`
+surface inside, a 1px outline mixed from `card` towards `text`, and the corner
+that says which it is - `scmChoiceBoxRadius` for a box, half its own size for a
+circle. The hairline takes the accent under the pointer, on focus and once the
+choice is made; `accentSoft` washes the box while it is held down; an
+unavailable one drops to the same quiet border and let-down fill a disabled
+field takes. It also names the gap between the mark and the words, which a style
+would otherwise measure off the indicator it was going to draw itself - and so
+left touching on one platform and well apart on the next - and it names the
+control's own frame, as none. That last is not decoration: a rule that leaves
+the frame to the platform leaves the *layout rectangle* to it too, and the
+macOS style trims eleven pixels off a check box's for the bezel it would have
+drawn, so a `FlowLayout` placed the next control's words over the last letters
+of this one. `EditorTriggerOptionsStripTest` measures the strip's check box
+against its own hint for that reason.
+
+Three states, three pictures, all tinted through `readableOn(field, accent,
+text, scmQuietMinimumRatio)`: the Lucide `check` when it is on, a filled dot for
+a chosen radio button, and the Lucide `minus` for `Qt::PartiallyChecked`. That
+dash is the point of the sheet as much as the rest: a platform paints a
+part-checked box as a filled grey square, which reads as a third kind of
+control rather than as a box holding both answers at once. Each picture is
+written into the glyph cache the way the field arrows are, and a state whose
+file could not be written leaves its rule out rather than pointing at nothing.
+
+`cardIndicatorStyleSheet(cardProperty, tokens)` draws the card's own indicator
+from that same body, so turning a whole card on reads as the same act as turning
+one option on. It keeps a function of its own only because
+`measuredCardTitleHeight()` has to lay a box out under those rules alone, before
+the rest of the window's sheet exists.
+
+Scope it the way the inputs are scoped: the editor sets it on each form, the
+settings dialog passes `#settingsStack`. Two things follow from the prefix. A
+scoped rule carries an ID, so it outranks any rule of the window's own that
+names only a type or a property - `settingsChevronRow` and the search-match
+highlight both carry `#settingsStack` for that reason. And unscoped, a rule
+naming a type ties with one naming a property once both add a state, which is
+settled by which was written last: the editor's segmented control gives its
+indicator no size at all, so the shared rules go first in that form's sheet and
+the segment's own follow.
+
+The accent on `:focus` is the keyboard's. A click does not focus a mark in
+either window, so turning an option on and off again leaves nothing behind;
+tabbing onto it does, and that is what the ring is for.
+`keepClickFocusOffControls(container)` says so outright - on the container the
+sheet was set on, after setting it - because otherwise the answer is the base
+style's rather than the design's. `QAbstractButton` reads
+`SH_Button_FocusPolicy` once, in its constructor, and keeps what that style
+answered, and the base style under the app is replaced on every appearance
+change: Fusion by way of `DarkTheme` for the dark one, the platform's own for
+the light. Both answer `Qt::StrongFocus` on macOS with Qt 6.11, which is what
+left the accent sitting on a mark after a click; a platform whose style answered
+`Qt::TabFocus` would have made the same code look correct. The helper reaches
+check boxes, radio buttons, push buttons and checkable cards, and leaves a
+control that asks for `Qt::NoFocus` where it is. `makeChevronRow()` calls it on
+the row it is given, since a search result's row is built long after the sheet
+naming its accent was set.
+
+### Buttons
+
+`buttonStyleSheet(tokens, selectorPrefix)` draws the ordinary push button: the
+field's corner and content height on a face lifted off the card rather than sunk
+into it, since a button is pressed where a field is typed into. Accent hairline
+on hover and focus, `hoverSoft` then `accentSoft` behind it, and an unavailable
+one written in `disabledText` on nothing at all. A button carrying a menu says so
+with the same chevron a combo box drops its list under, cached by
+`themedArrowFile()` and only claimed once that file exists; no selector can ask
+whether a button has a menu, so the room the words are held clear by is what
+that rule's own width reserves through `PM_MenuButtonIndicator`. Its accent on
+focus is the keyboard's too, and `keepClickFocusOffControls()` is what keeps a
+click from leaving it behind - see the paragraph closing the section above.
+
+Three kinds of button are left out on purpose:
+
+- **Colour wells** (`generateButtonStyleSheet()`, `mTEXT_ON_BG_STYLESHEET`)
+  carry a value rather than a surface, and set their own per-widget sheet, which
+  wins per property. It names `min-height: 0px` outright: left unsaid, the
+  shared rule would answer it and a well that grew to a field's height stopped
+  sharing its row's centre.
+- **Chevron rows** (`settingsChevronRow`) lead somewhere rather than setting
+  something, and restate every property the shared rule would otherwise leave on
+  them - the content height included.
+- **The editor's placeholders** (`uiDesign::PlaceholderButton`) are tool buttons
+  painting their own dashed frame, so no `QPushButton` rule reaches them.
 
 ### One sidebar for both windows
 
@@ -201,15 +320,47 @@ with more to do at that moment can skip it too: the settings dialog hides its
 wordmark and offers the hidden names as tooltips, the editor's rows already
 carry a tooltip naming their shortcut.
 
-`SidebarMetrics` carries the measurements the two windows differ by - the two
-widths, the padding at each, the vertical padding and the divider inset - and
-the `itemColor` parameter beside it carries the only other difference, the
-colour an unchosen name is written in: muted in the editor where all the chrome
-is, full strength in the settings dialog where the sidebar is the navigation.
-The accent bar is a gradient stop rather than a `border-left`, which would be
-drawn as an arc where the pill's corner radius is and pinched to nothing at both
-ends; a stop is a *fraction* of the item, which is why those widths have to be
-known numbers.
+Most of the measurements are the component's rather than a window's, and live
+beside the recipe in `src/uiDesign.h`: `scmSidebarRailWidth` (46),
+`scmSidebarPadding` (12), `scmSidebarRailPadding` (6),
+`scmSidebarSeparatorInset` (12), `scmSidebarRowHeight` (36),
+`scmSidebarIconSize` (18) and `scmSidebarRowChrome` (40) - what a row costs
+beside its name at that glyph. `SidebarMetrics` then carries what a window has a
+reason of its own for: the expanded width, which each measures for itself, and
+the vertical padding, which is the inset that window's own columns start at (12
+in the editor, `scmEditorColumnTopInset`; 16 in the settings dialog, whose
+sidebar leads with the wordmark row). The `itemColor` parameter beside it
+carries the only other difference, the colour an unchosen name is written in:
+muted in the editor where all the chrome is, full strength in the settings
+dialog where the sidebar is the navigation. The accent bar is a gradient stop
+rather than a `border-left`, which would be drawn as an arc where the pill's
+corner radius is and pinched to nothing at both ends; a stop is a *fraction* of
+the item, which is why those widths have to be known numbers.
+
+Both windows measure their expanded width off the widest name they hold, in the
+bold a chosen row is drawn in, plus `scmSidebarRowChrome` and the pane's padding
+- `editorSidebarWidths()` and `measuredSidebarWidth()` - clamped between the
+rail width and a ceiling of their own (180 in the editor, 232 in the settings
+dialog, which is the flat width that dialog used to be held to). An interface
+font or a translation's longer names move the answer, so both drop it on a
+language, style or font change and take it again.
+
+Both also carry the same control on the seam: `uiDesign::SidebarToggle`
+(`src/SidebarToggle.h`), a painted pill with a chevron pointing the way the
+sidebar will go, a child of the shell holding the sidebar and what is beside it
+rather than of either - either would clip the half of it that overlaps the
+other. It is where Finder and VS Code put the same control; a toolbar is no
+place for it, since the user can drag one to another edge of the window. What it
+is called is what will become of the *names*, never of the sidebar, which stays:
+"Minimise the sidebar to icons" and "Show the sidebar's labels", and on a window
+too narrow to draw the names it is disabled and says so.
+
+Its choice is kept per window: `editorSidebarLabelsShown` and
+`settingsSidebarLabelsShown`, both defaulting to true, so either window opens
+with its names showing until the user minimises them. Both are labels-shown
+preferences, since the sidebar has no closed state to remember. The space-driven collapse sits on top of that and writes nothing down:
+`collapsed = !(namesFit && labelsShown)`, so a stretch of work in a small window
+never decides what the next session opens with.
 
 A chosen row in the editor's item trees carries the same bar, at the same width
 - `scmAccentBarWidth` in `src/uiDesign.h`, so the two lists cannot come to
@@ -251,9 +402,11 @@ radius of its own.
 | `scmRadiusProminentInput` | 8px | A search field: the one control a panel is headed by rather than one of several filled in on it, and drawn taller than a form control, so it takes the corner of the panel it heads (`#settingsSearchField`, `#editorSearchRow QComboBox`) |
 
 Sizes not in the scale stay literal on purpose: the 6px of a hovered toolbar
-button or a navigation row, the 8px pill of a sidebar item, the 3px of a check
-indicator or a marker-pen highlight. Those are rows and glyphs, not the boxes
-this scale is about.
+button or a navigation row, the 8px pill of a sidebar item, the 3px of a
+marker-pen highlight. Those are rows and glyphs, not the boxes this scale is
+about - and a check indicator's own 3px is `scmChoiceBoxRadius`, named beside
+the mark it belongs to rather than on this scale, since a radio button takes
+half its own size there and comes out a circle.
 
 ### Font sizes are relative
 
@@ -316,8 +469,11 @@ is `sidebarWidths()` / `updateSidebarMode()` in
   collapsing cannot flip the condition that caused it.
 - The measurement is the per-window half. What is done with its answer is
   `uiDesign::setSidebarCollapsed()`, shared with `editorSidebarWidths()` /
-  `updateEditorSidebarMode()` in `src/dlgTriggerEditor.cpp`, which measures the
-  longest row name where the settings dialog knows its width outright.
+  `updateEditorSidebarMode()` in `src/dlgTriggerEditor.cpp`. Both windows
+  measure the same two things: the longest row name, which is what the sidebar
+  is drawn at with its names showing (`measuredSidebarWidth()` here,
+  `editorSidebarWidths()` there), and the page beside it, which is what the
+  breakpoint is.
 
 #### The editor's actions toolbar gives its names up, never its actions
 
@@ -483,7 +639,12 @@ never moves the Name field. Under it, each row leads with one word.
   item on the strip is held to `uiDesign::scmInputHeight`, because a
   `FlowLayout` puts each item at the top of the line it lands on: at one height
   each group's own `QHBoxLayout` centres what is inside it, and a check box
-  beside a spin box is read level with it rather than a few pixels above.
+  beside a spin box is read level with it rather than a few pixels above. The
+  two number boxes are as wide as their largest value and no wider -
+  `fitEditorOptionsSpinBoxes()` measures the widest digit repeated as many times
+  as 999 has digits in the box's own font and adds the field's padding, its
+  hairline and the stepper column, which is 55px here against the 72px they were
+  named at.
 - **Two segments rather than two radios.** The matching mode is
   `mpRadioButton_matchAny` and `mpRadioButton_matchAll` still, so a screen
   reader says "radio button, 1 of 2, selected", but they carry `editorSegment`
@@ -593,6 +754,12 @@ list and stylesheet editor do use the room. `EditorNoticeSeamTest` holds all of
 this, along with the pattern list resizing the pane when a row is added or
 deleted.
 
+The widget styles itself from the tokens in its own `slot_applyAppearance()` on
+every appearance change and the editor writes no sheet onto it: two sheets on
+one frame show whichever landed last, and the legacy one - a 3px border in the
+window's text colour - is what came back over the accent hairline every time the
+appearance changed.
+
 ## 2. Icons
 
 - Monochrome line icons from [Lucide](https://lucide.dev), ISC licence,
@@ -650,9 +817,25 @@ channel carries, and the old full-colour `dialog-*.png` bitmaps have a solid
 alpha, so the information notice came out as a plain disc. The cross on a chip,
 beside a key's binding and on the sound field is `editor-clear.svg` (x); the
 plus on "Add event" is `editor-add.svg`; the variables tree's type marks and its
-hidden mark are listed under "One mark, one size" below. A new glyph is Lucide's
-own SVG file, copied in under the name this window knows it by - nothing is
-rendered ahead of time.
+hidden mark are listed under "One mark, one size" below. The two a choice
+indicator shows are `control-check.svg` (check) and `control-minus.svg` (minus),
+named for the control rather than for a window because both windows draw them.
+A new glyph is Lucide's own SVG file, copied in under the name this window knows
+it by - nothing is rendered ahead of time.
+
+A stylesheet cannot recolour a picture on the way in, so a rule that needs one
+points at a PNG written into the glyph cache: `themedArrowFile()` for the field
+chevrons and a menu button's, `themedGlyphFile()` for a choice's tick and dash,
+`dotGlyphFile()` for a chosen radio button, `gripGlyphFile()` for the grid of
+dots a draggable thing is gripped by. Each writes a 1x file and, on a screen
+that doubles its pixels, an `@2x` twin beside it, and each puts the ink in the
+file's name so that a theme change writes a new file rather than changing one a
+stylesheet has already read and cached by path. The two that fill a control's
+indicator draw the mark inside a transparent square the size of that indicator
+rather than on its own: a sub-control scales the picture it is given down to its
+contents and never up, so a mark carrying its own margin comes out at the
+fraction of the box it was drawn at whichever of the two files the platform
+picked.
 
 ### One mark, one size, on every row of an editor tree
 
@@ -708,6 +891,7 @@ handles; keep them stable.
 | `settingsSidebar` | The category column |
 | `settingsCategoryList` | The `QListWidget` of categories |
 | `settingsSidebarSeparator` | Divider row inside the category list |
+| `settingsSidebarToggle` | The chevron on the seam, which gives the names up and brings them back |
 | `settingsWordmark` | "Settings" title at the top of the sidebar |
 | `settingsContent` | The right-hand pane |
 | `settingsPageTitle`, `settingsPageTitleIcon` | Title row over a page |
@@ -853,6 +1037,13 @@ Available as a pattern; the editor keeps its explicit save for now.
 - `guardScrollWheel()` plus the `eventFilter()` wheel branch stop a wheel passing
   over a spin box or combo box from silently changing a setting: unfocused
   controls ignore the wheel and do not take focus from it.
+- An appearance change restyles the shell off what that shell was last styled
+  for (`mShellStyledForDarkPage`, written by `applyShellStyle()` from the tokens
+  it mixed the sheet from) rather than off a before/after reading of
+  `inDarkMode()` around the dialog's own `mudlet::setAppearance()` call - so a
+  change arriving through `mudlet::signal_appearanceChanged`, which is emitted
+  after the mode has already moved, restyles a second profile's settings dialog
+  too instead of leaving it in the previous theme.
 
 ## 6. Testing
 
@@ -896,7 +1087,7 @@ answered.
 
 ### Guards
 
-Three tests hold the line the rest of this document describes. Text that cannot
+A handful of tests hold the line the rest of this document describes. Text that cannot
 be read in one of the two appearances, or that is written in a tone the design
 does not use there, now fails a run rather than waiting for somebody to switch
 theme and notice.
@@ -908,20 +1099,28 @@ taken from `themeTokens()`. It links nothing - the `src/` path arrives through
 compile and a tenth of a second.
 
 Per line, in C++ it flags a hex colour inside a string literal (a raw string
-literal included), `QColor(Qt::name)`, a `Qt::` colour name reaching
+literal included), an `rgb(` or `rgba(` with its channels written out in one,
+`QColor(Qt::name)`, a `Qt::` colour name reaching
 `QColor`/`QBrush`/`QPen`/`setColor`/`setForeground`/`setBackground`,
 `QColor("...")`, `QColor::fromRgb(...)` or `QColor(r, g, b)` with written
-numbers, `QColorConstants::` anything but `Transparent`, and a CSS colour
-keyword inside a string that also says `color:` or `background`. In a `.ui`
-file it flags a `<color>` element and a `styleSheet` property containing any of
-those.
+numbers, `QColorConstants::` anything but `Transparent`, a CSS colour
+keyword inside a string that also says `color:` or `background`, and a literal
+that is a CSS colour keyword and nothing else - which is how a colour reaches a
+sheet through `.arg()`, with the declaration it lands in written somewhere
+else. In a `.ui` file it flags a `<color>` element and a `styleSheet` property
+containing any of those.
 
-Three things are deliberately not flagged. `QColor::fromHslF` and `fromHsvF`
+Five things are deliberately not flagged. `QColor::fromHslF` and `fromHsvF`
 build the semantic state hues, whose lightness already comes off the page.
 `Qt::transparent` is never a theme colour. `Qt::white` and `Qt::black` are the
 ends of the lightness axis rather than colours, so they pass inside a `blend()`
 call or a `fill()` - by context, not globally, so `Qt::white` as an ink is still
-caught.
+caught. A format template such as `"rgba(%1, %2, %3, %4)"`, which is what
+`uiDesign::rgba()` fills in, has no digit after the parenthesis and so is not a
+written colour. And a colour keyword that is the whole of a *translated*
+literal - `tr("Black")` naming one of the console's ANSI colours - is a word a
+person reads rather than a value on its way into a sheet; a declaration written
+inside a `tr()` string is still caught.
 
 **`// theme-fixed: <why>`** exempts a line, and the reason travels with the
 code rather than living in a list inside the test - in a `.ui` file inside an
@@ -976,6 +1175,17 @@ for its chrome - see "One ink for the editor's chrome" above for what it walks,
 what it leaves out and why, and the painted probe it ends with. The audit asks
 whether a word can be read; this asks whether it is the right grey, which a
 readable-but-wrong tone would otherwise pass.
+
+**The marks and the buttons** are measured off pixels rather than off palettes,
+since neither carries a word: `SettingsShellNavigationTest` reads a page's check
+box and radio button in both appearances - the outline against the card behind
+it at `scmQuietMinimumRatio`, and the pixels inside the box on an empty, a
+checked and a `Qt::PartiallyChecked` one - and a page's push button for a
+hairline within a few levels of `border`. `EditorTriggerOptionsStripTest` reads
+the strip's check box the same way, so the two windows are held to the same
+mark. Both grab the *window* rather than the control: a control that paints no
+background of its own is grabbed against its own palette, and the card or column
+that actually shows through beside the mark is only in a grab that holds it too.
 
 **Adding a surface to the design language means adding it to both**: its files
 to `scannedFiles()` in the scan, and its window to the walk in the audit.

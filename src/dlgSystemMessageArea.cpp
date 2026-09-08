@@ -23,8 +23,16 @@
 #include "dlgSystemMessageArea.h"
 
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include <QResizeEvent>
+
+// What the notice leaves round the line or two of words in it, and what stands
+// between the picture, those words and the cross that dismisses them. The .ui
+// file's 3px was the margin of a box drawn round 64px pictures.
+static constexpr int scmNoticePaddingHorizontal = 10;
+static constexpr int scmNoticePaddingVertical = 8;
+static constexpr int scmNoticeSpacing = 8;
 
 
 dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
@@ -45,6 +53,15 @@ dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
     holdPixmap = notificationAreaIconLabelInformation->pixmap(Qt::ReturnByValue);
     holdPixmap.setDevicePixelRatio(5.3);
     notificationAreaIconLabelInformation->setPixmap(holdPixmap);
+
+    if (QLayout* pNoticeLayout = frame_notificationArea->layout()) {
+        pNoticeLayout->setContentsMargins(scmNoticePaddingHorizontal, scmNoticePaddingVertical, scmNoticePaddingHorizontal, scmNoticePaddingVertical);
+        pNoticeLayout->setSpacing(scmNoticeSpacing);
+    }
+    // The .ui file puts the close button over a spacer tall enough for a 64px
+    // picture; what the notice holds now is a line or two of text, and the
+    // spacer only has to keep the button on the first of them
+    verticalSpacer_closeButton->changeSize(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
 
     slot_applyAppearance();
     connect(mudlet::self(), &mudlet::signal_appearanceChanged, this, &dlgSystemMessageArea::slot_applyAppearance);
@@ -86,20 +103,23 @@ void dlgSystemMessageArea::resizeEvent(QResizeEvent* pEvent)
     }
 }
 
+// The notice owns its own look. It used to carry two: this one and a second
+// written onto the same frame by the editor's shell style, and a widget with
+// two sheets shows whichever landed last - which on an appearance change was
+// this one, so the design's hairline came back as the old 3px near-black band.
 void dlgSystemMessageArea::slot_applyAppearance()
 {
-    const bool darkMode = mudlet::self()->inDarkMode();
-    const QString background = darkMode ? qsl("rgb(64, 60, 40)") : qsl("rgb(255, 254, 215)");
-    const QString textColor = darkMode ? qsl("rgb(230, 230, 230)") : qsl("black");
-    frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea {\n"
-                                              "  border: 3px solid;\n"
-                                              "  border-radius: 6px;\n"
-                                              "  background-color: %1;\n"
-                                              "}\n"
-                                              "\n"
-                                              "QLabel{\n"
-                                              "color: %2;\n"
-                                              "background-color: %1;\n"
-                                              "}")
-                                                  .arg(background, textColor));
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    // A notice rather than a strip of highlighter pen: the accent the rest of
+    // the editor points with, and the picture beside the words is what says
+    // which of the three readings this one is
+    frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: %4px; }"
+                                              "QFrame#frame_notificationArea QLabel { background: transparent; color: %3; }")
+                                                  .arg(tokens.accentSoft, tokens.accent.name(), tokens.mutedText.name(), QString::number(uiDesign::scmRadiusPanel)));
+    // The words of the notice are named on the label itself rather than left to
+    // the descendant rule above, which does not reach them: the area is hidden
+    // while the window round it is styled and is polished only when a notice
+    // brings it out, and that polish writes the application's own ink into the
+    // label's palette. A sheet the label carries survives it.
+    notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(tokens.mutedText.name()));
 }

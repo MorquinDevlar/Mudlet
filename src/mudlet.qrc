@@ -62,9 +62,14 @@
         <file>icons/chronometer.png</file>
         <file>icons/clessidra.jpg</file>
         <file>icons/cleftofdimensions.png</file>
+        <file>icons/control-check.svg</file>
+        <file>icons/control-minus.svg</file>
         <file>icons/dash-dot-dot-line.png</file>
         <file>icons/dash-dot-line.png</file>
         <file>icons/dash-line.png</file>
+        <file>icons/debug-clear.svg</file>
+        <file>icons/debug-pause.svg</file>
+        <file>icons/debug-resume.svg</file>
         <file>icons/dialog-cancel.png</file>
         <file>icons/dialog-close.png</file>
         <file>icons/dialog-error.png</file>

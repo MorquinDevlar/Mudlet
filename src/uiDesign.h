@@ -177,12 +177,41 @@ inline constexpr qreal scmStateHue_warning = 0.09;
 inline constexpr qreal scmStateHue_error = 0.02;
 QColor stateColor(const qreal hue, const bool darkPage);
 
+// How much of a state hue a surface is washed in when the reading is about the
+// surface rather than about a dot on it - a control the connection has warned
+// the reader about. The weight tokens.accentSoft is mixed at, so a called-out
+// control and the editor's notice are the same depth of tint, and light enough
+// that the words on it are still read against the surface underneath.
+inline constexpr qreal scmSoftWashStrength = 0.14;
+
 // A scroll bar is chrome the reader is not meant to notice until they reach for
 // it, and one window's idea of that is every window's. The prefix is what the
 // rules are scoped by - a scroll area's own bars answer only to a descendant
 // selector. The groove is the surface the bar is set into, which is the page
 // unless the caller names the one it is actually drawing over.
 QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens, const QColor& surface = QColor());
+
+// The measurements the two sidebars share, so that a rail in one window and a
+// rail in the other are the same object rather than two that happen to agree
+// today. Only what a window has a measured reason to differ by is left to it -
+// the expanded width it measures for itself, and the vertical padding, which is
+// the inset its own columns start at.
+//
+// What is left round the icons once the names are given up. Wide enough for the
+// glyph, its pill and the gutter the accent bar stands in, and no wider: it is a
+// rail, not a column.
+inline constexpr int scmSidebarRailWidth = 46;
+inline constexpr int scmSidebarPadding = 12;
+inline constexpr int scmSidebarRailPadding = 6;
+inline constexpr int scmSidebarSeparatorInset = 12;
+inline constexpr int scmSidebarRowHeight = 36;
+// The design language's glyph, which both sidebars draw their rows with. The
+// editor's icon size preference moves its own away from this, and takes the
+// difference out of the name's share of the row.
+inline constexpr int scmSidebarIconSize = 18;
+// What a row costs beside its name at that glyph: the pill's accent bar and
+// padding, the icon, and the gap the view leaves after it.
+inline constexpr int scmSidebarRowChrome = 40;
 
 // The measurements one window's sidebar differs from the other's by; the colour
 // an unchosen name is written in is the only other difference, and travels
@@ -191,9 +220,9 @@ QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& to
 // drawn out of them.
 struct SidebarMetrics
 {
-    // What the sidebar is drawn at with the names showing. The settings dialog
-    // knows this ahead of time; the editor measures its longest name for it,
-    // so it is a runtime number there.
+    // What the sidebar is drawn at with the names showing. Measured in both
+    // windows from the widest of their own row names, so it is a runtime number
+    // in each.
     int expandedWidth = 0;
     // ...and once the names are given up, leaving the icons
     int railWidth = 0;
@@ -260,6 +289,78 @@ inline constexpr int scmRadiusProminentInput = scmRadiusPanel;
 // selector as selectorPrefix and keeps the same sheet on the shell instead.
 QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
 
+// One mark for every choice: the box a check box is set in, the circle a radio
+// button is set in, and the box a checkable card's title begins with, drawn as
+// one control. The three carry the same fill, the same hairline and the same
+// accent once they are on, so a choice reads the same wherever it is made - and
+// a tri-state box shows a dash rather than the grey filled square a platform
+// draws it as, which reads as a different control entirely. Scoped the way
+// inputStyleSheet() is: the editor sets it on each form, the settings dialog
+// passes the selector of the stack its pages are in.
+//
+// The editor's segmented control gives its indicator no size at all, from rules
+// selecting on a property - which are more specific than the type selectors
+// here, so they go on winning.
+QString choiceStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
+
+// How big that mark is drawn, on all three of the controls that carry one. A
+// styled check indicator has no size of its own to fall back on. How far right
+// of the frame edge this leaves a checkable card's title is not a constant to go
+// with it: styles disagree on the room after an indicator, which is between the
+// box and the words rather than before both.
+inline constexpr int scmChoiceIndicatorSize = 13;
+// What is drawn inside it once the choice is made, with a little air left round
+// it - a tick, a dash, or the dot that says which of a set is chosen
+inline constexpr int scmChoiceGlyphSize = scmChoiceIndicatorSize - 4;
+inline constexpr int scmChoiceDotDiameter = 6;
+
+// The ordinary button of both windows: the same corner and the same height as a
+// field, on a face lifted off the card rather than sunk into it, because a
+// button is pressed rather than typed into. A button carrying a menu says so
+// with the chevron every other control drops something down under.
+//
+// What it deliberately does not reach: a colour well, which shows a value
+// rather than a surface and carries a sheet of its own; the editor's
+// placeholder buttons, which are tool buttons drawing their own dashed frame;
+// and a row that leads somewhere, which restates what it wants of this.
+QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
+
+// Focus from the keyboard alone, on every control the two recipes above draw:
+// the three that carry a mark, and the button. The accent a mark's hairline and
+// a button's frame take on focus is there to say where the keyboard is, not to
+// remember what was clicked last - and left to itself, which of the two it
+// reads as is not the design's to decide. QAbstractButton asks
+// QStyle::SH_Button_FocusPolicy once, in its constructor, and keeps whatever
+// that style answered; the base style under it is swapped every time the
+// appearance changes, Fusion by way of DarkTheme for the dark one and the
+// platform's own otherwise. Both answer Qt::StrongFocus here, so a click left
+// the accent sitting on the control until something else was clicked, and a
+// platform whose style answered Qt::TabFocus instead would have made the same
+// code look right. The shell says it rather than inheriting it. Call it on the
+// container the sheets were set on, after setting them; a control that wants no
+// focus at all keeps that, and re-running it costs nothing.
+void keepClickFocusOffControls(QWidget* pRoot);
+
+// The corner inputStyleSheet() gives a dropped-down list, made visible. That
+// list lives in a frame of its own which is a window rather than a widget on
+// the form, and a window is filled before anything in it is drawn - so a
+// rounded frame on the list alone leaves the window's square corners showing
+// through in the fill. Two things have to be said for the arc to open onto the
+// card or the page behind the popup: the window is asked to be see-through, and
+// the frame is left painting nothing. The sheet cannot say the second on its
+// own - a stylesheet gives a QFrame subclass no styled background, so its rule
+// for the container only reaches that widget's palette - so the brushes are
+// named here.
+//
+// The platform reads the attribute when it makes the window's surface, which
+// happens at the popup's first show and never again: setting it afterwards
+// leaves the list rounded over an opaque corner for the rest of the session. So
+// this runs with the shell's style pass, over every combo box under pRoot, and
+// again wherever a window builds a combo box after that pass - a trigger's
+// pattern rows are made as triggers are shown. Calling it twice on the same box
+// costs nothing.
+void letPopupsTakeTheFieldsCorner(QWidget* pRoot);
+
 // The height a field's contents are given, what is left round them, and what
 // the whole control therefore comes out at - which a form laying a field into a
 // row of its own has to leave room for. The horizontal padding is here as well
@@ -270,6 +371,11 @@ inline constexpr int scmInputPaddingVertical = 2;
 inline constexpr int scmInputPaddingHorizontal = 6;
 inline constexpr int scmInputBorderWidth = 1;
 inline constexpr int scmInputHeight = scmInputContentHeight + 2 * (scmInputPaddingVertical + scmInputBorderWidth);
+// ...and the column of arrows a spin box is stepped with, taken out of the
+// field's own width. Here rather than beside the drop-down's width in
+// uiDesign.cpp because a form sizing a number box to the number it holds has to
+// know what the steppers leave it.
+inline constexpr int scmInputStepperWidth = 16;
 
 // How far apart two colours are to read, on the scale WCAG measures it: 1 is a
 // colour on itself and 21 is black on white
@@ -489,6 +595,11 @@ QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens);
 // makes afterwards cannot rescue it, as that role also carries the card's title
 // band. A styled indicator gets no check mark of its own, so the checked state
 // has to be drawn out in full.
+//
+// The mark itself is choiceStyleSheet()'s, so that a card's title reads as the
+// same choice as the check boxes under it. It keeps a function of its own
+// because measuredCardTitleHeight() has to lay a box out under these rules
+// alone, before the rest of the window's sheet exists.
 QString cardIndicatorStyleSheet(const char* cardProperty, const ThemeTokens& tokens);
 
 // A card's title is the first line inside its frame, so the card has to leave

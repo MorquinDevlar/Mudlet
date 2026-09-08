@@ -51,12 +51,20 @@
  * - The count beside the "show hidden variables" switch belongs to the
  *   Variables view and leaves with it.
  *
+ * - The notice is drawn by one owner: a hairline of the accent round a wash of
+ *   it, in either appearance. It carried two sheets - its own and the editor's
+ *   shell style - and an appearance change left the older of them showing, a
+ *   3px band in the window's text colour over the wash.
+ *
  * Run with: ctest -R EditorNoticeSeamTest -V
  */
 
+#include <QColor>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSplitterHandle>
@@ -83,6 +91,7 @@
 #include "dlgTriggersMainArea.h"
 #include "dlgVarsMainArea.h"
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include "GroupedTest.h"
 
@@ -113,6 +122,20 @@ private:
     // The seam is placed by hand often enough to be a pixel or two off what was
     // asked for, and this holds a height against where it was put
     static constexpr int scmSeamTolerance = 1;
+
+    // How far into the notice its fill is read: past the hairline the design
+    // draws, and inside the three pixels the legacy sheet's band was deep
+    static constexpr int scmInsideTheBand = 2;
+    // ...and how far under the notice the column it is drawn on is read, which
+    // is inside the gap the column holds the form off it by
+    static constexpr int scmBelowTheNotice = 6;
+    // What the accent is washed over the page at - uiDesign's own accentSoft,
+    // which a stylesheet takes as an rgba() and a grab shows composited
+    static constexpr qreal scmAccentWashAlpha = 0.14;
+    // An ink read off a grab is held to nearness rather than to a match, summed
+    // over the three channels: a rounded corner's edge is drawn antialiased,
+    // and the two things being told apart here are hundreds apart
+    static constexpr int scmInkSlack = 40;
 
     // The window every case here runs in
     static constexpr int scmEditorWidth = 1200;
@@ -203,6 +226,42 @@ private:
     }
 
     bool patternListScrolls() const { return mpEditor->mpScrollArea->verticalScrollBar()->isVisible(); }
+
+    // The appearance is changed at the application, which is what both the
+    // editor's restyle and the notice's own answer to, and the window is
+    // painted afterwards: painting is what settles a widget's palette against
+    // the application's, and under the offscreen platform nothing paints unless
+    // it is asked to
+    void takeTheEditorTo(const enums::Appearance appearance)
+    {
+        mudlet::self()->setAppearance(appearance);
+        settle();
+        mpEditor->grab();
+        settle();
+    }
+
+    // How far apart two inks read, summed over the three channels
+    static int distanceBetween(const QColor& first, const QColor& second)
+    {
+        return std::abs(first.red() - second.red()) + std::abs(first.green() - second.green()) + std::abs(first.blue() - second.blue());
+    }
+
+    // The ink a given number of rows down from the top of a box, read off a grab
+    // of the window it is in - the notice is drawn on the column behind it, and
+    // a widget grabbed on its own is grabbed against its own palette instead.
+    // The depth is in the window's own pixels, which a grab holds however many
+    // device pixels the screen gives each of them.
+    static QColor inkAt(const QImage& shot, const QRect& box, const int depth)
+    {
+        const qreal ratio = shot.devicePixelRatio();
+        // The first device row of the row asked for, so that a depth of 0 is
+        // inside a hairline one pixel deep however many device rows the screen
+        // draws it in - and the middle of the edge across, which is clear of
+        // the rounded corners
+        const int y = std::min(static_cast<int>((box.top() + depth) * ratio), shot.height() - 1);
+        const int x = std::min(static_cast<int>(box.center().x() * ratio), shot.width() - 1);
+        return shot.pixelColor(x, y);
+    }
 
     // Where the Add pattern button sits against the list it is the last thing
     // in: negative while it is above the bottom of what can be seen, and zero
@@ -702,6 +761,64 @@ private slots:
         QVERIFY2(after.at(0) > before.at(0), "the drag did not move the seam at all, so this case says nothing");
         QVERIFY2(after.at(1) >= dlgTriggerEditor::scmEditorSourcePaneFloor,
                  qPrintable(qsl("a drag took the code pane down to %1, under its floor of %2").arg(after.at(1)).arg(dlgTriggerEditor::scmEditorSourcePaneFloor)));
+    }
+
+    // The notice is drawn by one owner, in either appearance: a hairline of the
+    // accent round a wash of it. It used to carry two sheets - its own legacy
+    // one and the editor's shell style - on the same frame, and an appearance
+    // change ran them in the order that left the legacy one showing: a 3px band
+    // in the window's text colour, over the wash.
+    void test_theNoticeIsDrawnInTheAccentInEitherAppearance()
+    {
+        const auto appearanceBefore = mudlet::self()->mAppearance;
+        auto restore = qScopeGuard([appearanceBefore]() {
+            mudlet::self()->setAppearance(appearanceBefore);
+        });
+
+        openTheAlias();
+        raiseTheNotice();
+        QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "the notice did not come up, so there is no edge to read");
+        QFrame* pFrame = mpEditor->mpSystemMessageArea->frame_notificationArea;
+
+        QStringList misses;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            takeTheEditorTo(appearance.second);
+            QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "the notice went away over the appearance change");
+
+            const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+            const QImage shot = mpEditor->grab().toImage();
+            const QRect frameInEditor(pFrame->mapTo(mpEditor, QPoint(0, 0)), pFrame->size());
+            const QColor border = inkAt(shot, frameInEditor, 0);
+            const QColor justInside = inkAt(shot, frameInEditor, scmInsideTheBand);
+            const QColor behindIt = inkAt(shot, frameInEditor, pFrame->height() + scmBelowTheNotice);
+            const QColor wash = uiDesign::blend(behindIt, tokens.accent, scmAccentWashAlpha);
+
+            qInfo().noquote() << qsl("  %1: the accent is %2, the frame's edge %3, %4px in %5 against a wash of %6 over the %7 behind it")
+                                         .arg(appearance.first, tokens.accent.name(), border.name())
+                                         .arg(scmInsideTheBand)
+                                         .arg(justInside.name(), wash.name(), behindIt.name());
+
+            if (distanceBetween(border, tokens.accent) > scmInkSlack) {
+                misses << qsl("%1: the frame's edge is %2 against the accent %3 it is drawn in").arg(appearance.first, border.name(), tokens.accent.name());
+            }
+            // A band three pixels deep reads the same at both depths, which is
+            // the whole of what the legacy sheet did
+            if (distanceBetween(justInside, border) <= scmInkSlack) {
+                misses << qsl("%1: the frame is %2 at its edge and %3 %4px in, so what it carries is a band rather than a hairline")
+                                  .arg(appearance.first, border.name(), justInside.name())
+                                  .arg(scmInsideTheBand);
+            }
+            if (distanceBetween(justInside, wash) > scmInkSlack) {
+                misses << qsl("%1: the notice is filled with %2 rather than the %3 the accent's wash comes to over the %4 behind it")
+                                  .arg(appearance.first, justInside.name(), wash.name(), behindIt.name());
+            }
+            if (pFrame->styleSheet().contains(qsl("3px"))) {
+                misses << qsl("%1: the frame still carries a 3px rule: %2").arg(appearance.first, pFrame->styleSheet());
+            }
+        }
+        QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
+
+        takeTheNoticeDown();
     }
 };
 

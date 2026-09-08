@@ -47,11 +47,11 @@
 #include <QtTest/QtTest>
 #include <chrono>
 
-#include "EditorSidebarToggle.h"
 #include "Host.h"
 #include "MudletInstanceCoordinator.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
+#include "SidebarToggle.h"
 #include "TelnetServerStub.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -112,7 +112,7 @@ private:
 
     // The chevron on the seam, which is the widget a pointer and a screen
     // reader both reach
-    uiDesign::EditorSidebarToggle* toggle() const { return mpEditor->mpToggle_editorSidebar; }
+    uiDesign::SidebarToggle* toggle() const { return mpEditor->mpToggle_editorSidebar; }
 
     // The shell holding the sidebar and everything beside it, which is what the
     // chevron is a child of and so the frame both are measured in

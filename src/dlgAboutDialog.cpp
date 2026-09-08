@@ -1234,18 +1234,14 @@ void dlgAboutDialog::applyShellStyle()
                   "#aboutThirdPartyToggle:hover { background-color: %4; }"
                   "#aboutThirdPartyToggle:focus { border: 1px solid %5; }")
                       .arg(tokens.mutedText.name(), tokens.text.name(), tokens.border.name(), tokens.hoverSoft, tokens.accent.name())
-            + qsl( // An ordinary button, and the moment after it has copied
-                      "QPushButton[aboutButton=\"true\"] { background-color: %1; border: 1px solid %2; border-radius: %3px; padding: 5px 12px; min-height: %4px; color: %5; }"
-                      "QPushButton[aboutButton=\"true\"]:hover { background-color: %6; }"
-                      "QPushButton[aboutButton=\"true\"][aboutCopied=\"true\"] { color: %7; border: 1px solid %8; }")
-                      .arg(tokens.card.name(),
-                           tokens.border.name(),
-                           QString::number(scmRadiusInput),
-                           QString::number(scmInputContentHeight),
-                           tokens.text.name(),
-                           tokens.hoverSoft,
-                           tokens.accentText.name(),
-                           tokens.accent.name())
+            // The ordinary button of the other two windows. The links down the
+            // side are not push buttons at all - AboutLinkButton paints itself
+            // - so nothing here reaches them.
+            + buttonStyleSheet(tokens)
+            + qsl( // ...and the one thing this window's buttons do that no
+                      // other window's do: say that they have just copied
+                      "QPushButton[aboutButton=\"true\"][aboutCopied=\"true\"] { color: %1; border: 1px solid %2; }")
+                      .arg(tokens.accentText.name(), tokens.accent.name())
             + qsl( // ...and the one button that is an invitation rather than a control
                       "QPushButton[aboutPrimaryButton=\"true\"] { background-color: %1; color: %2; border: 1px solid transparent; border-radius: %3px; padding: 5px 16px;"
                       " min-height: %4px; font-weight: bold; }"
@@ -1253,6 +1249,10 @@ void dlgAboutDialog::applyShellStyle()
                       "QPushButton[aboutPrimaryButton=\"true\"]:focus { border: 1px solid %6; }")
                       .arg(tokens.accentSoft, tokens.accentText.name(), QString::number(scmRadiusInput), QString::number(scmPrimaryButtonHeight), tokens.hoverSoft, tokens.accent.name())
             + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens) + scrollBarStyleSheet(qsl("#textBrowser_license"), tokens));
+
+    // The accent this window's buttons take on focus is the keyboard's, the
+    // same way it is on the other two
+    keepClickFocusOffControls(mpWidget_shell);
 
     // Everything a rule cannot reach, and after the sheet rather than before
     // it: assigning a stylesheet re-polishes the subtree back to the palette it

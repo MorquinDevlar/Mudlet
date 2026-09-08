@@ -242,10 +242,8 @@ private:
 
     // Through the settings dialog's own control rather than through
     // mudlet::setAppearance() outright: that is the one path an appearance
-    // change takes while these two windows are open, and it is the path that
-    // restyles the dialog. mudlet::setAppearance() emits its signal after it
-    // has swapped the palette, so the slot on the far end cannot tell that the
-    // mode moved - see slot_setAppearance().
+    // change takes while these two windows are open, and the path a player
+    // takes to it.
     //
     // A window on screen paints itself between one change and the next, and
     // painting is what settles a widget's palette against the application's.

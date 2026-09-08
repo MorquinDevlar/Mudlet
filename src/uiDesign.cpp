@@ -23,6 +23,7 @@
 #include "utils.h"
 
 #include <QAbstractButton>
+#include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
 #include <QBoxLayout>
@@ -32,6 +33,7 @@
 #include <QDateTimeEdit>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QEvent>
 #include <QFile>
 #include <QFileInfo>
 #include <QFontComboBox>
@@ -47,6 +49,7 @@
 #include <QPainterPath>
 #include <QPixmapCache>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QRegularExpression>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -137,7 +140,6 @@ constexpr int scmReadabilitySteps = 12;
 // arrows drawn in it are
 constexpr int scmInputDropDownWidth = 18;
 constexpr int scmInputArrowSize = 8;
-constexpr int scmInputStepperWidth = 16;
 constexpr int scmInputStepperArrowSize = 7;
 // How far the name beside the accent bar is held off the item's left edge in
 // all. The bar is a border rather than a gap, so the padding written into the
@@ -147,16 +149,36 @@ constexpr int scmSidebarItemGutter = 10;
 // out of the item rather than added to it, a pixel off either side, so the
 // padding gives both back and the name stays where it was.
 constexpr int scmSidebarFocusRingWidth = 1;
-// A styled check indicator has no size of its own to fall back on. How far right
-// of the frame edge this leaves a checkable card's title is not a constant to go
-// with it: styles disagree on the room after an indicator, which is between the
-// box and the words rather than before both.
-constexpr int scmCardIndicatorSize = 13;
-// How far that indicator's outline is taken from the card towards the words on
-// it. A dark card needs more of the step than a light one, which has the page's
-// own contrast to fall back on.
-constexpr qreal scmCardIndicatorOutlineOnDark = 0.55;
-constexpr qreal scmCardIndicatorOutlineOnLight = 0.45;
+// How far a choice indicator's outline is taken from the surface it sits on
+// towards the words beside it. The same step either way: the light theme was
+// given less of it while the mark was only a card's, and at that weight the
+// outline came to 2.9:1 against a white card - under the 3:1 the boundary of a
+// control is held to, and less again on the page the editor's forms sit on.
+constexpr qreal scmChoiceOutlineOnDark = 0.55;
+constexpr qreal scmChoiceOutlineOnLight = 0.55;
+// The corner a check box's box is drawn to. It is a glyph rather than one of
+// the boxes the radius scale is about, which is why it is not on that scale; a
+// radio button takes half its own size instead and comes out a circle.
+constexpr int scmChoiceBoxRadius = 3;
+// ...and what is left between that mark and the words after it, which a style
+// would otherwise measure off the indicator it was going to draw itself
+constexpr int scmChoiceLabelSpacing = 6;
+// A control the user cannot reach is a piece of the page rather than a place to
+// put something, so its surface is let back down towards the page - and its
+// hairline is mixed off the page rather than off what it is drawn on
+constexpr qreal scmDisabledFieldTowardsPage = 0.6;
+constexpr qreal scmDisabledBorderWeight = 0.10;
+// How far a button's face is lifted off the card it sits on: a button is
+// pressed rather than typed into, so it stands a little proud of the surface
+// that a field is sunk into. A dark page takes the larger step, having less
+// room above the card than a light one has below it.
+constexpr qreal scmButtonFaceLiftOnDark = 0.08;
+constexpr qreal scmButtonFaceLiftOnLight = 0.04;
+// A button is read across rather than typed into, so the words are given more
+// room either side than a field leaves them
+constexpr int scmButtonPaddingHorizontal = 12;
+// How far the chevron of a button carrying a menu is held off its right edge
+constexpr int scmButtonMenuIndicatorInset = 6;
 
 // One channel of a colour, straightened out of the curve a display applies to it
 qreal linearised(const qreal channel)
@@ -320,6 +342,10 @@ void makeChevronRow(QAbstractButton* pButton)
     pButton->setProperty("settingsChevronRow", true);
     pButton->setCursor(Qt::PointingHandCursor);
     pButton->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+    // Here rather than left to the shell's own pass: a row standing for a
+    // search result is made the first time a search finds one, which is long
+    // after the sheet naming its accent on focus was set
+    keepClickFocusOffControls(pButton);
 }
 
 void collectFocusableInLayoutOrder(const QLayout* pLayout, QList<QWidget*>& chain)
@@ -581,7 +607,7 @@ ThemeTokens themeTokens()
     }
     tokens.marker = QColor::fromHslF(scmMarkerHue, scmMarkerSaturation, tokens.darkPage ? scmMarkerLightnessOnDark : scmMarkerLightnessOnLight);
     tokens.hoverSoft = rgba(tokens.text, 0.07);
-    tokens.accentSoft = rgba(tokens.accent, 0.14);
+    tokens.accentSoft = rgba(tokens.accent, scmSoftWashStrength);
     return tokens;
 }
 
@@ -811,25 +837,131 @@ static QString themedArrowFile(const QColor& color, const bool pointingUp, const
     return filePath;
 }
 
+// The mark a control's indicator shows, left in the cache for a stylesheet to
+// point at the way the chevrons above are - drawn at glyphSize inside a
+// transparent square boxSize across, rather than as a picture of the mark
+// alone.
+//
+// The margin is what makes the size hold. A sub-control scales the picture it
+// is given *down* to its contents and never up, so a mark drawn on its own
+// fills whatever box it lands in - and lands there at whichever of the 1x and
+// 2x files the platform picked, which is not a thing a rule can say. A mark
+// carrying its own margin comes out at the fraction of the box it was drawn at
+// either way.
+static QString themedGlyphFile(const QString& glyphFile, const QColor& color, const int boxSize, const int glyphSize)
+{
+    const QString stem = QFileInfo(glyphFile).baseName();
+    const auto cacheName = [&stem, &color, boxSize, glyphSize](const int drawnAt) {
+        const QString suffix = drawnAt > 1 ? qsl("@%1x").arg(QString::number(drawnAt)) : QString();
+        return qsl("%1-%2-%3-%4%5.png").arg(stem, color.name().mid(1), QString::number(boxSize), QString::number(glyphSize), suffix);
+    };
+    const QString filePath = glyphCacheFile(cacheName(1));
+    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
+        return filePath;
+    }
+
+    QPixmap source = croppedToItsInk(glyphPixmap(glyphFile));
+    if (source.isNull()) {
+        return QString();
+    }
+    source = tintedGlyph(source, color);
+
+    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
+    QList<qreal> ratios{1.0};
+    if (ratio > 1.0) {
+        ratios << ratio;
+    }
+    for (const qreal drawnAt : std::as_const(ratios)) {
+        const int drawnSize = qRound(glyphSize * drawnAt);
+        // Fitted into its square at its own proportions: a dash is a good deal
+        // wider than it is tall, and stretched to fill the square it would read
+        // as a rule across the box
+        const QPixmap mark = source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        QPixmap glyph(qRound(boxSize * drawnAt), qRound(boxSize * drawnAt));
+        glyph.fill(Qt::transparent);
+        QPainter painter(&glyph);
+        painter.drawPixmap(QPoint((glyph.width() - mark.width()) / 2, (glyph.height() - mark.height()) / 2), mark);
+        painter.end();
+        const QString wanted = drawnAt > 1.0 ? glyphCacheFile(cacheName(qRound(drawnAt))) : filePath;
+        if (!glyph.save(wanted, "PNG")) {
+            return QString();
+        }
+    }
+    return filePath;
+}
+
+// The one mark that is a shape rather than a glyph: the dot inside a chosen
+// radio button. Lucide has no circle small enough to survive being drawn at
+// six pixels, and a filled disc is the whole of the drawing anyway. Centred in
+// a square of the indicator's own size for the same reason the glyphs above
+// are.
+static QString dotGlyphFile(const QColor& color, const int boxSize, const int diameter)
+{
+    const auto cacheName = [&color, boxSize, diameter](const int drawnAt) {
+        const QString suffix = drawnAt > 1 ? qsl("@%1x").arg(QString::number(drawnAt)) : QString();
+        return qsl("dot-%1-%2-%3%4.png").arg(color.name().mid(1), QString::number(boxSize), QString::number(diameter), suffix);
+    };
+    const QString filePath = glyphCacheFile(cacheName(1));
+    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
+        return filePath;
+    }
+
+    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
+    QList<qreal> ratios{1.0};
+    if (ratio > 1.0) {
+        ratios << ratio;
+    }
+    for (const qreal drawnAt : std::as_const(ratios)) {
+        QPixmap dot(qRound(boxSize * drawnAt), qRound(boxSize * drawnAt));
+        dot.fill(Qt::transparent);
+        QPainter painter(&dot);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.scale(drawnAt, drawnAt);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+        const qreal inset = (boxSize - diameter) / 2.0;
+        painter.drawEllipse(QRectF(inset, inset, diameter, diameter));
+        painter.end();
+        const QString wanted = drawnAt > 1.0 ? glyphCacheFile(cacheName(qRound(drawnAt))) : filePath;
+        if (!dot.save(wanted, "PNG")) {
+            return QString();
+        }
+    }
+    return filePath;
+}
+
+// Every selector a shared sheet writes names a control and nothing about where
+// it is; a caller with one container to claim under puts them all beneath it
+static QString scopedTo(const QString& selectorPrefix, const QStringList& selectors)
+{
+    if (selectorPrefix.isEmpty()) {
+        return selectors.join(qsl(", "));
+    }
+    QStringList scopedSelectors;
+    scopedSelectors.reserve(selectors.size());
+    for (const QString& selector : selectors) {
+        scopedSelectors << selectorPrefix + QLatin1Char(' ') + selector;
+    }
+    return scopedSelectors.join(qsl(", "));
+}
+
+static QColor disabledFieldColour(const ThemeTokens& tokens)
+{
+    return blend(tokens.field, tokens.page, scmDisabledFieldTowardsPage);
+}
+
+static QColor disabledBorderColour(const ThemeTokens& tokens)
+{
+    return blend(tokens.page, tokens.text, scmDisabledBorderWeight);
+}
+
 QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
 {
-    // A field the user cannot reach is a piece of the page rather than a place
-    // to put something, so its surface is let back down towards the page
-    const QColor disabledField = blend(tokens.field, tokens.page, 0.6);
-    const QColor disabledBorder = blend(tokens.page, tokens.text, 0.10);
+    const QColor disabledField = disabledFieldColour(tokens);
+    const QColor disabledBorder = disabledBorderColour(tokens);
 
-    // Every selector below names a control and nothing about where it is; a
-    // caller with one container to claim under puts them all beneath it here
     const auto scoped = [&selectorPrefix](const QStringList& selectors) {
-        if (selectorPrefix.isEmpty()) {
-            return selectors.join(qsl(", "));
-        }
-        QStringList scopedSelectors;
-        scopedSelectors.reserve(selectors.size());
-        for (const QString& selector : selectors) {
-            scopedSelectors << selectorPrefix + QLatin1Char(' ') + selector;
-        }
-        return scopedSelectors.join(qsl(", "));
+        return scopedTo(selectorPrefix, selectors);
     };
 
     // Drawing a control's frame from a stylesheet takes the arrows inside it
@@ -870,12 +1002,27 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
             // box read as a fault
             + scoped(focusedTypes) + qsl(" { border: %2px solid %1; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth)) + scoped(disabledTypes)
             + qsl(" { color: %1; background-color: %2; border: %4px solid %3; }").arg(tokens.disabledText.name(), disabledField.name(), disabledBorder.name(), QString::number(scmInputBorderWidth))
-            // The list a combo box drops down is a surface lifted off the page,
-            // not a taller copy of the field it came out of
-            + scoped({qsl("QComboBox QAbstractItemView")})
-            + qsl(" { background-color: %1; color: %2; border: 1px solid %3;"
+            // The list a combo box drops down is the field opened up: the same
+            // surface, the same hairline and the same corner as the box it came
+            // out of, since a combo box on a card would otherwise open a list in
+            // the card's own grey, lifted off nothing. The frame the platform
+            // draws round that list is named away first: it is a QFrame of its
+            // own, and its bevel is the one part of a field no rule above
+            // reaches.
+            //
+            // That frame is also a window, and a window is filled before what is
+            // in it is drawn: a corner rounded on the list alone would leave the
+            // window's own square one showing behind it in whatever colour it
+            // took. So the surface belongs to the list and the frame around it
+            // is asked for none - which only opens the corner once the window is
+            // see-through and its brushes are named as nothing, neither of which
+            // a sheet can say. letPopupsTakeTheFieldsCorner() says both. The
+            // list's 2px padding keeps its square viewport inside the arc.
+            + scoped({qsl("QComboBox QFrame")}) + qsl(" { border: none; margin: 0px; padding: 0px; background: transparent; }") + scoped({qsl("QComboBox QAbstractItemView")})
+            + qsl(" { background-color: %1; color: %2; border: %6px solid %3; border-radius: %7px; padding: 2px;"
                   " selection-background-color: %4; selection-color: %5; outline: none; }")
-                      .arg(tokens.card.name(), tokens.text.name(), tokens.border.name(), tokens.accent.name(), tokens.accentText.name())
+                      .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), tokens.accent.name(), tokens.accentText.name(), QString::number(scmInputBorderWidth))
+                      .arg(QString::number(scmRadiusInput))
             // Both of those hold a QLineEdit of their own, which the rules above
             // would otherwise draw as a second field inside the first
             + scoped({qsl("QComboBox QLineEdit"), qsl("QAbstractSpinBox QLineEdit")}) + qsl(" { background: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; }");
@@ -914,6 +1061,254 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
                  + scoped({qsl("QAbstractSpinBox::up-button:pressed"), qsl("QAbstractSpinBox::down-button:pressed")}) + qsl(" { background-color: %1; }").arg(tokens.accentSoft);
     }
     return rules;
+}
+
+namespace {
+// The inks and the pictures one mark is drawn from, mixed once and handed to
+// each of the three controls that carry one
+struct ChoiceMarkInks
+{
+    QColor outline;
+    QColor disabledBorder;
+    QColor disabledFill;
+    // Empty where the cache could not be written, which leaves the rule that
+    // would have pointed at the picture out altogether rather than pointing it
+    // at nothing - the way inputStyleSheet() only claims a combo box once its
+    // arrows exist
+    QString tick;
+    QString dash;
+    QString quietTick;
+    QString quietDash;
+    QString dot;
+    QString quietDot;
+};
+} // namespace
+
+static ChoiceMarkInks choiceMarkInks(const ThemeTokens& tokens)
+{
+    ChoiceMarkInks inks;
+    // Mixed over the surface the box sits on, while the box itself is filled
+    // like every other control the user sets something with
+    inks.outline = blend(tokens.card, tokens.text, tokens.darkPage ? scmChoiceOutlineOnDark : scmChoiceOutlineOnLight);
+    inks.disabledBorder = disabledBorderColour(tokens);
+    inks.disabledFill = disabledFieldColour(tokens);
+    // Read against the fill it is drawn on rather than against the accent
+    // framing the box: the accent is the hairline, and the mark inside it is
+    // the nearest colour to that accent a reader can still make out on a field
+    const QColor markInk = readableOn(tokens.field, tokens.accent, tokens.text, scmQuietMinimumRatio);
+    inks.tick = themedGlyphFile(qsl(":/icons/control-check.svg"), markInk, scmChoiceIndicatorSize, scmChoiceGlyphSize);
+    inks.dash = themedGlyphFile(qsl(":/icons/control-minus.svg"), markInk, scmChoiceIndicatorSize, scmChoiceGlyphSize);
+    inks.quietTick = themedGlyphFile(qsl(":/icons/control-check.svg"), tokens.disabledText, scmChoiceIndicatorSize, scmChoiceGlyphSize);
+    inks.quietDash = themedGlyphFile(qsl(":/icons/control-minus.svg"), tokens.disabledText, scmChoiceIndicatorSize, scmChoiceGlyphSize);
+    inks.dot = dotGlyphFile(markInk, scmChoiceIndicatorSize, scmChoiceDotDiameter);
+    inks.quietDot = dotGlyphFile(tokens.disabledText, scmChoiceIndicatorSize, scmChoiceDotDiameter);
+    return inks;
+}
+
+// One indicator, drawn out in full: the box, what says it is being used, and
+// the picture inside it once the choice is made. The radius is the whole of
+// what says whether it is a box or a circle. "set" is what a made choice is
+// marked with and "part" what a box that is neither on nor off shows, which a
+// radio button has no state for and hands in empty.
+static QString choiceMarkRules(
+        const QString& selector, const int radius, const QString& set, const QString& part, const QString& quietSet, const QString& quietPart, const ChoiceMarkInks& inks, const ThemeTokens& tokens)
+{
+    QString rules = qsl("%1 { width: %2px; height: %2px; border: %3px solid %4; border-radius: %5px; background-color: %6; }"
+                        // A control being reached for rather than a surface, so
+                        // the hairline goes to the colour the choice will be
+                        // made in before it is made
+                        "%1:hover, %1:focus { border: %3px solid %7; }"
+                        "%1:pressed { background-color: %8; }")
+                            .arg(selector, QString::number(scmChoiceIndicatorSize), QString::number(scmInputBorderWidth), inks.outline.name(), QString::number(radius), tokens.field.name())
+                            .arg(tokens.accent.name(), tokens.accentSoft);
+    if (!set.isEmpty()) {
+        rules += qsl("%1:checked { border: %2px solid %3; image: url(\"%4\"); }").arg(selector, QString::number(scmInputBorderWidth), tokens.accent.name(), set);
+    }
+    // The state a platform paints as a filled grey square, which reads as some
+    // third kind of control rather than as a box holding both answers at once
+    if (!part.isEmpty()) {
+        rules += qsl("%1:indeterminate { border: %2px solid %3; image: url(\"%4\"); }").arg(selector, QString::number(scmInputBorderWidth), tokens.accent.name(), part);
+    }
+    // Last, and so ahead of the two states above at the same specificity: a
+    // choice the user cannot change is still shown, in the tone every other
+    // unavailable thing is written in rather than in the accent
+    rules += qsl("%1:disabled { border: %2px solid %3; background-color: %4; }").arg(selector, QString::number(scmInputBorderWidth), inks.disabledBorder.name(), inks.disabledFill.name());
+    if (!quietSet.isEmpty()) {
+        rules += qsl("%1:disabled:checked { image: url(\"%2\"); }").arg(selector, quietSet);
+    }
+    if (!quietPart.isEmpty()) {
+        rules += qsl("%1:disabled:indeterminate { image: url(\"%2\"); }").arg(selector, quietPart);
+    }
+    return rules;
+}
+
+QString choiceStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
+{
+    const ChoiceMarkInks inks = choiceMarkInks(tokens);
+    // Half its own size, which Qt clamps to a circle: what says a choice is one
+    // of a set rather than a switch of its own is the shape of the box it is
+    // made in
+    const int dotRadius = (scmChoiceIndicatorSize + 1) / 2;
+    return choiceMarkRules(scopedTo(selectorPrefix, {qsl("QCheckBox::indicator")}), scmChoiceBoxRadius, inks.tick, inks.dash, inks.quietTick, inks.quietDash, inks, tokens)
+           + choiceMarkRules(scopedTo(selectorPrefix, {qsl("QRadioButton::indicator")}), dotRadius, inks.dot, QString(), inks.quietDot, QString(), inks, tokens)
+           // What a style leaves between an indicator and the words after it is
+           // measured off the indicator the style itself would have drawn, so a
+           // mark of another size leaves the two touching on one platform and
+           // well apart on the next. Named here, and the same in both.
+           //
+           // The control's own frame is named as well, as nothing: a rule that
+           // leaves the frame to the platform leaves the layout rectangle to it
+           // too, and the macOS style trims eleven pixels off a check box's for
+           // the bezel it would have drawn - so a layout placed the words of the
+           // next control over the last letters of this one.
+           + scopedTo(selectorPrefix, {qsl("QCheckBox"), qsl("QRadioButton")})
+           + qsl(" { spacing: %1px; border: none; }").arg(QString::number(scmChoiceLabelSpacing))
+           // The platform draws a focus ring round the whole control as well,
+           // which beside the accent the indicator has just taken reads as two
+           // rings round one thing
+           + scopedTo(selectorPrefix, {qsl("QCheckBox:focus"), qsl("QRadioButton:focus")}) + qsl(" { outline: none; }");
+}
+
+QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
+{
+    // Lifted off the card rather than sunk into it: a button is pressed, where
+    // a field is typed into
+    const QColor face = blend(tokens.card, tokens.text, tokens.darkPage ? scmButtonFaceLiftOnDark : scmButtonFaceLiftOnLight);
+    const auto scoped = [&selectorPrefix](const QStringList& selectors) {
+        return scopedTo(selectorPrefix, selectors);
+    };
+
+    QString rules =
+            scoped({qsl("QPushButton")})
+            + qsl(" { background-color: %1; color: %2; border: %3px solid %4; border-radius: %5px; padding: %6px %7px; min-height: %8px; }")
+                      .arg(face.name(), tokens.text.name(), QString::number(scmInputBorderWidth), tokens.border.name(), QString::number(scmRadiusInput))
+                      .arg(QString::number(scmInputPaddingVertical), QString::number(scmButtonPaddingHorizontal), QString::number(scmInputContentHeight))
+            + scoped({qsl("QPushButton:hover")}) + qsl(" { border: %2px solid %1; background-color: %3; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth), tokens.hoverSoft)
+            + scoped({qsl("QPushButton:pressed")}) + qsl(" { background-color: %1; }").arg(tokens.accentSoft) + scoped({qsl("QPushButton:focus")})
+            + qsl(" { border: %2px solid %1; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth)) + scoped({qsl("QPushButton:disabled")})
+            + qsl(" { color: %1; border: %3px solid %2; background-color: transparent; }").arg(tokens.disabledText.name(), disabledBorderColour(tokens).name(), QString::number(scmInputBorderWidth));
+
+    // A button carrying a menu drops something down, so it says so with the
+    // chevron every other control that does drops it under. Styling the button
+    // at all takes the platform's own indicator away with it, so the rule is
+    // only claimed once there is a picture to put one back with - and the room
+    // the words are held clear by is what the rule's own width reserves, since
+    // no selector can ask whether a button has a menu.
+    const QString menuChevron = themedArrowFile(tokens.mutedText, false, scmInputArrowSize);
+    if (!menuChevron.isEmpty()) {
+        rules += scoped({qsl("QPushButton::menu-indicator")})
+                 + qsl(" { image: url(\"%1\"); subcontrol-origin: padding; subcontrol-position: center right; right: %2px; width: %3px; height: %3px; }")
+                           .arg(menuChevron, QString::number(scmButtonMenuIndicatorInset), QString::number(scmInputArrowSize));
+        const QString accentChevron = themedArrowFile(tokens.accent, false, scmInputArrowSize);
+        if (!accentChevron.isEmpty()) {
+            rules += scoped({qsl("QPushButton::menu-indicator:hover"), qsl("QPushButton::menu-indicator:pressed")})
+                     + qsl(" { image: url(\"%1\"); subcontrol-origin: padding; subcontrol-position: center right; right: %2px; width: %3px; height: %3px; }")
+                               .arg(accentChevron, QString::number(scmButtonMenuIndicatorInset), QString::number(scmInputArrowSize));
+        }
+    }
+    return rules;
+}
+
+void keepClickFocusOffControls(QWidget* pRoot)
+{
+    if (!pRoot) {
+        return;
+    }
+    const auto leaveItToTheKeyboard = [](QWidget* pControl) {
+        // A control asking for no focus at all is left saying so: the point
+        // here is which way focus arrives, not whether it can
+        if (pControl->focusPolicy() == Qt::NoFocus) {
+            return;
+        }
+        const auto* pCard = qobject_cast<QGroupBox*>(pControl);
+        if (!qobject_cast<QCheckBox*>(pControl) && !qobject_cast<QRadioButton*>(pControl) && !qobject_cast<QPushButton*>(pControl) && !(pCard && pCard->isCheckable())) {
+            return;
+        }
+        pControl->setFocusPolicy(Qt::TabFocus);
+    };
+    leaveItToTheKeyboard(pRoot);
+    for (QWidget* pControl : pRoot->findChildren<QWidget*>()) {
+        leaveItToTheKeyboard(pControl);
+    }
+}
+
+namespace {
+// What the frame round a dropped-down list is painted with, said as nothing.
+// The sheet cannot say it: a stylesheet gives a QFrame subclass no styled
+// background, so its rule for the container reaches only that widget's palette
+// - and Qt::WA_WindowPropagation, which the container carries so a popup is
+// drawn in the font and the colours of the box it belongs to, hands it the
+// field's brushes anyway. Only these two roles are named, so the ink the list's
+// words are written in still follows the appearance.
+void namePopupSurfaceAsNothing(QWidget* pPopup)
+{
+    QPalette unpainted = pPopup->palette();
+    unpainted.setBrush(QPalette::Window, Qt::transparent);
+    unpainted.setBrush(QPalette::Base, Qt::transparent);
+    pPopup->setPalette(unpainted);
+}
+
+// ...and said again on the way in. An appearance change swaps the application's
+// style, which re-resolves every widget's palette - after the shell has
+// restyled, so the shell's own pass cannot be the last word. A popup is shown
+// before it is painted, which is the last moment that can be.
+class PopupSurfaceKeeper : public QObject
+{
+public:
+    // Named rather than found by type: without Q_OBJECT - which it has no
+    // signals to want - a qobject_cast for this class matches every QObject
+    static constexpr char scmName[] = "uiDesignPopupSurfaceKeeper";
+
+    explicit PopupSurfaceKeeper(QObject* pParent)
+    : QObject(pParent)
+    {
+        setObjectName(QLatin1StringView(scmName));
+    }
+
+protected:
+    bool eventFilter(QObject* pWatched, QEvent* pEvent) override
+    {
+        if (pEvent->type() == QEvent::Show) {
+            if (auto* pPopup = qobject_cast<QWidget*>(pWatched)) {
+                namePopupSurfaceAsNothing(pPopup);
+            }
+        }
+        return QObject::eventFilter(pWatched, pEvent);
+    }
+};
+} // namespace
+
+void letPopupsTakeTheFieldsCorner(QWidget* pRoot)
+{
+    if (!pRoot) {
+        return;
+    }
+    const auto openTheCorner = [](QComboBox* pComboBox) {
+        // view() makes the container on the first call, which is what lets this
+        // run before the box has ever been dropped down
+        QAbstractItemView* pList = pComboBox->view();
+        if (!pList) {
+            return;
+        }
+        // The window is the container the list sits in, not the list: the
+        // attribute and the brushes both have to be on whatever the platform
+        // makes a surface for
+        QWidget* pPopup = pList->window();
+        if (!pPopup || pPopup == pComboBox->window()) {
+            return;
+        }
+        pPopup->setAttribute(Qt::WA_TranslucentBackground);
+        namePopupSurfaceAsNothing(pPopup);
+        if (!pPopup->findChild<QObject*>(QLatin1StringView(PopupSurfaceKeeper::scmName), Qt::FindDirectChildrenOnly)) {
+            pPopup->installEventFilter(new PopupSurfaceKeeper(pPopup));
+        }
+    };
+    if (auto* pComboBox = qobject_cast<QComboBox*>(pRoot)) {
+        openTheCorner(pComboBox);
+    }
+    for (QComboBox* pComboBox : pRoot->findChildren<QComboBox*>()) {
+        openTheCorner(pComboBox);
+    }
 }
 
 QPixmap glyphPixmap(const QString& file)
@@ -1030,16 +1425,10 @@ QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens)
 
 QString cardIndicatorStyleSheet(const char* cardProperty, const ThemeTokens& tokens)
 {
-    // Mixed over the card the box sits on, while the box itself is filled like
-    // every other control the user sets something with
-    const QColor indicatorOutline = blend(tokens.card, tokens.text, tokens.darkPage ? scmCardIndicatorOutlineOnDark : scmCardIndicatorOutlineOnLight);
-    return qsl("QGroupBox[%1=\"true\"]::indicator { width: %2px; height: %2px; border: 1px solid %3; border-radius: 3px; background-color: %4; }"
-               "QGroupBox[%1=\"true\"]::indicator:hover { border: 1px solid %5; }"
-               // A fixed green check mark, so the fill under it is the field
-               // colour every other control is set from rather than an accent
-               // that could be orange
-               "QGroupBox[%1=\"true\"]::indicator:checked { border: 1px solid %5; image: url(:/icons/dialog-ok-apply_small.png); }")
-            .arg(QLatin1StringView(cardProperty), QString::number(scmCardIndicatorSize), indicatorOutline.name(), tokens.field.name(), tokens.accent.name());
+    // The same mark the check boxes under the card carry, so that turning a
+    // whole card on reads as the same act as turning one option on
+    const ChoiceMarkInks inks = choiceMarkInks(tokens);
+    return choiceMarkRules(qsl("QGroupBox[%1=\"true\"]::indicator").arg(QLatin1StringView(cardProperty)), scmChoiceBoxRadius, inks.tick, inks.dash, inks.quietTick, inks.quietDash, inks, tokens);
 }
 
 // Where the style puts a card's title, on a throwaway box laid out under the

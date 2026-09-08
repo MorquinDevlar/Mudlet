@@ -53,10 +53,17 @@ class TScript;
 class TTimer;
 class TTrigger;
 
+namespace uiDesign {
+class SidebarToggle;
+}
+
 
 class dlgProfilePreferences : public QDialog, public Ui::profile_preferences
 {
     Q_OBJECT
+
+    // Allow QTest-based test classes to access private members
+    friend class SettingsAppearanceTest;
 
 public:
     Q_DISABLE_COPY(dlgProfilePreferences)
@@ -223,6 +230,7 @@ protected:
     bool event(QEvent* pEvent) override;
     bool eventFilter(QObject* pObject, QEvent* pEvent) override;
     void resizeEvent(QResizeEvent* pEvent) override;
+    void changeEvent(QEvent* pEvent) override;
 
 private:
     void setColors();
@@ -354,8 +362,18 @@ private:
         int fullyExpanded = 0;
     };
     SidebarWidths sidebarWidths() const;
+    // What the sidebar is drawn at with its names showing, measured off the
+    // widest of them the way the editor's is
+    [[nodiscard]] int measuredSidebarWidth() const;
+    // Called wherever the names, the font or the style they are measured
+    // against change, since none of those reach a resize
+    void invalidateSidebarWidth();
     void updateSidebarMode();
     void setSidebarCollapsed(bool collapsed);
+    // The chevron on the seam, and the one place the preference it carries
+    // is changed
+    void updateSidebarToggle();
+    void setSidebarLabelsShown(const bool shown);
     void rebuildTabOrder();
     void guardScrollWheel();
     void buildMigrationBanner();
@@ -428,6 +446,24 @@ private:
     QWidget* mpWidget_titleRow = nullptr;
     QLabel* mpLabel_wordmark = nullptr;
     QListWidget* mpListWidget_categories = nullptr;
+    // The chevron on the seam down the sidebar's trailing edge, which is the
+    // one control that sidebar has
+    uiDesign::SidebarToggle* mpToggle_sidebar = nullptr;
+    // Measuring the names costs a pass over every row, and a resize asks for
+    // the answer on every frame of a drag
+    mutable int mSidebarWidth = 0;
+    mutable bool mSidebarWidthKnown = false;
+    // What the user asked the sidebar for, kept across sessions under
+    // settingsSidebarLabelsShown. It is a preference about the names alone: the
+    // sidebar is there either way, as a list of names or as a rail of icons -
+    // and a dialog that has never been told opens with the names, the way the
+    // editor does.
+    bool mSidebarLabelsShown = true;
+    // ...and whether the window is currently wide enough to grant it. This one
+    // is the window's answer rather than the user's, so it is never stored - a
+    // window dragged narrow shows the rail and gives the names back when it is
+    // widened, whatever it was in the middle of
+    bool mSidebarNamesFit = true;
     // The one sidebar row that is a link rather than a category
     QListWidgetItem* mpItem_support = nullptr;
     QStackedWidget* mpStackedWidget_categories = nullptr;
@@ -501,6 +537,18 @@ private:
     // Set once buildShell() has finished moving controls between cards, which is
     // when it becomes safe to wrap one that does not fit
     bool mShellReady = false;
+    // Which side of the light/dark line the shell's stylesheet was last mixed
+    // for, written by applyShellStyle() from the tokens it used. An appearance
+    // change reaches this dialog either from its own combo box or from the
+    // application's signal, and by the time the signal arrives the mode has
+    // already moved - so what says whether there is anything to redraw is the
+    // sheet on the shell rather than a reading taken around the call that
+    // changed it.
+    bool mShellStyledForDarkPage = false;
+    // How many times the shell has been restyled, so that a test can hold an
+    // appearance change to one pass: the slot is re-entered through that same
+    // signal, and a second pass would be invisible from the outside.
+    int mShellStyleApplications = 0;
     // Suppresses the instant apply while initWithHost()/clearHostDetails() write
     // the controls rather than the user, and makes re-entering one impossible
     bool mPopulating = false;

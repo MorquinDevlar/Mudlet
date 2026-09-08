@@ -1,5 +1,5 @@
-#ifndef MUDLET_EDITORSIDEBARTOGGLE_H
-#define MUDLET_EDITORSIDEBARTOGGLE_H
+#ifndef MUDLET_SIDEBARTOGGLE_H
+#define MUDLET_SIDEBARTOGGLE_H
 
 /***************************************************************************
  *   Copyright (C) 2026 by Vadim Peretokin - vadim.peretokin@mudlet.org    *
@@ -36,16 +36,16 @@ namespace uiDesign {
 // It paints itself rather than carrying a picture: a pill of the card tone with
 // the border hairline round it and a chevron drawn with a pen, pointing the way
 // the sidebar will go when it is pressed.
-class EditorSidebarToggle : public QAbstractButton
+class SidebarToggle : public QAbstractButton
 {
     Q_OBJECT
 
 public:
-    Q_DISABLE_COPY(EditorSidebarToggle)
+    Q_DISABLE_COPY(SidebarToggle)
     // pSeam is the pane whose trailing edge the pill straddles. pParent has to
     // be the widget holding both that pane and whatever is beside it, so that
     // the pill is drawn over the two of them rather than clipped by either.
-    EditorSidebarToggle(QWidget* pSeam, QWidget* pParent);
+    SidebarToggle(QWidget* pSeam, QWidget* pParent);
 
     // Which way the chevron points, which is what pressing it will do: left
     // takes the names away, right brings them back
@@ -70,4 +70,4 @@ private:
 
 } // namespace uiDesign
 
-#endif // MUDLET_EDITORSIDEBARTOGGLE_H
+#endif // MUDLET_SIDEBARTOGGLE_H

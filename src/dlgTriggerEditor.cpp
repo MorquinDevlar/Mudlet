@@ -57,7 +57,7 @@
 #include "EditorModifyPropertyCommand.h"
 #include "EditorMoveItemCommand.h"
 #include "EditorPlaceholderButton.h"
-#include "EditorSidebarToggle.h"
+#include "SidebarToggle.h"
 #include "EditorToggleActiveCommand.h"
 #include "EditorTreeDelegate.h"
 #include "SearchResultDelegate.h"
@@ -139,6 +139,11 @@ static const char* cSoundFilePath = "editorSoundFilePath";
 // that pasting can import and place each one
 static const QString cMultiItemPasteSeparator = qsl("\n<!--MUDLET_MULTI_ITEM_SEPARATOR-->\n");
 
+// What the message area's label was given, before an appearance's ink went into
+// its anchors - the editor's name for what dlgAboutDialog calls aboutRichText
+// and dlgProfilePreferences settingsRichText
+static constexpr char scmProp_editorRichText[] = "editorRichText";
+
 // The column an item is edited in - the form, the strip that heads the code
 // pane and the pane itself - is one surface, held away from the window's edges
 // by this and by nothing else. Set on the frame that carries all three rather
@@ -158,17 +163,18 @@ static constexpr int scmEditorColumnTopInset = 12;
 static constexpr int scmEditorColumnSpacing = 12;
 
 // The sidebar down the left of the editor, drawn by uiDesign::sidebarStyleSheet()
-// from the settings dialog's rules and these measurements of its own
-static constexpr int scmEditorSidebarPadding = 12;
+// from the settings dialog's rules and the measurements the two windows share
+static constexpr int scmEditorSidebarPadding = uiDesign::scmSidebarPadding;
 // Above and below its rows, which is where the first of them starts - the same
-// line the other two columns start on
+// line the other two columns start on. This one is the editor's own: it is that
+// inset rather than a number the sidebar has an opinion about.
 static constexpr int scmEditorSidebarVerticalPadding = scmEditorColumnTopInset;
 static constexpr int scmEditorSidebarMaximumWidth = 180;
-static constexpr int scmEditorSidebarRailWidth = 46;
-static constexpr int scmEditorSidebarRailPadding = 6;
-static constexpr int scmEditorSidebarSeparatorInset = 12;
-static constexpr int scmEditorSidebarRowHeight = 36;
-static constexpr int scmEditorSidebarIconSize = 18;
+static constexpr int scmEditorSidebarRailWidth = uiDesign::scmSidebarRailWidth;
+static constexpr int scmEditorSidebarRailPadding = uiDesign::scmSidebarRailPadding;
+static constexpr int scmEditorSidebarSeparatorInset = uiDesign::scmSidebarSeparatorInset;
+static constexpr int scmEditorSidebarRowHeight = uiDesign::scmSidebarRowHeight;
+static constexpr int scmEditorSidebarIconSize = uiDesign::scmSidebarIconSize;
 // "Icon size toolbars" is a step from 1 to 4 rather than a pixel count, and 3 is
 // what a profile that has never touched it holds. Six pixels a step is what
 // makes that default the 18px the design language draws a glyph at everywhere
@@ -182,7 +188,7 @@ static constexpr int scmEditorIconSizeStep = 6;
 // What a row costs beside its name at the 18px glyph above: the pill's accent
 // bar and padding, the icon and the gap the view leaves after it. A larger
 // glyph moves it by the difference - see editorSidebarWidths().
-static constexpr int scmEditorSidebarRowChrome = 40;
+static constexpr int scmEditorSidebarRowChrome = uiDesign::scmSidebarRowChrome;
 // What the grip at the leading end of the actions toolbar is given: the six
 // dots are five pixels across, and the rest is what holds them off the bar's
 // edge and off the first button
@@ -281,8 +287,17 @@ static constexpr int scmEditorRowControlGap = 8;
 // running on. Wider than the gap inside a group by enough to read as the join
 // it is, since the strip is one line of short words with no rule between them.
 static constexpr int scmEditorOptionRowGap = 24;
-// Three digits and a pair of arrows; the rest of the row is the words around it
-static constexpr int scmEditorOptionsSpinBoxWidth = 72;
+// What the editor opens at with nothing stored: a companion to the profile
+// window, sized for a form and a page of code rather than for the screen. It
+// used to be nine tenths of the profile window, which on a desktop of any size
+// opened a window that covered it - and what the editor holds does not get any
+// more readable for being 2700px across.
+static constexpr int scmEditorDefaultWidth = 1000;
+static constexpr int scmEditorDefaultHeight = 700;
+// What a number box keeps between its last digit and the arrows beside it, on
+// top of the field's own padding: a digit drawn hard against the stepper column
+// reads as touching it
+static constexpr int scmEditorOptionsSpinBoxSlack = 2;
 // The field naming the sound a trigger plays. Wide enough for a file name and
 // no wider: the path it stands for is in the tooltip, since a path drawn in a
 // field this size is a few characters of a directory nobody typed.
@@ -1669,7 +1684,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // the sidebar and the rest of the window, so it is a child of the shell
     // holding both rather than of either of them - and of the toolbar least of
     // all, which the user can drag to another edge of the window or float.
-    mpToggle_editorSidebar = new uiDesign::EditorSidebarToggle(mpWidget_editorSidebarPane, pShell);
+    mpToggle_editorSidebar = new uiDesign::SidebarToggle(mpWidget_editorSidebarPane, pShell);
     connect(mpToggle_editorSidebar, &QAbstractButton::clicked, this, [this]() {
         setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
     });
@@ -2450,6 +2465,10 @@ void dlgTriggerEditor::createPatternItem(int index)
     pBox->addItems(mPatternList);
     pBox->setItemData(0, QVariant(index));
     applyPatternTypeIcons(pBox);
+    // Before the row is ever dropped down: the see-through window a rounded
+    // list needs is made at the popup's first show and kept for the rest of the
+    // session
+    uiDesign::letPopupsTakeTheFieldsCorner(pBox);
     applyPatternGripGlyph(pItem->label_dragHandle);
     connect(pBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &dlgTriggerEditor::slot_setupPatternControls);
     connect(pItem->pushButton_fgColor, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_colorTriggerFg);
@@ -3147,19 +3166,9 @@ static bool windowPlacementReachable(const QPoint& topLeft, const QSize& windowS
     return false;
 }
 
-QSize dlgTriggerEditor::defaultEditorSize(const QRect& availableArea) const
+QSize dlgTriggerEditor::defaultEditorSize() const
 {
-    // With nothing stored, the editor opens as a companion to the profile
-    // window rather than at a size fixed long before the screens it runs on
-    // now: the profile window, a step inside it so both are visible at once
-    QSize base;
-    if (mpHost && mpHost->mpConsole && mpHost->mpConsole->window()) {
-        base = mpHost->mpConsole->window()->size();
-    }
-    if (base.isEmpty()) {
-        base = availableArea.size();
-    }
-    return QSize(qRound(base.width() * 0.9), qRound(base.height() * 0.9));
+    return QSize(scmEditorDefaultWidth, scmEditorDefaultHeight);
 }
 
 void dlgTriggerEditor::repositionOnProfileScreen()
@@ -3201,7 +3210,7 @@ void dlgTriggerEditor::restoreWindowGeometry()
     const QRect availableArea = pScreen ? pScreen->availableGeometry() : QRect(0, 0, 1024, 768);
 
     const QSize storedSize = settings.value(qsl("script_editor_size")).toSize();
-    QSize targetSize = (storedSize.isValid() && !storedSize.isEmpty()) ? storedSize : defaultEditorSize(availableArea);
+    QSize targetSize = (storedSize.isValid() && !storedSize.isEmpty()) ? storedSize : defaultEditorSize();
     // A size stored before this layout existed, or on a screen that is no
     // longer attached, is bigger than the desktop it is about to open on -
     // bring it back inside that desktop rather than open off the bottom of it
@@ -11245,7 +11254,7 @@ void dlgTriggerEditor::showError(const QString& text)
     mpSystemMessageArea->notificationAreaIconLabelInformation->hide();
     mpSystemMessageArea->notificationAreaIconLabelError->show();
     mpSystemMessageArea->notificationAreaIconLabelWarning->hide();
-    mpSystemMessageArea->notificationAreaMessageBox->setText(text);
+    setSystemMessage(text);
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
 
@@ -11276,7 +11285,7 @@ void dlgTriggerEditor::showWarning(const QString& text, bool announce)
     mpSystemMessageArea->notificationAreaIconLabelInformation->hide();
     mpSystemMessageArea->notificationAreaIconLabelError->hide();
     mpSystemMessageArea->notificationAreaIconLabelWarning->show();
-    mpSystemMessageArea->notificationAreaMessageBox->setText(text);
+    setSystemMessage(text);
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
 
@@ -11340,7 +11349,7 @@ void dlgTriggerEditor::showInfo(const QString& text)
     mpSystemMessageArea->notificationAreaIconLabelError->hide();
     mpSystemMessageArea->notificationAreaIconLabelWarning->hide();
     mpSystemMessageArea->notificationAreaIconLabelInformation->show();
-    mpSystemMessageArea->notificationAreaMessageBox->setText(text);
+    setSystemMessage(text);
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
     if (!mpHost->mIsProfileLoadingSequence) {
@@ -11348,11 +11357,37 @@ void dlgTriggerEditor::showInfo(const QString& text)
     }
 }
 
-// Qt's rich text does not understand 'color: inherit' and renders it as
-// black, so the theme's text colour has to be spelled out explicitly
+// The ink a link in a banner or a toast is written in, which is the ink every
+// other anchor in the design carries.
 static QString themedBannerLinkColor()
 {
-    return mudlet::self()->inDarkMode() ? qsl("rgb(230, 230, 230)") : qsl("black");
+    return uiDesign::themeTokens().accentText.name();
+}
+
+// What the anchors are written with. Qt's rich text does not understand
+// 'color: inherit' - a QLabel bakes an anchor's colour into its document the
+// moment the text is set, and an unhandled value leaves it at Qt's own blue -
+// so the word stands in the sheet as the place the theme's ink goes. The
+// message is kept in this shape and inked on the way to the label, which is
+// what lets the appearance move under a banner already on screen.
+static QString inkedSystemMessage(const QString& content)
+{
+    return QString(content).replace(qsl("color: inherit"), qsl("color: %1").arg(themedBannerLinkColor()));
+}
+
+// The label's own text() is the message with a colour written into it, so what
+// it was given is kept beside it - the way settingsRichText and aboutRichText
+// do in the other two windows
+void dlgTriggerEditor::setSystemMessage(const QString& content)
+{
+    auto* pMessageBox = mpSystemMessageArea->notificationAreaMessageBox;
+    pMessageBox->setProperty(scmProp_editorRichText, content);
+    pMessageBox->setText(inkedSystemMessage(content));
+}
+
+QString dlgTriggerEditor::systemMessage() const
+{
+    return mpSystemMessageArea ? mpSystemMessageArea->notificationAreaMessageBox->property(scmProp_editorRichText).toString() : QString();
 }
 
 void dlgTriggerEditor::showIntro(const QString& desiredOption)
@@ -11377,9 +11412,8 @@ void dlgTriggerEditor::showIntro(const QString& desiredOption)
 
     introTextParts introAddCurrentItem = introAddItem.value(mCurrentView);
     QString introTextOptions;
-    const QString linkColor = themedBannerLinkColor();
     for (const auto& [name, headline, contents] : std::as_const(introAddCurrentItem.options)) {
-        introTextOptions.append((name != desiredOption) ? qsl("<li><a href='%1' style='color: %3; text-decoration: underline;'>%2</a></li>").arg(name, headline, linkColor)
+        introTextOptions.append((name != desiredOption) ? qsl("<li><a href='%1' style='color: inherit; text-decoration: underline;'>%2</a></li>").arg(name, headline)
                                                         : qsl("<li><strong>%1</strong>%2</li>").arg(headline, contents));
     }
 
@@ -11416,11 +11450,11 @@ void dlgTriggerEditor::showHideableBanner(const QString& content, const QString&
         return;
     }
 
-    if (mpSystemMessageArea->isVisible() && mCurrentBannerKey != bannerKey && !mpSystemMessageArea->notificationAreaMessageBox->text().isEmpty()) {
+    if (mpSystemMessageArea->isVisible() && mCurrentBannerKey != bannerKey && !systemMessage().isEmpty()) {
         return;
     }
 
-    if (mpSystemMessageArea->isVisible() && mCurrentBannerKey == bannerKey && mpSystemMessageArea->notificationAreaMessageBox->text() == content) {
+    if (mpSystemMessageArea->isVisible() && mCurrentBannerKey == bannerKey && systemMessage() == content) {
         return;
     }
 
@@ -14578,10 +14612,12 @@ QString dlgTriggerEditor::generateButtonStyleSheet(const QColor& color, const bo
         // it is drawn in has moved by the time it does
         const QString hairline = uiDesign::themeTokens().border.name();
         if (isEnabled) {
+            // theme-fixed: the fill is the colour the user picked, so the word on it is chosen against that fill rather than against a page
             return mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(color.lightness() > 127 ? QLatin1String("black") : QLatin1String("white"), color.name(), hairline);
         }
 
         const QColor disabledColor = QColor::fromHsl(color.hslHue(), color.hslSaturation() / 4, color.lightness());
+        // theme-fixed: the same well, desaturated - the word still sits on the value rather than on a page
         return mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(QLatin1String("darkGray"), disabledColor.name(), hairline);
     }
     return QString();
@@ -14921,7 +14957,6 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     mpSpinBox_matchWithinLines->setObjectName(qsl("editorMatchWithinLines"));
     mpSpinBox_matchWithinLines->setRange(0, scmEditorMatchWithinLinesMax);
     mpSpinBox_matchWithinLines->setAlignment(Qt::AlignCenter);
-    mpSpinBox_matchWithinLines->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
     // The .ui file gives spinBox_stayOpen a policy that lets it fill its line;
     // this one is made here and would otherwise stop at its own hint, a size
     // down from the box beside it
@@ -14948,7 +14983,6 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     // How long the trigger goes on firing for, said as a sentence round the
     // .ui file's own spin box
     QWidget* pStayOpenGroup = makeEditorOptionGroup(pOptionsRow);
-    pForm->spinBox_stayOpen->setMaximumWidth(scmEditorOptionsSpinBoxWidth);
     describeEditorControl(pForm->spinBox_stayOpen,
                           //: Accessible name of the box holding how many more lines a trigger keeps firing for
                           tr("Lines to keep firing for after a match"),
@@ -14957,6 +14991,10 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     //: %1 is replaced by a number box holding how many extra lines the trigger keeps firing for, past the one it matched on. The words around it may be reordered to put it wherever the language needs it.
     uiDesign::buildControlSentenceRow(qobject_cast<QHBoxLayout*>(pStayOpenGroup->layout()), tr("Keep firing %1 more lines"), pForm->spinBox_stayOpen);
     pOptionsRow->layout()->addWidget(pStayOpenGroup);
+
+    // Both number boxes on the strip are now the width of the largest number
+    // they will ever hold
+    fitEditorOptionsSpinBoxes();
 
     //: Trigger option, was called "only pass matches": the trigger's children see only the part of the line its pattern matched. Kept short for the options strip; the full name a screen reader hears is set below.
     pForm->checkBox_filterTrigger->setText(tr("Only pass matches"));
@@ -15739,6 +15777,36 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
     // its word sits level with the first line of them however many there are
     if (mpChipRow_scriptEvents) {
         mpScriptsMainArea->label_script_registered_event_handlers->setFixedHeight(mpChipRow_scriptEvents->lineHeight());
+    }
+}
+
+// The two number boxes on the trigger's options strip are as wide as the
+// largest number they can hold and no wider - measured rather than named, the
+// way the lead labels above are: the widest digit repeated as many times as
+// that number has digits, in the box's own font, plus what the field's rule
+// leaves round the digits and the column of arrows it cuts out of them. A fixed
+// 72px was room for a couple of digits neither box will ever show.
+void dlgTriggerEditor::fitEditorOptionsSpinBoxes()
+{
+    if (!mpSpinBox_matchWithinLines || !mpTriggersMainArea) {
+        return;
+    }
+
+    for (QSpinBox* pBox : {mpSpinBox_matchWithinLines, mpTriggersMainArea->spinBox_stayOpen}) {
+        const QFontMetrics metrics = pBox->fontMetrics();
+        // Zero is the widest digit in most faces but not in all of them, and a
+        // box drawn a pixel short of its own number is the one thing this must
+        // not do
+        QChar widest = QLatin1Char('0');
+        for (char digit = '0'; digit <= '9'; ++digit) {
+            if (metrics.horizontalAdvance(QLatin1Char(digit)) > metrics.horizontalAdvance(widest)) {
+                widest = QLatin1Char(digit);
+            }
+        }
+        const int digits = QString::number(pBox->maximum()).length();
+        const int room = metrics.horizontalAdvance(QString(digits, widest)) + 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth) + uiDesign::scmInputStepperWidth
+                         + scmEditorOptionsSpinBoxSlack;
+        pBox->setFixedWidth(room);
     }
 }
 
@@ -17050,6 +17118,12 @@ void dlgTriggerEditor::applyEditorShellStyle()
     // window: a rule naming QLineEdit on the window would reach the code pane's
     // find bar and the trees' editors as well as the fields it is meant for.
     const QString inputRules = uiDesign::inputStyleSheet(tokens);
+    // ...and the same for the two things on a form that are not typed into: the
+    // mark a choice is made with, and the button that opens a picker. Carried
+    // by each form for the same reason the fields are - a rule naming
+    // QPushButton on the window would reach the trees' toolbars as well.
+    const QString choiceRules = uiDesign::choiceStyleSheet(tokens);
+    const QString buttonRules = uiDesign::buttonStyleSheet(tokens);
     // One ink for every word of the editor's chrome, which is the quiet tone
     // the toolbar's buttons, the sidebar's names and the status bar are already
     // written in: a label, a check box, a radio button, a card's title and a
@@ -17085,7 +17159,7 @@ void dlgTriggerEditor::applyEditorShellStyle()
         idChipHeight = styleEditorIdChip(pFrameId, pIdLabel, pIdNumber);
     }
 
-    const QString formRules = inputRules + chromeInkRules
+    const QString formRules = inputRules + choiceRules + buttonRules + chromeInkRules
                               + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }"
                                     // What a field on a form's own row is, as against what a card's rows
                                     // hold: read at the size the rest of the row is read at
@@ -17097,10 +17171,6 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                     "#frameId { border: 1px solid %3; border-radius: %4px; background: transparent; }"
                                     "#frameId QLabel { color: %2; background: transparent; }")
                                         .arg(disabledText.name(), mutedText.name(), borderColor.name(), QString::number(idChipHeight / 2));
-
-    // The six forms shelled over their .ui grids keep their lead labels at one
-    // width, which is measured in the font the sheet is being written for
-    alignEditorFormLeadLabels();
 
     restyleEditorIcons();
 
@@ -17314,58 +17384,64 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // a shade nearer the words while the pointer is on it
         const QColor hoveredBorder = uiDesign::blend(borderColor, textColor, scmEditorHoveredBorderWeight);
 
-        mpTriggersMainArea->setStyleSheet(qsl(
-                                                  // The groups the options strip is built out of show the form
-                                                  // through them, named outright so a profile stylesheet cannot
-                                                  // paint a band across one
-                                                  "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
-                                                  // The strip is a group box only so that a screen reader is told
-                                                  // the things on it belong together; the word leading it is the
-                                                  // form's, so the box itself is drawn as nothing at all
-                                                  "QGroupBox[editorOptionRow=\"true\"] { border: none; margin: 0px; padding: 0px; background: transparent; }"
-                                                  // The two matching modes, drawn as one control of two joined
-                                                  // segments. They stay radio buttons - a screen reader then says
-                                                  // which of the two is chosen and how many there are - so the dot
-                                                  // each would otherwise carry is given no size and no gap after
-                                                  // it, and the box round the words is what says which one is on.
-                                                  "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
-                                                  " padding: %10px %11px; spacing: 0px; }"
-                                                  // Given no size and, so that nothing draws the dot into what is
-                                                  // left, no border and no fill of its own either: a rule with
-                                                  // nothing to draw is drawn by the platform style instead
-                                                  "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
-                                                  "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
-                                                  "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
-                                                  "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
-                                                  "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
-                                                  // ...and the corners and the shared hairline last, so that they
-                                                  // outlive the states above them: the pair takes the fields'
-                                                  // corner on its outer edges, and the one hairline down the
-                                                  // middle belongs to whichever segment is chosen, so that the
-                                                  // accent goes all the way round it rather than stopping at the
-                                                  // seam. The segment giving that edge up takes its width back as
-                                                  // padding, so neither moves when the choice changes.
-                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
-                                                  " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; }"
-                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
-                                                  " { border-top-right-radius: %6px; border-bottom-right-radius: %6px; }"
-                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]:!checked"
-                                                  " { border-right-width: 0px; padding-right: %15px; }"
-                                                  "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]:!checked"
-                                                  " { border-left-width: 0px; padding-left: %15px; }"
-                                                  // The button that empties the sound file field, drawn as
-                                                  // the picture alone the way the toolbar's are: a frame
-                                                  // round a glyph this small reads as a second control
-                                                  "#toolButton_clearSoundFile { border: none; border-radius: %13px; background: transparent; padding: 2px; }"
-                                                  "#toolButton_clearSoundFile:hover { background-color: %14; }")
-                                                  .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
-                                                  .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
-                                                  .arg(QString::number(scmEditorSegmentPaddingHorizontal),
-                                                       disabledText.name(),
-                                                       QString::number(uiDesign::scmRadiusChip),
-                                                       hoverSoft,
-                                                       QString::number(scmEditorSegmentPaddingHorizontal + uiDesign::scmInputBorderWidth))
-                                          + patternRowStyleSheet() + formRules);
+        // The form's shared rules lead, and this form's own follow: a rule
+        // naming the segment carries one attribute where a shared rule names
+        // only a type, which is a tie once both add a state - and a tie is
+        // settled by which was written last. The segment's indicator is given
+        // no size at all, and the shared mark's ":checked" would otherwise give
+        // it a hairline's worth back and move the pair as the choice changed.
+        mpTriggersMainArea->setStyleSheet(formRules + patternRowStyleSheet()
+                                          + qsl(
+                                                    // The groups the options strip is built out of show the form
+                                                    // through them, named outright so a profile stylesheet cannot
+                                                    // paint a band across one
+                                                    "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
+                                                    // The strip is a group box only so that a screen reader is told
+                                                    // the things on it belong together; the word leading it is the
+                                                    // form's, so the box itself is drawn as nothing at all
+                                                    "QGroupBox[editorOptionRow=\"true\"] { border: none; margin: 0px; padding: 0px; background: transparent; }"
+                                                    // The two matching modes, drawn as one control of two joined
+                                                    // segments. They stay radio buttons - a screen reader then says
+                                                    // which of the two is chosen and how many there are - so the dot
+                                                    // each would otherwise carry is given no size and no gap after
+                                                    // it, and the box round the words is what says which one is on.
+                                                    "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
+                                                    " padding: %10px %11px; spacing: 0px; }"
+                                                    // Given no size and, so that nothing draws the dot into what is
+                                                    // left, no border and no fill of its own either: a rule with
+                                                    // nothing to draw is drawn by the platform style instead
+                                                    "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
+                                                    "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
+                                                    "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
+                                                    "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
+                                                    "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
+                                                    // ...and the corners and the shared hairline last, so that they
+                                                    // outlive the states above them: the pair takes the fields'
+                                                    // corner on its outer edges, and the one hairline down the
+                                                    // middle belongs to whichever segment is chosen, so that the
+                                                    // accent goes all the way round it rather than stopping at the
+                                                    // seam. The segment giving that edge up takes its width back as
+                                                    // padding, so neither moves when the choice changes.
+                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
+                                                    " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; }"
+                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
+                                                    " { border-top-right-radius: %6px; border-bottom-right-radius: %6px; }"
+                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]:!checked"
+                                                    " { border-right-width: 0px; padding-right: %15px; }"
+                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]:!checked"
+                                                    " { border-left-width: 0px; padding-left: %15px; }"
+                                                    // The button that empties the sound file field, drawn as
+                                                    // the picture alone the way the toolbar's are: a frame
+                                                    // round a glyph this small reads as a second control
+                                                    "#toolButton_clearSoundFile { border: none; border-radius: %13px; background: transparent; padding: 2px; }"
+                                                    "#toolButton_clearSoundFile:hover { background-color: %14; }")
+                                                    .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
+                                                    .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
+                                                    .arg(QString::number(scmEditorSegmentPaddingHorizontal),
+                                                         disabledText.name(),
+                                                         QString::number(uiDesign::scmRadiusChip),
+                                                         hoverSoft,
+                                                         QString::number(scmEditorSegmentPaddingHorizontal + uiDesign::scmInputBorderWidth)));
     }
 
     if (mpScriptsMainArea) {
@@ -17400,29 +17476,40 @@ void dlgTriggerEditor::applyEditorShellStyle()
         }
     }
 
-    if (mpSystemMessageArea) {
-        // A notice rather than a strip of highlighter pen: the accent the rest
-        // of the editor points with, and the picture beside the words is what
-        // says which of the three readings this one is
-        mpSystemMessageArea->frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: %4px; }"
-                                                                       "QFrame#frame_notificationArea QLabel { background: transparent; color: %3; }")
-                                                                           .arg(accentSoft, accentColor.name(), mutedText.name(), QString::number(uiDesign::scmRadiusPanel)));
-        // The words of the notice are named on the label itself rather than
-        // left to the descendant rule above, which does not reach them: the
-        // area is hidden when the editor is styled and polished only when a
-        // notice brings it out, and that polish writes the application's own
-        // ink into the label's palette. A sheet the label carries survives it.
-        mpSystemMessageArea->notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(mutedText.name()));
-        // The .ui file puts the close button over a spacer tall enough for a
-        // 64px picture; what the notice holds now is a line or two of text, and
-        // the spacer only has to keep the button on the first of them
-        mpSystemMessageArea->verticalSpacer_closeButton->changeSize(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
-        if (QLayout* pNoticeLayout = mpSystemMessageArea->frame_notificationArea->layout()) {
-            pNoticeLayout->setContentsMargins(10, 8, 10, 8);
-            pNoticeLayout->setSpacing(8);
-            pNoticeLayout->invalidate();
-        }
+    // The accent a mark and a button take on focus is the keyboard's, on every
+    // form the rules above were set on. The options strip's segments are radio
+    // buttons and are covered with the rest, which leaves the arrow keys moving
+    // between them once one of the two is focused.
+    for (QWidget* pMainArea : {static_cast<QWidget*>(mpTriggersMainArea),
+                               static_cast<QWidget*>(mpScriptsMainArea),
+                               static_cast<QWidget*>(mpKeysMainArea),
+                               static_cast<QWidget*>(mpTimersMainArea),
+                               static_cast<QWidget*>(mpAliasMainArea),
+                               static_cast<QWidget*>(mpActionsMainArea),
+                               static_cast<QWidget*>(mpVarsMainArea)}) {
+        uiDesign::keepClickFocusOffControls(pMainArea);
+        // ...and the corner those rules give a dropped-down list, which only
+        // shows once the window the list is in is see-through. The pattern
+        // rows are made as triggers are shown rather than here, so
+        // createPatternItem() says the same for the box it brings with it.
+        uiDesign::letPopupsTakeTheFieldsCorner(pMainArea);
     }
+
+    // The six forms shelled over their .ui grids keep their lead labels at one
+    // width, which is measured in the font the sheet is being written for.
+    // After the sheets have landed rather than before: the "Events" label is
+    // held to the line the script's chips stand on, and that line is only
+    // known once the form's rule for a field has given the row's field its
+    // height.
+    alignEditorFormLeadLabels();
+    // ...and the width of a number box, which is what its largest number is
+    // wide in that same font
+    fitEditorOptionsSpinBoxes();
+
+    // The notice writes its own sheet from the same tokens, on the same
+    // appearance change - see dlgSystemMessageArea::slot_applyAppearance().
+    // Nothing here touches it: a second sheet on that frame is what put the old
+    // near-black band back over the accent hairline.
 
     if (!mpWidget_editorSidebarPane) {
         return;
@@ -17619,6 +17706,9 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
         // words are wide - the "Events" label, pinned in there to the height one
         // line of chips comes to, among them
         alignEditorFormLeadLabels();
+        // ...and what three digits come to in the number boxes on the options
+        // strip
+        fitEditorOptionsSpinBoxes();
     }
 
     // A search result's row height is measured off the font the results are
@@ -18314,7 +18404,9 @@ void dlgTriggerEditor::handleBannerDismiss()
     }
 
     mLastDismissedBannerView = mCurrentView;
-    mLastDismissedBannerContent = mpSystemMessageArea->notificationAreaMessageBox->text();
+    // Uninked, so that undoing after an appearance change puts the banner back
+    // in the ink of the appearance it is being put back into
+    mLastDismissedBannerContent = systemMessage();
     mLastDismissedBannerKey = mCurrentBannerKey;
 
     const QString settingsKey = bannerSettingsKey(mCurrentView, mCurrentBannerKey);
@@ -18347,16 +18439,13 @@ void dlgTriggerEditor::showBannerUndoToast()
     mpBannerUndoTimer->setInterval(std::chrono::seconds(5));
 
     //: Toast notification shown when user dismisses an editor tip banner. Allows them to undo or permanently hide the tips for this editor view type.
-    QString toastMessage = tr("Banner hidden. <a href='undo' style='color: inherit; text-decoration: underline;'>Undo</a> | <a href='hide-permanently' style='color: inherit; text-decoration: "
-                              "underline;'>Hide permanently</a>");
-    // Fix up the colour here rather than in the tr() text so existing
-    // translations stay valid
-    toastMessage.replace(qsl("color: inherit"), qsl("color: ") + themedBannerLinkColor());
+    const QString toastMessage = tr("Banner hidden. <a href='undo' style='color: inherit; text-decoration: underline;'>Undo</a> | <a href='hide-permanently' style='color: inherit; text-decoration: "
+                                    "underline;'>Hide permanently</a>");
 
     mpSystemMessageArea->notificationAreaIconLabelError->hide();
     mpSystemMessageArea->notificationAreaIconLabelWarning->hide();
     mpSystemMessageArea->notificationAreaIconLabelInformation->show();
-    mpSystemMessageArea->notificationAreaMessageBox->setText(toastMessage);
+    setSystemMessage(toastMessage);
     mpSystemMessageArea->show();
 
     connect(mpBannerUndoTimer, &QTimer::timeout, this, &dlgTriggerEditor::hideSystemMessageArea);
@@ -18374,27 +18463,19 @@ void dlgTriggerEditor::showBannerUndoToast()
     });
 }
 
-// The banner and toast link colours are baked into the message HTML when it is
-// built, so swap them for the new theme's colour if the appearance changes
-// while a message is still on screen
+// A QLabel bakes the colour of an anchor into its document when the text is
+// set, so a message already on screen when the appearance moves is written
+// again from the words it was given - which are kept uninked beside it. What
+// was stashed for an undo needs nothing: it is uninked too, and the ink goes in
+// when it is shown again.
 void dlgTriggerEditor::slot_refreshBannerLinkColors()
 {
-    const QString freshColor = themedBannerLinkColor();
-    const QString staleColor = freshColor == qsl("black") ? qsl("rgb(230, 230, 230)") : qsl("black");
-    const QString stale = qsl("color: %1;").arg(staleColor);
-    const QString fresh = qsl("color: %1;").arg(freshColor);
-
-    // keep the stored content fresh too, so undoing a dismissal after a theme
-    // switch does not restore links in the old theme's colour
-    mLastDismissedBannerContent.replace(stale, fresh);
-
     if (!mpSystemMessageArea) {
         return;
     }
-    auto* messageBox = mpSystemMessageArea->notificationAreaMessageBox;
-    QString text = messageBox->text();
-    if (text.contains(stale)) {
-        messageBox->setText(text.replace(stale, fresh));
+    const QString content = systemMessage();
+    if (!content.isEmpty()) {
+        mpSystemMessageArea->notificationAreaMessageBox->setText(inkedSystemMessage(content));
     }
 }
 

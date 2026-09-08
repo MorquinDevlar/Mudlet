@@ -36,6 +36,8 @@
  * - Everything on one line of the strip is read at one height: a check box and
  *   a spin box beside it share a vertical centre rather than the check box
  *   riding at the top of the line the FlowLayout put them both on.
+ * - A number box on the strip is the width of the largest number it can hold
+ *   and no wider, and that number still fits inside it.
  * - The code pane still keeps its third of the two panes underneath it.
  * - The two matching modes are radio buttons drawn as joined segments, so a
  *   screen reader still says which of the two is chosen; they write into
@@ -55,6 +57,8 @@
  *   to fit the strip are still named in full to it.
  * - The tab chain runs the head row, the strip left to right, and then the
  *   patterns.
+ * - The accent a mark takes on focus is the keyboard's: a click turns an option
+ *   on without leaving the focus, and so the accent, behind on it.
  *
  * Run with: ctest -R EditorTriggerOptionsStripTest -V
  */
@@ -69,8 +73,10 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSpinBox>
+#include <QScopeGuard>
 #include <QSplitter>
 #include <QStyle>
+#include <QStyleOptionButton>
 #include <QStyleOptionSpinBox>
 #include <QTemporaryDir>
 #include <QToolButton>
@@ -136,6 +142,9 @@ private:
     // it - some twenty pixels - on top of these.
     static constexpr int scmSegmentPadding = 12;
     static constexpr int scmSegmentSlack = 6;
+    // Mirrors scmEditorOptionsSpinBoxSlack, also file-local to the editor: what
+    // a number box keeps between its last digit and the arrows beside it
+    static constexpr int scmSpinBoxSlack = 2;
     // Mirrors scmEditorRowControlGap, which the strip's FlowLayout is given as
     // its vertical spacing - what stands between one wrapped line and the next
     static constexpr int scmStripLineGap = 8;
@@ -161,6 +170,9 @@ private:
     // so that neither a hairline at the edge nor the word in the middle is what
     // comes back
     static constexpr int scmFillDepth = 4;
+    // How far a pixel inside a mark's box has to be from that box's fill before
+    // it counts as part of the mark rather than as the fill's own noise
+    static constexpr int scmMarkInkSlack = 40;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -297,6 +309,62 @@ private:
     {
         const QRect box = inTheGrabsPixels(shot, pSegment->geometry().adjusted(depth, 0, -depth, 0));
         return shot.pixelColor(rightHandSide ? box.right() : box.left(), box.center().y());
+    }
+
+    // Where the style puts the mark on a check box, in the pixels of a grab of
+    // the window around it. Read off the window rather than off the control or
+    // its form: either is grabbed against its own palette where it paints no
+    // background of its own, so the column the form actually sits on is only
+    // there in a grab that holds the column too.
+    static QRect markBoxIn(const QAbstractButton* pButton, const QWidget* pWindow, const QImage& shot)
+    {
+        QStyleOptionButton option;
+        option.initFrom(pButton);
+        QRect box = pButton->style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, pButton);
+        box.moveTopLeft(pButton->mapTo(pWindow, box.topLeft()));
+        return inTheGrabsPixels(shot, box);
+    }
+
+    // How many pixels well inside that box are not the fill it is drawn on:
+    // none in an empty box, a good few once the tick is in it
+    static int markedPixelsIn(const QImage& shot, const QRect& box, const QColor& fill)
+    {
+        const QRect inside = box.adjusted(box.width() / 4, box.height() / 4, -box.width() / 4, -box.height() / 4);
+        int marked = 0;
+        for (int y = inside.top(); y <= inside.bottom(); ++y) {
+            for (int x = inside.left(); x <= inside.right(); ++x) {
+                if (distanceBetween(shot.pixelColor(x, y), fill) > scmMarkInkSlack) {
+                    ++marked;
+                }
+            }
+        }
+        return marked;
+    }
+
+    // The strongest colour the box is outlined in, read against the form
+    // showing through beside it
+    static qreal outlineRatioOf(const QImage& shot, const QRect& box, const QColor& behind)
+    {
+        QColor outline = behind;
+        for (int x = box.left(); x <= box.right(); ++x) {
+            const QColor sample = shot.pixelColor(x, box.top());
+            if (uiDesign::contrastRatio(sample, behind) > uiDesign::contrastRatio(outline, behind)) {
+                outline = sample;
+            }
+        }
+        return uiDesign::contrastRatio(outline, behind);
+    }
+
+    // The one path an appearance change takes while this window is open: the
+    // application style is replaced, and the StyleChange that follows is what
+    // the editor restyles itself on
+    void takeTheEditorTo(const enums::Appearance appearance)
+    {
+        mudlet::self()->setAppearance(appearance);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        QCoreApplication::processEvents();
+        mpEditor->grab();
     }
 
     // How near the accent the nearest pixel inside a box comes - a chevron
@@ -494,6 +562,49 @@ private slots:
         // ...and one line is what they were all on, so that a centre they agree
         // on is one middle rather than a coincidence between two lines
         QCOMPARE(optionsRow()->height(), uiDesign::scmInputHeight);
+    }
+
+    // (b2) A number box on the strip is as wide as the largest number it can
+    // hold and no wider. Both were a flat 72px, which is room for a couple of
+    // digits neither of them will ever show.
+    void test_theNumberBoxesAreOnlyAsWideAsTheirLargestNumber()
+    {
+        chooseTrigger(mpThreePatternRow);
+        resizeToStripWidth(scmWideStrip, scmTallEditor);
+
+        QStringList misses;
+        QStringList read;
+        for (QSpinBox* pBox : {mpEditor->mpSpinBox_matchWithinLines, form()->spinBox_stayOpen}) {
+            QVERIFY2(pBox->isVisible(), qPrintable(qsl("%1 is not on show, so its width says nothing").arg(pBox->objectName())));
+
+            const QFontMetrics metrics = pBox->fontMetrics();
+            const QString largest = QString::number(pBox->maximum());
+            QChar widest = QLatin1Char('0');
+            for (char digit = '0'; digit <= '9'; ++digit) {
+                if (metrics.horizontalAdvance(QLatin1Char(digit)) > metrics.horizontalAdvance(widest)) {
+                    widest = QLatin1Char(digit);
+                }
+            }
+            const int room = metrics.horizontalAdvance(QString(largest.length(), widest)) + 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth) + uiDesign::scmInputStepperWidth
+                             + scmSpinBoxSlack;
+
+            QStyleOptionSpinBox option;
+            option.initFrom(pBox);
+            option.subControls = QStyle::SC_All;
+            const QRect editField = pBox->style()->subControlRect(QStyle::CC_SpinBox, &option, QStyle::SC_SpinBoxEditField, pBox);
+            const int largestNumber = metrics.horizontalAdvance(largest);
+
+            read << qsl("%1 is %2px wide against the %3px %4 comes to, and types it in %5px").arg(pBox->objectName()).arg(pBox->width()).arg(room).arg(largest).arg(editField.width());
+
+            if (pBox->width() > room) {
+                misses << qsl("%1 is %2px wide, where %3 and the room the field's rule leaves round it come to %4px").arg(pBox->objectName()).arg(pBox->width()).arg(largest).arg(room);
+            }
+            if (editField.width() < largestNumber) {
+                misses << qsl("%1 leaves %2px to type in, where %3 is %4px wide").arg(pBox->objectName()).arg(editField.width()).arg(largest).arg(largestNumber);
+            }
+        }
+        qInfo().noquote() << qsl("  %1").arg(read.join(qsl("; ")));
+        QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
     // (c) ...and the code pane still keeps its third of the two panes, in a
@@ -822,6 +933,70 @@ private slots:
         QCOMPARE(pPair->width(), pairWidth);
     }
 
+    // (l) The mark a choice on the strip is made with is the design's in both
+    // appearances, rather than the platform's - a grey Fusion square on the
+    // dark theme, a blue rounded macOS box on the light one. The settings
+    // dialog is held to the same measurement, so that a check box reads as the
+    // same control in both windows.
+    void test_theStripsCheckBoxCarriesTheOneMark()
+    {
+        const auto appearanceBefore = mudlet::self()->mAppearance;
+        auto restore = qScopeGuard([this, appearanceBefore]() {
+            takeTheEditorTo(appearanceBefore);
+        });
+
+        chooseTrigger(mpThreePatternRow);
+        QCheckBox* pBox = form()->checkBox_perlSlashGOption;
+        QVERIFY2(pBox->isVisible(), "the check box this case measures is not on show");
+        const bool wasChecked = pBox->isChecked();
+        auto putTheBoxBack = qScopeGuard([pBox, wasChecked]() {
+            pBox->setChecked(wasChecked);
+        });
+
+        QStringList misses;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            takeTheEditorTo(appearance.second);
+            // Proves the appearance actually moved: a run where it did not
+            // would measure the same theme twice and pass
+            QCOMPARE(uiDesign::themeTokens().darkPage, appearance.second == enums::Appearance::dark);
+
+            pBox->setChecked(false);
+            settle();
+            const QImage empty = mpEditor->grab().toImage();
+            const QRect box = markBoxIn(pBox, mpEditor, empty);
+            QVERIFY2(box.width() > 4 && box.height() > 4, qPrintable(qsl("%1: the mark has no rectangle to sample: %2x%3").arg(appearance.first).arg(box.width()).arg(box.height())));
+
+            // Well past the mark's own antialiased edge and short of the
+            // words after it, which is what the gap named in choiceStyleSheet()
+            // leaves room for
+            const QColor behind = empty.pixelColor(qMin(box.right() + box.width() / 3, empty.width() - 1), box.center().y());
+            const qreal outline = outlineRatioOf(empty, box, behind);
+            const QColor fill = empty.pixelColor(box.center());
+            const int nothingInIt = markedPixelsIn(empty, box, fill);
+
+            pBox->setChecked(true);
+            settle();
+            const int aTick = markedPixelsIn(mpEditor->grab().toImage(), box, fill);
+
+            qInfo().noquote() << qsl("  %1: the strip's mark is %2px on a fill of %3, outlined at %4:1 against %5, with %6 pixels in it empty and %7 checked")
+                                         .arg(appearance.first)
+                                         .arg(box.width())
+                                         .arg(fill.name(), QString::number(outline, 'f', 2), behind.name())
+                                         .arg(nothingInIt)
+                                         .arg(aTick);
+            if (outline < uiDesign::scmQuietMinimumRatio) {
+                misses << qsl("%1: the mark is outlined at %2:1 against the form behind it").arg(appearance.first, QString::number(outline, 'f', 2));
+            }
+            if (nothingInIt > 0) {
+                misses << qsl("%1: an unchecked box already has %2 pixels in it that are not its fill").arg(appearance.first).arg(nothingInIt);
+            }
+            if (aTick <= 0) {
+                misses << qsl("%1: a checked box paints nothing inside itself, so there is no tick").arg(appearance.first);
+            }
+        }
+        QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
+    }
+
     // (k) A spin box's steppers say they are being used: the chevron under the
     // pointer takes the accent, and gives it back when the pointer leaves
     void test_theStepperChevronTakesTheAccentUnderThePointer()
@@ -863,6 +1038,55 @@ private slots:
         QVERIFY2(atRest - hovered >= scmChevronInkShift,
                  qPrintable(qsl("the pointer took the stepper from %1 to %2 of the accent, which is inside what the wash behind the chevron moves on its own").arg(atRest).arg(hovered)));
         QVERIFY2(afterwards > scmChevronInkSlack, qPrintable(qsl("the stepper is still %1 from the accent with the pointer off it, so the chevron never went back").arg(afterwards)));
+    }
+
+    // (m) The accent the mark's hairline takes on focus is the keyboard's. A
+    // click that turned an option on and off again used to leave that accent
+    // sitting on it until something else in the window was clicked, because
+    // QAbstractButton asks QStyle::SH_Button_FocusPolicy once, in its
+    // constructor, and keeps what that style answered - which is the style's
+    // decision rather than the design's. The box is put back into the
+    // Qt::StrongFocus a style answering that way leaves it in, and the form
+    // restyled over it, so that this measures the shell rather than which
+    // platform the run is on.
+    void test_clickingAnOptionDoesNotLeaveItHoldingTheFocus()
+    {
+        const auto appearanceBefore = mudlet::self()->mAppearance;
+        auto restore = qScopeGuard([this, appearanceBefore]() {
+            takeTheEditorTo(appearanceBefore);
+        });
+
+        chooseTrigger(mpThreePatternRow);
+        QCheckBox* pBox = form()->checkBox_perlSlashGOption;
+        QVERIFY2(pBox->isVisible(), "the check box this case clicks is not on show");
+
+        // An appearance the editor is not already in, because
+        // applyEditorShellStyle() has nothing to redo when the four colours it
+        // mixes everything from have not moved
+        pBox->setFocusPolicy(Qt::StrongFocus);
+        takeTheEditorTo(uiDesign::themeTokens().darkPage ? enums::Appearance::light : enums::Appearance::dark);
+        QCOMPARE(pBox->focusPolicy(), Qt::TabFocus);
+
+        const bool wasChecked = pBox->isChecked();
+        auto putTheBoxBack = qScopeGuard([pBox, wasChecked]() {
+            pBox->setChecked(wasChecked);
+            // The focus is given to the box below, and no other case here
+            // expects to find it there
+            pBox->clearFocus();
+        });
+
+        QTest::mouseClick(pBox, Qt::LeftButton, Qt::NoModifier, pBox->rect().center());
+        settle();
+        QVERIFY2(pBox->isChecked() != wasChecked, "clicking the option left it where it was, so nothing here says the click landed");
+        // The window's own focus child rather than hasFocus(), which answers
+        // false on any run whose window never became the active one - and would
+        // then pass whatever the policy said
+        QVERIFY2(mpEditor->focusWidget() != pBox, "a click left the option holding the keyboard focus, so the accent stayed on its mark");
+        QVERIFY2(!pBox->hasFocus(), "a click left the option focused");
+
+        pBox->setFocus(Qt::TabFocusReason);
+        settle();
+        QVERIFY2(mpEditor->focusWidget() == pBox, "the Tab key cannot reach the option, so a keyboard user has nothing to see the accent on");
     }
 };
 

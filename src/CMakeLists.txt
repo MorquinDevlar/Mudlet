@@ -91,12 +91,11 @@ set(mudlet_SRCS
     EditorMoveItemCommand.cpp
     EditorPlaceholderButton.cpp
     EditorToggleActiveCommand.cpp
-    EditorSidebarToggle.cpp
-    EventNames.cpp
     EditorTreeDelegate.cpp
     EditorTreeRowMetrics.cpp
     EditorUndoStack.cpp
     EventLoopPump.cpp
+    EventNames.cpp
     exitstreewidget.cpp
     FileOpenHandler.cpp
     FlowLayout.cpp
@@ -132,6 +131,7 @@ set(mudlet_SRCS
     SentryWrapper.cpp
     ShortcutsManager.cpp
     SidebarItemDelegate.cpp
+    SidebarToggle.cpp
     SingleLineTextEdit.cpp
     SpeechAudioCapture.cpp
     SpeechRecognizerFactory.cpp
@@ -356,13 +356,12 @@ set(mudlet_HDRS
     EditorMoveItemCommand.h
     EditorPlaceholderButton.h
     EditorToggleActiveCommand.h
-    EditorSidebarToggle.h
-    EventNames.h
     EditorTreeDelegate.h
     EditorTreeRowMetrics.h
     EditorUndoStack.h
     enums.h
     EventLoopPump.h
+    EventNames.h
     exitstreewidget.h
     FileOpenHandler.h
     FlowLayout.h
@@ -399,6 +398,7 @@ set(mudlet_HDRS
     SentryWrapper.h
     ShortcutsManager.h
     SidebarItemDelegate.h
+    SidebarToggle.h
     SingleLineTextEdit.h
     SpeechAudioCapture.h
     SpeechRecognizer.h

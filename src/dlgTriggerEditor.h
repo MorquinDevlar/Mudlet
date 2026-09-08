@@ -111,7 +111,7 @@ class QShortcut;
 
 namespace uiDesign {
 class ChipRow;
-class EditorSidebarToggle;
+class SidebarToggle;
 class EditorTreeDelegate;
 class SearchResultDelegate;
 class VariableTreeDelegate;
@@ -131,6 +131,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorCodeHeadingTest;
     friend class EditorColumnAlignmentTest;
     friend class EditorColumnFontTest;
+    friend class EditorDefaultSizeTest;
     friend class EditorEventChipRowTest;
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
@@ -327,6 +328,9 @@ public:
     // One width for the words leading those forms' rows, so a field starts at
     // the same place whichever row of whichever form it is on
     void alignEditorFormLeadLabels();
+    // ...and the two number boxes on the options strip are the width of the
+    // largest number each can hold, measured in the font it is drawn in
+    void fitEditorOptionsSpinBoxes();
     // spinBox_lineMargin stays what the save and load paths read; the two
     // segments and the box beside them are a view of it
     void reflectTriggerMatchMode();
@@ -665,7 +669,7 @@ private:
     // usable on the screens attached now, a size taken off the profile window
     // when there is nothing stored yet
     void restoreWindowGeometry();
-    QSize defaultEditorSize(const QRect& availableArea) const;
+    QSize defaultEditorSize() const;
     void repositionOnProfileScreen();
     bool onSameScreenAsProfile() const;
     void addScript(bool);
@@ -1025,7 +1029,7 @@ private:
     // which is where every platform puts the control that shows and hides a
     // sidebar. It gives the names up and brings them back; the sidebar itself
     // never goes away.
-    uiDesign::EditorSidebarToggle* mpToggle_editorSidebar = nullptr;
+    uiDesign::SidebarToggle* mpToggle_editorSidebar = nullptr;
     // ...and the same for the sidebar's rows
     QList<QPair<QListWidgetItem*, QString>> mEditorSidebarGlyphs;
     // The actions the sidebar rows stand for, which is also what the Ctrl+1 to
@@ -1272,6 +1276,11 @@ private:
 
     void showIntro(const QString& = QString());
     void showHideableBanner(const QString& content, const QString& bannerKey);
+    // The one way anything reaches the message area's label: the words are kept
+    // beside it uninked, and what the label is given is those words with the
+    // appearance's ink in every anchor
+    void setSystemMessage(const QString& content);
+    [[nodiscard]] QString systemMessage() const;
     [[nodiscard]] QString bannerSettingsKey(EditorViewType viewType, const QString& bannerKey) const;
     [[nodiscard]] QString legacyBannerSettingsKey(EditorViewType viewType, const QString& bannerKey) const;
     [[nodiscard]] QString profileSettingsPrefix() const;

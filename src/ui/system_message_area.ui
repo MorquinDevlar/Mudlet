@@ -25,18 +25,6 @@
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
-     <property name="styleSheet">
-      <string notr="true">QFrame#frame_notificationArea {
-  border: 3px solid;
-  border-radius: 6px;
-  background-color: rgb(255, 254, 215);
-}
-
-QLabel{
-color: black;
-background-color: rgb(255, 254, 215);
-}</string>
-     </property>
      <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,0,0,1,0">
       <property name="spacing">
        <number>3</number>

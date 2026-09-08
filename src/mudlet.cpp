@@ -1035,7 +1035,11 @@ void mudlet::init()
     // theme and the fill's because it is the value being shown. The corner and
     // the room round the words can be, and are: QString::arg() fills the lowest
     // numbered marker it finds, so the two the caller passes are %2 and %3.
-    mTEXT_ON_BG_STYLESHEET = qsl("QPushButton {color: %2; background-color: %3; border: 1px solid %4; border-radius: %1px; padding: 3px 8px;}").arg(uiDesign::scmRadiusInput);
+    // The height is named, and named as none: a well is as tall as the row it
+    // is on, not as tall as a form control. Left unsaid, the shared button rule
+    // of whichever window the well is on would answer it instead, and a well
+    // that grew to a field's height stopped sharing its line's centre.
+    mTEXT_ON_BG_STYLESHEET = qsl("QPushButton {color: %2; background-color: %3; border: 1px solid %4; border-radius: %1px; padding: 3px 8px; min-height: 0px;}").arg(uiDesign::scmRadiusInput);
 
     setupUi(this);
     setUnifiedTitleAndToolBarOnMac(true);

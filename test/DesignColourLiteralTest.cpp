@@ -25,9 +25,12 @@
  * other appearance and reads grey on grey.
  *
  * So this reads the sources of those surfaces and fails on a colour that is
- * written rather than mixed. It links nothing: the src/ path arrives at
- * configure time through MUDLET_SRC_DIR, the way CMakeListsConsistencyTest and
- * DiscordTest take it.
+ * written rather than mixed, in whichever shape it was written in: a hex, the
+ * channels of an rgb() or rgba(), a Qt colour name, a QColor built from any of
+ * those, a CSS colour word inside a declaration, or a literal that is a colour
+ * name and nothing else - which is how one reaches a sheet through .arg(). It
+ * links nothing: the src/ path arrives at configure time through
+ * MUDLET_SRC_DIR, the way CMakeListsConsistencyTest and DiscordTest take it.
  *
  * A colour that genuinely does not follow the theme - a well showing the colour
  * the user chose, a console's own ANSI table, another application's brand in a
@@ -97,8 +100,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("ChipRow.h"),
                           QStringLiteral("FlowLayout.cpp"),
                           QStringLiteral("FlowLayout.h"),
-                          QStringLiteral("EditorSidebarToggle.cpp"),
-                          QStringLiteral("EditorSidebarToggle.h"),
+                          QStringLiteral("SidebarToggle.cpp"),
+                          QStringLiteral("SidebarToggle.h"),
                           QStringLiteral("EditorPlaceholderButton.cpp"),
                           QStringLiteral("EditorPlaceholderButton.h"),
                           QStringLiteral("dlgAboutDialog.cpp"),
@@ -108,12 +111,14 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("AboutSupporterBanner.cpp"),
                           QStringLiteral("AboutSupporterBanner.h"),
                           QStringLiteral("dlgColorTrigger.cpp"),
+                          QStringLiteral("dlgSystemMessageArea.cpp"),
                           QStringLiteral("TDetachedWindow.cpp"),
                           QStringLiteral("mudlet.cpp"),
                           QStringLiteral("ui/trigger_editor.ui"),
                           QStringLiteral("ui/triggers_main_area.ui"),
                           QStringLiteral("ui/trigger_pattern_edit.ui"),
                           QStringLiteral("ui/color_trigger.ui"),
+                          QStringLiteral("ui/system_message_area.ui"),
                           QStringLiteral("ui/aliases_main_area.ui"),
                           QStringLiteral("ui/timers_main_area.ui"),
                           QStringLiteral("ui/scripts_main_area.ui"),
@@ -176,13 +181,26 @@ class DesignColourLiteralTest : public QObject
         return QString();
     }
 
+    // A string literal, and whether it is copy. What tr() is handed is read by
+    // a person, and a stylesheet value is never translated - so a translated
+    // literal reading "Black" is the name of a thing rather than a colour on
+    // its way into a sheet, while a declaration written inside one still is.
+    struct Literal
+    {
+        QString text;
+        bool translated = false;
+    };
+
     // What is inside the double quotes on a line, which is where a colour that
     // reaches a stylesheet has to be written. A line of a raw string literal is
     // handed here whole instead, by the caller.
-    static QStringList stringLiteralsIn(const QString& line)
+    static QList<Literal> stringLiteralsIn(const QString& line)
     {
-        QStringList literals;
+        static const QRegularExpression translating(QStringLiteral("\\b(?:tr|translate|QT_TR_NOOP|QT_TRANSLATE_NOOP)\\s*\\(\\s*$"));
+
+        QList<Literal> literals;
         bool open = false;
+        bool translated = false;
         qsizetype from = 0;
         for (qsizetype at = 0; at < line.size(); ++at) {
             const QChar character = line.at(at);
@@ -194,29 +212,60 @@ class DesignColourLiteralTest : public QObject
                 continue;
             }
             if (open) {
-                literals.append(line.mid(from, at - from));
+                literals.append({line.mid(from, at - from), translated});
                 open = false;
             } else {
                 open = true;
                 from = at + 1;
+                translated = translating.match(line.left(at)).hasMatch();
             }
         }
         return literals;
     }
 
-    // A colour written into a stylesheet: the hex, or the name in a declaration
-    // that is about colour at all - "black" on its own is as likely to be a
-    // word as a colour.
-    static QString colourInStrings(const QStringList& literals)
+    // Channels written out into a string - rgb(64, 60, 40), rgba(255, 254,
+    // 215, 0.5) - which no hex rule sees. A digit has to follow the paren, so
+    // the format template uiDesign::rgba() fills in, "rgba(%1, %2, %3, %4)",
+    // is not one of these.
+    static const QRegularExpression& channelsInString()
     {
-        for (const QString& literal : literals) {
-            if (const QString hex = hexColourIn(literal); !hex.isEmpty()) {
+        static const QRegularExpression pattern(QStringLiteral("\\brgba?\\s*\\(\\s*\\d"));
+        return pattern;
+    }
+
+    // A literal that is a colour name and nothing else, which is how a name
+    // reaches a sheet through .arg() - qsl("lightsalmon") - with the
+    // declaration it lands in written somewhere else entirely.
+    static bool wholeLiteralIsAColourName(const QString& literal)
+    {
+        const QString trimmed = literal.trimmed();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        const QRegularExpressionMatch match = cssColourName().match(trimmed);
+        return match.hasMatch() && match.capturedStart() == 0 && match.capturedLength() == trimmed.size();
+    }
+
+    // A colour written into a stylesheet: the hex, the channels, a literal that
+    // is a colour name outright, or the name in a declaration that is about
+    // colour at all - "black" in the middle of a sentence is as likely to be a
+    // word as a colour.
+    static QString colourInStrings(const QList<Literal>& literals)
+    {
+        for (const Literal& literal : literals) {
+            if (const QString hex = hexColourIn(literal.text); !hex.isEmpty()) {
                 return QStringLiteral("the colour %1 written into a string").arg(hex);
             }
-            if (!literal.contains(QStringLiteral("color:")) && !literal.contains(QStringLiteral("background"))) {
+            if (channelsInString().match(literal.text).hasMatch()) {
+                return QStringLiteral("a colour written channel by channel into a string");
+            }
+            if (!literal.translated && wholeLiteralIsAColourName(literal.text)) {
+                return QStringLiteral("the colour name %1 written as a string of its own").arg(literal.text.trimmed());
+            }
+            if (!literal.text.contains(QStringLiteral("color:")) && !literal.text.contains(QStringLiteral("background"))) {
                 continue;
             }
-            if (const QRegularExpressionMatch match = cssColourName().match(literal); match.hasMatch()) {
+            if (const QRegularExpressionMatch match = cssColourName().match(literal.text); match.hasMatch()) {
                 return QStringLiteral("the colour name %1 written into a stylesheet").arg(match.captured(0));
             }
         }
@@ -328,7 +377,7 @@ class DesignColourLiteralTest : public QObject
 
             // Inside a raw string every character is content, so the whole line
             // is read as one literal rather than picked apart by its quotes
-            QString reason = colourInStrings(wasInsideRawString ? QStringList{raw} : stringLiteralsIn(raw));
+            QString reason = colourInStrings(wasInsideRawString ? QList<Literal>{{raw, false}} : stringLiteralsIn(raw));
             if (reason.isEmpty() && !wasInsideRawString) {
                 reason = colourInCode(raw);
             }
@@ -361,7 +410,7 @@ class DesignColourLiteralTest : public QObject
                 if (raw.contains(QStringLiteral("</property>"))) {
                     insideStyleSheet = false;
                 } else if (reason.isEmpty()) {
-                    reason = colourInStrings({raw});
+                    reason = colourInStrings({{raw, false}});
                 }
             }
             if (reason.isEmpty() || exempted(lines, number)) {
