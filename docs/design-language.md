@@ -1208,3 +1208,28 @@ that actually shows through beside the mark is only in a grab that holds it too.
 to `scannedFiles()` in the scan, and its window to the walk in the audit.
 Neither list can be inferred, and a surface in neither is a surface nothing is
 checking.
+
+## 7. Proposing a change
+
+A window or a form is proposed as one hand-written HTML page published with
+the Artifact tool, not as a multi-artboard design canvas (the `design` skill).
+The reader wants every variant on one page behind its own controls - a shell
+switch, a light/dark toggle, a size picker - and working interaction wherever
+the proposal is about interaction: a chip row that takes a name, a key field
+that listens. Screens laid out side by side on a canvas ask the reader to
+scroll around them and to hold the comparison in their head; a toggle puts the
+two states on the same pixels.
+
+- Both appearances are computed, not picked. The page carries a JavaScript
+  transcription of `themeTokens()` (section 1) run against the app's real
+  palettes - `DarkTheme.cpp` for dark, a Fusion light palette for light - so
+  the tones on the page are the tones the app will derive. A colour chosen by
+  eye on a mockup is a colour the tokens will not reproduce.
+- Glyphs are the Lucide SVGs the app ships (section 2), drawn at the token
+  stroke width, so what is approved is what `glyphPixmap()` will draw.
+- One page per round. A later round is a new page rather than an edit of the
+  old one, so each decision stays attached to what was looked at when it was
+  taken.
+- The page is a proposal, not a specification: once approved, the measurements
+  come from the tokens and the recipes, and the tests read the window rather
+  than the mockup.
