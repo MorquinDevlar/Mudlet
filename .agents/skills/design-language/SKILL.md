@@ -129,6 +129,21 @@ for anything it adds, and adoption is one window per pull request):
 - Colour trigger picker `dlgColorTrigger`, UI tour
 - User-made toolbars `TToolBar` / `TEasyButtonBar` (profile-owned look, mostly out of scope)
 
+## Mocking it up first
+
+Propose a window or a form as one hand-written HTML page published with the Artifact tool,
+not as a multi-artboard design canvas (the `design` skill). The reader wants every variant on
+one page behind its own controls - a shell switch, a light/dark toggle, a size picker - and
+working interaction where the proposal is about interaction (a chip row, a key-capture
+field), rather than screens laid out side by side to scroll around.
+
+- Compute both appearances from a JavaScript transcription of `themeTokens()` run against
+  the app's real palettes (`DarkTheme.cpp` and a Fusion light palette), so the tones on the
+  page are the tones the app will derive; do not pick colours by eye.
+- Draw glyphs from the same Lucide SVGs the app ships, at the token stroke width.
+- One page per round; a later round is a new page, so decisions stay attached to what was
+  looked at.
+
 ## Bringing a surface in: the checklist
 
 1. Screenshot it first, both appearances, with the harness recipe under "Seeing the result".
