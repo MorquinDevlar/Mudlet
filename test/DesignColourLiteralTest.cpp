@@ -38,6 +38,15 @@
  * exempts it. The reason travels with the code rather than living in a list
  * here.
  *
+ * The second case reads the same surfaces for the other half of the same rule.
+ * A sheet names a font size only through uiDesign::typeSize(), which reaches it
+ * as a pt value: Qt's stylesheet parser reads pt and px for font-size and
+ * nothing else, so a percentage is a rule that reads as though it sets a size
+ * and sets none - and a written number is a size somebody picked rather than
+ * one of the four steps the design has. The same "theme-fixed:" marker exempts
+ * a block that is a picture of another application, whose sizes are as fixed as
+ * its colours.
+ *
  * Adding a window to the design language means adding its files to
  * scannedFiles() below.
  *
@@ -98,6 +107,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("SearchResultDelegate.h"),
                           QStringLiteral("SidebarItemDelegate.cpp"),
                           QStringLiteral("SidebarItemDelegate.h"),
+                          QStringLiteral("TTabBar.cpp"),
+                          QStringLiteral("TTabBar.h"),
                           QStringLiteral("GripSplitter.cpp"),
                           QStringLiteral("GripSplitter.h"),
                           QStringLiteral("ChipRow.cpp"),
@@ -114,6 +125,10 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("AboutLinkButton.h"),
                           QStringLiteral("AboutSupporterBanner.cpp"),
                           QStringLiteral("AboutSupporterBanner.h"),
+                          QStringLiteral("dlgConnectionProfiles.cpp"),
+                          QStringLiteral("dlgConnectionProfiles.h"),
+                          QStringLiteral("dlgNotepad.cpp"),
+                          QStringLiteral("dlgNotepad.h"),
                           QStringLiteral("dlgColorTrigger.cpp"),
                           QStringLiteral("dlgSystemMessageArea.cpp"),
                           QStringLiteral("TDetachedWindow.cpp"),
@@ -122,6 +137,7 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("ui/triggers_main_area.ui"),
                           QStringLiteral("ui/trigger_pattern_edit.ui"),
                           QStringLiteral("ui/color_trigger.ui"),
+                          QStringLiteral("ui/connection_profiles.ui"),
                           QStringLiteral("ui/system_message_area.ui"),
                           QStringLiteral("ui/aliases_main_area.ui"),
                           QStringLiteral("ui/timers_main_area.ui"),
@@ -129,6 +145,7 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("ui/keybindings_main_area.ui"),
                           QStringLiteral("ui/actions_main_area.ui"),
                           QStringLiteral("ui/vars_main_area.ui"),
+                          QStringLiteral("ui/notes_editor.ui"),
                           QStringLiteral("ui/about_dialog.ui")};
         // The settings dialog is one .ui file today and may not stay one, so
         // its pages are taken by pattern rather than named
@@ -292,6 +309,49 @@ class DesignColourLiteralTest : public QObject
         return QString();
     }
 
+    // A size written into a stylesheet, in either of the two shapes that are
+    // not a step of the scale.
+    //
+    // A percentage, because Qt's stylesheet parser reads pt and px for
+    // font-size and nothing else: it drops a percentage without a word, which
+    // is how 28 rules across three windows came to say nothing at all while
+    // reading as though they set a size.
+    //
+    // And a number, because a written point size is a size somebody picked, and
+    // the next person picks a different one a pixel away from it. The four the
+    // design has are uiDesign::typeSize(), which reaches a sheet through .arg()
+    // - so "font-size: %1pt" is what a rule naming a size looks like, and
+    // anything with a digit or a per cent sign after the colon is not.
+    static const QRegularExpression& writtenFontSize()
+    {
+        static const QRegularExpression pattern(QStringLiteral("font-size\\s*:\\s*[0-9]"));
+        return pattern;
+    }
+
+    // "%" not followed by a digit, so that the "%1" of a template is not read
+    // as the tail of a percentage
+    static const QRegularExpression& percentageFontSize()
+    {
+        static const QRegularExpression pattern(QStringLiteral("font-size\\s*:\\s*[^;}]*%(?![0-9])"));
+        return pattern;
+    }
+
+    static QString sizeInStrings(const QList<Literal>& literals)
+    {
+        for (const Literal& literal : literals) {
+            if (literal.translated) {
+                continue;
+            }
+            if (percentageFontSize().match(literal.text).hasMatch()) {
+                return QStringLiteral("a font-size in per cent, which Qt's stylesheet parser drops without applying it");
+            }
+            if (writtenFontSize().match(literal.text).hasMatch()) {
+                return QStringLiteral("a font-size written as a number rather than taken from uiDesign::typeSize()");
+            }
+        }
+        return QString();
+    }
+
     // Qt::transparent is never a theme colour wherever it appears, and the two
     // ends of the lightness scale are not one where they are what something is
     // mixed towards or a mask is cleared with. Read off the line rather than
@@ -395,7 +455,11 @@ class DesignColourLiteralTest : public QObject
         return false;
     }
 
-    static void scanSource(const QString& file, const QStringList& lines, QList<Hit>& hits)
+    // The two things a designed surface is read for, one traversal apiece: what
+    // a colour is mixed from, and what a size is named by
+    enum class Looking { Colours, Sizes };
+
+    static void scanSource(const QString& file, const QStringList& lines, QList<Hit>& hits, const Looking looking)
     {
         bool insideRawString = false;
         for (int number = 1; number <= lines.size(); ++number) {
@@ -409,8 +473,9 @@ class DesignColourLiteralTest : public QObject
 
             // Inside a raw string every character is content, so the whole line
             // is read as one literal rather than picked apart by its quotes
-            QString reason = colourInStrings(wasInsideRawString ? QList<Literal>{{raw, false}} : stringLiteralsIn(raw));
-            if (reason.isEmpty() && !wasInsideRawString) {
+            const QList<Literal> literals = wasInsideRawString ? QList<Literal>{{raw, false}} : stringLiteralsIn(raw);
+            QString reason = looking == Looking::Sizes ? sizeInStrings(literals) : colourInStrings(literals);
+            if (looking == Looking::Colours && reason.isEmpty() && !wasInsideRawString) {
                 reason = colourInCode(raw);
             }
             if (reason.isEmpty() || exempted(lines, number)) {
@@ -420,7 +485,7 @@ class DesignColourLiteralTest : public QObject
         }
     }
 
-    static void scanDesignerFile(const QString& file, const QStringList& lines, QList<Hit>& hits)
+    static void scanDesignerFile(const QString& file, const QStringList& lines, QList<Hit>& hits, const Looking looking)
     {
         bool insideStyleSheet = false;
         for (int number = 1; number <= lines.size(); ++number) {
@@ -428,7 +493,7 @@ class DesignColourLiteralTest : public QObject
             QString reason;
             // A colour Designer wrote as a palette entry, which is three
             // channel elements under a <color> of its own
-            if (raw.contains(QStringLiteral("<color"))) {
+            if (looking == Looking::Colours && raw.contains(QStringLiteral("<color"))) {
                 for (qsizetype ahead = number; ahead < std::min<qsizetype>(number + 5, lines.size()); ++ahead) {
                     if (lines.at(ahead).contains(QStringLiteral("<red>"))) {
                         reason = QStringLiteral("a colour set in Designer");
@@ -442,13 +507,45 @@ class DesignColourLiteralTest : public QObject
                 if (raw.contains(QStringLiteral("</property>"))) {
                     insideStyleSheet = false;
                 } else if (reason.isEmpty()) {
-                    reason = colourInStrings({{raw, false}});
+                    reason = looking == Looking::Sizes ? sizeInStrings({{raw, false}}) : colourInStrings({{raw, false}});
                 }
             }
             if (reason.isEmpty() || exempted(lines, number)) {
                 continue;
             }
             hits.append({file, number, raw.trimmed(), reason});
+        }
+    }
+
+    // Walking every scanned file once, gathering what the caller is looking
+    // for. Returns false and says which file could not be read, since a file
+    // renamed off the list is a surface that stopped being checked.
+    static bool gather(const Looking looking, QList<Hit>& hits, int& scannedLines, QString& failure)
+    {
+        for (const QString& file : scannedFiles()) {
+            QFile source(QStringLiteral("%1/%2").arg(srcDir(), file));
+            if (!source.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                failure = QStringLiteral("src/%1 is on the scan list and could not be read - it has been renamed or removed").arg(file);
+                return false;
+            }
+            const QStringList lines = QString::fromUtf8(source.readAll()).split(QChar::LineFeed);
+            scannedLines += lines.size();
+            if (file.endsWith(QStringLiteral(".ui"))) {
+                scanDesignerFile(QStringLiteral("src/%1").arg(file), lines, hits, looking);
+            } else {
+                scanSource(QStringLiteral("src/%1").arg(file), lines, hits, looking);
+            }
+        }
+        return true;
+    }
+
+    // Printed one to a line as well as gathered into the failure: QtTest cuts a
+    // failure message off at a few hundred characters, and a run that named
+    // three of forty would take thirteen runs to clear
+    static void report(const QList<Hit>& hits)
+    {
+        for (const Hit& hit : hits) {
+            qWarning().noquote() << QStringLiteral("%1:%2: %3   [%4]").arg(hit.file, QString::number(hit.line), hit.text, hit.reason);
         }
     }
 
@@ -462,29 +559,32 @@ private slots:
 
         QList<Hit> hits;
         int scannedLines = 0;
-        for (const QString& file : files) {
-            QFile source(QStringLiteral("%1/%2").arg(srcDir(), file));
-            QVERIFY2(source.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(QStringLiteral("src/%1 is on the scan list and could not be read - it has been renamed or removed").arg(file)));
-            const QStringList lines = QString::fromUtf8(source.readAll()).split(QChar::LineFeed);
-            scannedLines += lines.size();
-            if (file.endsWith(QStringLiteral(".ui"))) {
-                scanDesignerFile(QStringLiteral("src/%1").arg(file), lines, hits);
-            } else {
-                scanSource(QStringLiteral("src/%1").arg(file), lines, hits);
-            }
-        }
+        QString failure;
+        QVERIFY2(gather(Looking::Colours, hits, scannedLines, failure), qPrintable(failure));
 
         qInfo().noquote() << QStringLiteral("  %1 lines over %2 files").arg(QString::number(scannedLines), QString::number(files.size()));
 
-        // Printed one to a line before the failure as well as gathered into it:
-        // QtTest cuts a failure message off at a few hundred characters, and a
-        // run that named three of forty would take thirteen runs to clear
-        for (const Hit& hit : hits) {
-            qWarning().noquote() << QStringLiteral("%1:%2: %3   [%4]").arg(hit.file, QString::number(hit.line), hit.text, hit.reason);
-        }
+        report(hits);
         QVERIFY2(hits.isEmpty(),
                  qPrintable(QStringLiteral("%1 colour(s) written out rather than taken from uiDesign::themeTokens() - listed above. Mix each from the tokens, or - if it is a value being shown "
                                            "rather than chrome - write \"// theme-fixed: <why>\" on the line.")
+                                    .arg(QString::number(hits.size()))));
+    }
+
+    // ...and the same surfaces read for the other half of the same rule: a
+    // stylesheet names a size only through uiDesign::typeSize()
+    void test_everyFontSizeOnADesignedSurfaceComesFromTheScale()
+    {
+        QList<Hit> hits;
+        int scannedLines = 0;
+        QString failure;
+        QVERIFY2(gather(Looking::Sizes, hits, scannedLines, failure), qPrintable(failure));
+
+        report(hits);
+        QVERIFY2(hits.isEmpty(),
+                 qPrintable(QStringLiteral("%1 font-size(s) that are not a step of uiDesign::typeSize() - listed above. Qt's stylesheet parser reads pt and px and nothing else, so a percentage "
+                                           "sets no size at all, and a written number is a size picked by hand rather than a step of the scale. Interpolate typeSize() into the rule as a pt "
+                                           "value, or - if it is a picture of something outside this application - write \"// theme-fixed: <why>\" on the line.")
                                     .arg(QString::number(hits.size()))));
     }
 };

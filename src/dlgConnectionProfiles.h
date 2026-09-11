@@ -150,6 +150,11 @@ private:
     void setItemName(QListWidgetItem*, const QString&) const;
     QIcon customIcon(const QString&, const std::optional<QColor>&) const;
     void addLetterToProfileSearch(const int);
+    // The two tab pages' fields, marks and labels drawn from the shared recipes
+    void applyConnectionShellStyle();
+    // What a field the validator has something to say about is marked with, so
+    // that a rule rather than a palette draws the wash on it
+    void setFieldState(QLineEdit* pField, const QString& state);
     void clearNotificationArea();
     void loadPasswordAsync(const QString& profileName);
     void revealConnectionDetails();
@@ -166,10 +171,6 @@ private:
     bool validPort = false;
 
     QStringList mProfileList;
-    QPalette mRegularPalette;
-    QPalette mOKPalette;
-    QPalette mErrorPalette;
-    QPalette mReadOnlyPalette;
     QAction* mpCopyProfile = nullptr;
     // switches the profiles list between the user's own games and the full catalog
     QTabBar* mpTabBar = nullptr;
@@ -202,6 +203,7 @@ private:
 
 
 private slots:
+    void slot_applyAppearance();
     void slot_activeTabChanged(const int index);
     void slot_skipToGamesList();
     void slot_profileContextMenu(QPoint pos);

@@ -197,6 +197,9 @@ private:
     QColor mQuietDot;
     QColor mChevronInk;
     QColor mMarkInk;
+    // ...and the one mark that is not chrome: an item that will not compile is
+    // marked in the red its compile note over the code pane is written in
+    QColor mErrorMarkInk;
     // What the tree's stylesheet writes a chosen row's name in, so that the mark
     // beside that name is the one colour with it
     QColor mSelectedMarkInk;

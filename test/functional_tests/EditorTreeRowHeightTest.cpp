@@ -502,7 +502,8 @@ private slots:
     }
 
     // ...and what each row leads with is the glyph that says what it is, inked
-    // in the tone the rest of the editor's chrome is drawn in
+    // in the tone the rest of the editor's chrome is drawn in - bar the one
+    // that reports a state rather than labelling a kind
     void test_eachKindOfRowCarriesItsOwnGlyph()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -514,7 +515,10 @@ private slots:
         const QList<QPair<QString, QPair<QImage, QImage>>> readings{
                 {qsl("a folder"), {markOf(pTriggers, rowFor(pTriggerHeading, mTriggerFolderId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-folder.svg"), tokens.mutedText)}},
                 {qsl("a filter chain"), {markOf(pTriggers, rowFor(pTriggerHeading, mFilterChainId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-filter.svg"), tokens.mutedText)}},
-                {qsl("a broken item"), {markOf(pTriggers, rowFor(pTriggerHeading, mBrokenTriggerId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-errors.svg"), tokens.mutedText)}},
+                // The one mark that is not chrome: a broken item is marked in
+                // the red its compile note is written in - see
+                // EditorTreeErrorMarkTest for what that has to clear
+                {qsl("a broken item"), {markOf(pTriggers, rowFor(pTriggerHeading, mBrokenTriggerId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-errors.svg"), uiDesign::errorInk(tokens))}},
                 {qsl("an offset timer"), {markOf(pTimers, rowFor(pTimerHeading, mOffsetTimerId), false), markDrawnFrom(pTimers, qsl(":/icons/editor-offset-timer.svg"), tokens.mutedText)}}};
 
         QStringList wrong;

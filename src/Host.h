@@ -398,6 +398,8 @@ public:
     // creates.
     void writeProfileIniData(const QString& item, const QString& what);
     QString readProfileIniData(const QString& item);
+    // For a key nothing reads any more, so an old profile stops carrying it
+    void removeProfileIniData(const QString& item);
     void xmlSaved(const QString& xmlName);
     bool currentlySavingProfile();
     // Whether a package install or uninstall still owes the profile a save - see

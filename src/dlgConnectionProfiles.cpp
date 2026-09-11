@@ -35,6 +35,7 @@
 #include "mudlet.h"
 #include "CredentialManager.h"
 #include "SecureStringUtils.h"
+#include "uiDesign.h"
 #include "widgetutils.h"
 #include "utils.h"
 
@@ -45,6 +46,8 @@
 #include <QColorDialog>
 #include <QDir>
 #include <QFileInfo>
+#include <QFontMetrics>
+#include <QMenu>
 #include <QPointer>
 #include <QRandomGenerator>
 #include <QSettings>
@@ -55,6 +58,10 @@
 #include <sstream>
 
 using namespace std::chrono_literals;
+
+// What the validator has to say about one of the connection fields, which the
+// page's stylesheet draws the wash on it from. Absent while the field is fine.
+static constexpr char scmProp_fieldState[] = "connectionFieldState";
 
 // Kept to a sub-set of ASCII because the profile name is also used as a
 // directory name on all supported OSes; parentheses are included so that
@@ -203,8 +210,10 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
 
     QAbstractButton* abort = dialog_buttonbox->button(QDialogButtonBox::Cancel);
     connect_button = dialog_buttonbox->addButton(tr("Connect"), QDialogButtonBox::AcceptRole);
+    connect_button->setObjectName(qsl("connectButton"));
     connect_button->setAccessibleDescription(btn_connOrLoad_disabled_accessDesc);
     offline_button = dialog_buttonbox->addButton(tr("Offline"), QDialogButtonBox::AcceptRole);
+    offline_button->setObjectName(qsl("offlineButton"));
     offline_button->setAccessibleDescription(btn_connOrLoad_disabled_accessDesc);
 
     //: Button shown on first launch to skip the tutorial and show the full games list
@@ -254,6 +263,19 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
     copy_profile_toolbutton->addAction(mpCopyProfile);
     copy_profile_toolbutton->addAction(copyProfileSettings);
     copy_profile_toolbutton->setDefaultAction(mpCopyProfile);
+    // A menu of its own rather than the one Qt builds out of the button's
+    // actions on every press: a menu that exists between presses is one the
+    // style pass can reach, and the actions stay on the button so the
+    // accessible names below still find a widget to be set on
+    auto* pMenu_copyProfile = new QMenu(copy_profile_toolbutton);
+    pMenu_copyProfile->setObjectName(qsl("connectionCopyMenu"));
+    pMenu_copyProfile->addAction(mpCopyProfile);
+    pMenu_copyProfile->addAction(copyProfileSettings);
+    copy_profile_toolbutton->setMenu(pMenu_copyProfile);
+    // Copy keeps its split - the body copies, the trailing half asks which kind
+    // of copy - so it stays a tool button and says it is one standing on a form
+    // as a button, which is what the shared recipe draws
+    copy_profile_toolbutton->setProperty(uiDesign::scmProp_menuButton, true);
 
     auto objectList = mpCopyProfile->associatedObjects();
     QList<QWidget*> widgetList;
@@ -395,10 +417,6 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
     }
 #endif
 
-    mReadOnlyPalette.setColor(QPalette::Base, QColor(125, 125, 125, 25));
-    mOKPalette.setColor(QPalette::Base, QColor(150, 255, 150, 50));
-    mErrorPalette.setColor(QPalette::Base, QColor(255, 150, 150, 50));
-
     listWidget_profiles->setViewMode(QListView::IconMode);
 
     btn_load_enabled_accessDesc = tr("Click to load but not connect the selected profile.");
@@ -409,6 +427,7 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
     item_profile_accessDesc = tr("Button to select a mud game to play, double-click it to connect and start playing it.");
 
     // Set up some initial black/white/greys:
+    // theme-fixed: the fills a generated profile icon can take - values the user picks between, not chrome
     mCustomIconColors = {{QColor(0, 0, 0)}, {QColor(63, 63, 63)}, {QColor(128, 128, 128)}, {QColor(192, 192, 192)}, {QColor(255, 255, 255)}};
 
     // Add some color ones with evenly spaced hue
@@ -424,6 +443,104 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
     connect(&mSearchTextTimer, &QTimer::timeout, this, &dlgConnectionProfiles::slot_reenableAllProfileItems);
 
     profile_history->view()->setTextElideMode(Qt::ElideNone);
+
+    applyConnectionShellStyle();
+    connect(mudlet::self(), &mudlet::signal_appearanceChanged, this, &dlgConnectionProfiles::slot_applyAppearance);
+}
+
+void dlgConnectionProfiles::slot_applyAppearance()
+{
+    applyConnectionShellStyle();
+}
+
+// The two tab pages and every button on the window: the games list, the notice
+// and the information box are still drawn by the platform. The sheet goes on
+// each page rather than on the tab widget, which would take the tab bar with
+// it, and rather than on the dialog, whose stylesheet a profile's Lua one is
+// assigned to on every show.
+void dlgConnectionProfiles::applyConnectionShellStyle()
+{
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    // The one red anything broken is drawn in, so a refused field here is edged
+    // in the value the editor's compile note is written in
+    const QColor errorColour = uiDesign::errorInk(tokens);
+
+    // Unscoped, the way the editor sets these on each of its forms: the page is
+    // the scope, and nothing outside these two tabs is reached.
+    const QString sheet = uiDesign::inputStyleSheet(tokens)
+                          + uiDesign::choiceStyleSheet(tokens)
+                          // The words leading the fields are chrome; what is typed into them
+                          // is the value, and keeps the full ink inputStyleSheet() writes
+                          + qsl("QLabel, QCheckBox { color: %1; }"
+                                "QLabel:disabled, QCheckBox:disabled { color: %2; }")
+                                    .arg(tokens.mutedText.name(), tokens.disabledText.name())
+                          // Written after the shared rules so they win the specificity tie
+                          // against QLineEdit:focus, and in the same border shorthand that
+                          // rule writes - a border-color alone would leave the focus frame's
+                          // width and style in place.
+                          + qsl("QLineEdit[%1=\"error\"] { border: %2px solid %3; background-color: %4; }")
+                                    .arg(QString::fromLatin1(scmProp_fieldState),
+                                         QString::number(uiDesign::scmInputBorderWidth),
+                                         errorColour.name(),
+                                         uiDesign::blend(tokens.field, errorColour, uiDesign::scmSoftWashStrength).name())
+                          // A field holding a value that cannot be changed takes the surface
+                          // and the hairline of an unavailable one, but not its ink: the
+                          // value in it is real and is there to be read
+                          + qsl("QLineEdit:read-only { background-color: %1; border: %2px solid %3; }")
+                                    .arg(uiDesign::disabledFieldColour(tokens).name(), QString::number(uiDesign::scmInputBorderWidth), uiDesign::disabledBorderColour(tokens).name());
+
+    tab_connection_info->setStyleSheet(sheet);
+    tab_options->setStyleSheet(sheet);
+
+    // Everything on this dialog that is a button: Remove, Copy and New over the
+    // games list, and the skip button and the button box under it. The sheet
+    // goes on the two containers rather than on the dialog, for the same reason
+    // the one above goes on the tab pages.
+    const QString buttonSheet = uiDesign::buttonStyleSheet(tokens)
+                                // Connect, the one button on the row that is what the reader came
+                                // here to press. The About dialog's primary fill, ink, hover and
+                                // focus, at this row's own height and weight - a dialog's button
+                                // row keeps one rhythm, so no bold and no larger padding. The
+                                // :enabled is what keeps a Connect the validator has switched off
+                                // from sitting lit: without it an unavailable button would keep the
+                                // invitation's fill instead of falling back to the shared
+                                // disabled look.
+                                + qsl("QPushButton:default:enabled { background-color: %1; color: %2; border: %3px solid transparent; }"
+                                      "QPushButton:default:enabled:hover { background-color: %4; }"
+                                      "QPushButton:default:enabled:focus { border: %3px solid %5; }")
+                                          .arg(tokens.accentSoft, tokens.accentText.name(), QString::number(uiDesign::scmInputBorderWidth), tokens.hoverSoft, tokens.accent.name());
+    // The menu Copy drops lives under that row, so the row's own sheet is what
+    // draws it
+    profileAdminArea->setStyleSheet(buttonSheet + uiDesign::menuStyleSheet(tokens));
+    widget_bottom->setStyleSheet(buttonSheet);
+    uiDesign::letPopupsTakeTheFieldsCorner(profileAdminArea);
+
+    uiDesign::keepClickFocusOffControls(tabWidget_connectionInfo);
+    uiDesign::letPopupsTakeTheFieldsCorner(tabWidget_connectionInfo);
+    // The accent a button takes on focus is the keyboard's, not what was
+    // clicked last. Focus policy only, so the Return key still reaches the
+    // default button.
+    uiDesign::keepClickFocusOffControls(profileAdminArea);
+    uiDesign::keepClickFocusOffControls(widget_bottom);
+
+    // Measured rather than named: the .ui pinned this field to 40-50px for the
+    // 9pt font it also set, and the field is at the dialog's own font now. Five
+    // digits is the widest port there is, plus what the recipe leaves either
+    // side of them and one digit of slack for the cursor.
+    const QFontMetrics fm(port_entry->font());
+    port_entry->setFixedWidth(fm.horizontalAdvance(qsl("65535")) + 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth) + fm.horizontalAdvance(QLatin1Char('0')));
+}
+
+// validateProfile() runs on every keystroke, so the property is compared before
+// it is written: a re-polish that changes nothing still rebuilds the widget's
+// style
+void dlgConnectionProfiles::setFieldState(QLineEdit* pField, const QString& state)
+{
+    if (pField->property(scmProp_fieldState).toString() == state) {
+        return;
+    }
+    pField->setProperty(scmProp_fieldState, state.isEmpty() ? QVariant() : QVariant(state));
+    uiDesign::repolish(pField);
 }
 
 dlgConnectionProfiles::~dlgConnectionProfiles()
@@ -1503,10 +1620,6 @@ void dlgConnectionProfiles::slot_itemClicked(QListWidgetItem* pItem)
         host_name_entry->setFocusPolicy(Qt::NoFocus);
         port_entry->setFocusPolicy(Qt::NoFocus);
 
-        profile_name_entry->setPalette(mReadOnlyPalette);
-        host_name_entry->setPalette(mReadOnlyPalette);
-        port_entry->setPalette(mReadOnlyPalette);
-
         notificationArea->show();
         notificationAreaIconLabelWarning->hide();
         notificationAreaIconLabelError->hide();
@@ -1521,10 +1634,6 @@ void dlgConnectionProfiles::slot_itemClicked(QListWidgetItem* pItem)
         profile_name_entry->setFocusPolicy(Qt::StrongFocus);
         host_name_entry->setFocusPolicy(Qt::StrongFocus);
         port_entry->setFocusPolicy(Qt::StrongFocus);
-
-        profile_name_entry->setPalette(mRegularPalette);
-        host_name_entry->setPalette(mRegularPalette);
-        port_entry->setPalette(mRegularPalette);
 
         if (notificationAreaMessageBox->text() == profileLoadedMessage) {
             clearNotificationArea();
@@ -1888,6 +1997,11 @@ void dlgConnectionProfiles::slot_profileContextMenu(QPoint pos)
                        &dlgConnectionProfiles::slot_setCustomColor);
     }
 
+    // Built here rather than in the style pass, so it is handed the design's
+    // menu and its corner here as well
+    menu.setStyleSheet(uiDesign::menuStyleSheet(uiDesign::themeTokens()));
+    uiDesign::letPopupsTakeTheFieldsCorner(&menu);
+
     menu.exec(globalPos);
 }
 
@@ -1924,6 +2038,7 @@ void dlgConnectionProfiles::slot_setCustomColor()
     if (profileName.isEmpty()) {
         return;
     }
+    // theme-fixed: the colour the picker opens on when the profile has none - a value the user is choosing, not chrome
     QColor color = QColorDialog::getColor(getCustomColor(profileName).value_or(QColor(255, 255, 255)));
     if (color.isValid()) {
         auto profileColorPath = mudlet::getMudletPath(enums::profileDataItemPath, profileName, qsl("profilecolor"));
@@ -2365,6 +2480,11 @@ bool dlgConnectionProfiles::validateProfile()
     }
 
     validName = true, validPort = true, validUrl = true;
+    // Gathered rather than written to the fields as they are found: the field
+    // whose text this function corrects re-enters it, and the pass that started
+    // is the one whose reading has to be the one left showing
+    QString portState;
+    QString hostState;
 
     clearNotificationArea();
 
@@ -2424,7 +2544,7 @@ bool dlgConnectionProfiles::validateProfile()
             port_entry->setText(val);
             notificationAreaIconLabelError->show();
             notificationAreaMessageBox->setText(qsl("%1\n%2").arg(notificationAreaMessageBox->text(), tr("You have to enter a number. Other characters are not permitted.")));
-            port_entry->setPalette(mErrorPalette);
+            portState = qsl("error");
             validPort = false;
             valid = false;
         }
@@ -2434,7 +2554,7 @@ bool dlgConnectionProfiles::validateProfile()
         if (!port.isEmpty() && (num > 65536 && ok)) {
             notificationAreaIconLabelError->show();
             notificationAreaMessageBox->setText(qsl("%1\n%2\n\n").arg(notificationAreaMessageBox->text(), tr("Port number must be above zero and below 65535.")));
-            port_entry->setPalette(mErrorPalette);
+            portState = qsl("error");
             validPort = false;
             valid = false;
         }
@@ -2468,7 +2588,7 @@ bool dlgConnectionProfiles::validateProfile()
         check.setHost(url);
 
         if (url.isEmpty()) {
-            host_name_entry->setPalette(mErrorPalette);
+            hostState = qsl("error");
             validUrl = false;
             valid = false;
         }
@@ -2476,7 +2596,7 @@ bool dlgConnectionProfiles::validateProfile()
         if (!check.isValid()) {
             notificationAreaIconLabelError->show();
             notificationAreaMessageBox->setText(qsl("%1\n%2\n\n%3").arg(notificationAreaMessageBox->text(), tr("Please enter the URL or IP address of the Game server."), check.errorString()));
-            host_name_entry->setPalette(mErrorPalette);
+            hostState = qsl("error");
             validUrl = false;
             valid = false;
         }
@@ -2498,14 +2618,15 @@ bool dlgConnectionProfiles::validateProfile()
                                                                 "<i>SSL/TLS connections require a URL, as an IP address is not a suitable "
                                                                 "identifier for the certification of the Game Server.</i>"),
                                                              check.errorString()));
-            host_name_entry->setPalette(mErrorPalette);
+            hostState = qsl("error");
             validUrl = false;
             valid = false;
         }
 
+        setFieldState(port_entry, portState);
+        setFieldState(host_name_entry, hostState);
+
         if (valid) {
-            port_entry->setPalette(mOKPalette);
-            host_name_entry->setPalette(mOKPalette);
             clearNotificationArea();
             validName = true;
             validPort = true;
@@ -2678,6 +2799,7 @@ QIcon dlgConnectionProfiles::customIcon(const QString& text, const std::optional
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         const QPixmap pixmap(qsl(":/icons/mudlet_main_32px.png"));
         painter.drawPixmap(QRect(5, 5, 20, 20), pixmap);
+        // theme-fixed: ink over the icon's own fill, which is the profile's colour rather than the theme's
         if (color.lightness() > 127) {
             painter.setPen(Qt::black);
         } else {

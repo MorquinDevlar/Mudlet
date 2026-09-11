@@ -184,10 +184,6 @@ static constexpr int scmEditorSidebarRowHeight = uiDesign::scmSidebarRowHeight;
 // bigger target: 1 to 4 now spans 6px to 24px, the top of which is what the
 // default used to draw.
 static constexpr int scmEditorIconSizeStep = 6;
-// What the grip at the leading end of the actions toolbar is given: the six
-// dots are five pixels across, and the rest is what holds them off the bar's
-// edge and off the first button
-static constexpr int scmEditorToolbarGripExtent = 11;
 // The chevron on Qt's own overflow button. That fold is only reachable on a
 // window narrower than a bar with every name already given up - see
 // docs/design-language.md - and the two faint arrowheads a style hands out for
@@ -286,9 +282,12 @@ static constexpr int scmEditorOptionRowGap = 24;
 // window, sized for a form and a page of code rather than for the screen. It
 // used to be nine tenths of the profile window, which on a desktop of any size
 // opened a window that covered it - and what the editor holds does not get any
-// more readable for being 2700px across.
-static constexpr int scmEditorDefaultWidth = 1000;
-static constexpr int scmEditorDefaultHeight = 700;
+// more readable for being 2700px across. Wide enough for the toolbar to keep
+// its names and for a trigger's options strip to stay on one line; the height
+// is a form and a page of code. restoreWindowGeometry() brings it inside a
+// smaller desktop.
+static constexpr int scmEditorDefaultWidth = 1300;
+static constexpr int scmEditorDefaultHeight = 690;
 // What a number box keeps between its last digit and the arrows beside it, on
 // top of the field's own padding: a digit drawn hard against the stepper column
 // reads as touching it
@@ -764,7 +763,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     //: Accessible description indicating an item belongs to a package, shown after the item name. Keep short, as it's appended to other descriptions like "activated, package item"
     descPackageItem = tr("package item");
 
-    setUnifiedTitleAndToolBarOnMac(true); //MAC OSX: make window moveable
     const QString hostName{mpHost->getName()};
     setWindowTitle(tr("%1 - Editor").arg(hostName));
     setWindowIcon(QIcon(qsl(":/icons/mudlet_editor.png")));
@@ -1611,6 +1609,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         pMenu_saveProfile->addAction(mProfileSaveAsAction);
         pButton_saveProfile->setMenu(pMenu_saveProfile);
         pButton_saveProfile->setPopupMode(QToolButton::MenuButtonPopup);
+        // The one button on the bar that is two click areas rather than one, so
+        // the rules that draw the split have something to name it by. Every
+        // other button on the bar has no menu half for them to reach anyway,
+        // but the padding the words are held clear by would reach all of them.
+        pButton_saveProfile->setObjectName(qsl("editorSaveProfileButton"));
     }
 
     // A bar too narrow for every name gives them up a group at a time rather
@@ -1891,6 +1894,9 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
 
     mpAction_searchOptions->setMenu(pMenu_searchOptions);
+    // The shell's style pass has already run by the time this menu exists, so
+    // it is drawn here as well as there
+    styleSearchOptionsMenu();
 
     pLineEdit_searchTerm->addAction(mpAction_searchOptions, QLineEdit::LeadingPosition);
 
@@ -1963,6 +1969,20 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
 
     readSettings();
+
+    // On macOS this creates the native window there and then, at whatever size
+    // the widget has at that moment, and cocoa does not resize a native window
+    // that is created but not yet shown - a move lands, a resize is dropped.
+    // So it comes after readSettings() has put the window at its stored or
+    // default size, rather than before the constructor has decided one: called
+    // earlier it opened every editor at the 636x688 the .ui file happens to
+    // name, whatever was stored.
+    setUnifiedTitleAndToolBarOnMac(true);
+
+    // The options strip is a disclosure rather than a preference: the editor
+    // opens with it closed whatever the last session left it at, so nothing
+    // read above has a say in this
+    slot_showAllTriggerControls(false);
 
     comboBox_searchTerms->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
@@ -3284,8 +3304,8 @@ void dlgTriggerEditor::writeSettings()
     }
 
     // Whether the trigger form's options were on show used to be a stored
-    // preference. They are one row of the form now and are always there, so
-    // the key is cleared rather than left behind in every configuration that
+    // preference. They are a disclosure the editor opens closed every time now,
+    // so the key is cleared rather than left behind in every configuration that
     // has one, saying something nothing reads any more
     settings.remove(qsl("showAllTriggerControls"));
 }
@@ -5597,7 +5617,6 @@ void dlgTriggerEditor::children_icon_triggers(QTreeWidgetItem* pWidgetItemParent
             }
         } else {
             itemDescription = descError;
-            showError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -5740,7 +5759,6 @@ void dlgTriggerEditor::children_icon_timer(QTreeWidgetItem* pWidgetItemParent)
             }
         } else {
             itemDescription = descError;
-            showError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -5838,7 +5856,6 @@ void dlgTriggerEditor::children_icon_alias(QTreeWidgetItem* pWidgetItemParent)
             }
         } else {
             itemDescription = descError;
-            showError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -5935,7 +5952,6 @@ void dlgTriggerEditor::children_icon_script(QTreeWidgetItem* pWidgetItemParent)
             }
         } else {
             itemDescription = descError;
-            showError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -6043,7 +6059,6 @@ void dlgTriggerEditor::children_icon_action(QTreeWidgetItem* pWidgetItemParent)
             }
         } else {
             itemDescription = descError;
-            showError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -6150,7 +6165,6 @@ void dlgTriggerEditor::children_icon_key(QTreeWidgetItem* pWidgetItemParent)
             }
         } else {
             itemDescription = descError;
-            showError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -7162,7 +7176,7 @@ void dlgTriggerEditor::saveTrigger()
             pItem->setText(0, name);
             itemDescription = descError;
             pT->setIsActive(false);
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
 
@@ -7268,7 +7282,7 @@ void dlgTriggerEditor::saveTimer()
         } else {
             itemDescription = descError;
             pItem->setText(0, name);
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
 
@@ -7369,7 +7383,7 @@ void dlgTriggerEditor::saveAlias()
         } else {
             itemDescription = descError;
             pItem->setText(0, name);
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
 
@@ -7449,7 +7463,7 @@ void dlgTriggerEditor::showAliasError(QTreeWidgetItem* pItem, const QString& nam
 {
     pItem->setText(0, name);
     pItem->setData(0, Qt::AccessibleDescriptionRole, descError);
-    showError(error);
+    reportCompileError(error);
 }
 
 void dlgTriggerEditor::showAliasLoopWarning(QTreeWidgetItem* pItem, const QString& name)
@@ -7566,7 +7580,7 @@ void dlgTriggerEditor::saveAction()
         } else {
             itemDescription = descError;
             pItem->setText(0, name);
-            showError(pA->getError());
+            reportCompileError(pA->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
 
@@ -7725,7 +7739,7 @@ void dlgTriggerEditor::saveScript()
     } else {
         itemDescription = descError;
         pItem->setText(0, name);
-        showError(pT->getError());
+        reportCompileError(pT->getError());
     }
     pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
 
@@ -8162,7 +8176,7 @@ void dlgTriggerEditor::saveKey()
         } else {
             itemDescription = descError;
             pItem->setText(0, name);
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
 
@@ -8418,11 +8432,14 @@ void dlgTriggerEditor::updatePatternTabOrder()
     };
 
     // The head row first - the ID pill is a label and takes no focus - then the
-    // options strip, read left to right, and the pattern rows under it.
-    // spinBox_lineMargin is not among them: it is hidden, which
-    // addToChain() takes as reason enough to leave it out, and the two segments
-    // are how the mode it holds is reached.
+    // options strip, read left to right, and the pattern rows under it. With
+    // the strip closed its controls are not visible to the form, which
+    // addToChain() takes as reason enough to leave them out, so the chain runs
+    // from the Options button straight to the patterns. spinBox_lineMargin is
+    // left out for the same reason whichever way the strip stands: it is
+    // hidden, and the two segments are how the mode it holds is reached.
     addToChain(mpTriggersMainArea->lineEdit_trigger_command);
+    addToChain(mpTriggersMainArea->toolButton_toggleExtraControls);
     addToChain(mpRadioButton_matchAny);
     addToChain(mpRadioButton_matchAll);
     addToChain(mpSpinBox_matchWithinLines);
@@ -8745,7 +8762,7 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
         restoreEditorState(EditorViewType::cmTriggerView, ID);
 
         if (!pT->state()) {
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         } else {
             showPackageWarning(pT->packageName(pT), pItem);
         }
@@ -8812,7 +8829,7 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
         restoreEditorState(EditorViewType::cmAliasView, ID);
 
         if (!pT->state()) {
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         } else {
             showPackageWarning(pT->packageName(pT), pItem);
         }
@@ -8883,7 +8900,7 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
         restoreEditorState(EditorViewType::cmKeysView, ID);
 
         if (!pT->state()) {
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         } else {
             showPackageWarning(pT->packageName(pT), pItem);
         }
@@ -9370,7 +9387,7 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
                           {mpActionsMainArea->label_action_bar_offsetToFirstButton, mpActionsMainArea->spinBox_action_bar_offsetToFirstButton});
 
         if (!pT->state()) {
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         } else {
             showPackageWarning(pT->packageName(pT), pItem);
         }
@@ -9498,7 +9515,7 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
                            "possibly by another script. The error was:%2%3")
                                 .arg(qsl("<br>"), error.value()));
         } else if (!pT->state()) {
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         } else {
             showPackageWarning(pT->packageName(pT), pItem);
         }
@@ -9576,7 +9593,7 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
         restoreEditorState(EditorViewType::cmTimerView, ID);
 
         if (!pT->state()) {
-            showError(pT->getError());
+            reportCompileError(pT->getError());
         } else {
             showPackageWarning(pT->packageName(pT), pItem);
         }
@@ -9694,7 +9711,6 @@ void dlgTriggerEditor::populateKeys()
             }
         } else {
             itemDescription = descError;
-            showError(key->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -9737,7 +9753,6 @@ void dlgTriggerEditor::populateActions()
             }
         } else {
             itemDescription = descError;
-            showError(action->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -9781,7 +9796,6 @@ void dlgTriggerEditor::populateAliases()
             }
         } else {
             itemDescription = descError;
-            showError(alias->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -9816,7 +9830,6 @@ void dlgTriggerEditor::populateScripts()
             }
         } else {
             itemDescription = descError;
-            showError(script->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -9870,7 +9883,6 @@ void dlgTriggerEditor::populateTimers()
             }
         } else {
             itemDescription = descError;
-            showError(timer->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -9924,7 +9936,6 @@ void dlgTriggerEditor::populateTriggers()
             }
         } else {
             itemDescription = descError;
-            showError(trigger->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -10055,7 +10066,6 @@ void dlgTriggerEditor::expand_child_triggers(TTrigger* pTriggerParent, QTreeWidg
             //pItem->setDisabled(!trigger->ancestorsActive());
         } else {
             itemDescription = descError;
-            showError(trigger->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -10101,7 +10111,6 @@ void dlgTriggerEditor::expand_child_key(TKey* pTriggerParent, QTreeWidgetItem* p
             }
         } else {
             itemDescription = descError;
-            showError(key->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -10148,7 +10157,6 @@ void dlgTriggerEditor::expand_child_scripts(TScript* pTriggerParent, QTreeWidget
             }
         } else {
             itemDescription = descError;
-            showError(script->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -10194,7 +10202,6 @@ void dlgTriggerEditor::expand_child_alias(TAlias* pTriggerParent, QTreeWidgetIte
             }
         } else {
             itemDescription = descError;
-            showError(alias->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -10244,7 +10251,6 @@ void dlgTriggerEditor::expand_child_action(TAction* pTriggerParent, QTreeWidgetI
             }
         } else {
             itemDescription = descError;
-            showError(action->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -10302,7 +10308,6 @@ void dlgTriggerEditor::expand_child_timers(TTimer* pTimerParent, QTreeWidgetItem
             }
         } else {
             itemDescription = descError;
-            showError(timer->getError());
         }
         pItem->setData(0, Qt::AccessibleDescriptionRole, itemDescription);
     }
@@ -11241,6 +11246,10 @@ void dlgTriggerEditor::slot_showAliases()
     focusPanelTree(treeWidget_aliases);
 }
 
+// The banner for what has nowhere else to be said: an activation the engine
+// refused, a warning about a package. What the compiler made of the item in the
+// editor is not one of those - the heading over the code pane says that, and
+// reportCompileError() is the way to it.
 void dlgTriggerEditor::showError(const QString& text)
 {
     // A still-running undo-toast expiry timer would hide this message when it
@@ -11253,14 +11262,6 @@ void dlgTriggerEditor::showError(const QString& text)
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
 
-    // A failed save reports through here, but so does a profile load meeting a
-    // broken item and an activation the engine refused - neither of which is
-    // anything to do with what the code pane is holding. The heading over that
-    // pane therefore only listens while a save of its own item is running.
-    if (mEditorSaveErrorCaptureOpen) {
-        mEditorSaveErrorCaptured = text;
-    }
-
     // Reconnect close button to normal hide behavior (neither a banner dismiss
     // nor the package warning, whose close button remembers being pressed)
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
@@ -11269,6 +11270,28 @@ void dlgTriggerEditor::showError(const QString& text)
 
     if (!mpHost->mIsProfileLoadingSequence) {
         mudlet::self()->announce(text);
+    }
+}
+
+// What the compiler made of the item the editor is holding, which is the
+// heading's to say and the banner's never: the heading speaks for the pane
+// under it, and the note there goes when the item does.
+void dlgTriggerEditor::reportCompileError(const QString& error)
+{
+    if (mEditorSaveErrorCaptureOpen) {
+        // A save reaches this once at most, and the bracket writes the heading
+        // from what it collected when it closes - so a save that passed clears
+        // the note the last failed one left rather than leaving it standing
+        mEditorSaveErrorCaptured = error;
+    } else {
+        mEditorCompileMessage = error;
+        updateEditorCodeHeading();
+    }
+
+    // A note on a strip is nothing a screen reader comes across on its own, so
+    // it is still said out loud - the way showError() says what it raises
+    if (!mpHost->mIsProfileLoadingSequence) {
+        mudlet::self()->announce(error);
     }
 }
 
@@ -14594,6 +14617,13 @@ void dlgTriggerEditor::slot_editorContextMenu()
     });
 
     menu->addAction(formatAction);
+
+    // Built at the moment it is wanted rather than in the style pass, so it is
+    // handed the design's menu and the corner that goes with it here
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+    menu->setStyleSheet(uiDesign::menuStyleSheet(tokens));
+    uiDesign::letPopupsTakeTheFieldsCorner(menu);
+
     menu->exec(QCursor::pos());
 
     delete menu;
@@ -14845,13 +14875,14 @@ static void describeEditorControl(QWidget* pControl, const QString& name, const 
 }
 
 // The trigger form's options were a 280px column of four cards beside the
-// pattern list, opened and closed by a button on the head row, folded away by
-// the window being short and again by it being narrow. They are one row of the
-// form's own grid now, always on show, and it wraps onto another line rather
-// than being squeezed - so a narrow editor costs the options a line instead of
-// costing the pattern rows their width. Every word on it is as short as it can
-// be said in and still be read; the longer name each control was called by is
-// what a screen reader is given.
+// pattern list, folded away by the window being short and again by it being
+// narrow. They are one row of the form's own grid now, and it wraps onto
+// another line rather than being squeezed - so a narrow editor costs the
+// options a line instead of costing the pattern rows their width. The Options
+// button on the head row is still what opens and closes the row, and the editor
+// opens with it closed every time. Every word on the strip is as short as it
+// can be said in and still be read; the longer name each control was called by
+// is what a screen reader is given.
 void dlgTriggerEditor::buildTriggerOptionsStrip()
 {
     auto* pForm = mpTriggersMainArea;
@@ -14865,6 +14896,27 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     // only one of the two is drawn at full strength
     pForm->label_trigger_name->setProperty("editorRowLabel", true);
     pForm->label_trigger_command->setProperty("editorRowLabel", true);
+
+    // The button at the end of that row says what it opens, rather than being
+    // an arrow with nothing on it
+    QToolButton* pToggle = pForm->toolButton_toggleExtraControls;
+    pToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    //: Button on the head row of a trigger form that shows or hides the trigger's options
+    pToggle->setText(tr("Options"));
+    describeEditorControl(pToggle,
+                          //: Accessible name of that button
+                          tr("Options"),
+                          //: Tooltip on that button
+                          tr("Show or hide the trigger's options: how it matches, how long it keeps firing, its sound and its highlight."));
+    const int toggleGlyphSize = qRound(pToggle->fontMetrics().height() * 0.9);
+    pToggle->setIconSize(QSize(toggleGlyphSize, toggleGlyphSize));
+    // The stylesheet draws the frame the checked state is read from, which
+    // auto-raise would otherwise take away again
+    pToggle->setAutoRaise(false);
+    // ...and it stands on the row at the height of the fields beside it
+    pToggle->setFixedHeight(uiDesign::scmInputHeight);
+    pToggle->setCheckable(true);
+    connect(pToggle, &QAbstractButton::clicked, this, &dlgTriggerEditor::setTriggerOptionsShown);
 
     // spinBox_lineMargin is what the save and load paths read, and its special
     // first value is what says which of the two modes a trigger is in. The two
@@ -15832,6 +15884,36 @@ void dlgTriggerEditor::reflectTriggerMatchMode()
     mpWidget_matchWithinRow->setEnabled(allMode && mpWidget_matchModeRows->isEnabled());
 }
 
+// The one way the strip is opened or closed on purpose, so that the answer the
+// session goes on holding and what the form shows are set in the one place
+void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
+{
+    mShowAllTriggerControls = shown;
+    slot_showAllTriggerControls(shown);
+}
+
+void dlgTriggerEditor::slot_showAllTriggerControls(const bool isShown)
+{
+    QToolButton* pToggle = mpTriggersMainArea->toolButton_toggleExtraControls;
+    if (pToggle->isChecked() != isShown) {
+        pToggle->setChecked(isShown);
+    }
+
+    // Set unconditionally: isVisible() is also false while the whole trigger
+    // form is hidden, as it is during construction, which would skip the hide
+    // that keeps the strip away once the form does show
+    showEditorFormRow(isShown, {mpLabel_optionsRow, mpWidget_triggerOptionsRow});
+
+    updatePatternTabOrder();
+
+    // The form is a row shorter or a row taller, and the seam over the code
+    // pane follows what the form asks for - but only where the form on show is
+    // the one that changed
+    if (mCurrentView == EditorViewType::cmTriggerView) {
+        fitFormPaneToItsContents();
+    }
+}
+
 // What the sound file field says, which is the file's name, and what it stands
 // for, which is the whole path. The path is what the save and load paths read,
 // so it is kept on the field rather than shown in it: a path drawn into a field
@@ -16384,6 +16466,16 @@ void dlgTriggerEditor::updateEditorSidebarMode()
     updateEditorSidebarToggle();
 }
 
+void dlgTriggerEditor::styleSearchOptionsMenu()
+{
+    QMenu* pMenu_searchOptions = findChild<QMenu*>(qsl("pMenu_searchOptions"));
+    if (!pMenu_searchOptions) {
+        return;
+    }
+    pMenu_searchOptions->setStyleSheet(uiDesign::menuStyleSheet(uiDesign::themeTokens()));
+    uiDesign::letPopupsTakeTheFieldsCorner(pMenu_searchOptions);
+}
+
 // Called from applyEditorShellStyle() alone, which is both where the colours
 // come from and the one thing an appearance change runs again
 void dlgTriggerEditor::restyleEditorIcons()
@@ -16430,6 +16522,12 @@ void dlgTriggerEditor::restyleEditorIcons()
         QToolButton* pClearSoundFile = mpTriggersMainArea->toolButton_clearSoundFile;
         pClearSoundFile->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.svg"), tokens));
         pClearSoundFile->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
+
+        // ...and the sliders the options strip is opened from. One glyph in two
+        // colours rather than an arrow pointing two ways: what the button opens
+        // is named beside it, so the picture only has to say which control it
+        // is and whether it is on
+        mpTriggersMainArea->toolButton_toggleExtraControls->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-options.svg"), tokens));
     }
 
     // The cross on every event chip of the scripts form, and the plus on the
@@ -16477,10 +16575,12 @@ void dlgTriggerEditor::restyleEditorIcons()
     // The banner's picture, at the size of the line of text beside it rather
     // than the 64px block the .ui file sizes it as. Which of the three it is is
     // the only thing the banner says without words, so the hue is kept and only
-    // the lightness comes off the page - the way the compile chip is mixed.
+    // the lightness comes off the page - the way the compile chip is mixed. The
+    // error of the three is the one red, so a refusal on the banner and the note
+    // over the code pane are drawn in the same value.
     if (mpSystemMessageArea) {
         const QColor warningColor = uiDesign::stateColor(uiDesign::scmStateHue_warning, tokens.darkPage);
-        const QColor errorColor = uiDesign::stateColor(uiDesign::scmStateHue_error, tokens.darkPage);
+        const QColor errorColor = uiDesign::errorInk(tokens);
         // Line glyphs rather than the old full-colour bitmaps: a picture tinted
         // through its alpha channel keeps only the shape that channel carries,
         // and those bitmaps' alpha is a solid disc or triangle - so the info
@@ -16711,8 +16811,8 @@ void dlgTriggerEditor::updateEditorCodeHeading()
     mEditorCompileNoteText.clear();
     mEditorCompileErrorLine = 0;
     if (!compiled) {
-        // What showError() was given is rich text, and the strip has room for a
-        // line of it at most - the whole of it goes to the tooltip
+        // What the compiler said comes as rich text, and the strip has room for
+        // a line of it at most - the whole of it goes to the tooltip
         plainMessage = QTextDocumentFragment::fromHtml(mEditorCompileMessage).toPlainText().simplified();
         const QRegularExpressionMatch match = csmCompileErrorLineRegex.match(plainMessage);
         if (match.hasMatch()) {
@@ -16724,14 +16824,12 @@ void dlgTriggerEditor::updateEditorCodeHeading()
         }
     }
 
-    // The words sit on the strip rather than in a chip of their own, so the
-    // colour of the state they report is walked away from the strip until it can
-    // be read on it - the hue is what says which reading this is, and the
-    // lightness is the half there is room to spend
+    // The dot and the words sit on the strip rather than in a chip of their
+    // own, so both are the one red anything broken is drawn in - walked away
+    // from the strip until it can be read on it
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    const QColor stateColor = uiDesign::stateColor(uiDesign::scmStateHue_error, tokens.darkPage);
-    const QColor noteInk = uiDesign::readableOn(tokens.separator, stateColor, tokens.text, uiDesign::scmTextMinimumRatio);
-    const QString dotRule = qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(stateColor.name(), QString::number(scmEditorCompileDotDiameter / 2));
+    const QColor noteInk = uiDesign::errorInk(tokens);
+    const QString dotRule = qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(noteInk.name(), QString::number(scmEditorCompileDotDiameter / 2));
     // A border there is nothing to see of at rest, so that taking the focus
     // paints it rather than moving the words along by a pixel
     const QString noteRule = qsl("#editorCompileNote { background: transparent; border: 1px solid transparent; border-radius: %1px; }"
@@ -17164,53 +17262,30 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     restyleEditorIcons();
 
-    // The bar can be dragged to another edge of the window or floated, and what
-    // says so is the grip at its leading end. Styling the bar at all takes the
-    // platform's own handle with it, which leaves a pair of faint dots barely
-    // on the page - so the same six the pattern rows are dragged by are inked
-    // to the palette and pointed at here.
-    const QString gripAcross = uiDesign::gripGlyphFile(mutedText, false);
-    const QString gripAlong = uiDesign::gripGlyphFile(mutedText, true);
-    const QString toolBarRules = qsl("QToolBar#editorActionsToolbar { background-color: %1; border: none; border-bottom: 1px solid %2; spacing: 2px; padding: 4px 6px; }"
-                                     "QToolBar#editorActionsToolbar::separator { background-color: %2; width: 1px; margin: 5px 6px; }"
-                                     // A background rather than an image: a sub-control's
-                                     // image is stretched to fill it, which turns six small
-                                     // dots into a wash across the whole handle
-                                     "QToolBar#editorActionsToolbar::handle { background-image: url(%8); background-repeat: no-repeat;"
-                                     " background-position: center; width: %10px; margin: 6px 2px; }"
-                                     "QToolBar#editorActionsToolbar::handle:vertical { background-image: url(%9); height: %10px; margin: 2px 6px; }"
-                                     // The transparent border keeps the label from stepping
-                                     // sideways when a hovered button gains one
-                                     "QToolBar#editorActionsToolbar QToolButton { color: %3; border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; }"
-                                     // The accent rather than the words' full tone: the glyph beside
-                                     // the word is inked accentText for QIcon::Active, so the two
-                                     // halves of a hovered button light up as one
-                                     "QToolBar#editorActionsToolbar QToolButton:hover { color: %4; background-color: %5; }"
-                                     "QToolBar#editorActionsToolbar QToolButton:pressed { background-color: %6; }"
-                                     "QToolBar#editorActionsToolbar QToolButton:disabled { color: %7; }"
-                                     // Styling the button at all takes the arrow's own
-                                     // separator with it, so the menu half is drawn as one
-                                     // piece with the rest
-                                     "QToolBar#editorActionsToolbar QToolButton::menu-button { border: none; background: transparent; width: 14px; }"
-                                     // Qt's own overflow button, which only a window narrower
-                                     // than a bar of pictures can reach. Drawn as a control
-                                     // rather than as the pair of faint arrowheads a style
-                                     // leaves on the page there: a card lifted off the bar with
-                                     // the hairline every other box in this window carries, and
-                                     // the chevron inkEditorOverflowChevron() puts on it
-                                     "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button { border: 1px solid %2; background-color: %11; padding: 1px 3px; }"
-                                     "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button:hover { border-color: %4; background-color: %5; }")
-                                         .arg(pageColor.name(),
-                                              borderColor.name(),
-                                              mutedText.name(),
-                                              accentText.name(),
-                                              hoverSoft,
-                                              accentSoft,
-                                              disabledText.name(),
-                                              gripAcross,
-                                              gripAlong,
-                                              QString::number(scmEditorToolbarGripExtent),
-                                              cardColor.name());
+    // The bar the window's actions stand on, drawn by the shared recipe - the
+    // page's surface, the seam under it, the grip, the separators and the flat
+    // buttons - and then the one thing on it that no other bar has.
+    const QString toolBarSelector = qsl("QToolBar#editorActionsToolbar");
+    const QString toolBarRules = uiDesign::toolBarStyleSheet(toolBarSelector, uiDesign::ToolBarSeam::Bottom, tokens)
+                                 + qsl( // Qt's own overflow button, which only a window narrower
+                                           // than a bar of pictures can reach. Drawn as a control
+                                           // rather than as the pair of faint arrowheads a style
+                                           // leaves on the page there: a card lifted off the bar with
+                                           // the hairline every other box in this window carries, and
+                                           // the chevron inkEditorOverflowChevron() puts on it
+                                           "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button { border: 1px solid %1; background-color: %2; padding: 1px 3px; }"
+                                           "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button:hover { border-color: %3; background-color: %4; }")
+                                           .arg(borderColor.name(), cardColor.name(), accentText.name(), hoverSoft);
+
+    // Save Profile is the one button on the bar whose trailing half opens a menu
+    // rather than acting on what it names, so it is drawn as the split it is -
+    // by the same recipe the connection dialog's Copy button is, since a split
+    // button is one control kind wherever it stands. It rounds to the bar's own
+    // corner rather than a form control's, since the face under it is the flat
+    // one toolBarStyleSheet() drew.
+    const QString saveProfileSelector = toolBarSelector + qsl(" QToolButton#editorSaveProfileButton");
+    const QString splitButtonRules = saveProfileSelector + qsl(" { padding-right: %1px; }").arg(QString::number(uiDesign::scmToolBarButtonPaddingHorizontal + uiDesign::scmInputDropDownWidth))
+                                     + uiDesign::splitButtonMenuHalfStyleSheet(saveProfileSelector, uiDesign::scmToolBarButtonRadius, tokens);
 
     const QString statusBarRules = qsl("QStatusBar#editorStatusBar { background-color: %1; border-top: 1px solid %2; }"
                                        // Or the platform style draws a sunken frame around
@@ -17222,11 +17297,18 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                        "QStatusBar#editorStatusBar QLabel { color: %3; padding: 0px 6px; }")
                                            .arg(pageColor.name(), borderColor.name(), mutedText.name());
 
-    const QString shellStyleSheet = toolBarRules + statusBarRules;
-    toolBar->setStyleSheet(shellStyleSheet);
+    const QString shellStyleSheet = toolBarRules + splitButtonRules + statusBarRules;
+    // The menu Save Profile drops hangs off that button, so the bar's own sheet
+    // is what reaches it
+    toolBar->setStyleSheet(shellStyleSheet + uiDesign::menuStyleSheet(tokens));
+    uiDesign::letPopupsTakeTheFieldsCorner(toolBar);
     if (QStatusBar* pStatusBar = QMainWindow::statusBar()) {
         pStatusBar->setStyleSheet(shellStyleSheet);
     }
+
+    // ...and the options behind the search field hang off the window instead,
+    // so that one is drawn and opened up on its own
+    styleSearchOptionsMenu();
 
     // The window's own surface, painted rather than left to fall back on
     // QPalette::Window. The toolbar, the status bar, the panel down the left
@@ -17362,10 +17444,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // Only what the strip holds is drawn: the bar behind it is painted by
         // the handle carrying it
         mpWidget_editorCodeHeader->setStyleSheet(qsl("#editorCodeHeader { background: transparent; }"
-                                                     "#editorCodeHeaderTitle { color: %1; font-size: 92%; }"
+                                                     "#editorCodeHeaderTitle { color: %1; font-size: %2pt; }"
                                                      // The same quiet ink as the title
                                                      "#editorCodeCaret { color: %1; }")
-                                                         .arg(mutedText.name()));
+                                                         .arg(mutedText.name(), QString::number(uiDesign::typeSize(uiDesign::TypeStep::Caption))));
         updateEditorCodeHeading();
     }
 
@@ -17380,58 +17462,61 @@ void dlgTriggerEditor::applyEditorShellStyle()
         // settled by which was written last. The segment's indicator is given
         // no size at all, and the shared mark's ":checked" would otherwise give
         // it a hairline's worth back and move the pair as the choice changed.
-        mpTriggersMainArea->setStyleSheet(formRules + patternRowStyleSheet()
-                                          + qsl(
-                                                    // The groups the options strip is built out of show the form
-                                                    // through them, named outright so a profile stylesheet cannot
-                                                    // paint a band across one
-                                                    "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
-                                                    // The strip is a group box only so that a screen reader is told
-                                                    // the things on it belong together; the word leading it is the
-                                                    // form's, so the box itself is drawn as nothing at all
-                                                    "QGroupBox[editorOptionRow=\"true\"] { border: none; margin: 0px; padding: 0px; background: transparent; }"
-                                                    // The two matching modes, drawn as one control of two joined
-                                                    // segments. They stay radio buttons - a screen reader then says
-                                                    // which of the two is chosen and how many there are - so the dot
-                                                    // each would otherwise carry is given no size and no gap after
-                                                    // it, and the box round the words is what says which one is on.
-                                                    "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
-                                                    " padding: %10px %11px; spacing: 0px; }"
-                                                    // Given no size and, so that nothing draws the dot into what is
-                                                    // left, no border and no fill of its own either: a rule with
-                                                    // nothing to draw is drawn by the platform style instead
-                                                    "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
-                                                    "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
-                                                    "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
-                                                    "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
-                                                    "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
-                                                    // ...and the corners and the shared hairline last, so that they
-                                                    // outlive the states above them: the pair takes the fields'
-                                                    // corner on its outer edges, and the one hairline down the
-                                                    // middle belongs to whichever segment is chosen, so that the
-                                                    // accent goes all the way round it rather than stopping at the
-                                                    // seam. The segment giving that edge up takes its width back as
-                                                    // padding, so neither moves when the choice changes.
-                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
-                                                    " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; }"
-                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
-                                                    " { border-top-right-radius: %6px; border-bottom-right-radius: %6px; }"
-                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]:!checked"
-                                                    " { border-right-width: 0px; padding-right: %15px; }"
-                                                    "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]:!checked"
-                                                    " { border-left-width: 0px; padding-left: %15px; }"
-                                                    // The button that empties the sound file field, drawn as
-                                                    // the picture alone the way the toolbar's are: a frame
-                                                    // round a glyph this small reads as a second control
-                                                    "#toolButton_clearSoundFile { border: none; border-radius: %13px; background: transparent; padding: 2px; }"
-                                                    "#toolButton_clearSoundFile:hover { background-color: %14; }")
-                                                    .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
-                                                    .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
-                                                    .arg(QString::number(scmEditorSegmentPaddingHorizontal),
-                                                         disabledText.name(),
-                                                         QString::number(uiDesign::scmRadiusChip),
-                                                         hoverSoft,
-                                                         QString::number(scmEditorSegmentPaddingHorizontal + uiDesign::scmInputBorderWidth)));
+        mpTriggersMainArea->setStyleSheet(
+                formRules + patternRowStyleSheet()
+                + qsl(
+                          // The groups the options strip is built out of show the form
+                          // through them, named outright so a profile stylesheet cannot
+                          // paint a band across one
+                          "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
+                          // The strip is a group box only so that a screen reader is told
+                          // the things on it belong together; the word leading it is the
+                          // form's, so the box itself is drawn as nothing at all
+                          "QGroupBox[editorOptionRow=\"true\"] { border: none; margin: 0px; padding: 0px; background: transparent; }"
+                          // The two matching modes, drawn as one control of two joined
+                          // segments. They stay radio buttons - a screen reader then says
+                          // which of the two is chosen and how many there are - so the dot
+                          // each would otherwise carry is given no size and no gap after
+                          // it, and the box round the words is what says which one is on.
+                          "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
+                          " padding: %10px %11px; spacing: 0px; }"
+                          // Given no size and, so that nothing draws the dot into what is
+                          // left, no border and no fill of its own either: a rule with
+                          // nothing to draw is drawn by the platform style instead
+                          "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
+                          "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
+                          "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
+                          "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
+                          "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
+                          // ...and the corners and the shared hairline last, so that they
+                          // outlive the states above them: the pair takes the fields'
+                          // corner on its outer edges, and the one hairline down the
+                          // middle belongs to whichever segment is chosen, so that the
+                          // accent goes all the way round it rather than stopping at the
+                          // seam. The segment giving that edge up takes its width back as
+                          // padding, so neither moves when the choice changes.
+                          "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
+                          " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; }"
+                          "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
+                          " { border-top-right-radius: %6px; border-bottom-right-radius: %6px; }"
+                          "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]:!checked"
+                          " { border-right-width: 0px; padding-right: %13px; }"
+                          "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]:!checked"
+                          " { border-left-width: 0px; padding-left: %13px; }")
+                          .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
+                          .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
+                          .arg(QString::number(scmEditorSegmentPaddingHorizontal), disabledText.name(), QString::number(scmEditorSegmentPaddingHorizontal + uiDesign::scmInputBorderWidth))
+                // The strip is opened and closed from a button rather than
+                // from a word, so it is drawn as the one the design language
+                // gives that job: quiet on the row until the options are on
+                // show, lit in the accent for as long as they are
+                + uiDesign::disclosureButtonStyleSheet(qsl("#toolButton_toggleExtraControls"), tokens)
+                + qsl( // The button that empties the sound file field, drawn as
+                          // the picture alone the way the toolbar's are: a frame
+                          // round a glyph this small reads as a second control
+                          "#toolButton_clearSoundFile { border: none; border-radius: %1px; background: transparent; padding: 2px; }"
+                          "#toolButton_clearSoundFile:hover { background-color: %2; }")
+                          .arg(QString::number(uiDesign::scmRadiusChip), hoverSoft));
     }
 
     if (mpScriptsMainArea) {

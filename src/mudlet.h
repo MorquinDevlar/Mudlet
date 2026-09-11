@@ -330,6 +330,15 @@ public:
     void setToolBarIconSize(int);
     // Re-inks every glyph on the main toolbar from the palette as it now stands
     void restyleToolBarIcons();
+    // ...and redraws the bars themselves: the main one, with the profile's own
+    // stylesheet composed after the design's rules, and the replay bar while
+    // one is running
+    void restyleMainToolBar();
+    // The design's flat bar plus what every bar in this application carries on
+    // top of it - Qt's overflow button and the split buttons - for the bar the
+    // selector names. Shared with TDetachedWindow, whose bar is a copy of this
+    // one down to the actions on it.
+    static QString toolBarShellStyleSheet(const QString& barSelector);
     void setToolBarVisibility(enums::controlsVisibility);
     void showChangelogIfUpdated();
     void slot_showConnectionDialog();
@@ -447,6 +456,10 @@ public:
     // Flag to prevent connection dialog from opening during telnet:// URI processing
     bool mProcessingTelnetUri = false;
     QToolBar* mpMainToolBar = nullptr;
+    // The profile's own Lua stylesheet, kept rather than assigned to the bar:
+    // the design's rules and this one live on the same widget, so this is
+    // appended after them every time the bar is drawn
+    QString mMainToolBarProfileStyleSheet;
     // Which glyph each of the toolbar's actions carries, so that a theme change
     // can re-ink all of them from one place. The replay bar's pair joins it when
     // that bar is built.

@@ -305,19 +305,13 @@ private:
         QCoreApplication::sendEvent(pHandle, &move);
     }
 
-    // A trigger that will not compile says so whenever it is chosen, which is
-    // what puts a notice over the form at the moment the pane is being sized
-    void breakTheTriggersScript()
+    // A notice over the form, raised the way everything the notice still
+    // carries is raised. What the compiler made of the item in the editor is
+    // not one of those any more - the heading over the code pane says that -
+    // so the case puts one up itself rather than breaking the item's Lua.
+    void raiseANotice()
     {
-        mpEditor->mpSourceEditorEdbee->textDocument()->setText(qsl("local a = 1\nlocal b = 1 +* 2\n"));
-        mpEditor->slot_saveEdits();
-        settle();
-    }
-
-    void mendTheTriggersScript()
-    {
-        mpEditor->mpSourceEditorEdbee->textDocument()->setText(QString());
-        mpEditor->slot_saveEdits();
+        mpEditor->showError(qsl("Unable to activate this item, so the notice says so over the form"));
         settle();
     }
 
@@ -644,15 +638,15 @@ private slots:
     // height a second time and kept paying it: every notice that came and went
     // took another one off.
     //
-    // Choosing an item is the one moment a notice is up while the pane is being
-    // sized: the selection puts up what the item has to say, and sizes the pane
-    // under it. A broken item says so every time it is chosen.
+    // The pane is sized at the end of choosing an item, with whatever notice is
+    // over the form counted into the column. So the notice goes up first and
+    // the pane is sized under it, which is the order a selection runs in.
     void test_aDraggedSeamKeepsItsHeightAcrossANotice()
     {
         chooseTheTrigger();
-        breakTheTriggersScript();
+        raiseANotice();
         // Measured while it is up, since the drag below has to stop short of
-        // the room the same notice will ask for when the item is chosen again
+        // the room the same notice will ask for when the pane is sized again
         const int noticeRoomToCome = mpEditor->noticeRoomInFormColumn();
         takeTheNoticeDown();
 
@@ -661,7 +655,10 @@ private slots:
         QVERIFY2(mpEditor->mDraggedFormPaneHeights.contains(EditorViewType::cmTriggerView), "the drag never reached the splitter, so no height was written down and this case says nothing");
 
         chooseTheTrigger();
-        QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "choosing the broken trigger said nothing about it, so no notice was up while the pane was sized");
+        raiseANotice();
+        mpEditor->fitFormPaneToItsContents();
+        settle();
+        QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "the notice this case raised is not up, so the pane was not sized under one");
         const int noticeRoom = mpEditor->noticeRoomInFormColumn();
         const int underTheNotice = mpEditor->splitter_right->sizes().at(0);
 
@@ -683,7 +680,6 @@ private slots:
                                     .arg(draggedTo + noticeRoom)));
         QVERIFY2(qAbs(afterTheNotice - draggedTo) <= scmSeamTolerance, qPrintable(qsl("the seam was dragged to %1 and a notice that came and went left it at %2").arg(draggedTo).arg(afterTheNotice)));
 
-        mendTheTriggersScript();
         // A dragged height is kept for the rest of the session, and every other
         // case here reads a seam that snaps to the item it is showing
         mpEditor->mDraggedFormPaneHeights.remove(EditorViewType::cmTriggerView);

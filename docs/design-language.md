@@ -110,7 +110,25 @@ Three things keep an ink of their own, and each says a state rather than a tone:
 `accentText` for what is chosen or under the pointer, `disabledText` for what is
 unavailable, and the state chips - the compile chip, the OR/AND mode chip, and
 the note that refuses a duplicate event name - whose colour is walked against
-their own fill by `readableOn()`. And what the user typed is content wherever it
+their own fill by `readableOn()`. Everything that says something is *broken*
+comes from one function rather than from the same expression in nine places:
+`uiDesign::errorInk(tokens)` walks the error hue off the strip's surface, and
+that one red is what the compile note and dot over the code pane, the mark on a
+broken item's tree row, the picture on the editor's error notice, the note
+refusing a duplicate event name, a clashing shortcut and an untrusted
+certificate in the settings, and the edge round a field the connection dialog
+will not take are all drawn in.
+
+The strip is the darkest surface any of them sits on, which under a light theme
+makes it the hardest to read on and under a dark one the easiest: measured on
+this Mac the dark red reads 4.60:1 on the strip but 3.54:1 on the page, 2.94:1
+on a card and 2.38:1 on the certificate warning's wash. So the three places
+written on a lighter surface than the strip - the events row's note, the
+shortcut warning and the certificate labels - walk that value on with
+`readableOn()` against the surface they are really on. Each of those walks is a
+no-op wherever the red already clears the floor, which is everywhere under the
+light theme, so the one red holds unless holding it would put words under
+`scmTextMinimumRatio`. And what the user typed is content wherever it
 is shown, not chrome: a script's own event names on their chips keep the full
 `text` tone the way the words in a field do, while Mudlet's own `sys*` events on
 the same row are quiet.
@@ -203,6 +221,14 @@ pass and again wherever a window builds a combo box after that pass, the way
 `keepClickFocusOffControls()` does. The list's own 2px padding is what keeps its
 square viewport inside the arc, so nothing else needs clipping.
 
+A menu is a popup too, and takes the same corner from the same call - said on
+the menu itself, which *is* its own window rather than a list living inside
+one. Every `QMenu` under the container is opened up, and the container when it
+is one, so a context menu built at the moment it is wanted can be handed
+straight to this. Only call it where the menu sheet reaches: a popup opened up
+with nothing painting its surface is see-through all over rather than at the
+corner.
+
 Those chevrons are the one part of a field that is pressed rather than typed
 into, so they say so: a stepper's or a drop-down's chevron takes the accent
 under the pointer and holds it while the button is down, and the stepper's own
@@ -292,6 +318,58 @@ that rule's own width reserves through `PM_MenuButtonIndicator`. Its accent on
 focus is the keyboard's too, and `keepClickFocusOffControls()` is what keeps a
 click from leaving it behind - see the paragraph closing the section above.
 
+A button that has to stay a `QToolButton` - because the body of it acts and the
+trailing half opens a menu, which is `QToolButton::MenuButtonPopup` and nothing
+else - joins the same rule by carrying `uiDesign::scmProp_menuButton`
+(`uiMenuButton`). Face, hairline, corner, padding and content height are the
+push button's. The property is opt-in because a tool button without it is
+whatever its window makes of it; the editor's forms carry several that paint
+themselves. The connection dialog's Copy button is the one that has it today.
+Assigning a sheet to the button takes the room for the words with it, since the
+label is laid out in the whole of the contents rectangle: the rule's own
+`padding-right` of `scmButtonPaddingHorizontal + scmInputDropDownWidth` is what
+holds the word clear of the half.
+
+**Two click areas have to read as two.** The trailing half is a segment of its
+own, not a chevron floating on one face, and
+`splitButtonMenuHalfStyleSheet(buttonSelector, cornerRadius, tokens)` is the one
+recipe that draws it - called by `buttonStyleSheet()` for a form's split button
+and by the editor's shell pass for the toolbar's Save Profile button. It writes
+three things on `::menu-button`, which is `scmInputDropDownWidth` (18px) wide at
+`subcontrol-position: center right`:
+
+- **The seam.** A `border-left` of the design's hairline on the half's leading
+  edge, and nothing else at rest - no fill, no other border. Assigning a sheet
+  to the button takes the platform's own separator between the halves away, and
+  this puts one back in the design's tone: before the pointer arrives, the seam
+  is the whole of what says there are two areas here.
+- **Its own wash.** `::menu-button:hover` and `:pressed`, with the half's outer
+  corners rounded to the button's own radius so a lit half does not poke square
+  corners out of a rounded button. The wash is a step ahead of whatever the body
+  takes, because the body's hover fills the whole button, the half included:
+  where the body lights to `hoverSoft` the half lights to `accentSoft` - the
+  same wash a row of the menu it opens takes under the pointer - and where the
+  body is pressed to `accentSoft` the half takes twice that. A half washed in
+  what the body is already washed in never reads as its own target.
+
+  **It says the half is a target, not that it is the one under the pointer**,
+  and cannot say the second: `QToolButton` tracks its hovered sub-control
+  through `QStyle::hitTestComplexControl`, which `QStyleSheetStyle` does not
+  answer for `CC_ToolButton`, so the button reports `SC_ToolButton` for a point
+  anywhere on it and `::menu-button:hover` matches whenever the button as a
+  whole is pointed at. Measured, not assumed - the half reads the same with the
+  pointer on the words as with it on the chevron. The press is unaffected:
+  `QToolButton::mousePressEvent` asks `subControlRect()`, which the sheet does
+  answer, so clicking the half opens the menu and clicking the words does not.
+- **The design's chevron** through `::menu-arrow`, `themedArrowFile()`'s Lucide
+  one at `mutedText` and the accent one under the pointer, in place of the
+  filled triangle a platform style leaves there. Guarded like every rule
+  pointing at a picture: no cached file, no rules at all.
+
+Only two things differ between the two callers, and both are arguments: the
+selector naming the button, and the corner its own rule rounds to
+(`scmRadiusInput` on a form, `scmToolBarButtonRadius` on the bar).
+
 Three kinds of button are left out on purpose:
 
 - **Colour wells** (`generateButtonStyleSheet()`, `mTEXT_ON_BG_STYLESHEET`)
@@ -304,6 +382,200 @@ Three kinds of button are left out on purpose:
   them - the content height included.
 - **The editor's placeholders** (`uiDesign::PlaceholderButton`) are tool buttons
   painting their own dashed frame, so no `QPushButton` rule reaches them.
+
+### Menus
+
+`menuStyleSheet(tokens, selectorPrefix)` draws every menu one of these windows
+owns: the one the editor's Save Profile button drops, the search options behind
+the editor's search field, the connection dialog's Copy menu and its games-list
+context menu, the settings dialog's "other profiles to map to", and the context
+menu over the code pane.
+
+The surface is the `card` tone, the hairline is the field's and the corner is
+`scmRadiusInput` - the corner a combo box's dropped-down list takes, because
+both are a list opened out of the window it belongs to. The tone is the card's
+rather than the field's for the other half of that reading: a menu is a panel
+lifted off the page, where a combo box's list is the field it came out of,
+opened up. Nothing in the rules names a font, since a menu is read in the font
+of whatever it hangs from.
+
+A row is a word in a box, so it takes the chip's corner rather than the menu's -
+the menu's own corner repeated inside itself reads as a second frame. The
+pointer's row, and the keyboard's, is `QMenu::item:selected`: `accentSoft`
+behind `accentText`, which is how a combo box's list draws the row that is
+chosen. An unavailable row is `disabledText`. A separator is a one pixel line in
+the `separator` tone, inset by the room the rows leave at their leading end.
+
+A row that is switched on or off carries the one mark every other choice is made
+with, written out by the same builder the check boxes are drawn from - the same
+size, the same fill, the same accent hairline and the same tick. The states a
+menu has no way to enter, a hover and a press and a third answer, are simply
+never matched. Where the mark stands, and the picture on a row carrying one
+instead, is the menu's own: a sub-control is placed from the row's leading edge,
+which is the very edge the row's highlight is drawn from, so both are moved into
+the middle of the room the row leaves them or they sit on the arc of that
+highlight rather than inside it.
+
+The corner is the list's, cut by the same `letPopupsTakeTheFieldsCorner()` - see
+the paragraph on it above. A window's style pass gives both to whatever it owns;
+a menu built at the moment it is needed, which is what a context menu is, is
+given both by the code that builds it, before `exec()`.
+
+### Tabs
+
+`tabBarStyleSheet(tabWidgetSelector, tokens)` draws a `QTabWidget`'s strip as a
+row of chips lying on the page, not as the folder tabs a platform cuts. A tab is
+a word in a box, the same object as a chip, a menu row and a sidebar's row, so it
+carries the same three states and the same corner: `mutedText` on nothing at
+rest, `hoverSoft` behind `accentText` under the pointer, `accentSoft` behind
+`accentText` while it is the one on show, `scmRadiusChip` throughout, and the
+accent on its border from the keyboard alone. What that says is that the strip is
+a choice being made, which is what it is - a stack of folder tabs says instead
+that the window is a filing cabinet.
+
+The pane under it gets no border and no fill of its own, only `scmTabPaneInset`
+of margin, so that whatever fills it - a field, in the notepad's case - opens its
+rounded corner onto the page rather than butting into the window's edge. The
+strip starts at that same inset, so the row of chips and the field under it begin
+on the same line.
+
+The cross on a closable tab is `editor-clear.svg`, the one x the rest of the
+design is drawn with, tinted into the glyph cache by `themedGlyphFile()` for the
+rule to point at - quiet at rest, `accentText` under the pointer. Where the cache
+cannot be written the rule is left out rather than aimed at nothing, and the tab
+keeps whatever cross the platform draws it with.
+
+The buttons a strip too crowded to fit scrolls with are left alone: their arrows
+are a sub-control of a `QToolButton` the bar makes for itself, and giving those
+buttons a face without also replacing the arrows would leave the reader a blank
+square to press.
+
+`prepareTabStrip(pTabBar)` is the caller's one job, and it says the two things a
+rule cannot. The base, because in document mode the macOS style fills the whole
+bar with a band of its own behind the tabs - neither the page the chips lie on
+nor anything a rule asked for, and not something `background: transparent` takes
+away. And the box the cross is drawn in, which is the button widget's own size
+rather than anything the `::close-button` rule holds: Qt's close button asks the
+style for `PM_TabCloseIndicatorWidth` in its constructor and resizes itself to
+the answer, and `QStyleSheetStyle` has no case for that metric, so the rule's
+`width` and `height` are never read and the style underneath answers - twenty
+pixels under Fusion, which the dark appearance is drawn on, fourteen under the
+macOS style. The picture the rule points at is painted into whatever rectangle
+the button ended up with, so on a twenty pixel button an eight pixel mark comes
+out at eleven. The moment to say otherwise is `QEvent::ChildPolished`: the
+button's `sizeHint()` polishes itself before it asks the style anything, which
+sends that event to the bar while the constructor's `resize()` is still ahead -
+and a resize is bounded by the widget's minimum and maximum size, so a box fixed
+from the event is the size the button keeps and the size `setTabButton()` lays
+the tabs out from.
+
+The keeper moves that box as well as sizing it, after every layout of the bar,
+because Qt places it outside the chip. A `::tab` rule with a box makes
+`QStyleSheetStyle` answer 0 for `PM_TabBarTabHSpace`, and its
+`SE_TabBarTabRightButton` hands `QCommonStyle` the tab's raw rectangle - only
+`SE_TabBarTabText` is given the rule's contents rect - so the cross comes out at
+`tab->rect.right() - width`, which is `scmTabGap` past the drawn chip and a
+further `scmTabPaddingHorizontal + scmInputBorderWidth` outside the box the word
+is laid in. The rule's `subcontrol-position` decides the side and nothing else,
+so the reader got a cross flush against the chip's edge beside a word with ten
+pixels of air. `QTabBarPrivate::layoutTab()` applies that rectangle with
+`move()`, which makes `QEvent::Move` on the button the one moment after every
+layout, and the keeper puts the cross back on the word's own padding line there.
+Its own `move()` sends a second `Move`, so the wanted position is compared before
+it is asked for.
+
+#### The profile strip
+
+The row of profile tabs across the head of the main window, and of every
+detached one, is the same chip - but `TTabBar` paints it rather than being handed
+a sheet. Any `QTabBar::tab` rule sends the tab to `QStyleSheetStyle`, which draws
+it through `QWindowsStyle` and never reaches the bar's own style, and a
+stylesheet has no per-tab pseudo-state - so the tab would lose both the bold,
+italic or underlined name that says a profile has new output and the connection
+indicator beside it. Replacing `QTabBar::paintEvent()` in a subclass is not open
+either: the offsets a tab is dragged and reordered by are private to Qt.
+
+So `TStyle` draws the chip from the same tokens and the same constants the sheet
+uses. `scmTabPaddingVertical`, `scmTabPaddingHorizontal`, `scmTabGap`,
+`scmTabStripInset`, `scmTabCloseBoxSize` and `scmTabCloseGlyphSize` live in
+`src/uiDesign.h` for that reason - a measurement two strips share is one number,
+not two that agree today. The three states are the ones every other chip carries:
+nothing behind a `mutedText` word at rest, `hoverWash` behind `accentText` under
+the pointer, `accentWash` behind `accentText` while it is the profile on show -
+and down that chip's leading edge the bar the settings sidebar draws on its
+chosen row, through `paintAccentBar()` cut to the chip's own corner, because on
+a dark page the wash alone did not say which profile was on show. The chosen
+chip's word is bold as well, as the sidebar's chosen row is - bold on a resting
+chip says that profile has new output, and the wash is what tells the two
+readings apart - and every tab is measured bold whether or not it is drawn that
+way, so the strip does not step sideways each time the choice moves.
+The chosen chip is also outlined all the way round in the accent, at
+`scmInputBorderWidth`, stroked after the wash and after the bar so the bar's
+outer edge is the outline's. A border elsewhere in the design says where the
+keyboard is, but this bar takes no keyboard focus, so on it a border can only
+mean chosen - and on the light appearance the wash alone was too pale to say
+which profile was on show (2026-09-10, the user's call, against the settings
+sidebar's chosen row as the reference; that row shows the same 1px accent border
+while it holds focus). The width was always in the metrics, so nothing moved to
+make room for it.
+
+On a light page the chip the reader chose is not washed at all: it is filled, and
+its word, its cross and a disconnected profile's ring are written on that fill in
+white, as the platform's own chosen tab is. The fill is the accent taken towards
+black until `field` - the white Qt writes every well in the window with - reads
+on it at the text floor, which is `readableOn(tokens.field, tokens.accent,
+tokens.text, scmTextMinimumRatio)`: the walk ends at black, which white clears
+many times over, so it always lands on a colour rather than falling back. Nothing
+is left for a bar or an outline to say there, both being the accent on the
+accent, so neither is drawn. The wash, the bar and the outline above are the dark
+page's treatment: a solid fill would be the loudest thing in that window, and the
+wash there already reads as the settings sidebar's chosen row does. On the light
+page it did not, even with the bar and the outline, which is what took that
+appearance the rest of the way (2026-09-11, the user's call).
+
+The sidebar's row also reads darker than the chip's word did, and for a reason
+that is not the border: it lies on the white pane, where `accentText` clears far
+more than the 4.5:1 it was walked to. `themeTokens()` walks that ink only to the
+floor, and against a wash on the strip's grey page the floor is where it stays,
+so the accent fades into its own wash. The chosen chip's word is therefore walked
+a second time - `readableOn()` against the wash as it is actually composited over
+the page, up to `TStyle::sChosenWordMinimumRatio`, the 7:1 the sidebar's row is
+given for free. A hovered chip's word is still plain `accentText`: it says where
+the pointer is, not which profile is on show.
+
+The cross is the same `editor-clear.svg` as the sheet's, through
+`themedGlyphPixmap()` - the call the cache files are written from as well, so a
+painted cross and a rule's cannot come apart. It trails the word on every
+platform, as it does on the notepad's strip: macOS alone puts a close button in
+front of a tab's name, and a cross in the leading position reads as a bullet
+until it is pressed.
+
+The chips share the width of the bar between them, as this strip always has:
+`QTabBar`'s own expanding layout is left on, and each chip holds its word centred
+in what the indicator at its leading padding edge and the cross at its trailing
+one leave. `SH_TabBar_Alignment` stays `Qt::AlignLeft` for the one case that is
+still the alignment's to decide - a strip too narrow to fill, which begins at the
+leading edge as every other row in the design does.
+
+Where the row of chips begins is the two windows' business rather than the bar's.
+`QTabBar` lays its first tab out at x = 0 and ignores its own contents margins,
+so `mudlet.cpp` and `TDetachedWindow.cpp` each put the bar in a horizontal layout
+holding `scmTabStripInset` of leading margin - the same inset the notepad's pane
+and strip start at.
+
+The connection indicator's inks are `stateColor()` for the reading - working,
+connecting, broken - walked with `readableOn()` at the quiet floor against what
+the chip it stands on is actually filled with, so a dot means the same thing in
+either appearance and does not disappear into an accent fill. A disconnected
+profile is a ring rather than a fill - nothing is happening, and nothing is
+wrong - drawn in the same ink as the word beside it: `mutedText` at rest, and the
+field's white on a filled chip.
+
+Mudlet sets no stylesheet on this bar. That is what leaves a profile's own
+`setAppStyleSheet` rules the last word, exactly as before: a `::tab` rule of
+theirs takes the tab over, a `::close-button` rule takes the cross, and with
+neither, Qt's stylesheet style falls through to `TStyle`, which is its base.
+`ProfileTabBarStyleTest` guards the lot.
 
 ### One sidebar for both windows
 
@@ -416,19 +688,53 @@ radius of its own.
 | `scmRadiusPanel` | 8px | The boxes a window is laid out in: `settingsCard` group boxes, the migration banner, the editor's notice frame, the deep-link spotlight ring |
 | `scmRadiusProminentInput` | 8px | A search field: the one control a panel is headed by rather than one of several filled in on it, and drawn taller than a form control, so it takes the corner of the panel it heads (`#settingsSearchField`, `#editorSearchRow QComboBox`) |
 
-Sizes not in the scale stay literal on purpose: the 6px of a hovered toolbar
-button or a navigation row, the 8px pill of a sidebar item, the 3px of a
+Sizes not in the scale stay off it on purpose: the 6px of a hovered toolbar
+button (`scmToolBarButtonRadius`, named beside the bar it belongs to) or a
+navigation row, the 8px pill of a sidebar item, the 3px of a
 marker-pen highlight. Those are rows and glyphs, not the boxes this scale is
 about - and a check indicator's own 3px is `scmChoiceBoxRadius`, named beside
 the mark it belongs to rather than on this scale, since a radio button takes
 half its own size there and comes out a circle.
 
-### Font sizes are relative
+### Font sizes come from the type scale
 
-Stylesheet font sizes are percentages, never points: `#settingsPageTitle
-{ font-size: 145%; }`, `#settingsWordmark { 125% }`, `#settingsHeroHeadline
-{ 115% }`. Absolute point sizes break accessibility settings and every platform's
-interface font.
+A stylesheet names a size only through `uiDesign::typeSize()`, which answers a
+whole point size for one of four steps:
+
+| step | ratio | at a 13pt base | what it is set on |
+| --- | --- | --- | --- |
+| `TypeStep::Caption` | 0.85 | 11pt | chips, captions, the version and copyright lines, a card's or a section's note |
+| `TypeStep::Body` | 1.0 | 13pt | everything not named here |
+| `TypeStep::Title` | 1.15 | 15pt | a section title, a hero headline, a search header, the sidebar wordmark |
+| `TypeStep::Display` | 1.45 | 19pt | the page title over a settings page, and nothing else |
+
+```cpp
+qsl("#settingsPageTitle { font-weight: bold; font-size: %1pt; }").arg(QString::number(typeSize(TypeStep::Display)))
+```
+
+**In points, because Qt's stylesheet parser reads `pt` and `px` for `font-size`
+and nothing else.** A percentage is dropped without a warning, and the rule reads
+as though it sets a size while setting none: the 28 `font-size: N%` rules this
+tree carried across the settings dialog, the About dialog and the script editor
+had never once applied, so every word in all three windows was the interface font
+at its own size. Whatever is written has to be a size the parser takes.
+
+That does not cost the accessibility a percentage was there for. The base is
+`QApplication::font().pointSizeF()`, read every time `typeSize()` is asked - so a
+larger interface font moves all four steps with it, and a sheet rebuilt after a
+font change comes out at the new sizes. A size *written* into a rule is the thing
+to avoid, and `DesignColourLiteralTest` fails on one.
+
+**Four steps, and no fifth.** Two things are set apart only by a difference a
+reader can see; a step between Caption and Body is not one. The 96% rules that
+used to sit there - a maker's description, the thanks paragraph - are Body now.
+Whole points rather than a fraction, so a height measured off a step (the corner
+of an ID pill is half of one) stays an integer.
+
+The one size on a designed surface that is not a step is the notepad strip's
+`stripWordPointSize()`: those words line up with the platform's *tool button*
+font, which on macOS is not the application font, so the number is read off
+`QApplication::font("QToolButton")` and rounded to a whole point.
 
 ### Cards, not bare group boxes
 
@@ -492,6 +798,22 @@ is `sidebarWidths()` / `updateSidebarMode()` in
 
 #### The editor's actions toolbar gives its names up, never its actions
 
+**The bar's look is a recipe, not the editor's own.**
+`uiDesign::toolBarStyleSheet(toolBarSelector, seam, tokens)` draws every flat
+bar in the application: the page's surface with the hairline seam on the edge
+`ToolBarSeam` names - `Bottom` for a bar across the top of a window, `Top` for
+one at its foot - the `::separator` between two groups, the `::handle` grip from
+`gripGlyphFile()`, and the buttons themselves, flat and frameless at rest, in
+`hoverSoft` under the pointer and `accentSoft` while held, their words in
+`accentText` either way because the glyph beside them is inked that for
+`QIcon::Active`. The measurements are `scmToolBarGripExtent`,
+`scmToolBarButtonRadius` and `scmToolBarButtonPadding*` in `src/uiDesign.h`. A
+toolbar cannot call `buttonStyleSheet()` instead: its buttons are the flat kind
+a bar draws, and the button rule would give each of them a face and a frame.
+Whatever else a particular bar carries - the editor's overflow button and its
+split Save Profile - follows the shared part in that window's own sheet. The
+script editor and the notepad are the consumers.
+
 A `QToolBar` too narrow for what it holds posts the tail of itself into a
 drop-down behind a chevron a few pixels wide at the far edge of the window.
 Nothing says it is there. `fitEditorToolBarToItsLength()` in
@@ -504,7 +826,13 @@ hidden while a word is still written out:
   item being edited after. Undo and Redo are pictures from the start.
 - A collapsed group is `Qt::ToolButtonIconOnly` per button, through
   `toolBar->widgetForAction()`; the split Save Profile button keeps its menu
-  arrow. Every one of the eight leads its tooltip with the words it would
+  half. That half is drawn by `uiDesign::splitButtonMenuHalfStyleSheet()` - the
+  same recipe the connection dialog's Copy button takes, at the bar's own
+  `scmToolBarButtonRadius` corner - so the seam, the wash and the Lucide chevron
+  are one look in both windows. It is the only button on the bar named
+  (`editorSaveProfileButton`): the padding that holds its words clear of the
+  half would otherwise reach all
+  ten. Every one of the eight leads its tooltip with the words it would
   otherwise be carrying, which for the item four is the view's wording - "Add
   Trigger", "Add Alias" - rebuilt by `updateEditorItemActionToolTips()`.
 - What is measured is `toolBar->layout()->sizeHint()` along the bar's
@@ -540,6 +868,52 @@ drawn by `inkEditorOverflowChevron()` in `accentText`, because a `QStyle` hands
 that button a picture of its own and a stylesheet cannot recolour one.
 `test/functional_tests/EditorToolBarOverflowTest.cpp` sweeps the window width and
 holds all of it, the numbers above included.
+
+#### The main window's toolbar
+
+The same recipe, on `mpMainToolBar`, on the replay bar a running replay stands
+beside it, and on every detached profile window's `detachedMainToolBar`. Left to
+the platform the bar read two ways and neither of them said anything: on the
+native macOS style a hovered button showed no highlight at all, and on the
+Fusion-based dark theme a lighter box with a hairline round it. A switched-on
+Sound button was a sunken grey block with the chevron of its menu half pushed
+into a corner of it.
+
+- `mudlet::toolBarShellStyleSheet(barSelector)` composes what any of those bars
+  is drawn with: `uiDesign::toolBarStyleSheet()` seamed along its bottom, then
+  Qt's `qt_toolbar_ext_button` as a card with the hairline - the editor's rule,
+  with this bar's selector - then the split buttons.
+- **The split buttons are picked out by their popup mode, not by name.**
+  `QToolButton[popupMode="1"]` is `QToolButton::MenuButtonPopup`, which is how
+  Qt's own documentation reaches them: Connect, Sound and Packages are three of
+  them on this bar, a detached window builds its own copies, and an addon's
+  command button can be a fourth. Each gets `scmToolBarButtonPaddingHorizontal +
+  scmInputDropDownWidth` of trailing padding to hold its word clear of the half,
+  and `uiDesign::splitButtonMenuHalfStyleSheet()` at the bar's own
+  `scmToolBarButtonRadius`, so the seam, the wash and the chevron are the same
+  look the editor's Save Profile carries.
+- **A checked action is lit rather than sunk.** `toolBarStyleSheet()` grew a
+  `QToolButton:checked` rule - `accentText` on `accentSoft`, what a pressed
+  button takes - because a checkable action that is on is held down in every way
+  but the pointer. Sound, Full Screen, MultiView and the compact input line are
+  the ones that reach it, and `tintedIcon()` has already inked their `QIcon::On`
+  glyph `accentText` to match.
+- **A profile's Lua stylesheet is composed after the design's, on the same
+  widget.** `setAppStyleSheet()` and a profile switch both assign a sheet to this
+  very bar, so it is kept in `mMainToolBarProfileStyleSheet` and appended last by
+  `mudlet::restyleMainToolBar()` rather than replacing what the design wrote.
+  Where the two name the same property the more specific selector wins and a tie
+  goes to the later rule, so a profile that wants a bar of its own names it -
+  `QToolBar#mpMainToolBar QToolButton { ... }` - where a bare `QToolButton { ... }`
+  no longer reaches it.
+- `restyleMainToolBar()` runs from `restyleToolBarIcons()`, which is what every
+  appearance change already calls, and a detached window's bar is redrawn by its
+  own `restyleToolBarIcons()` for the same reason. The replay bar is named
+  `mpToolBarReplay` so it can be scoped to; it carries no profile sheet.
+
+`test/functional_tests/MainToolBarStyleTest.cpp` holds it: the sheet's
+composition, and the hover wash, the accent wash and the seam on the menu half
+read off a grab in both appearances.
 
 ### Shell over .ui
 
@@ -632,11 +1006,28 @@ never moves the Name field. Under it, each row leads with one word.
   stylesheet editor holds the grid's vertical stretch, so the room a drag on
   this view's seam gives the column goes to it and never between the rows.
 - **A trigger's options are one of those rows**, the options strip, led by
-  "Options" (`editorOptionsRow`), between the head row and the pattern list and
-  always on show. They were a 280px column of four cards beside the patterns,
-  opened by a button and folded away again by the window being either short or
-  narrow, and then two rows, which still wanted a very wide window before they
-  stopped wrapping. The strip is a titleless `QGroupBox` carrying
+  "Options" (`editorOptionsRow`), between the head row and the pattern list. It
+  is a disclosure: the Options button at the right end of the head row
+  (`toolButton_toggleExtraControls`, text "Options", the Lucide sliders glyph
+  through `tintedIcon()`) is what opens and closes it, and the lead word goes
+  away with it - `showEditorFormRow()`
+  takes the pair together. That button is drawn by
+  `uiDesign::disclosureButtonStyleSheet(buttonSelector, tokens)`, the one recipe
+  for a control that opens and closes a strip: a button's own face, since it is
+  pressed rather than typed into, the chrome tone and the border hairline at
+  rest, and `accentText` on the accent's wash and hairline while it is checked -
+  the ink a switched-on control already carries, so the button says the options
+  are on show for as long as they are. This is the recipe's one caller: the
+  notepad had the other, and gave it up (see the send strip in section 3). The
+  editor opens with it closed every time, whatever
+  the last session did: the state is held for the session in
+  `mShowAllTriggerControls` and never stored, and the `showAllTriggerControls`
+  key an older configuration carries is still cleared on write. The tab chain
+  runs Name, Command, the Options button, then the strip if it is open, then the
+  patterns. They were a 280px column of four cards beside the patterns, folded
+  away again by the window being either short or narrow, and then two rows, which
+  still wanted a very wide window before they stopped wrapping. The strip is a
+  titleless `QGroupBox` carrying
   `editorOptionRow`, drawn as nothing at all: a group box because a screen
   reader is told it is a grouping and is told nothing about a bare `QWidget`,
   and the word leading it is the form's own label rather than a title. Inside
@@ -705,6 +1096,20 @@ chips wrapping onto a second line all move the seam by themselves.
 `EditorFormShellTest` holds both halves: a push on the handle leaves a fixed
 view's column where it was, and still moves the trigger form's.
 
+The strip is also the only place a compile error of the item in the editor is
+said. `reportCompileError()` is the one way to `mEditorCompileMessage`, and both
+the save of an item and the *opening* of one go through it - so a broken item
+shows its note every time it is selected, not only in the session where the
+failed save happened, and `clearDocument()` has already cleared the heading for
+the item arriving before the note lands on it. The notice over the form no
+longer doubles the note: it used to be raised for the same failure, and raised
+again by every rebuild of a tree, for whichever broken item that rebuild came to
+last - so the reader was told about an item they were not looking at. The mark
+on the row is what says a broken item is broken while it is not the one open.
+A save is bracketed by `beginSaveErrorCapture()` / `endSaveErrorCapture()` so
+that the heading is written once when the save is over, which is what lets a
+save that passed clear the note the last failed one left.
+
 What the form is never given, however much it asks for, is the whole of the two
 panes. `codePaneFloor()` keeps the code pane a third of what they have between
 them and never less than `scmEditorSourcePaneFloor` - the number below which the
@@ -742,6 +1147,14 @@ size the seam - the cap and `formPaneHeightForItsContents()` - both read that
 one measurement.
 
 ### The notice over the form
+
+What the notice carries is what has nowhere else to be said: an activation the
+engine refused, a script that failed while the profile was loading and has since
+been fixed, the warning that an item came out of a package, an undo toast. What
+it does *not* carry is a compile error of the item in the editor - that belongs
+to the heading over the code pane, which speaks for that item and takes its note
+away when the item goes. `showError()` is the banner; `reportCompileError()` is
+the heading.
 
 `dlgSystemMessageArea` is as tall as its words are at the width it is given and
 no taller: both its hints come from its own layout's height-for-width at its
@@ -872,6 +1285,17 @@ The ink is `mutedText`, or the colour the trees' stylesheet writes a chosen row'
 name in (`accentText`) while the row is selected, so a mark and the name beside
 it are always the one colour.
 
+The error mark is the one exception, and it is inked in `uiDesign::errorInk()`
+whether the row is chosen or not. A folder, a filter chain and an offset timer
+are labels for what the item *is*, and chrome's grey is the right tone for a
+label; a broken item is a state being reported, and reported in grey it could
+not be told from a folder at a glance. `errorInk()` is the same value the
+compile note over the code pane is written in - one function, so the two cannot
+drift - and the accent wash a chosen row is filled with is light enough for it
+to hold there too. `EditorTreeErrorMarkTest` reads the mark off a grab of the
+tree in both appearances and holds that red to `scmQuietMinimumRatio` against
+the surface the rows sit on.
+
 The seventh tree reads the same two slots differently, on the same row.
 `VariableTreeDelegate` draws a kept square where the dot stands: filled in the
 green a running dot is filled in when the variable is saved with the profile,
@@ -952,6 +1376,157 @@ Stylesheets select on these; setting one after the widget is shown needs an
 | `aboutNavGlyph` | Which file a navigation button's glyph is re-inked from |
 | `aboutRestingText` | What a Copy button reads when it is not saying "Copied" |
 | `aboutRichText` | The text a label was given, before its links were inked |
+
+...and the connection dialog's one, with a `connection*` prefix. The two tabs
+of that window and every button on it have been through the design;
+`applyConnectionShellStyle()` builds two sheets, one set on each tab page rather
+than on the tab widget - which would take the tab bar with it - and one set on
+each of the two containers that hold buttons, `profileAdminArea` (Remove, Copy,
+New) and `widget_bottom` (the skip button and the button box):
+
+| Property | Meaning |
+| --- | --- |
+| `connectionFieldState` | What the validator has to say about this field: `error`, and absent while the field is fine |
+| `uiMenuButton` | Shared, not this window's: on Copy, which stays a `QToolButton` so its trailing half can open a menu - see "Buttons" |
+
+The two buttons the button box builds at runtime are named so that a test can
+reach them: `connectButton` and `offlineButton`. Connect keeps
+`setDefault(true)`, and the one rule this window writes of its own -
+`QPushButton:default:enabled` - is what fills it with the accent wash the About
+dialog's primary button carries. The `:enabled` half of that selector matters:
+without it a Connect the validator has switched off would sit lit rather than
+falling back to the shared disabled look.
+
+A field holding a value that cannot be changed carries no property of its own.
+It is drawn by the `:read-only` pseudo-state, which Qt evaluates at paint time,
+so `setReadOnly()` needs no re-polish after it - and it takes the surface and
+the hairline of an unavailable field
+(`uiDesign::disabledFieldColour()` / `disabledBorderColour()`) but not its ink,
+since the value in it is real and is there to be read.
+
+...and the notepad's, with a `notepad*` prefix. That window is a `QMainWindow`
+per profile: a strip of tabs of notes over a bottom toolbar, with a find bar
+between them. `applyNotepadShellStyle()` builds two sheets, one set on
+`centralwidget` - the page, the tab recipe, the notes as fields and the find bar -
+and one on the bar, whose seam is on its **top**, since the bar is at the foot of
+the window (`ToolBarSeam::Top`). Neither goes on the window, for the same reason
+none of the other shells' do: a profile's Lua stylesheet is assigned to the
+window on every show.
+
+| Name | What it is |
+| --- | --- |
+| `notepadPrefixLabel`, `notepadPrefixField` | "Before each line" and the field after it, which every line sent is prefixed with |
+| `notepadPrefixWarning` | The action carried inside that field at its trailing end, whose warning glyph is the cue at any width and whose tooltip is the whole sentence |
+| `notepadStripSpacer` | The expanding widget that holds the warning at the trailing end of the strip |
+| `notepadNoPrefixNote`, `notepadNoPrefixDot`, `notepadNoPrefixText` | The warning reading: a dot in the warning hue and the words beside it, on show only while it applies |
+| `notepadSendingDot`, `notepadSendingText`, `notepadSendingBar` | The sending reading: an accent dot, "Sending 4 of 12", and the thread of progress under the send |
+| `notepadAddTab` | The corner button that starts a new note |
+| `notepadFindBar` | The row between the notes and the bar, on the page with a hairline over it |
+| `notepadFindField` | The field searched in |
+| `notepadFindPrevious`, `notepadFindNext`, `notepadFindClose` | The three picture-only buttons beside it: chevron up, chevron down, x |
+
+...and one dynamic property, `notepadFieldState`, which the prefix field carries
+the value `"warning"` on while the reading below applies. It is drawn by a rule
+written after `inputStyleSheet()` so it wins the specificity tie against that
+recipe's `:focus` frame, the way the connection dialog's `"error"` rule does, and
+it needs `uiDesign::repolish()` after every change.
+
+The toolbar keeps the `.ui` file's own `toolBar` name, because `saveState()` and
+`restoreState()` find a bar by it and the window's layout is kept under
+`Notepad/WindowState`.
+
+**The send strip** is that bar, and it has three readings. Idle it says how far
+each send would reach: **Send line**, **Send selection (3 lines)** and **Send all
+(12 lines)**, each with a Lucide glyph beside its word and the two counts live -
+counted the way `slot_sendNextLine()` sends, which skips an empty line, so the
+number is what the game will actually see. Then the seam, "Before each line" and
+the prefix field. Sending, all of that leaves the strip (`QAction::setVisible()`,
+so nothing is built or torn down) and in its place stand an accent dot, "Sending
+4 of 12", the thread of progress and **Stop** - which is not on the strip at all
+while there is nothing to stop, rather than sitting there unavailable. Both ends
+of a send go through `mudlet::self()->announce()`. And with the prefix empty over
+a note of more than `scmNotepadWarnAtLines` lines, the field takes the warning
+hairline and a cue inside it, and the strip's trailing end reads, where there is
+room for it, "No prefix, so 12 lines go to the game
+as commands" - a dot in `stateColor(scmStateHue_warning, darkPage)` and words
+walked off the page with `readableOn()`, the same shape as the editor's compile
+note. The buttons stay live: it says what sending would come to rather than
+refusing it.
+
+The seam between Send all and "Before each line" parts two words, and they stand
+the same distance from it. A tool button holds its word its padding in from its
+edge and then some - `QToolButton::sizeHint()` asks for two spaces more than the
+word measures, the stylesheet style adds three pixels, and `QCommonStyle` draws
+the word left-aligned after the picture, so all of that slack lands after the
+word on the seam's side - while a label holds its word at its edge. The lead
+word is therefore held in by what the button's own geometry says it holds its
+word in by (`alignPrefixLeadWord()`), taken again whenever the button's words
+change, and the guard reads the ink either side of the line off a grab rather
+than a margin.
+
+**The warning has three levels**, because the strip's own content wants about
+950px and the window opens at 800: a sentence at the trailing end of that bar is
+the first thing to go, at exactly the width where a reader most needs it. So the
+warning is not one thing that shrinks.
+
+1. **The cue lives in the field.** While the warning applies the prefix field
+   carries an action at its trailing end (`notepadPrefixWarning`, added the way
+   the connection dialog's reveal action is added to the password field), whose
+   picture is `editor-notice-warning.svg` through `tintedGlyph()` in the warning
+   hue at the size the editor's banner draws its own, re-inked in the style pass.
+   It costs the bar no room, so it is the cue at any width; the field's warning
+   hairline stays, and the whole sentence is on the action's tooltip and on the
+   field's - which is what a reader is looking at while typing the answer to it.
+2. **The words come only whole.** `fitNoPrefixNote()` picks one of three: the
+   sentence, the short form "No prefix" with the dot, or the reading off the bar
+   altogether. Never an elided fragment - a sentence cut mid-word says less than
+   two words that are whole. The measurement is the bar's own `sizeHint()` taken
+   with the words off the label, which counts the separators, the spacing and the
+   padding a stylesheet hands out the way Qt counts them, against what each form
+   asks for as its own `sizeHint()`. It is taken again on every resize of the bar
+   and on an appearance change, and the layouts under it are invalidated first,
+   since a layout answers with what it worked out last time until it is told
+   otherwise.
+3. **Nothing.** What goes when neither form fits is `action_noPrefixNote`, not
+   the widget: a `QToolBar` shows a widget it has room for again on its next
+   layout, whatever the widget was told, so hiding the widget leaves a dot with
+   nothing after it. Whether the warning applies is `mNoPrefixWarningApplies`,
+   which is what a wider window brings the words back from - the action's own
+   visibility says only what the strip is carrying at this width.
+
+On the offscreen platform the tests run on that comes to: the strip with no
+words asks for 712px, the sentence is 298px and the short form 54px, so the
+sentence wants a 1010px window and the short form 766px. Below about 600px the
+bar is over its own room as well and posts its tail - the field with it - into
+the drop-down `QToolBar` puts what it cannot fit in.
+
+A fold used to hide the whole of that: an "Options" disclosure with the five send
+controls behind it, remembered in `Notepad/SendControlsVisible`. It went because
+it saved no space - the bar was there either way - and guarded nothing: a
+one-click toggle is not a guard, and a reader who opened it once had it open
+forever. What guards a send is the count on the button before it is pressed and
+the warning at the one moment it is dangerous, which is what replaced it. The
+key is no longer written; `Host` offers no way to remove one, so an old profile
+keeps a line nothing reads.
+
+A note is a `QPlainTextEdit` and is drawn as the field it is typed into, by
+`inputStyleSheet()` scoped to `#centralwidget`. The profile's Lua stylesheet still
+reaches the window as a whole, but no longer each note: a sheet set on the note
+itself would beat the shell's, which names a container and so wins on
+specificity. The display font stays the profile's. The find bar's two marker inks
+are mixed in the same pass - `tokens.marker` on the match the cursor is on, and a
+wash of it towards the field on the rest - so they follow an appearance change.
+
+The status bar the `.ui` file carries is hidden: nothing ever writes to it, and an
+empty one leaves a strip of the platform's own drawing under a bar this window
+draws itself.
+
+That pass is re-run from two places rather than one. `signal_appearanceChanged`
+is what a reader picking an appearance in the settings sends; a reader on "follow
+the system" who changes the system's theme instead moves the application's
+palette without that signal, and the only word this window gets is the style
+change Qt sends every widget - so `changeEvent()` runs the pass as well, the way
+the editor's does.
 
 The editor redesign follows the same scheme with an `editor*` prefix:
 `editorShell`, `editorSidebar`, `editorPage_<key>`, `editorOptionsRow`, and so
@@ -1102,6 +1677,13 @@ with `git log --all --diff-filter=D -- test/functional_tests/StyleSheetDumpTest.
 add it to the group sources by hand for the comparison, take the two dumps,
 and drop it again. What ships is the diff being empty, not the dumps.
 
+`toolBarStyleSheet()` and `disclosureButtonStyleSheet()` were extracted this
+way: the editor's toolbar sheet came out byte-identical in both appearances,
+and the trigger form's differed in one declaration - the disclosure button's
+`background-color`, which was the field tone only because the lift
+`buttonStyleSheet()` mixes a face from is file-local to `uiDesign.cpp`, and is
+now the button face the shared builder reads there.
+
 ### Guards
 
 A handful of tests hold the line the rest of this document describes. Text that cannot
@@ -1178,7 +1760,10 @@ It also walks each of the editor's five field-only forms from the form widget
 itself, with an item on show, so the words a form adds - the sentence round a
 timer's fields, the hint beside a key's binding, a script's chips, a variable's
 pickers - are read against their own floors rather than lost in the count for
-the whole window.
+the whole window. The connection dialog is walked the same way and for the same
+reason: its two tabs are the whole of that window the design has reached, and
+only one of them is on show at a time, so each is made current and read against
+a floor of its own.
 
 The tones the audit holds are walked rather than picked: `mutedText`,
 `disabledText` and `accentText` each start at a weight and are moved until they
@@ -1192,6 +1777,57 @@ for its chrome - see "One ink for the editor's chrome" above for what it walks,
 what it leaves out and why, and the painted probe it ends with. The audit asks
 whether a word can be read; this asks whether it is the right grey, which a
 readable-but-wrong tone would otherwise pass.
+
+**`test/functional_tests/ConnectionDialogStyleTest.cpp`** holds the
+connection dialog's two tabs and its buttons to the recipes: both containers
+holding a button carry a sheet with the push button rules in it, Copy carries
+`uiMenuButton` and is named by a rule of its own, Connect is still the dialog's
+default button and the sheet says what a default button is filled with, and the
+New button's top edge is read off a grab of the window and has to be the
+design's hairline rather than a platform bevel. Both pages carry a sheet built on
+the `field` surface, the three Connect-to fields are at the dialog's own font
+rather than the 9pt the `.ui` pinned them at, the port field is wide enough for
+five digits and what the recipe leaves either side of them, and a port or a
+server address the validator objects to carries `connectionFieldState` while it
+is wrong and loses it once it is right. A case of its own moves the appearance
+and reads the page's sheet again, since a window that builds its sheet once and
+never re-runs it looks correct in whichever appearance it was opened in.
+
+**`test/functional_tests/EditorMenuStyleTest.cpp`** holds the editor's two menus
+to the menu recipe: the sheets standing over the one Save Profile drops name a
+`QMenu` and the card surface, that menu is see-through so its corner is cut away
+on a grab that keeps its alpha, and the surface a couple of pixels inside the
+hairline is the card's. The search options menu is read the same way and, with
+one option switched on, the square its mark stands in is found by walking in
+from the row's edge and has to hold the ink every other choice is marked in -
+which is nothing at all while the option is off.
+
+**`test/functional_tests/NotepadShellTest.cpp`** holds the notepad to the same
+kind of thing. Both sheets are set on widgets rather than on the window, and the
+one on the central widget names the tab rules and the field tone while the bar's
+names the bar, the warning hairline and the thread a send's progress is drawn as.
+The send strip is read in each of its three readings: idle, no widget is called
+`notepadOptionsToggle` any more, the three send buttons carry a glyph and a
+tooltip each, a twelve-line note with three lines selected reads "Send all (12
+lines)" and "Send selection (3 lines)", Send selection is unavailable with
+nothing selected and Stop is not on the strip at all; sending, the buttons and
+the field leave it while "Sending 0 of 12" and the bar's value follow the send,
+and stopping puts it back within a tick; and with the prefix empty over that same
+note the warning is on show, names twelve lines, puts `notepadFieldState` and a
+cue carrying the whole sentence on the field and leaves the sends live - while
+three lines with no prefix say nothing and leave the field bare. A case walks the
+window through three widths and reads which of the warning's forms the strip
+took: the whole sentence at 1400, "No prefix" at 800, no words at all at 520 with
+the action off the bar and the cue still on the field, and the sentence back when
+the window is widened again - with no reading at any width holding an ellipsis.
+A fourth case reads the inks: the sending dot's own sheet names `tokens.accent`,
+and the warning's words clear 4.5:1 on the page in both appearances, read off the
+label's palette, which is where a stylesheet's `color:` lands. The add-tab button
+and the three the find bar is worked from carry a glyph each and no word, and the tab rules
+point the close button at a picture. A case reads pixels: with two notes open,
+the chosen tab has to be within a few levels of the accent wash on the page and
+the other has to read as the page itself. And an appearance change has to rebuild
+both sheets with the new field tone - nothing outside this window restyles it.
 
 **The marks and the buttons** are measured off pixels rather than off palettes,
 since neither carries a word: `SettingsShellNavigationTest` reads a page's check

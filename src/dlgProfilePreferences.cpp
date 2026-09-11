@@ -72,6 +72,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QMenu>
 #include <QMessageBox>
 #include <QNetworkDiskCache>
 #include <QPainter>
@@ -126,6 +127,7 @@ using uiDesign::letPopupsTakeTheFieldsCorner;
 using uiDesign::makeChevronRow;
 using uiDesign::markAsShellSurface;
 using uiDesign::measuredCardTitleHeight;
+using uiDesign::menuStyleSheet;
 using uiDesign::readableOn;
 using uiDesign::rgba;
 using uiDesign::scmProp_focused;
@@ -143,6 +145,8 @@ using uiDesign::spotlightStyleSheet;
 using uiDesign::themeTokens;
 using uiDesign::ThemeTokens;
 using uiDesign::tintedGlyph;
+using uiDesign::typeSize;
+using uiDesign::TypeStep;
 using uiDesign::withLinkColour;
 using uiDesign::wordEnoughToSearch;
 
@@ -194,13 +198,14 @@ static CardMetrics cardMetrics(const int titleHeight)
     return {.cardProperty = scmProp_settingsCard, .plainProperty = scmProp_settingsCardPlain, .padding = scmCardPadding, .titleHeight = titleHeight, .flattenNestedGroupBoxes = true};
 }
 
-// What the shortcut conflict warning is written in: a state colour rather than
-// one of the surface tones, since what it says is a reading rather than a place
-// in the window. The hue says which reading and the lightness comes off the page
-// it is written on, so the one rule holds against both appearances.
+// What the shortcut conflict warning is written in: the one red anything broken
+// is written in, rather than the raw hue this used to take with no readability
+// walk at all. Walked on against the card it lies on, since that surface is
+// lighter than the one the red was measured against and these are words.
 static QString shortcutConflictStyleSheet()
 {
-    return qsl("color: %1; font-weight: bold;").arg(uiDesign::stateColor(uiDesign::scmStateHue_error, uiDesign::themeTokens().darkPage).name());
+    const ThemeTokens tokens = themeTokens();
+    return qsl("color: %1; font-weight: bold;").arg(readableOn(tokens.card, uiDesign::errorInk(tokens), tokens.text, uiDesign::scmTextMinimumRatio).name());
 }
 
 static const QString scmCategory_general = qsl("general");
@@ -2900,6 +2905,10 @@ void dlgProfilePreferences::applyShellStyle()
     // How far the pen is taken over what it is drawn on is this dialog's own:
     // the search wants a wash the words still read through, not a block of ink
     const QString markerSoft = rgba(tokens.marker, darkPage ? 0.75 : 0.95);
+    // The two steps of the type scale this window names, in the points a
+    // stylesheet is the only thing that reads
+    const QString titleSize = QString::number(typeSize(TypeStep::Title));
+    const QString displaySize = QString::number(typeSize(TypeStep::Display));
 
     if (mpAction_searchIcon) {
         mpAction_searchIcon->setIcon(QIcon(tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/settings-search.svg")), mutedText)));
@@ -2928,21 +2937,21 @@ void dlgProfilePreferences::applyShellStyle()
                   // Painted rather than left transparent, as a transparent
                   // surface falls back to the palette that stylesheet changed.
                   "QWidget[settingsSurface=\"true\"] { background-color: %1; border: none; }"
-                  "#settingsWordmark { font-weight: bold; font-size: 125%; }"
-                  "#settingsPageTitle { font-weight: bold; font-size: 145%; }"
+                  "#settingsWordmark { font-weight: bold; font-size: %6pt; }"
+                  "#settingsPageTitle { font-weight: bold; font-size: %7pt; }"
                   // Taller than the controls on a page and the one thing the
                   // panel it heads is worked from, so it takes a panel's corner
                   "#settingsSearchField { border: 1px solid %2; border-radius: %4px; padding-left: 6px; background-color: %3; }"
                   "#settingsSearchField:focus { border: 1px solid %5; }")
                       // %3 is the surface the search box is sunk into, as
                       // against the card the rest of the shell is laid out on
-                      .arg(pageColor.name(), borderColor.name(), fieldColor.name(), QString::number(scmRadiusProminentInput), accentColor.name())
+                      .arg(pageColor.name(), borderColor.name(), fieldColor.name(), QString::number(scmRadiusProminentInput), accentColor.name(), titleSize, displaySize)
             // The cards the pages are laid out in, drawn the one way the
             // editor's options column draws its own
             + cardStyleSheet(cardMetrics(cardTitleHeight), tokens)
             + qsl("#settingsMigrationBanner { background-color: %1; border: 1px solid %2; border-radius: %3px; }"
                   "#settingsMigrationBannerTitle { font-weight: bold; }"
-                  "#settingsSearchHeader { font-weight: bold; font-size: 110%; color: %4; }"
+                  "#settingsSearchHeader { font-weight: bold; font-size: %10pt; color: %4; }"
                   "#settingsSearchEmpty { padding: 32px; color: %5; }"
                   // The property is put on and taken off by the search itself.
                   // Under the stack, the way the shared field, mark and button
@@ -2980,10 +2989,11 @@ void dlgProfilePreferences::applyShellStyle()
                   "#settingsStack QAbstractButton[settingsChevronRow=\"true\"]:focus { border: 1px solid %8; }"
                   // Carries no setting, so tinted rather than framed like a card
                   "QGroupBox[settingsHero=\"true\"] { background-color: %1; border: 1px solid %8; }"
-                  "#settingsHeroHeadline { font-weight: bold; font-size: 115%; }"
+                  "#settingsHeroHeadline { font-weight: bold; font-size: %10pt; }"
                   "#settingsHeroDetail { color: %5; }")
                       .arg(accentSoft, borderColor.name(), QString::number(scmRadiusPanel), textColor.name(), mutedText.name(), markerSoft, hoverSoft, accentColor.name())
                       .arg(tokens.disabledText.name())
+                      .arg(titleSize)
             + cardIndicatorRules
             // A scroll area's bars answer only to a descendant selector
             + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens)
@@ -3055,6 +3065,7 @@ void dlgProfilePreferences::applyShellStyle()
     // scope and for the same reason: the pages a profile brings with it are
     // built by the time this runs again
     letPopupsTakeTheFieldsCorner(mpStackedWidget_categories);
+    styleProfileMapMenu();
 
     // A different font is a different width for the names, so the sidebar is
     // given the width it wants under the look it has just been handed
@@ -3064,6 +3075,15 @@ void dlgProfilePreferences::applyShellStyle()
     // compares itself against rather than a before/after reading of the mode
     mShellStyledForDarkPage = darkPage;
     ++mShellStyleApplications;
+}
+
+void dlgProfilePreferences::styleProfileMapMenu()
+{
+    if (!mpMenu) {
+        return;
+    }
+    mpMenu->setStyleSheet(menuStyleSheet(themeTokens()));
+    letPopupsTakeTheFieldsCorner(mpMenu);
 }
 
 // Found by type rather than listed by hand, since a list would silently miss
@@ -3918,6 +3938,9 @@ void dlgProfilePreferences::initWithHost(Host* pHost)
     pushButton_copyMap->setEnabled(false);
     if (!mpMenu) {
         mpMenu = new QMenu(tr("Other profiles to Map to:"), this);
+        // A host can be loaded before the shell has been styled or long after,
+        // so whichever of the two comes second is what draws this menu
+        styleProfileMapMenu();
     }
 
     mpMenu->clear();
@@ -7470,10 +7493,11 @@ void dlgProfilePreferences::generateDiscordTooltips()
     }
 
     auto setToolTip = [=](QWidget* widget, const QString& highlight) {
-        // theme-fixed: a picture of Discord's own panel, in Discord's colours,
-        // shown so the user can see what the game will publish - it is not a
-        // surface of this dialog and does not follow its theme. A raw string
-        // cannot carry a comment of its own, so this one marks all of it.
+        // theme-fixed: a picture of Discord's own panel, in Discord's colours
+        // and at Discord's sizes, shown so the user can see what the game will
+        // publish - it is not a surface of this dialog and follows neither its
+        // theme nor its type scale. A raw string cannot carry a comment of its
+        // own, so this one marks all of it.
         const QString tooltip = qsl(R"(
   <style type="text/css">
     .tg  {border-collapse:collapse;border-spacing:0;}
@@ -7940,8 +7964,10 @@ QString dlgProfilePreferences::certificateWarningLabelStyle() const
 {
     const ThemeTokens tokens = themeTokens();
     // The issuer and the expiry are the reading itself rather than chrome, so
-    // they carry the error hue - walked on the wash until it can be read there
-    const QColor ink = readableOn(certificateWarningSurface(tokens), uiDesign::stateColor(uiDesign::scmStateHue_error, tokens.darkPage), tokens.text, uiDesign::scmTextMinimumRatio);
+    // they carry the one red anything broken is written in - walked on against
+    // this wash, which is lighter than the surface that red was measured on and
+    // so the harder of the two for a light ink to be read against
+    const QColor ink = readableOn(certificateWarningSurface(tokens), uiDesign::errorInk(tokens), tokens.text, uiDesign::scmTextMinimumRatio);
     return qsl("font-weight: bold; color: %1; background: %2").arg(ink.name(), certificateWarningWash(tokens));
 }
 

@@ -126,11 +126,11 @@ private:
     // the pixel furthest from the surface is the ink itself.
     static constexpr int scmInkTolerance = 2;
 
-    // The chips whose colour says a reading rather than a tone: the compile
-    // state, drawn in a state hue walked against its own fill; the OR/AND chip,
-    // which takes the accent while it is the mode in force; and the note the
-    // events row answers a duplicate with, which is the error hue walked
-    // against the page. Named here because each is drawn as a widget with words
+    // The things whose colour says a reading rather than a tone: the compile
+    // note over the code pane, written in the one red anything broken is
+    // written in; the OR/AND chip, which takes the accent while it is the mode
+    // in force; and the note the events row answers a duplicate with, which is
+    // that same red. Named here because each is drawn as a widget with words
     // inside it, and the words are what would otherwise be measured.
     //
     // A script's own event names go with them, for the opposite reason: what a
@@ -142,7 +142,7 @@ private:
     {
         for (const QWidget* pAt = pWidget; pAt; pAt = pAt->parentWidget()) {
             const QString name = pAt->objectName();
-            if (name == qsl("editorCompileChip") || name == qsl("editorChipNote") || name == qsl("editorChipLabel")) {
+            if (name == qsl("editorCompileNote") || name == qsl("editorChipNote") || name == qsl("editorChipLabel")) {
                 return true;
             }
         }

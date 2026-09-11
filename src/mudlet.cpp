@@ -1095,7 +1095,13 @@ void mudlet::init()
     auto layoutTopLevel = new QVBoxLayout(frame);
     layoutTopLevel->setContentsMargins(0, 0, 0, 0);
     layoutTopLevel->setSpacing(0);
-    layoutTopLevel->addWidget(mpTabBar);
+    // QTabBar starts its first tab at x = 0 and ignores its own contents
+    // margins, so the inset the row of chips begins at is the layout's to give
+    auto pTabStrip = new QHBoxLayout;
+    pTabStrip->setContentsMargins(uiDesign::scmTabStripInset, 0, 0, 0);
+    pTabStrip->setSpacing(0);
+    pTabStrip->addWidget(mpTabBar);
+    layoutTopLevel->addLayout(pTabStrip);
     mpWidget_profileContainer = new QWidget(frame);
     const QPalette mainPalette;
     mpWidget_profileContainer->setPalette(mainPalette);
@@ -4233,12 +4239,74 @@ void mudlet::setToolBarIconSize(const int s)
     emit signal_setToolBarIconSize(s);
 }
 
+// QToolButton::MenuButtonPopup is 1, and a property selector is how Qt's own
+// documentation reaches those buttons. The padding is the room the words are
+// held clear of the half by, which is why it is written here rather than in the
+// recipe: it is the bar's own horizontal padding plus the half's width.
+static QString splitToolBarButtonRules(const QString& barSelector, const uiDesign::ThemeTokens& tokens)
+{
+    const QString splitSelector = barSelector + qsl(" QToolButton[popupMode=\"1\"]");
+    return splitSelector + qsl(" { padding-right: %1px; }").arg(QString::number(uiDesign::scmToolBarButtonPaddingHorizontal + uiDesign::scmInputDropDownWidth))
+           + uiDesign::splitButtonMenuHalfStyleSheet(splitSelector, uiDesign::scmToolBarButtonRadius, tokens);
+}
+
 // The size the glyphs are drawn at is QToolBar's business, taken from the 128px
 // source: this is only ever about the colour they are inked in, so it runs when
-// the palette moves and not when the buttons grow.
+// the palette moves and not when the buttons grow. The bar under them is mixed
+// from the same palette, so it is redrawn here too.
 void mudlet::restyleToolBarIcons()
 {
     uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
+    restyleMainToolBar();
+}
+
+// static
+QString mudlet::toolBarShellStyleSheet(const QString& barSelector)
+{
+    const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+
+    return uiDesign::toolBarStyleSheet(barSelector, uiDesign::ToolBarSeam::Bottom, tokens)
+           // Qt's own overflow button, which only a window narrower than the bar
+           // can reach. Drawn as a control rather than as the pair of faint
+           // arrowheads a style leaves on the page there: a card lifted off the
+           // bar, with the hairline every other box carries.
+           + barSelector + qsl(" QToolButton#qt_toolbar_ext_button { border: 1px solid %1; background-color: %2; padding: 1px 3px; }").arg(tokens.border.name(), tokens.card.name()) + barSelector
+           + qsl(" QToolButton#qt_toolbar_ext_button:hover { border-color: %1; background-color: %2; }").arg(tokens.accentText.name(), tokens.hoverSoft)
+           // Connect, Sound and Packages act on what they name and open a menu
+           // from the half beside it, so they are drawn as the splits they are -
+           // by the same recipe the editor's Save Profile takes, at the bar's
+           // own corner. Picked out by that popup mode rather than by name:
+           // there are three of them here, a detached window builds its own
+           // copies, and an addon's command button can be a fourth.
+           + splitToolBarButtonRules(barSelector, tokens);
+}
+
+// The bar's own look, composed rather than written: the design's rules first and
+// the profile's Lua stylesheet last, because that sheet is assigned to this very
+// widget. Where the two name the same property the more specific selector wins
+// and a tie goes to the later rule, so a profile that wants a bar of its own
+// says so by naming it - "QToolBar#mpMainToolBar QToolButton { ... }".
+void mudlet::restyleMainToolBar()
+{
+    if (!mpMainToolBar) {
+        return;
+    }
+
+    const QString mainSheet = toolBarShellStyleSheet(qsl("QToolBar#mpMainToolBar")) + mMainToolBarProfileStyleSheet;
+    // Setting a sheet re-polishes the bar and everything on it, and this runs on
+    // every palette change and every profile switch
+    if (mpMainToolBar->styleSheet() != mainSheet) {
+        mpMainToolBar->setStyleSheet(mainSheet);
+    }
+
+    if (mpToolBarReplay) {
+        // The bar a replay runs on stands beside the main one and carries no
+        // profile sheet of its own
+        const QString replaySheet = toolBarShellStyleSheet(qsl("QToolBar#mpToolBarReplay"));
+        if (mpToolBarReplay->styleSheet() != replaySheet) {
+            mpToolBarReplay->setStyleSheet(replaySheet);
+        }
+    }
 }
 
 void mudlet::setEditorTreeWidgetIconSize(const int s)
@@ -6593,6 +6661,9 @@ bool mudlet::replayStart()
     dactionReplay->setToolTip(mpActionReplay->toolTip());
 
     mpToolBarReplay = new QToolBar(this);
+    // Named so the design's rules can be scoped to it the way the main bar's
+    // are, and so Qt has something to write into a saved window layout
+    mpToolBarReplay->setObjectName(qsl("mpToolBarReplay"));
     mpToolBarReplay->setIconSize(QSize(8 * mToolbarIconSize, 8 * mToolbarIconSize));
     mpToolBarReplay->setToolButtonStyle(mpMainToolBar->toolButtonStyle());
 
@@ -8419,7 +8490,8 @@ void mudlet::activateProfile(Host* pHost)
     reshowRequiredMainConsoles();
 
     // Reset the styles to reflect those of the now active profile:
-    mpMainToolBar->setStyleSheet(mpCurrentActiveHost->mProfileStyleSheet);
+    mMainToolBarProfileStyleSheet = mpCurrentActiveHost->mProfileStyleSheet;
+    restyleMainToolBar();
     restyleToolBarIcons();
     mpTabBar->setStyleSheet(mpCurrentActiveHost->mProfileStyleSheet);
     menuBar()->setStyleSheet(mpCurrentActiveHost->mProfileStyleSheet);
@@ -8481,7 +8553,8 @@ MudletInstanceCoordinator* mudlet::getInstanceCoordinator()
 
 void mudlet::setGlobalStyleSheet(const QString& styleSheet)
 {
-    mpMainToolBar->setStyleSheet(styleSheet);
+    mMainToolBarProfileStyleSheet = styleSheet;
+    restyleMainToolBar();
     restyleToolBarIcons();
     mpTabBar->setStyleSheet(styleSheet);
     menuBar()->setStyleSheet(styleSheet);

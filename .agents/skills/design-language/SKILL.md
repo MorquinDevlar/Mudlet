@@ -44,7 +44,9 @@ script editor (`src/dlgTriggerEditor.cpp`) is the reference look; the settings d
    section 2.
 6. **Radius follows control size** (`scmRadiusChip` 4, `scmRadiusInput` 5, `scmRadiusPanel` 8,
    `scmRadiusProminentInput` 8). No rule writes a radius of its own.
-7. **Font sizes in stylesheets are percentages**, never points.
+7. **A sheet names a size only through `uiDesign::typeSize()`**: four whole-point steps,
+   `Caption` / `Body` / `Title` / `Display`, never a percentage (Qt's parser ignores it, so the
+   rule silently sets nothing) and never a written number. `DesignColourLiteralTest` fails on both.
 8. **Chrome words are `mutedText`; typed values are `text`; chosen or hovered is `accentText`.**
    Every ink is walked to a measured contrast floor (`scmTextMinimumRatio` 4.5:1,
    `scmQuietMinimumRatio` 3:1) and `ReadabilityAuditTest` checks both appearances.
@@ -90,7 +92,12 @@ State colours (ok, warning, error) come from `stateColor(scmStateHue_*, darkPage
 | --- | --- | --- |
 | Line edit, text edit, combo box, spin box | `inputStyleSheet(tokens, prefix)` | Claims combos and spin boxes only once the chevron PNGs exist; accent frame on focus. Then `letPopupsTakeTheFieldsCorner(container)` on the container the sheet was set on, and again wherever a combo box is built after that pass, or a dropped-down list's corner is cut out over the square corner of the window it lives in |
 | Check box, radio button, checkable card mark | `choiceStyleSheet(tokens, prefix)` | One mark: field fill, hairline, accent when set, a dash for `Qt::PartiallyChecked`; cards get it through `cardIndicatorStyleSheet()`. Then `keepClickFocusOffControls(container)` on the container the sheet was set on, or a click leaves the focus accent behind on every base style that answers `SH_Button_FocusPolicy` with `Qt::StrongFocus` |
-| Push button, button with a menu | `buttonStyleSheet(tokens, prefix)` | Same height and radius as a field; Lucide chevron as the menu indicator. Colour wells keep their own per-widget sheet. Same follow-up call as the row above - one `keepClickFocusOffControls()` covers both recipes |
+| Push button, button with a menu | `buttonStyleSheet(tokens, prefix)` | Same height and radius as a field; Lucide chevron as the menu indicator. A tool button that has to keep a split - the body acts, the trailing half opens a menu - is drawn by the same rule once it carries `scmProp_menuButton` (`uiMenuButton`); opt-in, so a window's self-painting tool buttons are untouched. Colour wells keep their own per-widget sheet. Same follow-up call as the row above - one `keepClickFocusOffControls()` covers both recipes |
+| The trailing half of a split button | `splitButtonMenuHalfStyleSheet(buttonSelector, cornerRadius, tokens)` | Two click areas have to read as two: the seam on the half's leading edge, its own wash a step ahead of the body's, and the Lucide chevron in place of the platform triangle. `buttonStyleSheet()` calls it for a `uiMenuButton`; a window drawing a split button of its own face - the editor toolbar's Save Profile - calls it with that button's selector and its own radius, and holds the words clear itself with `padding-right` of `scmInputDropDownWidth` |
+| Flat toolbar | `toolBarStyleSheet(toolBarSelector, seam, tokens)` | The bar on the page's own surface, the hairline seam on the edge `ToolBarSeam` names (`Bottom` for a bar across the top of a window, `Top` for one at its foot), the `::separator`, the `::handle` grip and the buttons - flat and frameless at rest, `hoverSoft` under the pointer, `accentSoft` while held or switched on, the word in `accentText` throughout so it lights with the glyph beside it. Scoped to the bar, not the window, so a window holding two bars draws each. `scmToolBarGripExtent` and `scmToolBarButtonRadius` / `scmToolBarButtonPadding*` are the measurements a caller reads for anything of its own that has to line up. What one bar carries on top - Qt's overflow button, a split button - follows the shared part in that window's sheet. Never `buttonStyleSheet()` here: it gives every button a face and a frame |
+| Disclosure button (a strip or row that opens and closes) | `disclosureButtonStyleSheet(buttonSelector, tokens)` | A checkable button carrying a glyph and a word: a button's own face, the chrome tone and the border hairline at rest, `accentText` on the accent's wash and hairline while checked, so it says the thing it opened is on show. The selector names the one button, or every tool button on the form is claimed. Set the height from the caller - the padding is air round the contents, not the height |
+| Menu, context menu | `menuStyleSheet(tokens, prefix)` + `letPopupsTakeTheFieldsCorner(container)` | The list a combo box drops, on the card tone: the field's hairline, `scmRadiusInput`, the chip's corner on a row, `accentSoft`/`accentText` under the pointer's row, and the one choice mark on a checkable one. Set it on whatever the menu hangs off - a button's menu is reached by the bar's sheet - and open the corner on that same container. A menu built at the moment it is needed gets both from the code that builds it, before `exec()` |
+| Tab strip | `tabBarStyleSheet(tabWidgetSelector, tokens)` | A `QTabWidget`'s tabs as a row of chips on the page rather than the folder tabs a platform cuts: `mutedText` on nothing at rest, `hoverSoft`/`accentText` under the pointer, `accentSoft`/`accentText` while chosen, `scmRadiusChip` throughout and the accent on the border from the keyboard. The pane takes `scmTabPaneInset` of margin and no border, so a field filling it opens its corner onto the page; the strip starts at the same inset. A closable tab's cross is `editor-clear.svg` through `themedGlyphFile()`, left out where the cache could not be written. Scoped to the one tab widget, so a window's other tab bars keep what they had. What it does not draw: the scroll buttons a crowded strip shows, whose arrows are a sub-control of a tool button the bar makes itself. `prepareTabStrip(pTabBar)` is the caller's one job - the base off, or the macOS style fills the whole bar with a band of its own behind the tabs, and every cross kept to `scmTabCloseBoxSize` and inside the chip's padding, since Qt's close button sizes itself from `PM_TabCloseIndicatorWidth` in its constructor and no `::close-button` rule is asked (20 under Fusion, 14 under the macOS style), which stretches the mark inside the picture by the same ratio, and Qt places that box on the tab's raw rectangle rather than in the box the word is laid in, which puts it outside the chip altogether. A bare `QTabBar` that has to keep painting of its own - a font per tab, an indicator - cannot take this sheet at all, since a `::tab` rule hands the tab to Qt's stylesheet style: see `TTabBar`, which paints the same chip from these same constants |
 | Card with a title inside the frame | `cardStyleSheet(CardMetrics, tokens)` + `cardIndicatorStyleSheet()` + `measuredCardTitleHeight()` | Measure the title height with the indicator rules in force, or the first control paints over the title |
 | Sidebar list with rail collapse | `sidebarStyleSheet(...)` + `setSidebarCollapsed(...)` + `sidebarRowWidth(...)` + `SidebarItemDelegate` + `SidebarToggle` | The rail width, the paddings, the row height and the glyph are the component's own `scmSidebar*` constants; `SidebarMetrics` carries only what a window has a reason to differ by - the expanded width, which each measures off its widest row, and the vertical padding. A row is never a constant: `sidebarRowWidth()` asks the *base* style what an item of that name in bold and that icon needs (`CT_ItemViewItem`, widget `nullptr`, so a stylesheet style defers to the style underneath) and adds the accent bar and `::item` padding the sheet writes - a style leaves its own margins round an item's text, four pixels either side on macOS light against two under the dark theme, and a row measured for one elides in the other. `SidebarToggle` is the chevron on the seam, a child of the shell holding both panes, kept under `<window>SidebarLabelsShown` |
 | Scrollbars on a surface | `scrollBarStyleSheet(prefix, tokens, surface)` | A scroll area's bars answer only to a descendant selector |
@@ -114,18 +121,37 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
 - The editor's notice `dlgSystemMessageArea`, which styles itself from the tokens on every
   appearance change rather than being written to by the window holding it
 - About dialog `dlgAboutDialog` (`AboutLinkButton`, `AboutSupporterBanner`)
-- Main window toolbar and detached-window toolbars (`mudlet.cpp`, `TDetachedWindow.cpp`) - glyphs only
+- Connection dialog `dlgConnectionProfiles` - the two tabs' fields, marks and labels, and
+  every button on the window (`profileAdminArea` and `widget_bottom`, Copy through
+  `scmProp_menuButton`); games list, notice and information box still platform-drawn
+- Notepad `dlgNotepad` - the strip of tabs as chips, the notes as fields, the find
+  bar, and the bottom toolbar with the seam on its top, carrying the send strip in
+  its three readings (reach, sending, no prefix)
+- Profile tab strip `TTabBar` (main window and detached windows) - chips, the chosen one filled on
+  a light page with the accent walked dark enough for `field`'s white to read on it and washed with
+  the sidebar's accent bar and an outline on a dark one, its word in bold as the sidebar's chosen
+  row is, with every tab measured bold so the strip does not shift when the choice moves; that
+  chip's word, cross and ring in that white on the fill, and `accentText` walked to 7:1 on the
+  wash; cross and connection indicators painted
+  by its own style from the tokens and the shared tab constants; no stylesheet
+  of its own, so a profile's Lua sheet keeps the last word; guarded by `ProfileTabBarStyleTest`
+- Main window toolbar, the replay bar beside it and every detached window's toolbar
+  (`mudlet.cpp`, `TDetachedWindow.cpp`) - the flat bar recipe through
+  `mudlet::toolBarShellStyleSheet()`, Qt's overflow button as a card, the split halves on
+  every button whose popup mode says it has one (`QToolButton[popupMode="1"]` - Connect,
+  Sound, Packages and an addon's command button), a checked action lit in the accent's wash
+  rather than sunk, and the profile's own Lua sheet appended after the design's on the same
+  widget; guarded by `MainToolBarStyleTest`
 - Debug filter bar `TDebugFilterBar`
 
 Not yet adopted (platform or Fusion drawn; a new feature there still uses the recipes above
 for anything it adds, and adoption is one window per pull request):
 
-- Main window body: profile tab bar, command line, search field, bottom icon buttons, dock title bars
+- Main window body: command line, search field, bottom icon buttons, dock title bars
 - Mapper dock `dlgMapper` and its map controls; `dlgRoomProperties`, `dlgRoomExits`, `dlgMapLabel`
-- Connection dialog `dlgConnectionProfiles`
 - Package manager, module manager, package exporter (`dlgPackageManager`, `dlgModuleManager`,
   `dlgPackageExporter`)
-- Notepad `dlgNotepad`, composer `dlgComposer`, IRC `dlgIRC`
+- Composer `dlgComposer`, IRC `dlgIRC`
 - Colour trigger picker `dlgColorTrigger`, UI tour
 - User-made toolbars `TToolBar` / `TEasyButtonBar` (profile-owned look, mostly out of scope)
 

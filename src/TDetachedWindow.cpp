@@ -34,6 +34,7 @@
 #include "dlgNotepad.h"
 #include "dlgPackageManager.h"
 #include "dlgModuleManager.h"
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMenuBar>
 #include <QAction>
@@ -203,7 +204,13 @@ void TDetachedWindow::setupUI()
         mpTabBar->setTabData(0, mCurrentProfileName);
     }
 
-    mpMainLayout->addWidget(mpTabBar);
+    // QTabBar starts its first tab at x = 0 and ignores its own contents
+    // margins, so the inset the row of chips begins at is the layout's to give
+    auto pTabStrip = new QHBoxLayout;
+    pTabStrip->setContentsMargins(uiDesign::scmTabStripInset, 0, 0, 0);
+    pTabStrip->setSpacing(0);
+    pTabStrip->addWidget(mpTabBar);
+    mpMainLayout->addLayout(pTabStrip);
 
     // Create a stacked widget to hold multiple consoles
     mpConsoleContainer = new QStackedWidget(centralWidget);
@@ -3134,10 +3141,21 @@ void TDetachedWindow::slot_muteGame()
 }
 
 // The size the glyphs are drawn at is QToolBar's business, taken from the 128px
-// source: this is only ever about the colour they are inked in
+// source: this is only ever about the colour they are inked in - and about the
+// bar under them, mixed from the same palette and redrawn whenever it moves
 void TDetachedWindow::restyleToolBarIcons()
 {
     uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
+
+    if (mpToolBar) {
+        // The main window's bar, down to the split buttons the popup mode picks
+        // out: this one is built from copies of the same actions. No profile
+        // stylesheet is assigned to it, so there is nothing to compose after.
+        const QString sheet = mudlet::toolBarShellStyleSheet(qsl("QToolBar#detachedMainToolBar"));
+        if (mpToolBar->styleSheet() != sheet) {
+            mpToolBar->setStyleSheet(sheet);
+        }
+    }
 }
 
 void TDetachedWindow::changeEvent(QEvent* event)

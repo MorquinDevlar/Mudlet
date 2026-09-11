@@ -54,6 +54,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QToolButton>
@@ -75,6 +76,8 @@
 #include "dlgActionMainArea.h"
 #include "dlgKeysMainArea.h"
 #include "dlgAboutDialog.h"
+#include "dlgConnectionProfiles.h"
+#include "dlgNotepad.h"
 #include "dlgProfilePreferences.h"
 #include "dlgScriptsMainArea.h"
 #include "dlgTimersMainArea.h"
@@ -102,6 +105,8 @@ private:
     dlgTriggerEditor* mpEditor = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
     dlgAboutDialog* mpAbout = nullptr;
+    dlgConnectionProfiles* mpConnection = nullptr;
+    dlgNotepad* mpNotepad = nullptr;
     Host* mpHost = nullptr;
     // The three items the forms walked on their own below are shown from
     QTreeWidgetItem* mpKeyItem = nullptr;
@@ -155,6 +160,34 @@ private:
     static constexpr int scmLeastAuditedOnTheVariablesForm = 6;
     static constexpr int scmLeastAuditedOnTheButtonsForm = 6;
     static constexpr int scmLeastAuditedInTheAbout = 28;
+    // ...and the connection dialog's two tabs, walked from the tab page rather
+    // than from the window, so these are floors each page alone can miss:
+    // measured at 7 on the Connect-to tab (the three words leading its fields,
+    // the name, the address and the port typed into them, and the word beside
+    // the secure switch) and 5 on the Options tab (the three words leading its
+    // rows and the two switches under them - the character name and the
+    // password stand empty behind no placeholder, and a profile with no saved
+    // sessions leaves the history picker showing nothing)
+    static constexpr int scmLeastAuditedOnTheConnectTab = 6;
+    static constexpr int scmLeastAuditedOnTheOptionsTab = 4;
+    // ...and the two containers holding that window's buttons, walked the same
+    // way and for the same reason - the sheet that draws them is set on each of
+    // those rather than on the window. A disabled push button is skipped by the
+    // walk on purpose (see aDisabledPushButton() below), and the profile this
+    // fixture selects is the one the editor above is open on, so the dialog
+    // holds Remove, Offline and Connect unavailable for as long as it is
+    // loaded. That leaves 2 over the games list (Copy and New) and 1 under it
+    // (Cancel - the skip button is hidden except on a first launch).
+    static constexpr int scmLeastAuditedOnTheAdminRow = 2;
+    static constexpr int scmLeastAuditedOnTheButtonRow = 1;
+    // ...and the notepad, walked whole: measured at 6 - Send line and Send all,
+    // the word leading the prefix field, the prompt standing in for what has not
+    // been typed into it, the warning a long note with no prefix carries, and
+    // the same prompt in the find field. Send selection is skipped, being a
+    // disabled tool button with nothing selected to send, Stop and the progress
+    // of a send are not on the strip with nothing being sent, and the four
+    // buttons that are a picture alone say nothing in words.
+    static constexpr int scmLeastAuditedInTheNotepad = 6;
 
     // A button filled with the colour it stands for. Its fill is a value rather
     // than a surface of the design, and the words on it are chosen against that
@@ -240,6 +273,60 @@ private:
         QVERIFY(QTest::qWaitForWindowExposed(mpAbout));
     }
 
+    // The way mudlet opens it, minus the auto-login path: the two tabs draw
+    // themselves from the tokens on every appearance change, which is what the
+    // control below sets off. A profile is selected so that the fields carry
+    // what the walk reads them by.
+    void openConnection()
+    {
+        mpConnection = new dlgConnectionProfiles(mudlet::self());
+        mpConnection->fillout_form();
+        const auto items = mpConnection->findData(*mpConnection->listWidget_profiles, mProfileName, dlgConnectionProfiles::csmNameRole);
+        QVERIFY2(!items.isEmpty(), "the profile this walks is not in the connection dialog's games list");
+        mpConnection->listWidget_profiles->setCurrentItem(items.first());
+        QCoreApplication::processEvents();
+        mpConnection->resize(880, 560);
+        mpConnection->show();
+        QVERIFY(QTest::qWaitForWindowExposed(mpConnection));
+    }
+
+    // The way mudlet's Notes button opens it, with everything it can put away on
+    // show: the bar it is searched through, and the warning the send strip
+    // carries over a long note with no prefix. It restyles itself off
+    // mudlet::signal_appearanceChanged, which is what the control below emits.
+    void openNotepad()
+    {
+        mudlet::self()->slot_notes();
+        mpNotepad = mpHost->mpNotePad;
+        QVERIFY2(mpNotepad, "the notepad did not open at all");
+        // Wide enough for the whole of the send strip: the warning at its
+        // trailing end is cut to the room the bar has, and a window that leaves
+        // it none is a window with nothing there to read
+        mpNotepad->resize(1100, 500);
+        mpNotepad->show();
+        QVERIFY(QTest::qWaitForWindowExposed(mpNotepad));
+
+        // A note long enough for the strip's warning to apply, with nothing in
+        // the prefix field: the words of that warning are the one reading in
+        // this window written in a state colour rather than in the chrome tone,
+        // so the walk has to have them on show to read them
+        if (auto* pNote = qobject_cast<QPlainTextEdit*>(mpNotepad->tabWidget->currentWidget())) {
+            QStringList lines;
+            for (int line = 1; line <= 12; ++line) {
+                lines << qsl("line %1").arg(QString::number(line));
+            }
+            pNote->setPlainText(lines.join(QChar::LineFeed));
+        }
+        QCoreApplication::processEvents();
+        QVERIFY2(mpNotepad->action_sendAll->isVisible(), "the notepad is not showing the controls a note is sent from");
+        QWidget* pNoPrefixNote = mpNotepad->findChild<QWidget*>(qsl("notepadNoPrefixNote"));
+        QVERIFY2(pNoPrefixNote && pNoPrefixNote->isVisible(), "the notepad is not showing the warning a long note with no prefix carries");
+        QWidget* pFindBar = mpNotepad->findChild<QWidget*>(qsl("notepadFindBar"));
+        QVERIFY2(pFindBar, "the notepad has no 'notepadFindBar'");
+        pFindBar->show();
+        QCoreApplication::processEvents();
+    }
+
     // Through the settings dialog's own control rather than through
     // mudlet::setAppearance() outright: that is the one path an appearance
     // change takes while these two windows are open, and the path a player
@@ -265,6 +352,8 @@ private:
         mpEditor->grab();
         mpPreferences->grab();
         mpAbout->grab();
+        mpConnection->grab();
+        mpNotepad->grab();
     }
 
     // Where a widget actually lands on a shot of the window it is in, clipped by
@@ -570,8 +659,10 @@ private slots:
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
         buildThreePatternRows();
-        // A sound file and a highlight colour, so that the two switches on the
-        // options strip are walked with something beside them to read
+        // The strip is closed when the editor opens, so it is put on show for
+        // the walk; a sound file and a highlight colour go with it, so that the
+        // two switches on it are walked with something beside them to read
+        mpEditor->setTriggerOptionsShown(true);
         mpEditor->showTriggerSoundFile(qsl("/tmp/ReadabilityAuditTest.wav"));
         mpEditor->mpTriggersMainArea->checkBox_soundTrigger->setChecked(true);
         mpEditor->mpTriggersMainArea->checkBox_triggerColorizer->setChecked(true);
@@ -579,6 +670,8 @@ private slots:
 
         openPreferences();
         openAbout();
+        openConnection();
+        openNotepad();
 
         // A save that does not compile, so that the note the code pane's
         // heading carries is on screen for the walk below. Its words are the
@@ -593,6 +686,9 @@ private slots:
 
     void cleanupTestCase()
     {
+        mpNotepad = nullptr;
+        delete mpConnection;
+        mpConnection = nullptr;
         delete mpAbout;
         mpAbout = nullptr;
         delete mpPreferences;
@@ -787,6 +883,68 @@ private slots:
             QVERIFY2(read >= scmLeastAuditedOnTheVariablesForm,
                      qPrintable(qsl("only %1 things were read on the variables form on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedOnTheVariablesForm))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // The connection dialog's two tabs, which are all of that window the design
+    // has reached: only one of them is on show at a time, so each is walked
+    // with its own tab current and against a floor of its own
+    void test_theConnectionDialogsTabsAreReadableInBothAppearances()
+    {
+        QVERIFY2(mpConnection->tabWidget_connectionInfo->isVisible(), "the connection dialog is showing the first-launch invitation rather than the tabs this walks");
+
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            for (const auto& tab : QList<QPair<QWidget*, int>>{{mpConnection->tab_connection_info, scmLeastAuditedOnTheConnectTab}, {mpConnection->tab_options, scmLeastAuditedOnTheOptionsTab}}) {
+                mpConnection->tabWidget_connectionInfo->setCurrentIndex(mpConnection->tabWidget_connectionInfo->indexOf(tab.first));
+                QCoreApplication::processEvents();
+                QTest::qWait(100ms);
+                const int read = auditWithin(mpConnection, tab.first, qsl("the connection dialog's %1 tab").arg(tab.first->objectName()), appearance.first, failures);
+                counts << qsl("%1 %2: %3").arg(appearance.first, tab.first->objectName(), QString::number(read));
+                QVERIFY2(read >= tab.second,
+                         qPrintable(qsl("only %1 things were read on the connection dialog's %2 tab on the %3 appearance, against the %4 this walk reaches")
+                                            .arg(QString::number(read), tab.first->objectName(), appearance.first, QString::number(tab.second))));
+            }
+
+            // ...and the two containers the button sheet is set on, which the
+            // tab pages above do not reach
+            for (const auto& row : QList<QPair<QWidget*, int>>{{mpConnection->profileAdminArea, scmLeastAuditedOnTheAdminRow}, {mpConnection->widget_bottom, scmLeastAuditedOnTheButtonRow}}) {
+                const int read = auditWithin(mpConnection, row.first, qsl("the connection dialog's %1").arg(row.first->objectName()), appearance.first, failures);
+                counts << qsl("%1 %2: %3").arg(appearance.first, row.first->objectName(), QString::number(read));
+                QVERIFY2(read >= row.second,
+                         qPrintable(qsl("only %1 things were read on the connection dialog's %2 on the %3 appearance, against the %4 this walk reaches")
+                                            .arg(QString::number(read), row.first->objectName(), appearance.first, QString::number(row.second))));
+            }
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // The notepad, walked whole: it is one window the design draws all of, from
+    // the strip of tabs down to the bar of actions at its foot
+    void test_theNotepadIsReadableInBothAppearances()
+    {
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int read = auditWindow(mpNotepad, qsl("the notepad"), appearance.first, failures);
+            counts << qsl("%1: %2").arg(appearance.first, QString::number(read));
+            QVERIFY2(read >= scmLeastAuditedInTheNotepad,
+                     qPrintable(qsl("only %1 things were read in the notepad on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedInTheNotepad))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

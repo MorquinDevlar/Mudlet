@@ -248,6 +248,46 @@ private slots:
         }
     }
 
+    // The sizes the shell's sheet names actually reach the words. Every rule
+    // here used to name a percentage, which Qt's stylesheet parser drops
+    // without a word - so the name over the page, the chips beside it and the
+    // body under them were all one size, and the window read flat. Read off the
+    // resolved font of the widget rather than out of the sheet: a rule that
+    // parses and a rule that applies are two different things, and only the
+    // second one is what the reader sees.
+    void test_theShellsWordsAreSetAtTheStepsTheScaleNames()
+    {
+        auto* pName = mpDialog->findChild<QLabel*>(qsl("aboutName"));
+        QVERIFY2(pName, "the dialog has no 'aboutName'");
+        QCOMPARE(pName->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Title));
+
+        auto* pVersion = mpDialog->findChild<QLabel*>(qsl("aboutVersion"));
+        QVERIFY2(pVersion, "the dialog has no 'aboutVersion'");
+        QCOMPARE(pVersion->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Caption));
+
+        QLabel* pChip = nullptr;
+        for (QLabel* pCandidate : mpDialog->findChildren<QLabel*>()) {
+            if (pCandidate->property("aboutChip").toBool() && pCandidate->isVisible()) {
+                pChip = pCandidate;
+                break;
+            }
+        }
+        QVERIFY2(pChip, "the dialog shows no chip, so the caption step is not being read off one");
+        QCOMPARE(pChip->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Caption));
+
+        // ...and the steps are apart, which is the whole point of having them.
+        // A scale whose four steps came to the same number would pass every
+        // comparison above and change nothing on the page.
+        QVERIFY2(uiDesign::typeSize(uiDesign::TypeStep::Caption) < uiDesign::typeSize(uiDesign::TypeStep::Body)
+                         && uiDesign::typeSize(uiDesign::TypeStep::Body) < uiDesign::typeSize(uiDesign::TypeStep::Title)
+                         && uiDesign::typeSize(uiDesign::TypeStep::Title) < uiDesign::typeSize(uiDesign::TypeStep::Display),
+                 qPrintable(qsl("the four steps are %1/%2/%3/%4 rather than four sizes apart")
+                                    .arg(QString::number(uiDesign::typeSize(uiDesign::TypeStep::Caption)),
+                                         QString::number(uiDesign::typeSize(uiDesign::TypeStep::Body)),
+                                         QString::number(uiDesign::typeSize(uiDesign::TypeStep::Title)),
+                                         QString::number(uiDesign::typeSize(uiDesign::TypeStep::Display)))));
+    }
+
     // Nothing is painted onto the arch any more: the version is a label, and the
     // band of the picture the serif version used to be drawn across is the
     // picture's own pixels

@@ -476,6 +476,10 @@ private slots:
     // trigger colours what it matched.
     void test_aColourWellIsCutToTheInputCorner()
     {
+        // The well is on the options strip, which the editor opens closed
+        mpEditor->setTriggerOptionsShown(true);
+        QTest::qWait(50ms);
+
         QPushButton* pWell = mpEditor->mpTriggersMainArea->pushButtonFgColor;
         QVERIFY2(pWell != nullptr, "The trigger form has no foreground colour button");
         const QColor filled(0, 128, 0);

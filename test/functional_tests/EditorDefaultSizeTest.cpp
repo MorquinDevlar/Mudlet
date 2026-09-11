@@ -32,6 +32,14 @@
  * profile is started, so a default that still scaled off it would come out
  * bigger and be caught here.
  *
+ * What this cannot catch, on the offscreen platform every ctest run uses: on
+ * cocoa the native window must not exist before restoreWindowGeometry() has
+ * run, since a resize of a native window that is created but not yet shown is
+ * dropped there. The editor's constructor orders its
+ * setUnifiedTitleAndToolBarOnMac() call after readSettings() for that reason,
+ * and moving it back opens every editor at the .ui file's 636x688 on a Mac
+ * while this case stays green.
+ *
  * Run with: ctest -R EditorDefaultSizeTest -V
  */
 
@@ -76,8 +84,8 @@ private:
     // Mirrors scmEditorDefaultWidth and scmEditorDefaultHeight, which are
     // file-local to the editor: written out here so that the size is held to a
     // figure rather than to whatever the editor happens to answer
-    static constexpr int scmCompanionWidth = 1000;
-    static constexpr int scmCompanionHeight = 700;
+    static constexpr int scmCompanionWidth = 1300;
+    static constexpr int scmCompanionHeight = 690;
 
     void deleteProfileDirectory(const QString& profileName)
     {

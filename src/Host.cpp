@@ -3415,6 +3415,11 @@ QString Host::readProfileIniData(const QString& item)
     return profileIni().value(item).toString();
 }
 
+void Host::removeProfileIniData(const QString& item)
+{
+    profileIni().remove(item);
+}
+
 // This function retrieves command line history settings based on the given
 // command line type and name. It reads the saveCommands setting from the
 // profile.ini file, which is intended to replace all other single data item
@@ -5083,8 +5088,9 @@ bool Host::setProfileStyleSheet(const QString& styleSheet)
         mpDlgProfilePreferences->setStyleSheet(styleSheet);
     }
     if (mpNotePad) {
+        // The window only: the notes themselves are drawn by the notepad's own
+        // shell now, and a sheet set on each of them would beat it
         mpNotePad->setStyleSheet(styleSheet);
-        mpNotePad->setTabsStyleSheet(styleSheet);
     }
     if (mpConsole->mpDockableMapWidget) {
         mpConsole->mpDockableMapWidget->setStyleSheet(styleSheet);

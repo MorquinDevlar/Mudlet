@@ -49,6 +49,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPixmap>
 #include <QCheckBox>
 #include <QRadioButton>
@@ -496,6 +497,33 @@ private slots:
                  qPrintable(qsl("a field is painted %1, nearer the card's %2 than the field surface's %3").arg(fill.name(), tokens.card.name(), tokens.field.name())));
     }
 
+    // The page title stands over the page and the wordmark over the sidebar
+    // because the sheet says so, not because a rule reads as though it does.
+    // Both used to name a percentage - 145% and 125% - and Qt's stylesheet
+    // parser reads pt and px for font-size and nothing else, so both were
+    // dropped and every word in the dialog was the same size. Read off the
+    // resolved font, which is the only thing that says a rule applied.
+    void test_theShellsHeadingsAreSetAtTheStepsTheScaleNames()
+    {
+        auto* pTitle = mpPreferences->findChild<QLabel*>(qsl("settingsPageTitle"));
+        QVERIFY2(pTitle, "the dialog has no 'settingsPageTitle'");
+        QCOMPARE(pTitle->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Display));
+
+        auto* pWordmark = mpPreferences->findChild<QLabel*>(qsl("settingsWordmark"));
+        QVERIFY2(pWordmark, "the dialog has no 'settingsWordmark'");
+        QCOMPARE(pWordmark->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Title));
+
+        // A word on a card carries no size of its own, so it is the body step -
+        // which is what the two above have to be larger than for either of them
+        // to be a heading at all
+        auto* pCard = mpPreferences->findChild<QGroupBox*>(qsl("card_theme"));
+        QVERIFY2(pCard, "the Appearance card this case measures the body size against is not there any more");
+        QCOMPARE(pCard->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Body));
+        QVERIFY2(pTitle->font().pointSize() > pWordmark->font().pointSize() && pWordmark->font().pointSize() > pCard->font().pointSize(),
+                 qPrintable(qsl("the page title, the wordmark and a card's words are %1/%2/%3pt - the headings are not standing over the page")
+                                    .arg(QString::number(pTitle->font().pointSize()), QString::number(pWordmark->font().pointSize()), QString::number(pCard->font().pointSize()))));
+    }
+
     // ...and the card under it is untouched by the rules that draw the fields
     // on it
     void test_aCardIsStillPaintedAsACard()
@@ -610,6 +638,22 @@ private slots:
         pCombo->hidePopup();
         QVERIFY2(fill.rgb() == tokens.field.rgb(),
                  qPrintable(qsl("the popup list is painted %1 rather than the field surface's %2 - the rule scoped to the stack did not reach it").arg(fill.name(), tokens.field.name())));
+    }
+
+    // The one menu this dialog owns - the profiles a map can be copied to -
+    // hangs off the dialog rather than off the shell, so the shell's own sheet
+    // never reaches it and it carries the design's menu itself
+    void test_theMapProfilesMenuIsDrawnFromTheDesign()
+    {
+        setAppearance(enums::Appearance::dark);
+        QMenu* pMenu = mpPreferences->pushButton_chooseProfiles->menu();
+        QVERIFY2(pMenu, "the choose-profiles button carries no menu, so there is nothing here to draw");
+
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        const QString sheet = pMenu->styleSheet();
+        QVERIFY2(sheet.contains(qsl("QMenu")) && sheet.contains(tokens.card.name()),
+                 qPrintable(qsl("the map profiles menu is not drawn on the design's card surface (%1): its sheet is \"%2\"").arg(tokens.card.name(), sheet.left(120))));
+        QVERIFY2(pMenu->testAttribute(Qt::WA_TranslucentBackground), "the map profiles menu's window was never asked to be see-through, so its corner is opaque");
     }
 
     // ...and it is opened up round the same corner. The list lives in a window

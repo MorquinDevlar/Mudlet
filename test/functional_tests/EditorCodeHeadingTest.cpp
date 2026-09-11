@@ -48,6 +48,7 @@
 #include <QSplitterHandle>
 #include <QStatusBar>
 #include <QTemporaryDir>
+#include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
 
@@ -55,11 +56,14 @@
 #include "MudletInstanceCoordinator.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
+#include "TScript.h"
 #include "TelnetServerStub.h"
 #include "ctelnet.h"
+#include "dlgSystemMessageArea.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include "GroupedTest.h"
 
@@ -130,6 +134,26 @@ private:
     QLabel* caretReading() const { return mpEditor->findChild<QLabel*>(qsl("editorCodeCaret")); }
     QWidget* compileNote() const { return mpEditor->findChild<QWidget*>(qsl("editorCompileNote")); }
     QLabel* compileMessage() const { return mpEditor->findChild<QLabel*>(qsl("editorCompileMessage")); }
+    QLabel* compileDot() const { return mpEditor->findChild<QLabel*>(qsl("editorCompileDot")); }
+
+    // What the notice over the form is saying, so a case that expects it to be
+    // saying nothing can report what it found there instead
+    QString bannerReads() const { return mpEditor->mpSystemMessageArea->notificationAreaMessageBox->text(); }
+
+    // Which row of a tree stands for a given item, whatever its depth
+    static QTreeWidgetItem* rowFor(QTreeWidgetItem* pParent, const int id)
+    {
+        for (int row = 0, rows = pParent->childCount(); row < rows; ++row) {
+            QTreeWidgetItem* pChild = pParent->child(row);
+            if (pChild->data(0, Qt::UserRole).toInt() == id) {
+                return pChild;
+            }
+            if (QTreeWidgetItem* pFound = rowFor(pChild, id)) {
+                return pFound;
+            }
+        }
+        return nullptr;
+    }
 
     edbee::TextEditorController* controller() const { return mpEditor->mpSourceEditorEdbee->controller(); }
 
@@ -612,6 +636,147 @@ private slots:
                                      .arg(describeSizes(before), describeSizes(after), QString::number(scmDragTravel / scmDragStep), QString::number(scmDragStep));
         QVERIFY2(after != before, "the panes did not move, so the drag never reached the splitter and the case proves nothing");
         QVERIFY2(caretLine() == 0, qPrintable(qsl("the caret moved to line %1, so a drag of the panes made of small steps was heard as a click").arg(QString::number(caretLine()))));
+    }
+
+    // The failure belongs to the item in the editor, so the heading over that
+    // item's code says it and the notice over the form does not. Said in both
+    // places the reader was told twice, and the notice stayed up until it was
+    // closed by hand while the note went with the item.
+    void test_aFailedSaveRaisesNoBanner()
+    {
+        typeAndSave(qsl("local a = 1\nlocal b = 1 +* 2\n"));
+
+        QWidget* pNote = compileNote();
+        QVERIFY2(pNote != nullptr, "the code pane's heading has no widget named editorCompileNote on it");
+        QTRY_VERIFY2(pNote->isVisible(), "a save that did not compile left no note on the heading");
+        QTRY_VERIFY2(!mpEditor->mpSystemMessageArea->isVisible(), qPrintable(qsl("a save that did not compile raised the notice over the form as well, reading \"%1\"").arg(bannerReads())));
+    }
+
+    // ...and the heading says it whenever the item is opened, not only in the
+    // session where the failed save happened. Written by the save alone, the
+    // note was gone the moment the reader looked at anything else and never
+    // came back, so a broken item opened again came up saying nothing.
+    void test_theNoteComesBackWhenTheItemIsOpenedAgain()
+    {
+        typeAndSave(qsl("local a = 1\nlocal b = 1 +* 2\n"));
+
+        QWidget* pNote = compileNote();
+        QLabel* pMessage = compileMessage();
+        QVERIFY2(pNote != nullptr, "the code pane's heading has no widget named editorCompileNote on it");
+        QVERIFY2(pMessage != nullptr, "the compile note has no label named editorCompileMessage in it");
+        QTRY_VERIFY2(pNote->isVisible(), "a save that did not compile left no note on the heading");
+        const QString saidAfterTheSave = pMessage->text();
+        QTreeWidgetItem* pBroken = mpEditor->mpCurrentTriggerItem;
+        QVERIFY2(pBroken != nullptr, "no trigger is open, so there is nothing for this case to come back to");
+
+        // A second trigger, saved clean, so that the heading is left saying
+        // nothing by the item that is now open rather than by the switch itself
+        mpEditor->addTrigger(false);
+        mpEditor->mTriggerPatternEdit.at(0)->singleLineTextEdit_pattern->setPlainText(qsl("EditorCodeHeadingSecond"));
+        typeAndSave(qsl("-- nothing wrong here\n"));
+        QVERIFY2(mpEditor->mpCurrentTriggerItem != pBroken, "the second trigger was never opened, so nothing was switched away from");
+        QTRY_VERIFY2(!pNote->isVisible(), qPrintable(qsl("the note followed the reader onto an item that compiled, reading \"%1\"").arg(pMessage->text())));
+
+        mpEditor->slot_triggerSelected(pBroken);
+        QTRY_VERIFY2(pNote->isVisible(), "opening the broken item again left the heading saying nothing about it");
+        qInfo().noquote() << qsl("  the save said \"%1\" and opening the item again says \"%2\"").arg(saidAfterTheSave, pMessage->text());
+        QCOMPARE(mpEditor->mEditorCompileErrorLine, scmBrokenLine);
+        QVERIFY2(pMessage->text().contains(qsl("%1:").arg(QString::number(scmBrokenLine))),
+                 qPrintable(qsl("the note the item was opened with does not name the line the save stopped on: \"%1\"").arg(pMessage->text())));
+    }
+
+    // An item can be broken without the editor ever having touched it - that is
+    // how a profile arrives holding one - and opening it says so on the
+    // heading. Filling the trees says nothing anywhere: the notice used to be
+    // raised once per broken item as the rows were built, so what it ended up
+    // showing was whichever of them came last, about an item nobody had opened.
+    void test_aBrokenItemOpensWithItsNoteAndNoBanner()
+    {
+        auto* pBroken = new TScript(qsl("A script that never compiled"), mpHost);
+        // Nothing the interpreter can make sense of, compiled by setScript()
+        // rather than by anything the editor did
+        pBroken->setScript(qsl("this is not lua ((\n"));
+        pBroken->registerScript();
+        QVERIFY2(!pBroken->state(), "the script this case meant to leave broken compiles after all");
+
+        mpEditor->slot_showScripts();
+        QTest::qWait(50ms);
+
+        // The Scripts tree was built with the profile, before that script
+        // existed, so it is built again the way fillout_form() builds it - with
+        // the tree's own signals held while it is: clear() reports a selection
+        // change as its rows are being destroyed, and the editor answers that
+        // by loading whichever row it is handed
+        {
+            const QSignalBlocker quiet(mpEditor->treeWidget_scripts);
+            mpEditor->treeWidget_scripts->clear();
+            mpEditor->mpCurrentScriptItem = nullptr;
+            mpEditor->mpScriptsBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(qsl("Scripts")));
+            mpEditor->treeWidget_scripts->insertTopLevelItem(0, mpEditor->mpScriptsBaseItem);
+            mpEditor->mpSystemMessageArea->hide();
+            mpEditor->populateScripts();
+            mpEditor->mpScriptsBaseItem->setExpanded(true);
+        }
+        QTest::qWait(50ms);
+
+        QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(),
+                 qPrintable(qsl("building the rows raised the notice over the form for a broken item nobody had opened, reading \"%1\"").arg(bannerReads())));
+
+        QTreeWidgetItem* pRow = rowFor(mpEditor->mpScriptsBaseItem, pBroken->getID());
+        QVERIFY2(pRow != nullptr, "the broken script has no row in the Scripts tree");
+        mpEditor->slot_scriptsSelected(pRow);
+
+        QWidget* pNote = compileNote();
+        QVERIFY2(pNote != nullptr, "the code pane's heading has no widget named editorCompileNote on it");
+        QTRY_VERIFY2(pNote->isVisible(), "opening an item that has never compiled left the heading saying nothing about it");
+        QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(),
+                 qPrintable(qsl("opening a broken item raised the notice over the form as well as the note on the heading, reading \"%1\"").arg(bannerReads())));
+    }
+
+    // One red for everything that says something is broken. The dot used to be
+    // filled with the raw state colour, which is a fill rather than an ink, so
+    // it came out a different red from the words a pixel away from it.
+    void test_theNoteAndTheDotAreWrittenInTheErrorInk()
+    {
+        typeAndSave(qsl("local a = 1\nlocal b = 1 +* 2\n"));
+
+        QLabel* pMessage = compileMessage();
+        QLabel* pDot = compileDot();
+        QVERIFY2(pMessage != nullptr, "the compile note has no label named editorCompileMessage in it");
+        QVERIFY2(pDot != nullptr, "the compile note has no label named editorCompileDot in it");
+        QTRY_VERIFY2(compileNote() != nullptr && compileNote()->isVisible(), "a save that did not compile left no note on the heading");
+
+        // Both appearances: the raw state colour and the walked ink are the
+        // same value on whichever of the two needs no walk, so one appearance
+        // cannot tell them apart
+        const auto appearanceBefore = mudlet::self()->mAppearance;
+        auto restore = qScopeGuard([appearanceBefore]() {
+            mudlet::self()->setAppearance(appearanceBefore);
+        });
+
+        const QList<QPair<QString, enums::Appearance>> appearances{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}};
+        QStringList misses;
+        QStringList measured;
+        for (const auto& appearance : appearances) {
+            mudlet::self()->setAppearance(appearance.second);
+            QCoreApplication::processEvents();
+            QTest::qWait(150ms);
+
+            const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+            const QColor red = uiDesign::errorInk(tokens);
+            // A stylesheet's "color:" rule reaches a widget through
+            // QStyleSheetStyle::polish(), so the palette is where it ends up
+            const QColor ink = pMessage->palette().color(pMessage->foregroundRole());
+            measured << qsl("%1: the error ink is %2, the note is written in %3, and the dot's rule reads \"%4\"").arg(appearance.first, red.name(), ink.name(), pDot->styleSheet());
+            if (ink.name() != red.name()) {
+                misses << qsl("%1: the note is written in %2 rather than in the error ink %3").arg(appearance.first, ink.name(), red.name());
+            }
+            if (!pDot->styleSheet().contains(red.name(), Qt::CaseInsensitive)) {
+                misses << qsl("%1: the dot is filled with something other than the error ink %2: \"%3\"").arg(appearance.first, red.name(), pDot->styleSheet());
+            }
+        }
+        qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("\n  ")));
+        QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 };
 

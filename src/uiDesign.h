@@ -43,6 +43,7 @@ class QListWidget;
 class QObject;
 class QPainter;
 class QRect;
+class QTabBar;
 class QTimer;
 class QWidget;
 class TKeySequenceEdit;
@@ -80,6 +81,11 @@ inline constexpr char scmProp_settingsCardPlain[] = "settingsCardPlain";
 // The About dialog's own pair: a maker's card is headed by their name, and the
 // thanks and third-party cards carry no heading at all.
 inline constexpr char scmProp_aboutCardPlain[] = "aboutCardPlain";
+// A tool button standing on a form as a button, whose trailing half opens a
+// menu. Opt-in, since a tool button carrying no such property is whatever the
+// window it lives in makes of it - the editor's forms hold several that paint
+// themselves and must not be drawn as buttons at all.
+inline constexpr char scmProp_menuButton[] = "uiMenuButton";
 
 // Every surface in either window is mixed from four palette colours and nothing
 // else, so that a theme change moves all of them together. The recipes live
@@ -155,8 +161,15 @@ struct ThemeTokens
     // A marker pen whose lightness is chosen for the page it lies on: an opaque
     // pale wash under dark text, a darker one light text still shows through
     QColor marker;
+    // The same two washes as colours carrying their own alpha, for anything that
+    // paints rather than writes a rule: the profile strip's chips are filled
+    // through a QPainter, and a second pair of numbers for them would be a
+    // second design.
+    QColor hoverWash;
+    QColor accentWash;
     // Washes rather than colours, ready to go into a stylesheet: what a hovered
-    // row is tinted with, and what a chosen chip is filled with
+    // row is tinted with, and what a chosen chip is filled with. Written out of
+    // the two above, so a sheet and a painter cannot drift apart.
     QString hoverSoft;
     QString accentSoft;
 };
@@ -174,8 +187,20 @@ inline constexpr qreal scmAccentWashStrength = 0.24;
 // against a light and a dark theme alike
 inline constexpr qreal scmStateHue_ok = 0.34;
 inline constexpr qreal scmStateHue_warning = 0.09;
-inline constexpr qreal scmStateHue_error = 0.02;
+// A shade off pure red rather than towards orange: at the saturation a red is
+// mixed at, the orange side of it reads as tomato
+inline constexpr qreal scmStateHue_error = 0.01;
 QColor stateColor(const qreal hue, const bool darkPage);
+
+// The one red anything broken is drawn or written in: the note and the dot over
+// the editor's code pane, the mark on a broken item's row, the picture on the
+// error notice, the note refusing a duplicate event name, a clashing shortcut
+// and an untrusted certificate in the settings, and the edge round a field the
+// connection dialog will not take. Walked off the strip's surface, the darkest
+// any of them sits on; a place whose own surface is lighter than that walks
+// this value on with readableOn() against the surface it is really written on,
+// which changes nothing wherever it already clears the floor.
+QColor errorInk(const ThemeTokens& tokens);
 
 // How much of a state hue a surface is washed in when the reading is about the
 // surface rather than about a dot on it - a control the connection has warned
@@ -183,6 +208,10 @@ QColor stateColor(const qreal hue, const bool darkPage);
 // control and the editor's notice are the same depth of tint, and light enough
 // that the words on it are still read against the surface underneath.
 inline constexpr qreal scmSoftWashStrength = 0.14;
+
+// ...and the lighter one a row merely under the pointer is tinted with, which
+// says where the pointer is without saying anything has been chosen
+inline constexpr qreal scmHoverWashStrength = 0.07;
 
 // A scroll bar is chrome the reader is not meant to notice until they reach for
 // it, and one window's idea of that is every window's. The prefix is what the
@@ -298,6 +327,13 @@ inline constexpr int scmRadiusProminentInput = scmRadiusPanel;
 // selector as selectorPrefix and keeps the same sheet on the shell instead.
 QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
 
+// The surface and the hairline an unavailable field takes, which the sheet
+// above draws a disabled one with. Out here as well because a field that cannot
+// be typed into for a reason of its own - a read-only one, whose value is still
+// there to be read - is let down the same way rather than by a second recipe.
+QColor disabledFieldColour(const ThemeTokens& tokens);
+QColor disabledBorderColour(const ThemeTokens& tokens);
+
 // One mark for every choice: the box a check box is set in, the circle a radio
 // button is set in, and the box a checkable card's title begins with, drawn as
 // one control. The three carry the same fill, the same hairline and the same
@@ -328,11 +364,161 @@ inline constexpr int scmChoiceDotDiameter = 6;
 // button is pressed rather than typed into. A button carrying a menu says so
 // with the chevron every other control drops something down under.
 //
+// A tool button that has to stay one - because the body of it acts and the
+// trailing half opens a menu - is drawn as a button too once it carries
+// scmProp_menuButton, with the combo box's chevron standing on that half.
+//
 // What it deliberately does not reach: a colour well, which shows a value
 // rather than a surface and carries a sheet of its own; the editor's
 // placeholder buttons, which are tool buttons drawing their own dashed frame;
 // and a row that leads somewhere, which restates what it wants of this.
 QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
+
+// The trailing half of such a button, drawn as a segment of its own: two click
+// areas have to read as two before the pointer arrives, so the half carries the
+// seam on its leading edge, a wash of its own under the pointer and the chevron
+// every other control drops something down under.
+//
+// One recipe, two callers: buttonStyleSheet() puts it on a form's split button,
+// and the editor's toolbar puts it on Save Profile, whose face is the flat kind
+// a bar draws rather than a button's - which is the whole of what the two
+// differ by, so the selector for the button and the corner its own rule rounds
+// to are what is passed in. The half's outer corners take that same radius, or
+// a lit half pokes square corners out of a rounded button.
+//
+// Empty when the chevron could not be cached, the way every rule pointing at a
+// picture is: a sheet aimed at a file that is not there draws nothing at all.
+QString splitButtonMenuHalfStyleSheet(const QString& buttonSelector, const int cornerRadius, const ThemeTokens& tokens);
+
+// Which edge of a bar carries the hairline that tells it from the page under
+// or over it: a bar across the top of a window is seamed along its bottom, and
+// one at the foot of it along its top.
+enum class ToolBarSeam { Bottom, Top };
+
+// The flat bar a window's actions stand on: the page's own surface with the
+// seam on the edge given, the grip that says the bar can be dragged, the
+// hairline between two groups of actions, and the buttons themselves - drawn
+// with no face at rest, since a row of framed buttons across the top of a
+// window reads as a row of boxes rather than as a bar. A button lights in the
+// hover wash under the pointer and in the accent's while it is held or switched
+// on - a checkable action that is on is held down in every way but the pointer -
+// and its word takes accentText throughout, because the glyph beside it is inked
+// that for QIcon::Active and QIcon::On and the two halves of a button have to
+// light as one.
+//
+// Scoped to the bar rather than to a window: toolBarSelector is that bar's own
+// selector, "QToolBar#editorActionsToolbar" in the script editor, so a window
+// holding more than one bar draws each of them for itself. Whatever else a
+// window's bar carries - Qt's overflow button, a split button - is that
+// window's own and follows this.
+//
+// Used by the script editor's actions bar, the notepad's, the main window's and
+// every detached window's.
+QString toolBarStyleSheet(const QString& toolBarSelector, const ToolBarSeam seam, const ThemeTokens& tokens);
+
+// What the grip at the leading end of such a bar is given: the six dots are
+// five pixels across, and the rest is what holds them off the bar's edge and
+// off the first button
+inline constexpr int scmToolBarGripExtent = 11;
+// The flat face a button on that bar is drawn with. Not on the radius scale -
+// this is a row lighting up under the pointer rather than a box a window is
+// laid out in - but named all the same, because the trailing half of a split
+// button on the bar has to round to the very same corner the body does.
+inline constexpr int scmToolBarButtonRadius = 6;
+inline constexpr int scmToolBarButtonPaddingVertical = 3;
+inline constexpr int scmToolBarButtonPaddingHorizontal = 7;
+
+// The button a strip of extra controls is opened and closed from: a glyph and
+// a word, checkable, on a button's own face rather than the row's - it is
+// pressed rather than typed into. Quiet at rest, in the chrome tone every other
+// word of a window's furniture is written in, and lit in the accent for as long
+// as what it opened is on show, which is the ink a switched-on control already
+// carries. The hairline follows: the border tone at rest, the accent while it
+// is on, and the accent again from the keyboard alone.
+//
+// buttonSelector is the button's own selector, so the rules reach that one
+// control and not every tool button on the form around it.
+//
+// Used by the script editor's trigger form, for the options strip. The notepad
+// was the other caller and gave its fold up: it hid five controls to save no
+// space at all, where the count on a button and a warning at the one dangerous
+// moment say what a fold never did.
+QString disclosureButtonStyleSheet(const QString& buttonSelector, const ThemeTokens& tokens);
+
+// Every menu one of these windows owns: the one a toolbar button drops, the
+// options behind a search field, the one the pointer opens over a code pane.
+// Drawn as the list a combo box drops down is, since both are a list opened out
+// of the window - the same hairline, the same scmRadiusInput corner and the
+// same accent under the row being pointed at - on the card tone, because a menu
+// is a panel lifted off the page rather than a field opened up. A checkable row
+// carries the one mark choiceStyleSheet() draws.
+//
+// Then letPopupsTakeTheFieldsCorner() on whatever the sheet was set on, for the
+// same reason a dropped-down list needs it; a menu built at the moment it is
+// needed takes both from the code that builds it, before it is exec'd.
+QString menuStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
+
+// The strip of tabs at the head of a QTabWidget, drawn as a row of chips lying
+// on the page rather than as the folder tabs a platform cuts. A tab is a word
+// in a box the way a chip and a menu row are - quiet at rest, washed under the
+// pointer, filled in the accent while it is the one on show - so the strip
+// reads as a choice being made rather than as a stack of cards, and the pane
+// under it is left to whatever the window puts there.
+//
+// tabWidgetSelector is that tab widget's own selector, since a bar drawn for
+// one is not a bar drawn for every QTabBar the window holds - a window's other
+// tab widgets keep whatever they were.
+//
+// The cross on a closable tab is the same one every other x in the design is
+// drawn from, tinted into the glyph cache for a rule to point at; where the
+// cache cannot be written the rule is left out rather than aimed at nothing,
+// and the tab keeps the cross the platform draws it with.
+//
+// What is deliberately not drawn: the two buttons a strip too crowded to fit
+// scrolls with. Their arrows are a sub-control of a QToolButton the bar makes
+// for itself, and a rule that gave those buttons a face without also replacing
+// the arrows would leave the reader a blank square to press.
+//
+// Three things a rule cannot say at all - the band a platform fills the bar with
+// behind the tabs, the box a tab's cross is sized in, and where inside the chip
+// that box stands. prepareTabStrip() on the bar is the caller's one job, and
+// says all three.
+QString tabBarStyleSheet(const QString& tabWidgetSelector, const ThemeTokens& tokens);
+
+// The half of the strip above that has to be said to the bar rather than
+// written in a rule. Call it on the QTabBar the sheet was written for, once,
+// whether or not the bar already holds tabs.
+void prepareTabStrip(QTabBar* pTabBar);
+
+// What the strip of tabs above leaves round the pane under it, so that the
+// rounded corner of whatever fills that pane opens onto the page rather than
+// butting into the window's edge
+inline constexpr int scmTabPaneInset = 4;
+
+// The measurements a tab is drawn from. They are here rather than beside the
+// sheet they were written for because the profile strip at the head of the main
+// window and of every detached one - TTabBar, which paints its chips itself
+// rather than being handed a sheet - is drawn from these same numbers, so the
+// two strips are one object rather than two that happen to agree today.
+//
+// A row of a menu is read across rather than typed into, so it is given a
+// button's air above and below its word; a tab takes that same air.
+inline constexpr int scmMenuItemPaddingVertical = 4;
+// A tab is a word in a box, so it is given a menu row's air above and below its
+// word and a button's either side of it - and the gap between two of them is
+// what says they are two boxes rather than one bar cut into segments.
+inline constexpr int scmTabPaddingVertical = scmMenuItemPaddingVertical;
+inline constexpr int scmTabPaddingHorizontal = 10;
+inline constexpr int scmTabGap = 2;
+// How far the first tab is held off the leading edge of the strip: the same
+// inset the pane under it is drawn at, so the row of chips and the field below
+// start on the same line
+inline constexpr int scmTabStripInset = scmTabPaneInset;
+// The cross on a closable tab, and the mark drawn inside that box. Smaller than
+// the mark a choice carries: what it is beside is a word rather than a control,
+// and a cross at the word's own height reads as a second tab.
+inline constexpr int scmTabCloseBoxSize = 14;
+inline constexpr int scmTabCloseGlyphSize = 8;
 
 // Focus from the keyboard alone, on every control the two recipes above draw:
 // the three that carry a mark, and the button. The accent a mark's hairline and
@@ -368,6 +554,13 @@ void keepClickFocusOffControls(QWidget* pRoot);
 // again wherever a window builds a combo box after that pass - a trigger's
 // pattern rows are made as triggers are shown. Calling it twice on the same box
 // costs nothing.
+//
+// A menu is a popup too, and takes the corner menuStyleSheet() gives it the
+// same way - said on the menu itself, which is its own window rather than a
+// list inside one. Every QMenu under pRoot is opened up, and pRoot itself when
+// it is one, so a menu built on the fly can be handed straight to this. Only
+// call it where the menu sheet reaches: a menu opened up with nothing painting
+// its surface would be see-through all over rather than at the corner.
 void letPopupsTakeTheFieldsCorner(QWidget* pRoot);
 
 // The height a field's contents are given, what is left round them, and what
@@ -381,10 +574,14 @@ inline constexpr int scmInputPaddingHorizontal = 6;
 inline constexpr int scmInputBorderWidth = 1;
 inline constexpr int scmInputHeight = scmInputContentHeight + 2 * (scmInputPaddingVertical + scmInputBorderWidth);
 // ...and the column of arrows a spin box is stepped with, taken out of the
-// field's own width. Here rather than beside the drop-down's width in
-// uiDesign.cpp because a form sizing a number box to the number it holds has to
-// know what the steppers leave it.
+// field's own width, because a form sizing a number box to the number it holds
+// has to know what the steppers leave it.
 inline constexpr int scmInputStepperWidth = 16;
+// ...and the column a combo box's chevron stands in, which is the width a split
+// button's menu half is given as well. A window drawing a split button of its
+// own has to hold the button's words clear of that half itself: no selector can
+// ask whether a button carries a menu, so nothing measures the room for it.
+inline constexpr int scmInputDropDownWidth = 18;
 
 // How far apart two colours are to read, on the scale WCAG measures it: 1 is a
 // colour on itself and 21 is black on white
@@ -505,14 +702,20 @@ void setSearchMatch(QWidget* pWidget, const QVariant& matched);
 QColor blend(const QColor& from, const QColor& to, const qreal amount);
 
 QString rgba(const QColor& color, const qreal alpha);
+// ...and the same for a colour already carrying the alpha it is to be written
+// at, so a wash mixed once as a QColor and a wash written into a sheet are the
+// one value rather than two
+QString rgba(const QColor& colourWithAlpha);
 
 // The accent bar down the leading edge of a chosen row, painted over the pill
 // the style has drawn for it: the pill's own rounded rectangle, filled in the
 // accent and cut to the bar's width. So the bar keeps its width down the whole
 // row and takes the pill's corner at both ends - the shape the sidebar draws
 // its bar in from a stop in the pill's gradient, and one a border-left cannot
-// be, since the corner radius bends that into a bracket.
-void paintAccentBar(QPainter* pPainter, const QRect& row, const QColor& accent);
+// be, since the corner radius bends that into a bracket. The corner is the
+// pill's own: a sidebar row's scmRadiusPanel unless the caller names the one
+// its pill was cut to, as the profile strip's chip does with scmRadiusChip.
+void paintAccentBar(QPainter* pPainter, const QRect& row, const QColor& accent, const int cornerRadius = scmRadiusPanel);
 
 // The shape lives in the alpha channel: filling through it keeps the
 // antialiased edges that recolouring the pixels would harden into a staircase
@@ -534,6 +737,15 @@ inline constexpr int scmGlyphRasterSize = 128;
 // made the About dialog's construction measurably slow when its glyphs were
 // re-encoded per use.
 QPixmap glyphPixmap(const QString& file);
+
+// One glyph inked and centred in a transparent square, the way a control's
+// indicator carries its mark: drawn at glyphSize inside a box boxSize across,
+// at devicePixelRatio, and cached. The margin is what makes the size hold - a
+// mark drawn on its own fills whatever box it lands in.
+//
+// This is the pixmap a painter draws; the cache file a stylesheet points at is
+// written from the same call, so a rule and a painted cross are the one mark.
+QPixmap themedGlyphPixmap(const QString& glyphFile, const QColor& color, const int boxSize, const int glyphSize, const qreal devicePixelRatio);
 
 // One glyph inked for every mode a control asks a QIcon for, so that a toolbar
 // action carries the same picture in the same four inks wherever it is drawn:
@@ -648,6 +860,32 @@ QString withLinkColour(const QString& richText, const QColor& colour);
 // rather than off a number, so it follows the interface font - and a base
 // measured in pixels is answered in pixels, since pointSizeF() is -1 there.
 QFont fixedPitchFont(const QFont& base, const qreal scale = 1.0);
+
+// The one scale a stylesheet names a size from, and the only place a size is
+// named at all.
+//
+// In points, because Qt's stylesheet parser reads pt and px for font-size and
+// nothing else: a percentage is dropped without a word, which is how 28 rules
+// across three windows came to say nothing at all. The base is read off the
+// application font every time it is asked, so a rule still follows the user's
+// interface font the way a percentage was meant to.
+//
+//   step      at a 13pt base   what it is set on
+//   Caption   11pt             chips, captions, the version and copyright
+//                              lines, a card's or a section's note
+//   Body      13pt             everything not named here; a rule that would
+//                              only restate this names no size at all
+//   Title     15pt             a section title, a hero headline, a search
+//                              header, the sidebar wordmark
+//   Display   19pt             the page title over a settings page, and
+//                              nothing else
+//
+// Four steps and no more: two things are set apart only by a difference a
+// reader can see, and a fifth size between two of these is not one. Whole
+// points rather than a fraction, so that a height measured off a step - the
+// corner of an ID pill is half of one - stays an integer.
+enum class TypeStep { Caption, Body, Title, Display };
+int typeSize(const TypeStep step);
 
 // The types are the ones connectApplyTriggers() listens to, so everything able
 // to schedule an apply can also be told apart from how it was populated

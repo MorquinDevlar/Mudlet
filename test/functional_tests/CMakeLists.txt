@@ -49,6 +49,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     CaretNavigationTest.cpp
     MainConsoleSelectionTest.cpp
     MainToolBarGlyphTest.cpp
+    MainToolBarStyleTest.cpp
     TabDetachThresholdTest.cpp
     DetachedWindowDiscordButtonTest.cpp
     MainWindowSizeReportTest.cpp
@@ -60,6 +61,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     MxpWatchdogBufferLifetimeTest.cpp
     NarrowWindowWrapTest.cpp
     NawsWidthReportTest.cpp
+    NotepadShellTest.cpp
     DetachedWindowToolBarIconSizeTest.cpp
     PastedLinkStateTest.cpp
     ProfileSwitchMiniconsoleTest.cpp
@@ -67,6 +69,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     TextEditAccessibleInterfaceTest.cpp
     TrackedLinkTrimTest.cpp
     ProfileSwitchShortcutTest.cpp
+    ProfileTabBarStyleTest.cpp
     SubCommandLineLifetimeTest.cpp
     WindowBackgroundTest.cpp
     WindowLayoutSaveTest.cpp
@@ -81,6 +84,7 @@ set(PROFILE_GROUP_TEST_SOURCES
     CloseDuringProfileLoadTest.cpp
     ConfigDirOverrideTest.cpp
     ConnectionDialogCrashTest.cpp
+    ConnectionDialogStyleTest.cpp
     ConnectionDialogFocusTest.cpp
     DefaultGameDeleteTest.cpp
     MissingDisplayFontTest.cpp
@@ -150,6 +154,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorIconScaleTest.cpp
     EditorKeyCaptureTest.cpp
     EditorKeyGrabShortcutsTest.cpp
+    EditorMenuStyleTest.cpp
     EditorMinimumSizeTest.cpp
     EditorNoticeGlyphTest.cpp
     EditorNoticeSeamTest.cpp
@@ -163,6 +168,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorTimerIntervalTest.cpp
     EditorToolBarOverflowTest.cpp
     EditorTreeDotClickTest.cpp
+    EditorTreeErrorMarkTest.cpp
     EditorTreeHeadingIconTest.cpp
     EditorTreeRowHeightTest.cpp
     EditorTreeSelectionPillTest.cpp

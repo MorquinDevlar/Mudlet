@@ -915,9 +915,11 @@ void ChipRow::restyleGlyphs(const ThemeTokens& tokens)
 
 QString ChipRow::styleSheetFor(const ThemeTokens& tokens)
 {
-    // A refusal is one of the three readings a state hue carries, and it is
-    // written on the page the form is on rather than on a chip
-    const QColor noteColor = readableOn(tokens.page, stateColor(scmStateHue_error, tokens.darkPage), tokens.text, scmTextMinimumRatio);
+    // A refusal is the one red anything broken is written in. Walked on from
+    // there, because the page a form is on is lighter than the strip that red
+    // was measured against and a light ink reads worse the lighter its surface
+    // gets - a no-op wherever it already clears the floor
+    const QColor noteColor = readableOn(tokens.page, errorInk(tokens), tokens.text, scmTextMinimumRatio);
     return qsl("#editorChip { background-color: %1; border: 1px solid %2; border-radius: %3px; }"
                // What the user typed, at full strength...
                "#editorChip QLabel { background: transparent; color: %4; }"

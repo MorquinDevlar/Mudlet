@@ -21,9 +21,12 @@
  * A trigger's options are one row of its form - the options strip, led by the
  * word "Options" - between the row its name is typed on and the list of its
  * patterns. They were a 280px column of four cards beside those patterns,
- * opened by a button, put away by a button, and folded away again by the window
- * being either short or narrow; then two rows, which still wanted a very wide
- * window before they stopped wrapping.
+ * folded away by the window being either short or narrow; then two rows, which
+ * still wanted a very wide window before they stopped wrapping.
+ *
+ * The strip is opened by the Options button on the head row, and the editor
+ * opens with it closed - so init() opens it, and every case below measures an
+ * open strip. What it is opened and closed by is EditorOptionsPanelDefaultTest.
  *
  * What the strip is held to here:
  *
@@ -55,8 +58,9 @@
  *   description, since Qt would otherwise read a screen reader the rich text a
  *   tooltip is written in - and the four check boxes whose words were shortened
  *   to fit the strip are still named in full to it.
- * - The tab chain runs the head row, the strip left to right, and then the
- *   patterns.
+ * - The tab chain runs the head row, the Options button, the strip left to
+ *   right, and then the patterns - and with the strip put away it runs from the
+ *   button straight to the first pattern.
  * - The accent a mark takes on focus is the keyboard's: a click turns an option
  *   on without leaving the focus, and so the accent, behind on it.
  *
@@ -458,6 +462,10 @@ private slots:
             return;
         }
         resizeTheEditor(scmWideStrip + 600, scmTallEditor);
+        // Every case here measures an open strip, and the editor opens with it
+        // closed
+        mpEditor->setTriggerOptionsShown(true);
+        settle();
     }
 
     // (a) Where the strip is, and what it lines up with
@@ -466,7 +474,7 @@ private slots:
         chooseTrigger(mpThreePatternRow);
 
         QVERIFY2(optionsRow() != nullptr, "the trigger form has no options strip");
-        QVERIFY2(optionsRow()->isVisible(), "the options strip is not on show, and nothing puts it away any more");
+        QVERIFY2(optionsRow()->isVisible(), "the options strip was opened in init() and is not on show");
 
         const int headTop = topEdgeOf(form()->widget_top);
         const int stripTop = topEdgeOf(optionsRow());
@@ -802,7 +810,8 @@ private slots:
         }
         qInfo().noquote() << qsl("  the chain from the command field reads: %1").arg(reading.join(qsl(" -> ")));
 
-        const QList<QPair<QString, int>> ordered{{qsl("Any pattern"), anySegment},
+        const QList<QPair<QString, int>> ordered{{qsl("the Options button"), at(form()->toolButton_toggleExtraControls)},
+                                                 {qsl("Any pattern"), anySegment},
                                                  {qsl("All patterns"), allSegment},
                                                  {qsl("within lines"), within},
                                                  {qsl("Every occurrence"), everyOccurrence},
@@ -824,6 +833,47 @@ private slots:
                                         .arg(ordered.at(step - 1).second)
                                         .arg(ordered.at(step).first)
                                         .arg(ordered.at(step).second)));
+        }
+    }
+
+    // ...and with the strip put away the keyboard walks past it rather than
+    // into controls nobody can see
+    void test_aClosedStripTakesItsControlsOutOfTheTabChain()
+    {
+        chooseTrigger(mpThreePatternRow);
+        mpEditor->setTriggerOptionsShown(false);
+        settle();
+        auto reopenTheStrip = qScopeGuard([this]() {
+            mpEditor->setTriggerOptionsShown(true);
+            settle();
+        });
+
+        const QList<QWidget*> chain = tabChainFromTheCommandField();
+        const auto at = [&chain](QWidget* pWidget) {
+            return chain.indexOf(pWidget);
+        };
+
+        QStringList reading;
+        for (QWidget* pWidget : chain) {
+            reading << describe(pWidget);
+            if (reading.size() >= 8) {
+                break;
+            }
+        }
+        qInfo().noquote() << qsl("  with the strip away the chain from the command field reads: %1").arg(reading.join(qsl(" -> ")));
+
+        const int optionsButton = at(form()->toolButton_toggleExtraControls);
+        const int firstPattern = at(mpEditor->mTriggerPatternEdit.at(0)->singleLineTextEdit_pattern);
+        QVERIFY2(optionsButton >= 0, "the Options button is not in the tab chain, so a closed strip cannot be opened from the keyboard");
+        QVERIFY2(firstPattern >= 0, "the first pattern is not in the tab chain");
+        QVERIFY2(
+                optionsButton < firstPattern,
+                qPrintable(qsl("the Options button is reached at %1 and the first pattern at %2, so the chain does not run from the head row into the patterns").arg(optionsButton).arg(firstPattern)));
+
+        const QList<QPair<QString, QWidget*>> away{
+                {qsl("Any pattern"), mpEditor->mpRadioButton_matchAny}, {qsl("Every occurrence"), form()->checkBox_perlSlashGOption}, {qsl("Background"), form()->pushButtonBgColor}};
+        for (const auto& [name, pControl] : away) {
+            QVERIFY2(at(pControl) < 0, qPrintable(qsl("%1 is still in the tab chain at %2 with the strip put away").arg(name).arg(at(pControl))));
         }
     }
 

@@ -1178,6 +1178,11 @@ void dlgAboutDialog::applyShellStyle()
     const CardMetrics cardMetrics{
             .cardProperty = scmProp_aboutCard, .plainProperty = scmProp_aboutCardPlain, .padding = scmCardPadding, .titleHeight = cardTitleHeight, .flattenNestedGroupBoxes = false};
 
+    // The two steps of the type scale this window names, in the points a
+    // stylesheet is the only thing that reads
+    const QString captionSize = QString::number(typeSize(TypeStep::Caption));
+    const QString titleSize = QString::number(typeSize(TypeStep::Title));
+
     mpWidget_shell->setStyleSheet(
             qsl("#aboutShell, #aboutContent { background-color: %1; }"
                 // The arch stands in a column of its own, the smallest step off
@@ -1186,14 +1191,14 @@ void dlgAboutDialog::applyShellStyle()
                 // The shell's own scaffolding keeps the page colour even when a
                 // profile's Lua stylesheet paints every QWidget it can reach
                 "QWidget[settingsSurface=\"true\"] { background-color: transparent; border: none; }"
-                "#aboutName { font-size: 115%; font-weight: bold; }"
-                "#aboutVersion { font-size: 92%; color: %4; }"
-                "#aboutCopyright { font-size: 92%; color: %4; }"
-                "#aboutFooter { font-size: 92%; color: %4; }"
+                "#aboutName { font-size: %5pt; font-weight: bold; }"
+                "#aboutVersion { font-size: %6pt; color: %4; }"
+                "#aboutCopyright { font-size: %6pt; color: %4; }"
+                "#aboutFooter { font-size: %6pt; color: %4; }"
                 "#textBrowser_license { background-color: %1; border: none; }")
-                    .arg(tokens.page.name(), tokens.pane.name(), tokens.separator.name(), tokens.mutedText.name())
+                    .arg(tokens.page.name(), tokens.pane.name(), tokens.separator.name(), tokens.mutedText.name(), titleSize, captionSize)
             + qsl( // A word in a box, and the same box filled when it is lit
-                      "QLabel[aboutChip=\"true\"] { border: 1px solid %1; border-radius: %2px; padding: 1px 7px; font-size: 85%; color: %3; }"
+                      "QLabel[aboutChip=\"true\"] { border: 1px solid %1; border-radius: %2px; padding: 1px 7px; font-size: %9pt; color: %3; }"
                       "QLabel[aboutChipLit=\"true\"] { background-color: %4; color: %5; border: 1px solid transparent; }"
                       // The row of places this window can go, drawn as the sidebar's
                       // rows are: quiet until one is chosen or under the pointer
@@ -1209,23 +1214,28 @@ void dlgAboutDialog::applyShellStyle()
                            tokens.accentText.name(),
                            tokens.hoverSoft,
                            tokens.text.name(),
-                           tokens.accent.name())
+                           tokens.accent.name(),
+                           captionSize)
             + cardStyleSheet(cardMetrics, tokens) + cardIndicatorRules
-            + qsl("#aboutSectionTitle { font-size: 115%; font-weight: bold; }"
-                  "#aboutSectionNote { font-size: 92%; color: %1; }"
-                  "#aboutCardDescription { font-size: 92%; color: %1; }"
-                  "#aboutPersonDescription { font-size: 96%; color: %1; }"
+            + qsl("#aboutSectionTitle { font-size: %6pt; font-weight: bold; }"
+                  "#aboutSectionNote { font-size: %7pt; color: %1; }"
+                  "#aboutCardDescription { font-size: %7pt; color: %1; }"
+                  // A maker's description and the thanks paragraph are read at
+                  // the size of everything else on the page: they were a
+                  // fraction quieter, which is a step nobody sees and a fifth
+                  // size the scale would have to carry
+                  "#aboutPersonDescription { color: %1; }"
                   "#aboutMoreName { font-weight: bold; }"
                   "#aboutMoreDescription { color: %1; }"
-                  "#aboutThanksParagraph { font-size: 96%; color: %1; }"
+                  "#aboutThanksParagraph { color: %1; }"
                   "#aboutSupportersIntro { color: %1; }"
-                  "#aboutTier { font-size: 85%; color: %1; }"
+                  "#aboutTier { font-size: %7pt; color: %1; }"
                   "#aboutThirdPartyIntro { color: %1; }"
-                  "#aboutThirdPartyCopyright { font-size: 92%; color: %1; }"
-                  "#aboutThirdPartyBody { font-size: 92%; color: %1; }"
-                  "#aboutLicenseOrigin { font-size: 92%; color: %1; }"
-                  "#aboutBuildKey { font-size: 92%; color: %1; }"
-                  "#aboutBuildValue { font-size: 92%; color: %2; }"
+                  "#aboutThirdPartyCopyright { font-size: %7pt; color: %1; }"
+                  "#aboutThirdPartyBody { font-size: %7pt; color: %1; }"
+                  "#aboutLicenseOrigin { font-size: %7pt; color: %1; }"
+                  "#aboutBuildKey { font-size: %7pt; color: %1; }"
+                  "#aboutBuildValue { font-size: %7pt; color: %2; }"
                   // A line between two rows rather than a surface of its own
                   "#aboutSeparatorLine { background-color: %3; }"
                   // A row of the third-party list, clickable across the name it
@@ -1233,7 +1243,7 @@ void dlgAboutDialog::applyShellStyle()
                   "#aboutThirdPartyToggle { border: 1px solid transparent; padding: 9px 14px; text-align: left; background-color: transparent; color: %2; font-weight: bold; }"
                   "#aboutThirdPartyToggle:hover { background-color: %4; }"
                   "#aboutThirdPartyToggle:focus { border: 1px solid %5; }")
-                      .arg(tokens.mutedText.name(), tokens.text.name(), tokens.border.name(), tokens.hoverSoft, tokens.accent.name())
+                      .arg(tokens.mutedText.name(), tokens.text.name(), tokens.border.name(), tokens.hoverSoft, tokens.accent.name(), titleSize, captionSize)
             // The ordinary button of the other two windows. The links down the
             // side are not push buttons at all - AboutLinkButton paints itself
             // - so nothing here reaches them.
@@ -1314,18 +1324,23 @@ void dlgAboutDialog::setLicenseText(const ThemeTokens& tokens)
     // The head is written from the tokens rather than naming a serif family, so
     // the licence is set in the interface font at the sizes the rest of the
     // dialog uses
+    // Sized off the same scale the window's own sheet is, so that the licence
+    // reads as a page of this dialog rather than as a document in it. The three
+    // lesser headings still name the body size outright, unlike a rule in a
+    // stylesheet: Qt's rich text engine gives an h2 or an h3 a size of its own,
+    // and what says they are not larger than the paragraph under them is this.
     const QString htmlHead = qsl("<head><style type=\"text/css\">"
                                  "body { margin: 0; }"
-                                 "h1 { text-align: center; font-size: 125%; font-weight: bold; color: %1; }"
-                                 "h2 { text-align: center; font-size: 100%; font-weight: bold; color: %2; }"
-                                 "h3 { text-align: center; font-size: 100%; font-weight: bold; color: %2; }"
-                                 "h4 { font-size: 100%; font-weight: bold; color: %1; }"
-                                 "p { font-size: 100%; color: %1; }"
-                                 "li { font-size: 100%; color: %1; }"
+                                 "h1 { text-align: center; font-size: %4pt; font-weight: bold; color: %1; }"
+                                 "h2 { text-align: center; font-size: %5pt; font-weight: bold; color: %2; }"
+                                 "h3 { text-align: center; font-size: %5pt; font-weight: bold; color: %2; }"
+                                 "h4 { font-size: %5pt; font-weight: bold; color: %1; }"
+                                 "p { color: %1; }"
+                                 "li { color: %1; }"
                                  "a { color: %3; }"
                                  "tt { white-space: pre-wrap; }"
                                  "</style></head>")
-                                     .arg(tokens.text.name(), tokens.mutedText.name(), tokens.accentText.name());
+                                     .arg(tokens.text.name(), tokens.mutedText.name(), tokens.accentText.name(), QString::number(typeSize(TypeStep::Title)), QString::number(typeSize(TypeStep::Body)));
 
     // clang-format off
     /* Only the introductory text at the top is to be translated - the Licence

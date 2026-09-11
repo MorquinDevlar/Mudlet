@@ -70,6 +70,9 @@ void EditorTreeDelegate::restyle()
     // tone the rest of the editor's chrome is
     mChevronInk = tokens.mutedText;
     mMarkInk = tokens.mutedText;
+    // The one mark that reports rather than labels, so it is the one red the
+    // note over the code pane is written in rather than the chrome's grey
+    mErrorMarkInk = errorInk(tokens);
     // The colour the trees' stylesheet writes a chosen row's name in
     mSelectedMarkInk = tokens.accentText;
     mAccentBar = tokens.accent;
@@ -345,8 +348,12 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
         return glyph;
     }
 
+    // A broken item on a chosen row is still broken, so the red holds there
+    // too: the wash a chosen row is filled with is light enough for the walked
+    // tone to be read on
+    const QColor ink = mark == RowMark::Error ? mErrorMarkInk : (selected ? mSelectedMarkInk : mMarkInk);
     const qreal ratio = mDotGlyphRatio;
-    glyph = tintedGlyph(uiDesign::glyphPixmap(file), selected ? mSelectedMarkInk : mMarkInk).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph = tintedGlyph(uiDesign::glyphPixmap(file), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(ratio);
     return glyph;
 }

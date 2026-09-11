@@ -138,6 +138,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorIconScaleTest;
     friend class EditorKeyCaptureTest;
     friend class EditorKeyGrabShortcutsTest;
+    friend class EditorMenuStyleTest;
     friend class EditorMinimumSizeTest;
     friend class EditorNoticeGlyphTest;
     friend class EditorNoticeSeamTest;
@@ -151,6 +152,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorTimerIntervalTest;
     friend class EditorToolBarOverflowTest;
     friend class EditorTreeDotClickTest;
+    friend class EditorTreeErrorMarkTest;
     friend class EditorTreeHeadingIconTest;
     friend class EditorTreeRowHeightTest;
     friend class EditorTreeSelectionPillTest;
@@ -248,6 +250,10 @@ public:
     // The editor's own look, derived from the application palette rather than
     // written out, so that it follows a theme change
     void applyEditorShellStyle();
+    // The options behind the search field hang off the window rather than off
+    // the toolbar, so no sheet the shell sets reaches them. The menu is built
+    // after that pass has run once, so both it and the pass call this.
+    void styleSearchOptionsMenu();
     void restyleEditorIcons();
     void applyEditorToolbarButtonStyles();
     // Keeps every action on the bar reachable at any length the bar can be
@@ -276,8 +282,14 @@ public:
     // The heading speaks for the item in the editor, so switching items puts it
     // back to saying nothing
     void clearCompileState();
-    // Bracket a save so that showError() is heard by the heading for as long as
-    // it runs, and by nothing else the rest of the time
+    // What the compiler said about the item the editor is holding. That is the
+    // heading's to show and never the banner's: the banner said it again on
+    // every rebuild of a tree, for whichever broken item came last, which is
+    // not what the reader is looking at.
+    void reportCompileError(const QString& error);
+    // Bracket a save so that what reportCompileError() is given is held until
+    // the save is over, and the heading is written once from it - so a save
+    // that passed clears the note a failed one left
     void beginSaveErrorCapture();
     void endSaveErrorCapture();
     // The trigger form's options, moved out of the .ui column of group boxes
@@ -337,6 +349,8 @@ public:
     // spinBox_lineMargin stays what the save and load paths read; the two
     // segments and the box beside them are a view of it
     void reflectTriggerMatchMode();
+    // The one way the options strip is opened or closed on purpose
+    void setTriggerOptionsShown(const bool shown);
     // The sound file field says the file's name and keeps the path it stands
     // for, which is what the save and load paths read
     void showTriggerSoundFile(const QString& path);
@@ -536,6 +550,9 @@ public slots:
     void slot_updateUndoRedoButtonStates();
 
 private slots:
+    // Puts the options strip and the word leading it on show or away, and keeps
+    // the Options button on the head row saying which of the two it is
+    void slot_showAllTriggerControls(const bool isShown);
     void slot_editorSidebarRowChanged(const int row);
     void slot_editorSidebarItemActivated(QListWidgetItem* pItem);
     void slot_changeEditorTextOptions(QTextOption::Flags);
@@ -953,10 +970,11 @@ private:
     QPointer<QLabel> mpLabel_editorCompileDot;
     QPointer<QLabel> mpLabel_editorCompileMessage;
     // What the heading says about the item the editor is holding: empty is the
-    // reading that it compiled, and anything else is what its last save failed
-    // with. Only a save of *this* item writes it - showError() is also how a
-    // profile load reports every broken item it comes across, and how an
-    // activation the engine refuses is announced, neither of which is this.
+    // reading that it compiled, and anything else is what the compiler last
+    // said about it. Written only through reportCompileError(), which the item
+    // being saved and the item being opened both go through - and which nothing
+    // that is about some other item, or about an activation the engine refused,
+    // ever reaches.
     QString mEditorCompileMessage;
     // The note as it would read with all the room in the world, since what is
     // shown of it is cut to a strip whose width keeps changing
@@ -965,8 +983,9 @@ private:
     // does, and zero when it named none. Clicking the note moves the caret
     // there.
     int mEditorCompileErrorLine = 0;
-    // Open only for the length of one save, so that the showError() belonging
-    // to that save can be told from the ones raised around it
+    // Open only for the length of one save, so that a save which passed writes
+    // the heading once - clearing the note a failed one left - rather than the
+    // heading following each step of the save in turn
     bool mEditorSaveErrorCaptureOpen = false;
     QString mEditorSaveErrorCaptured;
 
@@ -983,6 +1002,10 @@ private:
     // The strip itself, which is as deep as a change inside the form goes:
     // what a measurement of the column has to be invalidated from
     QWidget* mpWidget_triggerOptionsRow = nullptr;
+    // Whether that strip is on show. Never stored: the strip is a disclosure
+    // the editor opens closed every time, so this only has to outlive an item
+    // being chosen or a view being switched.
+    bool mShowAllTriggerControls = false;
     // The two segments a matching mode is chosen with, and the spin box beside
     // them, are a view of spinBox_lineMargin, which stays where the trigger is
     // saved from and loaded into.

@@ -121,6 +121,7 @@
         <file>icons/editor-notice-info.svg</file>
         <file>icons/editor-notice-warning.svg</file>
         <file>icons/editor-offset-timer.svg</file>
+        <file>icons/editor-options.svg</file>
         <file>icons/editor-paste.svg</file>
         <file>icons/editor-redo.svg</file>
         <file>icons/editor-save-item.svg</file>
@@ -193,6 +194,11 @@
         <file>icons/mudlet-tutorial.png</file>
         <file>icons/mume.png</file>
         <file>icons/mudren.png</file>
+        <file>icons/notepad-chevron-up.svg</file>
+        <file>icons/notepad-send-all.svg</file>
+        <file>icons/notepad-send-line.svg</file>
+        <file>icons/notepad-send-selection.svg</file>
+        <file>icons/notepad-stop.svg</file>
         <file>icons/package-exporter.png</file>
         <file>icons/package-manager.png</file>
         <file>icons/password-show-off.png</file>

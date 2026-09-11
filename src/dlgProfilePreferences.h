@@ -383,6 +383,11 @@ private:
     void showCategory(const QString& key, QWidget* pSpotlightTarget = nullptr);
     void spotlight(QWidget* pTarget);
     void applyShellStyle();
+    // The menu of profiles a map can be copied to. It hangs off the dialog
+    // rather than off the shell, so the shell's sheet never reaches it - and it
+    // is rebuilt whenever a host is loaded, which may be before or after the
+    // style pass, so both call this.
+    void styleProfileMapMenu();
     void restyleSidebarIcons(const QColor& normal, const QColor& selected);
     // "Find in settings" - an index over the real widget tree, and a results
     // page the matching cards are lent to for as long as the query stands:

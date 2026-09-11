@@ -43,7 +43,7 @@
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_widget_top" stretch="0,1,0,1,0">
+     <layout class="QHBoxLayout" name="horizontalLayout_widget_top" stretch="0,1,0,1,0,0">
       <property name="spacing">
        <number>10</number>
       </property>
@@ -159,6 +159,19 @@
           </widget>
          </item>
         </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="toolButton_toggleExtraControls">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
        </widget>
       </item>
      </layout>
