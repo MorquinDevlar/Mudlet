@@ -177,7 +177,18 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
   `letPopupsTakeTheFieldsCorner()` from the code that builds it - holding the acts of the view
   being looked at and nothing else: `packagesMenuToggle` (the button's own two words, left out
   where the package has no switch) and `packagesMenuRemove` in the Installed view,
-  `packagesMenuInstall` in Explore and Updates
+  `packagesMenuInstall` in Explore and Updates.
+  The window is dragged down to what the two columns need and no further - the `.ui` file's
+  900x600 pin is cleared in `buildShell()`, and no label at the head of the details column is
+  left with its own words as a floor. The action row gives way at a measured breakpoint instead
+  of holding the window open: below the width the row needs with every button worded -
+  measured from the sizeHints of the buttons the current view and selection show, the gaps and
+  the margins, taken again wherever those words change - `pushButton_website` and
+  `pushButton_report` drop to their glyphs alone, keeping their words in their accessible names
+  and their tooltips, and take them back one gap's worth above that same width, so a drag
+  across the line settles. Each is given the floor of its own icon-only sizeHint, measured on
+  every pass of the style, or the layout would never squeeze the row far enough to reach the
+  breakpoint
 - Profile tab strip `TTabBar` (main window and detached windows) - chips, the chosen one filled on
   a light page with the accent walked dark enough for `field`'s white to read on it and washed with
   the sidebar's accent bar and an outline on a dark one, its word in bold as the sidebar's chosen

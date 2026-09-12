@@ -1106,6 +1106,70 @@ private slots:
         settle();
     }
 
+    // The window's floor is the two columns and the handle between them, and
+    // nothing else: the .ui file's 900x600 pin is gone, no label's own text
+    // holds a column open, and the row of buttons in the details column gives
+    // the words of the two buttons that lead out of the window up rather than
+    // holding the window wide. They come back at a wider width than they were
+    // taken away at, so a width on the line does not flicker.
+    void test_theWindowIsDraggedDownToTheTwoColumnsFloor()
+    {
+        // Listed on the repository at the version it is installed at: the two
+        // buttons that lead out of the window are only offered for a package
+        // the repository knows, and they are what the row gives up. At the same
+        // version, so the package stays out of the Updates view.
+        QVERIFY2(writeRepositoryIndex(qsl("1.2.3")), "SETUP: the repository index naming the installed package could not be written");
+        QVERIFY2(mpDialog->readPackageRepositoryFile(), "SETUP: the repository index naming the installed package could not be read back");
+        showView(NavigationView::Installed);
+        mpDialog->packageList->setCurrentRow(rowOf(mFirstPackage));
+        settle();
+        QVERIFY2(!mpDialog->pushButton_website->isHidden(), "SETUP: the chosen package offers no Website button, so the row has nothing to give up");
+
+        const QSize floor = mpDialog->minimumSizeHint();
+        qInfo().noquote() << qsl("  the window's floor is %1x%2; the list column's is %3x%4 (minimum width %5), the details column's %6x%7 (minimum width %8)")
+                                     .arg(QString::number(floor.width()),
+                                          QString::number(floor.height()),
+                                          QString::number(mpDialog->leftPanel->minimumSizeHint().width()),
+                                          QString::number(mpDialog->leftPanel->minimumSizeHint().height()),
+                                          QString::number(mpDialog->leftPanel->minimumWidth()))
+                                     .arg(QString::number(mpDialog->rightPanel->minimumSizeHint().width()),
+                                          QString::number(mpDialog->rightPanel->minimumSizeHint().height()),
+                                          QString::number(mpDialog->rightPanel->minimumWidth()));
+        QVERIFY2(floor.width() <= 700,
+                 qPrintable(qsl("the window cannot be made narrower than %1px, where the two columns and the handle between them come to well under 700px - something in it is pinned open")
+                                    .arg(QString::number(floor.width()))));
+        QVERIFY2(floor.height() <= 450, qPrintable(qsl("the window cannot be made shorter than %1px, where nothing in either column asks for more than 450px").arg(QString::number(floor.height()))));
+
+        mpDialog->resize(660, 420);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        QCoreApplication::processEvents();
+        qInfo().noquote() << qsl("  asked for 660x420 the window measures %1x%2; Website reads \"%3\"")
+                                     .arg(QString::number(mpDialog->width()), QString::number(mpDialog->height()), mpDialog->pushButton_website->text());
+        QVERIFY2(std::abs(mpDialog->width() - 660) <= 4,
+                 qPrintable(qsl("asked for 660px across the window measures %1px - it refused the size, so it cannot be dragged smaller than that either").arg(QString::number(mpDialog->width()))));
+        QVERIFY2(mpDialog->pushButton_website->text().isEmpty(),
+                 qPrintable(qsl("with the details column too narrow for the row's words Website still reads \"%1\", so the row is holding the window open").arg(mpDialog->pushButton_website->text())));
+        QVERIFY2(!mpDialog->pushButton_website->icon().isNull(), "Website gave its word up and carries no glyph either, so it is an empty button");
+        QVERIFY2(mpDialog->pushButton_website->accessibleName().contains(qsl("Website")),
+                 qPrintable(qsl("standing as a glyph alone Website is announced as \"%1\", so a screen reader reads an unnamed button").arg(mpDialog->pushButton_website->accessibleName())));
+
+        mpDialog->resize(1000, 600);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        QCoreApplication::processEvents();
+        qInfo().noquote() << qsl("  back at 1000px across Website reads \"%1\"").arg(mpDialog->pushButton_website->text());
+        QVERIFY2(mpDialog->pushButton_website->text() == qsl("Website"),
+                 qPrintable(qsl("with room for every word again Website reads \"%1\" rather than its own word").arg(mpDialog->pushButton_website->text())));
+
+        mpDialog->resize(900, 600);
+        QVERIFY(writeRepositoryIndex());
+        QVERIFY(mpDialog->readPackageRepositoryFile());
+        showView(NavigationView::Installed);
+        mpDialog->packageList->setCurrentRow(0);
+        settle();
+    }
+
     // Nothing else restyles this window: it is a QDialog that no other window
     // owns, so the appearance signal is the whole of what moves it. A pass that
     // stopped running leaves the sheets of the theme that has been left.

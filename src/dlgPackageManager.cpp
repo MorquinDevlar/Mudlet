@@ -77,6 +77,10 @@ static constexpr int scmPackagesCaptionGap = 12;
 // package's notes and the row of buttons over them both need this much before
 // they start wrapping into a column of single words
 static constexpr int scmPackagesDetailsMinimumWidth = 320;
+// How much of the package's name and of its author's the head of the column
+// keeps hold of at any width: enough to read as a headline that has been cut,
+// counted in characters of each label's own font rather than in pixels
+static constexpr int scmPackagesHeadlineFloorCharacters = 6;
 // ...and where the seam stands for a reader who has never moved it: a column of
 // names beside a column of notes wants about a third of the window
 static constexpr int scmPackagesListShareDenominator = 3;
@@ -142,6 +146,14 @@ dlgPackageManager::dlgPackageManager(QWidget* parent, Host* pHost)
 // every object name, so every connection and every test entry point survives.
 void dlgPackageManager::buildShell()
 {
+    // The .ui file pinned this window at 900x600, which is bigger than the two
+    // columns and everything in them actually need - a reader on a small screen
+    // could not put it beside anything. The size in that file is still what the
+    // window opens at; what it can be dragged down to is the layout's own floor:
+    // the list column's width, the details column's, the handle between them and
+    // the deeper of the two columns.
+    setMinimumSize(0, 0);
+
     // The two columns tile the window, so the tones they are painted in reach
     // its edges and the seam between them runs the whole height
     mainVerticalLayout->setContentsMargins(0, 0, 0, 0);
@@ -309,9 +321,19 @@ void dlgPackageManager::buildShell()
     pushButton_website->setFlat(false);
     pushButton_report->setFlat(false);
     //: Package manager - button that opens the package's own web page
-    pushButton_website->setText(tr("Website"));
+    const QString websiteWord = tr("Website");
     //: Package manager - button that opens the page an issue with the package is reported on
-    pushButton_report->setText(tr("Report an issue"));
+    const QString reportWord = tr("Report an issue");
+    pushButton_website->setText(websiteWord);
+    pushButton_report->setText(reportWord);
+    // These two are the row's give: below the width it needs with every word on
+    // it they stand as their glyphs alone. A picture with no word is read by the
+    // name a screen reader is handed rather than by a tooltip a pointer has to
+    // rest on, so each says its own word there - once, since neither changes
+    // with the view or with what is chosen.
+    pushButton_website->setAccessibleName(websiteWord);
+    pushButton_report->setAccessibleName(reportWord);
+    mActionRowLinks = {{pushButton_website, websiteWord, 0, 0}, {pushButton_report, reportWord, 0, 0}};
 
     // The head of the details column: the picture, the name in the title step
     // of the type scale, and one caption line carrying the author and version
@@ -325,6 +347,16 @@ void dlgPackageManager::buildShell()
     nameFont.setPointSize(uiDesign::typeSize(uiDesign::TypeStep::Title));
     nameFont.setWeight(QFont::DemiBold);
     label_packageName->setFont(nameFont);
+
+    // Nothing at the head of the column is allowed to be the column's floor. A
+    // label's own minimum is the whole of the words in it, so which package was
+    // being looked at decided how narrow this window could be made - and the
+    // name is already cut to the room its row has by showPackageName(). A few
+    // characters' worth is left, so a column dragged right in still reads as a
+    // headline rather than as a gap.
+    for (QLabel* pLabel : {label_packageName, label_author}) {
+        pLabel->setMinimumWidth(QFontMetrics(pLabel->font()).averageCharWidth() * scmPackagesHeadlineFloorCharacters);
+    }
 
     // The version stands beside the name rather than on a caption line under
     // the summary: which version of a package this is, is read at the moment
@@ -1605,6 +1637,8 @@ void dlgPackageManager::slot_toggleInstallRepoButton()
         //: Tooltip for button in package manager when in Explore view
         pushButton_installRepo->setToolTip(tr("Install package from repository"));
     }
+    // The row's words just changed, and what the row needs is measured off them
+    scheduleActionRowFit();
 }
 
 void dlgPackageManager::slot_toggleRemoveButton()
@@ -1628,6 +1662,7 @@ void dlgPackageManager::slot_toggleRemoveButton()
         pushButton_remove->setText(tr("Remove"));
         pushButton_remove->setEnabled(false);
     }
+    scheduleActionRowFit();
 }
 
 // What this ever has to report is a package that did not install, so it is the
@@ -1782,6 +1817,9 @@ void dlgPackageManager::applyPackageManagerShellStyle()
                                      static_cast<QAbstractButton*>(pushButton_report)}) {
         pButton->setIconSize(QSize(scmPackagesButtonGlyphSize, scmPackagesButtonGlyphSize));
     }
+    // ...and with the glyphs on at the size they are drawn at, what the two
+    // buttons that lead out of the window measure in each of their two readings
+    measureActionRowButtons();
     // Install carries whichever of the two glyphs the view it is standing in
     // says it is, which the toggles below are what decide
     slot_toggleInstallRepoButton();
@@ -1836,6 +1874,7 @@ void dlgPackageManager::showEvent(QShowEvent* event)
         restoreColumnSplit();
     }
     scheduleHeadlineFit();
+    scheduleActionRowFit();
 }
 
 void dlgPackageManager::resizeEvent(QResizeEvent* event)
@@ -1858,6 +1897,9 @@ bool dlgPackageManager::eventFilter(QObject* pWatched, QEvent* pEvent)
 {
     if (pWatched == rightPanel && pEvent->type() == QEvent::Resize) {
         scheduleHeadlineFit();
+        // ...and so is the row of buttons under it: what it has room for is the
+        // column's width, whatever moved it
+        scheduleActionRowFit();
     }
     return QDialog::eventFilter(pWatched, pEvent);
 }
@@ -1869,6 +1911,130 @@ void dlgPackageManager::scheduleHeadlineFit()
     }
     QTimer::singleShot(0ms, this, [this]() {
         showPackageName(mPackageNameShown);
+    });
+}
+
+// What each of the two buttons that lead out of the window measures in its two
+// readings, asked of the buttons themselves rather than worked out here: the
+// padding a style leaves round a label, the window's font and a translation
+// whose words are longer than these all move both numbers, and the first of
+// those changes with the appearance - so this is taken again on every pass of
+// the style.
+//
+// The glyph-only number is also each button's floor. A layout never takes a
+// widget under its own minimum, and a push button's minimum is its whole
+// sizeHint - which is what a row of worded buttons held this window open with.
+void dlgPackageManager::measureActionRowButtons()
+{
+    for (ActionRowLink& link : mActionRowLinks) {
+        QPushButton* pButton = link.pButton;
+        pButton->ensurePolished();
+        pButton->setMinimumWidth(0);
+        pButton->setText(link.word);
+        link.worded = pButton->sizeHint().width();
+        pButton->setText(QString());
+        link.glyphOnly = pButton->sizeHint().width();
+        pButton->setMinimumWidth(link.glyphOnly);
+        // Left in whichever of the two readings the row is already in: set back
+        // to the word and cut again on the next turn of the event loop, the
+        // words would flash on every appearance change of a narrow window
+        if (mActionRowWordsShown) {
+            pButton->setText(link.word);
+        }
+    }
+}
+
+int dlgPackageManager::actionRowWordedNeed() const
+{
+    if (!horizontalLayout_4) {
+        return 0;
+    }
+    int need = 0;
+    int items = 0;
+    for (int index = 0, count = horizontalLayout_4->count(); index < count; ++index) {
+        const QLayoutItem* pItem = horizontalLayout_4->itemAt(index);
+        QWidget* pWidget = pItem->widget();
+        if (pWidget && pWidget->isHidden()) {
+            // A layout leaves a hidden widget out altogether, its gap with it
+            continue;
+        }
+        ++items;
+        if (!pWidget) {
+            // The spacer parting the two halves of the row asks for nothing
+            // once the row is short of width
+            continue;
+        }
+        // The word rather than what the button is carrying now, so the answer
+        // is the same whichever reading the row is in - which is what keeps the
+        // two thresholds apart
+        int wanted = pWidget->sizeHint().width();
+        for (const ActionRowLink& link : mActionRowLinks) {
+            if (link.pButton == pWidget && link.worded > 0) {
+                wanted = link.worded;
+                break;
+            }
+        }
+        need += wanted;
+    }
+    const QMargins rowMargins = horizontalLayout_4->contentsMargins();
+    return need + std::max(0, items - 1) * horizontalLayout_4->spacing() + rowMargins.left() + rowMargins.right();
+}
+
+// The action row gives way rather than holding the window open: below the width
+// it needs with every button worded, the two that lead out of the window stand
+// as their glyphs alone - their words are still on them for a screen reader,
+// and their tooltips still say where they lead. They are given back from one
+// gap's worth above that same width, so the two tests never agree on a pixel
+// and a drag across the breakpoint settles instead of flickering.
+//
+// Run from the details column's own resize - the window resized, the seam
+// dragged, the split put back - deferred so the layout has settled, and again
+// wherever the row's words change: the view, and how many rows are chosen.
+void dlgPackageManager::fitActionRowToItsColumn()
+{
+    if (mActionRowFitting || mActionRowLinks.isEmpty() || !rightPanel || !verticalLayout_right) {
+        return;
+    }
+    // Nothing to give up while the row holds neither of them: both are hidden
+    // until a package that has somewhere to lead is chosen, and the fit is
+    // asked for again when one is
+    const bool anyOnShow = std::any_of(mActionRowLinks.cbegin(), mActionRowLinks.cend(), [](const ActionRowLink& link) {
+        return !link.pButton->isHidden();
+    });
+    if (!anyOnShow) {
+        return;
+    }
+
+    const QMargins columnMargins = verticalLayout_right->contentsMargins();
+    const int room = rightPanel->width() - columnMargins.left() - columnMargins.right();
+    const int need = actionRowWordedNeed();
+    // A column that has not been laid out yet has nothing to measure against,
+    // and the answer it would give is one to throw away rather than to act on
+    if (room <= 0 || need <= 0) {
+        return;
+    }
+    const bool wordsWanted = mActionRowWordsShown ? room >= need : room >= need + horizontalLayout_4->spacing();
+    if (wordsWanted == mActionRowWordsShown) {
+        return;
+    }
+
+    mActionRowFitting = true;
+    mActionRowWordsShown = wordsWanted;
+    for (const ActionRowLink& link : mActionRowLinks) {
+        link.pButton->setText(wordsWanted ? link.word : QString());
+    }
+    mActionRowFitting = false;
+}
+
+void dlgPackageManager::scheduleActionRowFit()
+{
+    if (mActionRowFitPending) {
+        return;
+    }
+    mActionRowFitPending = true;
+    QTimer::singleShot(0ms, this, [this]() {
+        mActionRowFitPending = false;
+        fitActionRowToItsColumn();
     });
 }
 

@@ -142,6 +142,21 @@ private:
     QString packageWebsiteUrl(const QString& packageName) const;
     void comeBackToFront();
     void scheduleHeadlineFit();
+    // What each of the two buttons that lead out of the window measures with
+    // its word beside its glyph and with the glyph alone, and the floor those
+    // glyph-only widths give them - which is what lets the row be squeezed at
+    // all. Taken again on every pass of the style: the padding round a label is
+    // the style's, and it changes with the appearance.
+    void measureActionRowButtons();
+    // What the action row needs with every button carrying its word: the
+    // buttons the current view and selection show, the gaps between them and
+    // the margins round them
+    int actionRowWordedNeed() const;
+    // Below that need the two link buttons stand as their glyphs alone, and
+    // they take their words back above it plus a gap's worth of slack - two
+    // thresholds, so a width on the line does not flicker
+    void fitActionRowToItsColumn();
+    void scheduleActionRowFit();
     bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
     void populatePackagesWithUpdates();
     void setupNavigationButtons();
@@ -198,6 +213,20 @@ private:
     // says what a switched-off package is not doing
     QPushButton* mpButton_togglePackage = nullptr;
     QLabel* mpLabel_offNote = nullptr;
+    // The two buttons on the action row that lead out of the window: the word
+    // each carries, and what it measures with that word and with its glyph
+    // alone. Both numbers are the style's rather than the source's.
+    struct ActionRowLink
+    {
+        QPushButton* pButton = nullptr;
+        QString word;
+        int worded = 0;
+        int glyphOnly = 0;
+    };
+    QList<ActionRowLink> mActionRowLinks;
+    bool mActionRowWordsShown = true;
+    bool mActionRowFitting = false;
+    bool mActionRowFitPending = false;
     dlgSystemMessageArea* mpNotice = nullptr;
     QAction* mpAction_searchGlyph = nullptr;
     // Install and Update are the same button in two readings, so it carries
