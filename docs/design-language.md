@@ -443,7 +443,11 @@ The cross on a closable tab is `editor-clear.svg`, the one x the rest of the
 design is drawn with, tinted into the glyph cache by `themedGlyphFile()` for the
 rule to point at - quiet at rest, `accentText` under the pointer. Where the cache
 cannot be written the rule is left out rather than aimed at nothing, and the tab
-keeps whatever cross the platform draws it with.
+keeps whatever cross the platform draws it with. A cross is on the strip only
+while it can close something: the notepad keeps its last note, so a sole tab
+carries none, and both tabs carry one again the moment a second note is made.
+Closing a note that has text asks first, with Return and Escape both keeping it,
+since nothing keeps a copy of a closed note; an empty note goes without a word.
 
 The buttons a strip too crowded to fit scrolls with are left alone: their arrows
 are a sub-control of a `QToolButton` the bar makes for itself, and giving those

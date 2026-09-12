@@ -41,6 +41,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -340,6 +341,14 @@ void dlgNotepad::setupAddTabButton()
     connect(newTabShortcut, &QShortcut::activated, this, &dlgNotepad::slot_addTabClicked);
 }
 
+// closeTab() keeps the last note, and the context menu offers no close for it,
+// so a cross on a sole tab would promise what it cannot do. Toggling the whole
+// bar rather than one tab's button also gives the chip its width back.
+void dlgNotepad::updateTabClosability()
+{
+    tabWidget->setTabsClosable(tabWidget->count() > 1);
+}
+
 void dlgNotepad::setupFindBar()
 {
     mpFindBar = new QWidget(this);
@@ -555,7 +564,65 @@ int dlgNotepad::addTab(const QString& name, const QString& content)
     //: Default name for a new note tab
     const QString tabName = name.isEmpty() ? tr("New Note") : name;
     const int index = tabWidget->addTab(textEdit, tabName);
+    updateTabClosability();
     return index;
+}
+
+// Nothing keeps a copy of a closed note - save() writes the tabs that are left,
+// so the text of one closed by a slip of the finger is gone for good. A note
+// with nothing in it is no loss and goes without a word; for anything else the
+// whole act is put to the reader once, with Cancel as both the default and the
+// escape, so that Return and Escape alike keep the note.
+bool dlgNotepad::okToDiscardNotes(const QList<int>& indices)
+{
+    int withText = 0;
+    for (const int index : indices) {
+        if (index < 0 || index >= tabWidget->count()) {
+            continue;
+        }
+        auto* pNote = qobject_cast<QPlainTextEdit*>(tabWidget->widget(index));
+        if (pNote && !pNote->toPlainText().trimmed().isEmpty()) {
+            ++withText;
+        }
+    }
+
+    if (!withText) {
+        return true;
+    }
+
+    QString ask;
+    QString consequence;
+    QString destroy;
+    if (indices.size() == 1) {
+        //: Dialog asking the reader to confirm closing a note that has text in it. %1 is the note's name.
+        ask = tr("Close the note \"%1\"?").arg(tabWidget->tabText(indices.constFirst()));
+        //: Body of the dialog asking the reader to confirm closing a note that has text in it
+        consequence = tr("Its text will be lost. Mudlet keeps no copy of a closed note.");
+        //: Button on that dialog which goes ahead and closes the one note it asked about
+        destroy = tr("Close Note");
+    } else {
+        //: Dialog asking the reader to confirm closing every note but the one they picked
+        ask = tr("Close the other notes?");
+        //: Body of that dialog. %n is how many of the notes being closed have text in them.
+        consequence = tr("Text in %n of them will be lost.", "", withText);
+        //: Button on that dialog which goes ahead and closes every note but the one the reader picked
+        destroy = tr("Close Notes");
+    }
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    // A sheet on the note's own window on macOS, rather than a box over the
+    // whole application: what is being asked about is this window's
+    box.setWindowModality(Qt::WindowModal);
+    box.setText(ask);
+    box.setInformativeText(consequence);
+    box.addButton(destroy, QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.setEscapeButton(QMessageBox::Cancel);
+    box.exec();
+
+    return box.buttonRole(box.clickedButton()) == QMessageBox::DestructiveRole;
 }
 
 void dlgNotepad::closeTab(int index)
@@ -568,11 +635,50 @@ void dlgNotepad::closeTab(int index)
         return;
     }
 
+    if (!okToDiscardNotes({index})) {
+        return;
+    }
+
     save();
 
     QWidget* widget = tabWidget->widget(index);
     tabWidget->removeTab(index);
     delete widget;
+    updateTabClosability();
+
+    mNeedToSave = true;
+}
+
+// The whole sweep is one act, so it is asked about once rather than a note at a
+// time - and taken from the back, since removing a tab renumbers the ones after
+// it
+void dlgNotepad::closeOtherTabs(int keptIndex)
+{
+    if (keptIndex < 0 || keptIndex >= tabWidget->count() || tabWidget->count() <= 1) {
+        return;
+    }
+
+    QList<int> others;
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        if (i != keptIndex) {
+            others.append(i);
+        }
+    }
+
+    if (!okToDiscardNotes(others)) {
+        return;
+    }
+
+    save();
+
+    for (int i = tabWidget->count() - 1; i >= 0; --i) {
+        if (i != keptIndex) {
+            QWidget* widget = tabWidget->widget(i);
+            tabWidget->removeTab(i);
+            delete widget;
+        }
+    }
+    updateTabClosability();
 
     mNeedToSave = true;
 }
@@ -642,15 +748,7 @@ void dlgNotepad::slot_tabContextMenu(const QPoint& pos)
             //: Context menu action to close all note tabs except the clicked one
             QAction* closeOthersAction = menu.addAction(tr("Close Other Tabs"));
             connect(closeOthersAction, &QAction::triggered, this, [this, tabIndex]() {
-                save();
-                for (int i = tabWidget->count() - 1; i >= 0; --i) {
-                    if (i != tabIndex) {
-                        QWidget* widget = tabWidget->widget(i);
-                        tabWidget->removeTab(i);
-                        delete widget;
-                    }
-                }
-                mNeedToSave = true;
+                closeOtherTabs(tabIndex);
             });
         }
     }

@@ -46,27 +46,38 @@
  * A tab is drawn as a chip on the page rather than as the folder tab a platform
  * cuts, which is a claim about pixels and is read as pixels here.
  *
+ * Closing a note destroys it: save() writes the tabs that are left and nothing
+ * keeps a copy of the rest. So a note with text in it is asked about first, once
+ * per act however many notes the act takes, with Cancel as both the default and
+ * the escape - and an empty note goes without a word.
+ *
  * ...and an appearance change has to rebuild both sheets. The window is not a
  * QDialog and gets no restyle from anybody else.
  *
  * Run with: ctest -R NotepadShellTest -V
  */
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QFileInfo>
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QProgressBar>
 #include <QSignalSpy>
 #include <QTabBar>
 #include <QTemporaryDir>
 #include <QTextCursor>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest/QtTest>
+
+#include <memory>
 
 #include "Host.h"
 #include "MudletInstanceCoordinator.h"
@@ -235,7 +246,116 @@ private:
         QVERIFY2(offCentre <= 1, qPrintable(qsl("the cross on tab %1 sits %2px off the chip's centre line, where the word is").arg(QString::number(index), QString::number(offCentre))));
     }
 
+    // How many 20ms ticks the answerer below will wait for a box to turn up, and
+    // how long it puts up with one that did not go away after it was answered.
+    // It has to give up: the modal loop runs inside the call under test, so a
+    // box nothing presses would hang the case until ctest kills it rather than
+    // failing it with a message.
+    static constexpr int scmBoxAnswerTicks = 100;
+
+    // What the answerer presses: the button that keeps the note, or the one in
+    // the destructive role that takes it
+    enum class TheAnswer { Keep, Discard };
+
+    QTimer* mpBoxAnswerer = nullptr;
+    QPointer<QMessageBox> mpAnsweredBox;
+    int mBoxesSeen = 0;
+    QString mBoxComplaint;
+
+    // The box a close puts to the reader. activeModalWidget() is Qt's own
+    // bookkeeping rather than the platform plugin's, so it works offscreen; the
+    // sweep over the top levels keeps this from resting on that alone.
+    static QMessageBox* visibleMessageBox()
+    {
+        if (auto* pModal = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+            return pModal;
+        }
+        const QList<QWidget*> topLevels = QApplication::topLevelWidgets();
+        for (QWidget* pWidget : topLevels) {
+            if (auto* pBox = qobject_cast<QMessageBox*>(pWidget); pBox && pBox->isVisible()) {
+                return pBox;
+            }
+        }
+        return nullptr;
+    }
+
+    // QMessageBox::exec() spins a loop of its own, so the answer is armed before
+    // the close and presses from inside it. The box just answered is held by a
+    // QPointer rather than by address: it is a local of the call under test, so
+    // the pointer empties when it goes and a second question - which is the
+    // thing these cases are counting - is told apart from the first.
+    void armTheAnswer(const TheAnswer answer)
+    {
+        mBoxesSeen = 0;
+        mBoxComplaint.clear();
+        mpAnsweredBox.clear();
+        delete mpBoxAnswerer;
+        mpBoxAnswerer = new QTimer(this);
+        mpBoxAnswerer->setInterval(20ms);
+        auto ticks = std::make_shared<int>(0);
+        connect(mpBoxAnswerer, &QTimer::timeout, this, [this, answer, ticks]() {
+            QMessageBox* pBox = visibleMessageBox();
+            if (!pBox) {
+                if (++*ticks > scmBoxAnswerTicks) {
+                    mpBoxAnswerer->stop();
+                }
+                return;
+            }
+
+            if (pBox == mpAnsweredBox) {
+                // The one just pressed, on its way out
+                if (++*ticks > scmBoxAnswerTicks) {
+                    mBoxComplaint = qsl("the box stayed up after it was answered");
+                    mpBoxAnswerer->stop();
+                    pBox->close();
+                }
+                return;
+            }
+
+            *ticks = 0;
+            ++mBoxesSeen;
+            mpAnsweredBox = pBox;
+
+            QAbstractButton* pKeep = pBox->button(QMessageBox::Cancel);
+            if (!pKeep) {
+                mBoxComplaint = qsl("the box carries no Cancel, so there is no way to keep the note");
+                pBox->close();
+                return;
+            }
+            if (pBox->defaultButton() != pKeep || pBox->escapeButton() != pKeep) {
+                mBoxComplaint = qsl("Cancel is not both the default and the escape button, so Return or Escape destroys the note");
+            }
+
+            if (answer == TheAnswer::Keep) {
+                pKeep->click();
+                return;
+            }
+
+            const QList<QAbstractButton*> onTheBox = pBox->buttons();
+            for (QAbstractButton* pButton : onTheBox) {
+                if (pBox->buttonRole(pButton) == QMessageBox::DestructiveRole) {
+                    pButton->click();
+                    return;
+                }
+            }
+            mBoxComplaint = qsl("the box carries no button in the destructive role, so nothing on it closes the note");
+            pBox->close();
+        });
+        mpBoxAnswerer->start();
+    }
+
+    void disarmTheAnswer()
+    {
+        if (mpBoxAnswerer) {
+            mpBoxAnswerer->stop();
+        }
+    }
+
 private slots:
+    // A case that stops at a failed assertion must not leave the answerer
+    // pressing its way through the next one's dialogs
+    void cleanup() { disarmTheAnswer(); }
+
     void initTestCase()
     {
         if (portableMarkerPresent()) {
@@ -703,6 +823,130 @@ private slots:
 
         QVERIFY2(mpHost->readProfileIniData(key).isEmpty(), qPrintable(qsl("the profile still carries %1 after the notepad saved its settings").arg(key)));
         QVERIFY2(!mpHost->readProfileIniData(qsl("Notepad/WindowState")).isEmpty(), "the save that was meant to clear the old key did not write the window state either, so it did not run");
+    }
+
+    // A closed note is gone: save() writes the tabs that are left and nothing
+    // keeps a copy of the rest, so a cross caught by a slip of the finger used
+    // to take the work with it. A note with text in it is asked about first,
+    // with Cancel as both the default and the escape so that Return and Escape
+    // alike keep it - and an empty note, which is no loss, goes without a word.
+    void test_aNoteWithTextAsksBeforeItIsClosed()
+    {
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+        auto* pSecond = qobject_cast<QPlainTextEdit*>(mpNotepad->tabWidget->widget(1));
+        QVERIFY2(pSecond, "the second note is not a field at all");
+        pSecond->setPlainText(qsl("kept"));
+        QCoreApplication::processEvents();
+
+        armTheAnswer(TheAnswer::Keep);
+        mpNotepad->closeTab(1);
+        disarmTheAnswer();
+        QVERIFY2(mBoxComplaint.isEmpty(), qPrintable(mBoxComplaint));
+        QVERIFY2(mBoxesSeen == 1, qPrintable(qsl("closing a note with text in it put %1 questions to the reader rather than one").arg(QString::number(mBoxesSeen))));
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+        QCOMPARE(qobject_cast<QPlainTextEdit*>(mpNotepad->tabWidget->widget(1))->toPlainText(), qsl("kept"));
+
+        armTheAnswer(TheAnswer::Discard);
+        mpNotepad->closeTab(1);
+        disarmTheAnswer();
+        QVERIFY2(mBoxComplaint.isEmpty(), qPrintable(mBoxComplaint));
+        QCOMPARE(mBoxesSeen, 1);
+        QCOMPARE(mpNotepad->tabWidget->count(), 1);
+
+        // ...and a note with nothing in it: had it asked, the answerer would
+        // have been let in by the loop the box spins and would have kept it
+        mpNotepad->addTab(qsl("Second"));
+        QCoreApplication::processEvents();
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+        armTheAnswer(TheAnswer::Keep);
+        mpNotepad->closeTab(1);
+        disarmTheAnswer();
+        QVERIFY2(!mBoxesSeen, "closing an empty note asked the reader about text that was not there");
+        QCOMPARE(mpNotepad->tabWidget->count(), 1);
+
+        mpNotepad->addTab(qsl("Second"));
+        mpNotepad->tabWidget->setCurrentIndex(0);
+        QCoreApplication::processEvents();
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+    }
+
+    // Close Other Tabs is one act rather than a run of closes, so it is put to
+    // the reader once - and Cancel keeps every one of the notes it named
+    void test_closingTheOtherNotesAsksOnceForAllOfThem()
+    {
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+        qobject_cast<QPlainTextEdit*>(mpNotepad->tabWidget->widget(1))->setPlainText(qsl("kept"));
+        const int third = mpNotepad->addTab(qsl("Third"), qsl("also kept"));
+        QCoreApplication::processEvents();
+        QCOMPARE(third, 2);
+        QCOMPARE(mpNotepad->tabWidget->count(), 3);
+
+        armTheAnswer(TheAnswer::Keep);
+        mpNotepad->closeOtherTabs(0);
+        disarmTheAnswer();
+        QVERIFY2(mBoxComplaint.isEmpty(), qPrintable(mBoxComplaint));
+        QVERIFY2(mBoxesSeen == 1, qPrintable(qsl("closing the other notes put %1 questions to the reader rather than one").arg(QString::number(mBoxesSeen))));
+        QVERIFY2(mpNotepad->tabWidget->count() == 3, qPrintable(qsl("Cancel left %1 of the 3 notes standing").arg(QString::number(mpNotepad->tabWidget->count()))));
+
+        armTheAnswer(TheAnswer::Discard);
+        mpNotepad->closeOtherTabs(0);
+        disarmTheAnswer();
+        QVERIFY2(mBoxComplaint.isEmpty(), qPrintable(mBoxComplaint));
+        QCOMPARE(mBoxesSeen, 1);
+        QCOMPARE(mpNotepad->tabWidget->count(), 1);
+
+        mpNotepad->addTab(qsl("Second"));
+        mpNotepad->tabWidget->setCurrentIndex(0);
+        QCoreApplication::processEvents();
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+    }
+
+    // A cross that cannot close anything is a control that does nothing. The
+    // last note left is kept by closeTab() and the context menu offers no close
+    // for it, so the strip carries no crosses while there is one tab - and both
+    // tabs carry one again the moment a second note is made.
+    void test_theLastTabCarriesNoCrossSinceItCannotClose()
+    {
+        QTabBar* pTabBar = mpNotepad->tabWidget->tabBar();
+        const auto crossOn = [pTabBar](const int index) {
+            QWidget* pTrailing = pTabBar->tabButton(index, QTabBar::RightSide);
+            return pTrailing ? pTrailing : pTabBar->tabButton(index, QTabBar::LeftSide);
+        };
+
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+        for (int i = 0; i < 2; ++i) {
+            QVERIFY2(crossOn(i), qPrintable(qsl("tab %1 carries no cross while there are two notes to close one of").arg(QString::number(i))));
+        }
+
+        mpNotepad->closeTab(1);
+        QCoreApplication::processEvents();
+        QCOMPARE(mpNotepad->tabWidget->count(), 1);
+        QVERIFY2(!crossOn(0), "the sole tab still carries a cross, though closeTab() will not close it");
+
+        // The rule the cross is hidden for: the last note stays whatever is
+        // asked of it
+        mpNotepad->closeTab(0);
+        QCoreApplication::processEvents();
+        QCOMPARE(mpNotepad->tabWidget->count(), 1);
+
+        const int second = mpNotepad->addTab(qsl("Second"));
+        QCoreApplication::processEvents();
+        QCOMPARE(mpNotepad->tabWidget->count(), 2);
+        for (int i = 0; i < 2; ++i) {
+            QVERIFY2(crossOn(i), qPrintable(qsl("tab %1 carries no cross after a second note brought the crosses back").arg(QString::number(i))));
+        }
+
+        // ...and the crosses the strip made again are the recipe's, which is
+        // the keeper on the bar catching them rather than the pass over the
+        // tabs that were there when it was styled
+        theCrossOnTabIsTheRecipes(0);
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+        theCrossOnTabIsTheRecipes(second);
+
+        mpNotepad->tabWidget->setCurrentIndex(0);
+        QCoreApplication::processEvents();
     }
 
     // The cross on a tab is sized by the widget, not by the rule that draws it:

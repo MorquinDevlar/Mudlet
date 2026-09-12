@@ -99,6 +99,11 @@ private:
     // that no fraction ever reaches a stylesheet.
     [[nodiscard]] int stripWordPointSize() const;
     void setupAddTabButton();
+    void updateTabClosability();
+    // Whether the notes at those indices may go: one with nothing in it is no
+    // loss and goes without a word, anything else is put to the reader first
+    [[nodiscard]] bool okToDiscardNotes(const QList<int>& indices);
+    void closeOtherTabs(int keptIndex);
     void setupFindBar();
     void highlightAllMatches();
     void clearSearchHighlights();
