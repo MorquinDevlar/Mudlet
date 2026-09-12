@@ -27,13 +27,6 @@
 
 #include <QResizeEvent>
 
-// What the notice leaves round the line or two of words in it, and what stands
-// between the picture, those words and the cross that dismisses them. The .ui
-// file's 3px was the margin of a box drawn round 64px pictures.
-static constexpr int scmNoticePaddingHorizontal = 10;
-static constexpr int scmNoticePaddingVertical = 8;
-static constexpr int scmNoticeSpacing = 8;
-
 
 dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
 : QWidget(pParentWidget)
@@ -41,22 +34,9 @@ dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
     // init generated dialog
     setupUi(this);
 
-    QPixmap holdPixmap;
-    holdPixmap = notificationAreaIconLabelWarning->pixmap(Qt::ReturnByValue);
-    holdPixmap.setDevicePixelRatio(5.3);
-    notificationAreaIconLabelWarning->setPixmap(holdPixmap);
-
-    holdPixmap = notificationAreaIconLabelError->pixmap(Qt::ReturnByValue);
-    holdPixmap.setDevicePixelRatio(5.3);
-    notificationAreaIconLabelError->setPixmap(holdPixmap);
-
-    holdPixmap = notificationAreaIconLabelInformation->pixmap(Qt::ReturnByValue);
-    holdPixmap.setDevicePixelRatio(5.3);
-    notificationAreaIconLabelInformation->setPixmap(holdPixmap);
-
     if (QLayout* pNoticeLayout = frame_notificationArea->layout()) {
-        pNoticeLayout->setContentsMargins(scmNoticePaddingHorizontal, scmNoticePaddingVertical, scmNoticePaddingHorizontal, scmNoticePaddingVertical);
-        pNoticeLayout->setSpacing(scmNoticeSpacing);
+        pNoticeLayout->setContentsMargins(uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical, uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical);
+        pNoticeLayout->setSpacing(uiDesign::scmNoticeSpacing);
     }
     // The .ui file puts the close button over a spacer tall enough for a 64px
     // picture; what the notice holds now is a line or two of text, and the
@@ -110,12 +90,13 @@ void dlgSystemMessageArea::resizeEvent(QResizeEvent* pEvent)
 void dlgSystemMessageArea::slot_applyAppearance()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    // A notice rather than a strip of highlighter pen: the accent the rest of
-    // the editor points with, and the picture beside the words is what says
-    // which of the three readings this one is
-    frame_notificationArea->setStyleSheet(qsl("QFrame#frame_notificationArea { background-color: %1; border: 1px solid %2; border-radius: %4px; }"
-                                              "QFrame#frame_notificationArea QLabel { background: transparent; color: %3; }")
-                                                  .arg(tokens.accentSoft, tokens.accent.name(), tokens.mutedText.name(), QString::number(uiDesign::scmRadiusPanel)));
+    frame_notificationArea->setStyleSheet(uiDesign::noticeStyleSheet(qsl("QFrame#frame_notificationArea"), tokens));
+    // The picture beside the words, in the shared hand: the .ui file ships a
+    // 64px full-colour bitmap on each of the three labels, and the notice is a
+    // line or two of text with one glyph beside it
+    uiDesign::applyNoticeGlyph(notificationAreaIconLabelInformation, uiDesign::NoticeKind::Information, tokens);
+    uiDesign::applyNoticeGlyph(notificationAreaIconLabelWarning, uiDesign::NoticeKind::Warning, tokens);
+    uiDesign::applyNoticeGlyph(notificationAreaIconLabelError, uiDesign::NoticeKind::Error, tokens);
     // The words of the notice are named on the label itself rather than left to
     // the descendant rule above, which does not reach them: the area is hidden
     // while the window round it is styled and is polished only when a notice

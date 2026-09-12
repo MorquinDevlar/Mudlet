@@ -305,10 +305,9 @@ static constexpr int scmEditorSoundFileTextInset = 2 * (uiDesign::scmInputPaddin
 // into have to agree on it, or the hidden one clamps what was typed and echoes
 // the clamped value straight back, eating keystrokes.
 static constexpr int scmEditorMatchWithinLinesMax = 999;
-// A banner's picture, beside a line of text rather than the 64px block the
-// .ui file sizes it as
-static constexpr int scmEditorBannerGlyphSize = 20;
-// ...and the cross that dismisses it, inside the 16px button the .ui fixes
+// The cross that dismisses a banner, inside the 16px button the .ui fixes. The
+// picture beside the words is uiDesign::scmNoticeGlyphSize, since the notice
+// draws that one itself.
 static constexpr int scmEditorBannerCloseSize = 12;
 
 // A trigger's pattern rows. A row is as tall as the profile's display font asks
@@ -16572,51 +16571,28 @@ void dlgTriggerEditor::restyleEditorIcons()
         patternEdit->setHoverTint(mPatternHoverTint);
     }
 
-    // The banner's picture, at the size of the line of text beside it rather
-    // than the 64px block the .ui file sizes it as. Which of the three it is is
-    // the only thing the banner says without words, so the hue is kept and only
-    // the lightness comes off the page - the way the compile chip is mixed. The
-    // error of the three is the one red, so a refusal on the banner and the note
-    // over the code pane are drawn in the same value.
-    if (mpSystemMessageArea) {
-        const QColor warningColor = uiDesign::stateColor(uiDesign::scmStateHue_warning, tokens.darkPage);
-        const QColor errorColor = uiDesign::errorInk(tokens);
-        // Line glyphs rather than the old full-colour bitmaps: a picture tinted
-        // through its alpha channel keeps only the shape that channel carries,
-        // and those bitmaps' alpha is a solid disc or triangle - so the info
-        // notice came out as a filled circle with nothing readable in it
-        const QList<std::tuple<QLabel*, QString, QColor>> bannerGlyphs{{mpSystemMessageArea->notificationAreaIconLabelError, qsl(":/icons/editor-notice-error.svg"), errorColor},
-                                                                       {mpSystemMessageArea->notificationAreaIconLabelWarning, qsl(":/icons/editor-notice-warning.svg"), warningColor},
-                                                                       {mpSystemMessageArea->notificationAreaIconLabelInformation, qsl(":/icons/editor-notice-info.svg"), accentText}};
-        for (const auto& [pLabel, glyphFile, glyphColor] : bannerGlyphs) {
-            const qreal glyphRatio = pLabel->devicePixelRatioF();
-            QPixmap glyph = uiDesign::tintedGlyph(uiDesign::glyphPixmap(glyphFile), glyphColor)
-                                    .scaled(QSize(scmEditorBannerGlyphSize, scmEditorBannerGlyphSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    // The three pictures beside the banner's words are the notice's own: it
+    // styles itself from the tokens on every appearance change, so the window
+    // holding it writes nothing onto them.
+    //
+    // The cross that dismisses the banner is this window's, though. The .ui
+    // file shipped it as application-exit.png - a full-colour bitmap of a red
+    // cross, which read as an error on a banner that is usually a tip, and was
+    // the one picture on the banner not inked from the palette.
+    if (QToolButton* pClose = mpSystemMessageArea ? mpSystemMessageArea->messageAreaCloseButton : nullptr) {
+        const qreal glyphRatio = pClose->devicePixelRatioF();
+        const auto crossInked = [glyphRatio](const QColor& colour) {
+            QPixmap glyph = uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-clear.svg")), colour)
+                                    .scaled(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
             glyph.setDevicePixelRatio(glyphRatio);
-            pLabel->setPixmap(glyph);
-            pLabel->setMargin(0);
-            pLabel->setFixedSize(scmEditorBannerGlyphSize, scmEditorBannerGlyphSize);
-        }
-
-        // ...and the cross that dismisses the banner, in the same hand. The .ui
-        // file shipped it as application-exit.png - a full-colour bitmap of a
-        // red cross, which read as an error on a banner that is usually a tip,
-        // and was the one picture on the banner not inked from the palette.
-        if (QToolButton* pClose = mpSystemMessageArea->messageAreaCloseButton) {
-            const qreal glyphRatio = pClose->devicePixelRatioF();
-            const auto crossInked = [glyphRatio](const QColor& colour) {
-                QPixmap glyph = uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-clear.svg")), colour)
-                                        .scaled(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                glyph.setDevicePixelRatio(glyphRatio);
-                return glyph;
-            };
-            QIcon cross(crossInked(tokens.mutedText));
-            // Quiet until the pointer is on it: dismissing is not what the
-            // banner is there to offer
-            cross.addPixmap(crossInked(tokens.text), QIcon::Active);
-            pClose->setIcon(cross);
-            pClose->setIconSize(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize));
-        }
+            return glyph;
+        };
+        QIcon cross(crossInked(tokens.mutedText));
+        // Quiet until the pointer is on it: dismissing is not what the banner
+        // is there to offer
+        cross.addPixmap(crossInked(tokens.text), QIcon::Active);
+        pClose->setIcon(cross);
+        pClose->setIconSize(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize));
     }
 }
 
@@ -17384,19 +17360,10 @@ void dlgTriggerEditor::applyEditorShellStyle()
     //
     // All seven trees alike: the tree of Lua variables is drawn by a delegate of
     // its own, and that one paints the bar down a chosen row the same way.
-    const QColor selectedRow = uiDesign::blend(paneColor, accentColor, uiDesign::scmAccentWashStrength);
-    const QString treeRules = qsl("QTreeWidget { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }"
-                                  "QTreeWidget::item { border-radius: %5px; border-left: %6px solid transparent; padding: 2px 4px 2px %7px; }"
-                                  "QTreeWidget::item:hover { background-color: %2; }"
-                                  "QTreeWidget::item:selected { color: %4; background-color: %3; }")
-                                      .arg(paneColor.name(),
-                                           hoverSoft,
-                                           selectedRow.name(),
-                                           accentText.name(),
-                                           QString::number(uiDesign::scmRadiusPanel),
-                                           QString::number(uiDesign::scmAccentBarWidth),
-                                           QString::number(scmEditorTreeRowGutter - uiDesign::scmAccentBarWidth))
-                              + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
+    // ...and the rules that say all of that are uiDesign::itemRowStyleSheet(),
+    // since the package manager lists its packages the same way and a second
+    // copy of them is how two lists come to disagree about what a chosen row is
+    const QString treeRules = uiDesign::itemRowStyleSheet(qsl("QTreeWidget"), tokens, paneColor, scmEditorTreeRowGutter) + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables};
     for (QTreeWidget* pTreeWidget : panelTrees) {

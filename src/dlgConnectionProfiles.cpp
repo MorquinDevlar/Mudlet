@@ -47,11 +47,15 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QListView>
 #include <QMenu>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPointer>
 #include <QRandomGenerator>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QTabBar>
 #include <QTime>
 #include <chrono>
@@ -62,6 +66,142 @@ using namespace std::chrono_literals;
 // What the validator has to say about one of the connection fields, which the
 // page's stylesheet draws the wash on it from. Absent while the field is fine.
 static constexpr char scmProp_fieldState[] = "connectionFieldState";
+
+// The picture standing for a profile in the games list: either generated from
+// the profile's name or a picture the user supplied. Both are the same size,
+// and both are cut to the same corner below.
+static constexpr int scmProfileChipWidth = 120;
+static constexpr int scmProfileChipHeight = 30;
+
+// A chip in the games list is a word in a box, so it takes the corner every
+// other one in these two windows does. Both kinds go through here: a square
+// user picture beside a rounded generated one would read as two kinds of thing
+// in the one column.
+//
+// Built at the screen's pixel ratio rather than at 120x30 flat, or the rounded
+// edge and the text on it are drawn at half the resolution the rest of the row
+// is and come back soft.
+static QPixmap roundedChip(const QPixmap& face, const qreal ratio)
+{
+    QPixmap chip(QSize(scmProfileChipWidth, scmProfileChipHeight) * ratio);
+    chip.setDevicePixelRatio(ratio);
+    chip.fill(Qt::transparent);
+
+    QPainter painter(&chip);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPainterPath corner;
+    corner.addRoundedRect(QRectF(0, 0, scmProfileChipWidth, scmProfileChipHeight), uiDesign::scmRadiusChip, uiDesign::scmRadiusChip);
+    painter.setClipPath(corner);
+    painter.drawPixmap(QRect(0, 0, scmProfileChipWidth, scmProfileChipHeight), face);
+    return chip;
+}
+
+// A picture of whatever size it was drawn at - a game's banner from the
+// resources, a profile's own from disk - brought to the chip: scaled to it at
+// the screen's pixel ratio, then cut to its corner
+static QIcon chipIcon(const QPixmap& source, const qreal ratio)
+{
+    const QPixmap face = source.scaled(QSize(scmProfileChipWidth, scmProfileChipHeight) * ratio, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    return QIcon(roundedChip(face, ratio));
+}
+
+ProfileChipDelegate::ProfileChipDelegate(QObject* parent)
+: QStyledItemDelegate(parent)
+{
+    restyle(uiDesign::themeTokens());
+}
+
+void ProfileChipDelegate::restyle(const uiDesign::ThemeTokens& tokens)
+{
+    // The pointer is on it, or it is the one chosen, so it is the accent's -
+    // the same ink every other lit thing in these windows is drawn with. Walked
+    // to the quiet floor against the list's surface the way the profile strip
+    // walks its chosen chip: on the light appearance the platform's accent is
+    // the pale highlight of a selection, which on a white list is no ring at all.
+    mHaloInk = uiDesign::readableOn(tokens.field, tokens.accent, tokens.text, uiDesign::scmQuietMinimumRatio);
+}
+
+QColor ProfileChipDelegate::haloInk() const
+{
+    return mHaloInk;
+}
+
+// How far the halo reaches past the picture: the gap it stands off by plus its
+// own width, on every side. What the item's rectangle has to carry over the
+// picture, and what paint() centres the picture inside.
+static constexpr int scmChipHaloRoom = ProfileChipDelegate::scmChipHaloGap + ProfileChipDelegate::scmChipHaloWidth;
+
+// The picture's own rectangle inside an item's. The style is not asked for it:
+// its decoration rectangle lays the picture against the top of a taller row,
+// which leaves no room under it for the halo.
+static QRect chipRectIn(const QRect& item)
+{
+    if (item.width() < scmProfileChipWidth || item.height() < scmProfileChipHeight) {
+        return {};
+    }
+    return QRect(item.left() + (item.width() - scmProfileChipWidth) / 2, item.top() + (item.height() - scmProfileChipHeight) / 2, scmProfileChipWidth, scmProfileChipHeight);
+}
+
+QRect ProfileChipDelegate::chipRect(const QListView* pView, const QModelIndex& index) const
+{
+    if (!pView || !index.isValid()) {
+        return {};
+    }
+    return chipRectIn(pView->visualRect(index));
+}
+
+QSize ProfileChipDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    Q_UNUSED(option)
+    Q_UNUSED(index)
+    return {scmProfileChipWidth + 2 * scmChipHaloRoom, scmProfileChipHeight + 2 * scmChipHaloRoom};
+}
+
+void ProfileChipDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    const QRect chip = chipRectIn(option.rect);
+    if (chip.isEmpty()) {
+        return;
+    }
+
+    const bool chosen = option.state & QStyle::State_Selected;
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setBrush(Qt::NoBrush);
+
+    if (chosen) {
+        // The gap filled in as well: one solid band of the accent from the
+        // picture's edge out to where the ring ends. Under the picture rather
+        // than over it, so the band's antialiased inner edge never lands on the
+        // picture's own pixels. A stroke is drawn centred on the path, so the
+        // path is half the band's width out.
+        constexpr qreal frameWidth = scmChipHaloRoom;
+        painter->setPen(QPen(mHaloInk, frameWidth));
+        const qreal outward = frameWidth / 2.0;
+        painter->drawRoundedRect(QRectF(chip).adjusted(-outward, -outward, outward, outward), uiDesign::scmRadiusChip + outward, uiDesign::scmRadiusChip + outward);
+    }
+
+    const auto icon = index.data(Qt::DecorationRole).value<QIcon>();
+    if (!icon.isNull()) {
+        // A row the typed search does not match has its enabled flag cleared,
+        // and the greying that goes with it is the list's answer to the search.
+        // Painting the picture here rather than through the base delegate means
+        // carrying that over.
+        icon.paint(painter, chip, Qt::AlignCenter, (option.state & QStyle::State_Enabled) ? QIcon::Normal : QIcon::Disabled);
+    }
+
+    if (!chosen && (option.state & QStyle::State_MouseOver)) {
+        // Standing off the picture: nothing over the gap, the accent over the
+        // ring's own width. The list's surface showing through the gap is what
+        // keeps the ring legible on a bright banner.
+        constexpr qreal standOff = scmChipHaloGap + scmChipHaloWidth / 2.0;
+        painter->setPen(QPen(mHaloInk, scmChipHaloWidth));
+        painter->drawRoundedRect(QRectF(chip).adjusted(-standOff, -standOff, standOff, standOff), uiDesign::scmRadiusChip + standOff, uiDesign::scmRadiusChip + standOff);
+    }
+
+    painter->restore();
+}
 
 // Kept to a sub-set of ASCII because the profile name is also used as a
 // directory name on all supported OSes; parentheses are included so that
@@ -142,25 +282,49 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
             mDateTimeFormat.remove(QLatin1Char('t'), Qt::CaseSensitive);
         }
     }
-    QPixmap holdPixmap;
-
-    holdPixmap = notificationAreaIconLabelWarning->pixmap(Qt::ReturnByValue);
-    holdPixmap.setDevicePixelRatio(5.3);
-    notificationAreaIconLabelWarning->setPixmap(holdPixmap);
-
-    holdPixmap = notificationAreaIconLabelError->pixmap(Qt::ReturnByValue);
-    holdPixmap.setDevicePixelRatio(5.3);
-    notificationAreaIconLabelError->setPixmap(holdPixmap);
-
-    holdPixmap = notificationAreaIconLabelInformation->pixmap(Qt::ReturnByValue);
-    holdPixmap.setDevicePixelRatio(5.3);
-    notificationAreaIconLabelInformation->setPixmap(holdPixmap);
+    // The notice under the games list is the editor's banner: a wash of the
+    // accent with a hairline round it and one line glyph beside the words. What
+    // the .ui file pinned for the old 3px box round 64px bitmaps is undone here
+    // rather than in the file, so every object name and connection on it stays
+    // where the rest of this window expects it.
+    if (QLayout* pNoticeLayout = notificationArea->layout()) {
+        pNoticeLayout->setContentsMargins(uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical, uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical);
+        pNoticeLayout->setSpacing(uiDesign::scmNoticeSpacing);
+    }
+    // 70px was the height a stack of 64px pictures needed; a notice is as tall
+    // as the line or two of words in it
+    notificationArea->setMinimumHeight(0);
+    // The frame was set at 16pt and the words inside it at 8pt, which is two
+    // sizes nothing else on this dialog is read at. A default-constructed font
+    // is the one a widget inherits from what holds it.
+    notificationArea->setFont(QFont());
+    notificationAreaMessageBox->setFont(QFont());
+    // ...and the 5px each label kept round itself, which the layout's own
+    // padding now provides
+    notificationAreaMessageBox->setMargin(0);
+    // The wash is painted by the sheet. A widget filling itself with the
+    // palette's window colour first would paint a square of it over the frame's
+    // rounded corner, so neither the frame nor the labels on it do.
+    notificationArea->setAutoFillBackground(false);
+    for (QLabel* pLabel : {notificationAreaIconLabelWarning, notificationAreaIconLabelError, notificationAreaIconLabelInformation, notificationAreaMessageBox}) {
+        pLabel->setAutoFillBackground(false);
+    }
 
     // selection mode is important. if this is not set the selection behaviour is
     // undefined. this is an undocumented qt bug, as it only shows on certain OS
     // and certain architectures.
 
     listWidget_profiles->setSelectionMode(QAbstractItemView::SingleSelection);
+    // The list's own surface is still the platform's: the delegate draws the
+    // chips themselves, with the accent halo round the one under the pointer
+    // and the solid accent frame round the one chosen
+    mpProfileChipDelegate = new ProfileChipDelegate(listWidget_profiles);
+    listWidget_profiles->setItemDelegate(mpProfileChipDelegate);
+    // A view takes what the pointer is over off hover events, and those are
+    // only sent to a widget that asks for them. Measured rather than assumed:
+    // this viewport carries neither the attribute nor mouse tracking of its
+    // own, so without this the delegate is never painted a hovered row.
+    listWidget_profiles->viewport()->setAttribute(Qt::WA_Hover, true);
     listWidget_profiles->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(listWidget_profiles, &QWidget::customContextMenuRequested, this, &dlgConnectionProfiles::slot_profileContextMenu);
 
@@ -453,11 +617,12 @@ void dlgConnectionProfiles::slot_applyAppearance()
     applyConnectionShellStyle();
 }
 
-// The two tab pages and every button on the window: the games list, the notice
-// and the information box are still drawn by the platform. The sheet goes on
-// each page rather than on the tab widget, which would take the tab bar with
-// it, and rather than on the dialog, whose stylesheet a profile's Lua one is
-// assigned to on every show.
+// The two tab pages, every button on the window and the notice under the games
+// list, plus the ink of the ring the chip delegate draws: the games list's own
+// selection and the information box beside it are still drawn by the platform.
+// The sheet goes on each page rather than on the tab widget,
+// which would take the tab bar with it, and rather than on the dialog, whose
+// stylesheet a profile's Lua one is assigned to on every show.
 void dlgConnectionProfiles::applyConnectionShellStyle()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -492,6 +657,13 @@ void dlgConnectionProfiles::applyConnectionShellStyle()
     tab_connection_info->setStyleSheet(sheet);
     tab_options->setStyleSheet(sheet);
 
+    // The information box: the game's description, or the player's own notes
+    // on a profile, is a field the way the notepad's notes are one - the field
+    // surface, the hairline and the field's corner - rather than the square
+    // platform frame the .ui file leaves it with. The group box round it and
+    // the links above it stay as they are.
+    informationArea->setStyleSheet(uiDesign::inputStyleSheet(tokens, qsl("#informationArea")) + uiDesign::scrollBarStyleSheet(qsl("#informationArea QPlainTextEdit"), tokens, tokens.field));
+
     // Everything on this dialog that is a button: Remove, Copy and New over the
     // games list, and the skip button and the button box under it. The sheet
     // goes on the two containers rather than on the dialog, for the same reason
@@ -522,6 +694,30 @@ void dlgConnectionProfiles::applyConnectionShellStyle()
     // default button.
     uiDesign::keepClickFocusOffControls(profileAdminArea);
     uiDesign::keepClickFocusOffControls(widget_bottom);
+
+    // The halo round the hovered and the chosen chip is painted rather than
+    // written into a sheet, so nothing about a new appearance reaches it on its
+    // own
+    if (mpProfileChipDelegate) {
+        mpProfileChipDelegate->restyle(tokens);
+        listWidget_profiles->viewport()->update();
+    }
+
+    // What the window has to say about the profile being edited, drawn as the
+    // editor's banner is - one recipe for the control kind, in both windows
+    notificationArea->setStyleSheet(uiDesign::noticeStyleSheet(qsl("QFrame#notificationArea"), tokens));
+    // The words of the notice are named on the label itself rather than left to
+    // the descendant rule above, which does not reach them: the area is hidden
+    // while the window round it is styled and is polished only when a notice
+    // brings it out, and that polish writes the application's own ink into the
+    // label's palette. A sheet the label carries survives it.
+    notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(tokens.mutedText.name()));
+    // Which of the three is showing is the callers' business - the validator
+    // and the profile-loaded check show and hide these themselves - so all
+    // three carry their picture from here
+    uiDesign::applyNoticeGlyph(notificationAreaIconLabelInformation, uiDesign::NoticeKind::Information, tokens);
+    uiDesign::applyNoticeGlyph(notificationAreaIconLabelWarning, uiDesign::NoticeKind::Warning, tokens);
+    uiDesign::applyNoticeGlyph(notificationAreaIconLabelError, uiDesign::NoticeKind::Error, tokens);
 
     // Measured rather than named: the .ui pinned this field to 40-50px for the
     // 9pt font it also set, and the field is at the dialog's own font now. Five
@@ -1881,8 +2077,7 @@ void dlgConnectionProfiles::loadCustomProfile(const QString& profileName) const
 void dlgConnectionProfiles::setCustomIcon(const QString& profileName, QListWidgetItem* profile) const
 {
     auto profileIconPath = mudlet::getMudletPath(enums::profileDataItemPath, profileName, qsl("profileicon"));
-    auto icon = QIcon(QPixmap(profileIconPath).scaled(QSize(120, 30), Qt::IgnoreAspectRatio, Qt::SmoothTransformation).copy());
-    profile->setIcon(icon);
+    profile->setIcon(chipIcon(QPixmap(profileIconPath), devicePixelRatioF()));
 }
 
 // When a profile is renamed, migrate password storage to the new profile
@@ -2028,9 +2223,8 @@ void dlgConnectionProfiles::slot_setCustomIcon()
         return;
     }
 
-    auto icon = QIcon(QPixmap(imageLocation).scaled(QSize(120, 30), Qt::IgnoreAspectRatio, Qt::SmoothTransformation).copy());
     // the file dialog ran a nested event loop, so the current item may have moved
-    setIconOfListedProfile(profileName, icon);
+    setIconOfListedProfile(profileName, chipIcon(QPixmap(imageLocation), devicePixelRatioF()));
 }
 void dlgConnectionProfiles::slot_setCustomColor()
 {
@@ -2761,11 +2955,7 @@ void dlgConnectionProfiles::setupMudProfile(QListWidgetItem* pItem, const QStrin
             qWarning() << mudServer << "doesn't have a valid icon";
             return;
         }
-        if (pixmap.width() != 120) {
-            pItem->setIcon(pixmap.scaled(QSize(120, 30), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
-        } else {
-            pItem->setIcon(QIcon(iconFileName));
-        }
+        pItem->setIcon(chipIcon(pixmap, devicePixelRatioF()));
     } else {
         setCustomIcon(mudServer, pItem);
     }
@@ -2776,7 +2966,9 @@ void dlgConnectionProfiles::setupMudProfile(QListWidgetItem* pItem, const QStrin
 
 QIcon dlgConnectionProfiles::customIcon(const QString& text, const std::optional<QColor>& backgroundColor) const
 {
-    QPixmap background(120, 30);
+    const qreal ratio = devicePixelRatioF();
+    QPixmap background(QSize(scmProfileChipWidth, scmProfileChipHeight) * ratio);
+    background.setDevicePixelRatio(ratio);
 
     const QColor color = backgroundColor.value_or(mCustomIconColors.at(static_cast<int>((qHash(text) * 8131) % mCustomIconColors.count())));
     background.fill(color);
@@ -2808,7 +3000,7 @@ QIcon dlgConnectionProfiles::customIcon(const QString& text, const std::optional
         painter.setFont(font);
         painter.drawText(QRect(30, 0, 90, 30), Qt::AlignCenter | Qt::TextWordWrap, text);
     }
-    return QIcon(background);
+    return QIcon(roundedChip(background, ratio));
 }
 
 void dlgConnectionProfiles::clearNotificationArea()

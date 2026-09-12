@@ -25,16 +25,68 @@
 
 #include "ui_connection_profiles.h"
 #include <optional>
+#include <QColor>
 #include <QRegularExpression>
+#include <QStyledItemDelegate>
 #include <QTimer>
 #include <QKeyEvent>
 
 class QDir;
+class QListView;
 class QTabBar;
 
 namespace pugi {
 class xml_document;
 }
+
+namespace uiDesign {
+struct ThemeTokens;
+}
+
+// One game in the connection dialog's list, drawn as a halo round the chip:
+// under the pointer an accent ring standing off the picture, and while it is
+// the chosen one a solid accent frame filling that gap in. The gap is what
+// keeps the ring readable over a green banner and a white one alike.
+//
+// The picture is painted here rather than by QStyledItemDelegate::paint(),
+// which is what drew the platform's own selection - the underline below the
+// chip that the frame replaces. Painted rather than written as `::item:hover`
+// and `::item:selected` rules, which would hand the whole list to Qt's
+// stylesheet style.
+class ProfileChipDelegate : public QStyledItemDelegate
+{
+    Q_OBJECT
+
+public:
+    // How the halo stands off the picture, in logical pixels: nothing for the
+    // first two, then two of the accent. The chosen row's frame is the two
+    // together, drawn solid.
+    static constexpr int scmChipHaloGap = 2;
+    static constexpr int scmChipHaloWidth = 2;
+
+    explicit ProfileChipDelegate(QObject* parent = nullptr);
+
+    // The halo's ink, taken again whenever the appearance moves. The dialog's
+    // own style pass is what calls it.
+    void restyle(const uiDesign::ThemeTokens& tokens);
+    // The ink the ring and the frame are drawn in, for a test to read a grab against
+    QColor haloInk() const;
+
+    // Where the halo is stroked for a row: the 120x30 picture centred in the
+    // item's rectangle, which is the halo's width wider and taller on every
+    // side. Public so the window's test reads the rectangle the halo is
+    // actually on rather than guessing where the picture sits in the row.
+    QRect chipRect(const QListView* pView, const QModelIndex& index) const;
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
+    // The item has to hold its own halo: a view repaints one item's rectangle
+    // when the pointer moves on or off it, so anything drawn outside that
+    // rectangle is left behind as a fragment.
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
+
+private:
+    QColor mHaloInk;
+};
 
 class dlgConnectionProfiles : public QDialog, public Ui::connection_profiles
 {
@@ -174,6 +226,9 @@ private:
     QAction* mpCopyProfile = nullptr;
     // switches the profiles list between the user's own games and the full catalog
     QTabBar* mpTabBar = nullptr;
+    // draws the chips, with the accent halo round the one the pointer is over
+    // and round the one chosen
+    ProfileChipDelegate* mpProfileChipDelegate = nullptr;
     QPushButton* offline_button = nullptr;
     QPushButton* connect_button = nullptr;
     QString mDiscordApplicationId;

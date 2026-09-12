@@ -1534,6 +1534,26 @@ on, and the About dialog with an `about*` one: `aboutShell`, `aboutArtColumn`,
 `aboutNav`, `aboutNavButton_<key>`, `aboutStack`, `aboutPage_<key>` and
 `aboutColumn_<key>`.
 
+...and the package manager's, with a `packages*` prefix on what the shell adds and the `.ui`
+file's own names kept on everything else, since every other package test presses those.
+`applyPackageManagerShellStyle()` builds three sheets - one on `leftPanel`, one on `packageList`
+and one on `rightPanel` - and none on the dialog, for the same reason none of the other shells'
+go on their window.
+
+| Name | What it is |
+| --- | --- |
+| `leftPanel` | The list column, on the pane tone with the seam down its trailing edge |
+| `rightPanel` | The details column, on the page tone |
+| `packagesViewBar` | The `QTabBar` the three views are chosen from, held to the leading edge; `headerBar` keeps the three buttons it replaced, hidden, since the group, the slots and the other package tests all press those |
+| `lineEdit_searchBar` | The field the list is narrowed with, carrying `settings-search.svg` as a leading action |
+| `packageList` | The rows, drawn by `PackageItemDelegate` on `itemRowStyleSheet()` |
+| `packagesNotice` | The `dlgSystemMessageArea` under the list, which `showImportStatus()` brings out in its warning reading; `label_importStatus` is left hidden and unused |
+| `pushButton_installFile` | Install from a file, the full width of the column under the list |
+| `pushButton_installRepo`, `pushButton_remove` | Install or Update, and Remove - moved into the details column, and hidden rather than disabled in the view they do not apply to |
+| `pushButton_website`, `pushButton_report` | Website and Report an issue, at the trailing end of that row |
+| `label_icon`, `label_packageName`, `label_title`, `label_author`, `label_version` | The head of the details column: the picture cut to `scmRadiusInput` at 48px (or the package glyph on a card-tone box), the name at `TypeStep::Title`, the one-line summary, and the author and version as one caption line |
+| `packageDescription` | The notes, as a field, with a document stylesheet mixed from the tokens |
+
 Three of the `settings*` names are not the settings dialog's alone.
 `settingsRail` and `settingsFocused` are the contract `SidebarItemDelegate` and
 `sidebarStyleSheet()` are written against, and `settingsSurface` - which

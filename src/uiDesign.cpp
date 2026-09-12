@@ -709,6 +709,23 @@ QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& to
             .arg(selectorPrefix, groove.name(), blend(groove, tokens.text, 0.22).name(), blend(groove, tokens.text, 0.40).name());
 }
 
+// One row, drawn the one way wherever the design lists things: the editor's
+// seven item trees and the package manager's list of packages. The bar down a
+// chosen row's leading edge is not here - paintAccentBar() in the view's
+// delegate draws that, over the pill these rules fill - but the gutter it
+// stands in is, as a transparent border that is never coloured and that the
+// row's own leading padding gives back.
+QString itemRowStyleSheet(const QString& viewSelector, const ThemeTokens& tokens, const QColor& surface, const int rowGutter)
+{
+    const QColor selectedRow = blend(surface, tokens.accent, scmAccentWashStrength);
+    const QString row = viewSelector + qsl("::item");
+    return viewSelector + qsl(" { background-color: %1; border: none; outline: none; show-decoration-selected: 1; }").arg(surface.name()) + row
+           + qsl(" { border-radius: %1px; border-left: %2px solid transparent; padding: %3px %4px %3px %5px; }")
+                     .arg(QString::number(scmRadiusPanel), QString::number(scmAccentBarWidth), QString::number(scmItemRowPaddingVertical))
+                     .arg(QString::number(scmItemRowPaddingTrailing), QString::number(rowGutter - scmAccentBarWidth))
+           + row + qsl(":hover { background-color: %1; }").arg(tokens.hoverSoft) + row + qsl(":selected { color: %1; background-color: %2; }").arg(tokens.accentText.name(), selectedRow.name());
+}
+
 QString sidebarStyleSheet(const QString& listName, const QString& separatorName, const QColor& itemColor, const SidebarMetrics& metrics, const ThemeTokens& tokens)
 {
     // A border-left accent bar is drawn as an arc where the pill's corner
@@ -1910,6 +1927,61 @@ void restyleActionGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& to
         }
         glyph.pAction->setIcon(glyph.glyphOn.isEmpty() ? tintedIcon(glyph.glyphOff, tokens) : tintedIcon(glyph.glyphOff, glyph.glyphOn, tokens));
     }
+}
+
+QString noticeStyleSheet(const QString& frameSelector, const ThemeTokens& tokens)
+{
+    // A notice rather than a strip of highlighter pen: the accent the rest of
+    // the window points with, and the picture beside the words is what says
+    // which of the three readings this one is
+    return qsl("%1 { background-color: %2; border: 1px solid %3; border-radius: %5px; }"
+               "%1 QLabel { background: transparent; color: %4; }")
+            .arg(frameSelector, tokens.accentSoft, tokens.accent.name(), tokens.mutedText.name(), QString::number(scmRadiusPanel));
+}
+
+QPixmap noticeGlyph(const NoticeKind kind, const ThemeTokens& tokens, const qreal devicePixelRatio)
+{
+    // Line glyphs rather than the full-colour bitmaps the .ui files ship: a
+    // picture tinted through its alpha channel keeps only the shape that
+    // channel carries, and those bitmaps' alpha is a solid disc or triangle -
+    // so the information notice came out as a filled circle with nothing
+    // readable in it.
+    //
+    // Which of the three it is is the only thing a notice says without words, so
+    // the hue is kept and only the lightness comes off the page - the way the
+    // editor's compile chip is mixed. The error of the three is the one red, so
+    // a refusal on a notice and the note over the code pane are drawn in the
+    // same value.
+    QString glyphFile;
+    QColor glyphColour;
+    switch (kind) {
+    case NoticeKind::Warning:
+        glyphFile = qsl(":/icons/editor-notice-warning.svg");
+        glyphColour = stateColor(scmStateHue_warning, tokens.darkPage);
+        break;
+    case NoticeKind::Error:
+        glyphFile = qsl(":/icons/editor-notice-error.svg");
+        glyphColour = errorInk(tokens);
+        break;
+    case NoticeKind::Information:
+        glyphFile = qsl(":/icons/editor-notice-info.svg");
+        glyphColour = tokens.accentText;
+        break;
+    }
+
+    QPixmap glyph = tintedGlyph(glyphPixmap(glyphFile), glyphColour).scaled(QSize(scmNoticeGlyphSize, scmNoticeGlyphSize) * devicePixelRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph.setDevicePixelRatio(devicePixelRatio);
+    return glyph;
+}
+
+void applyNoticeGlyph(QLabel* pLabel, const NoticeKind kind, const ThemeTokens& tokens)
+{
+    if (!pLabel) {
+        return;
+    }
+    pLabel->setPixmap(noticeGlyph(kind, tokens, pLabel->devicePixelRatioF()));
+    pLabel->setMargin(0);
+    pLabel->setFixedSize(scmNoticeGlyphSize, scmNoticeGlyphSize);
 }
 
 QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens)

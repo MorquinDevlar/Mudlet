@@ -97,8 +97,9 @@ inline constexpr char scmProp_aboutRichText[] = "aboutRichText";
 // down alike, and the slot the glyph in one is drawn in
 constexpr int scmChipSpacing = 5;
 constexpr int scmChipGlyphSize = 18;
-// ...and the glyph beside the licence notice
-constexpr int scmNoticeGlyphSize = 18;
+// ...and the glyph beside the licence notice. Named for this window: a
+// notice elsewhere is uiDesign's shared control, drawn at its own size.
+constexpr int scmAboutLicenceGlyphSize = 18;
 // The column a contributor's name and contacts stand in, beside what they did.
 // In characters rather than pixels, so a 25-character address still fits when
 // the interface font is set at 150%.
@@ -1285,7 +1286,7 @@ void dlgAboutDialog::applyShellStyle()
     restyleContactChips(tokens);
     restyleArtwork(tokens);
     if (auto* pNoticeGlyph = findChild<QLabel*>(qsl("aboutLicenseNoticeGlyph")); pNoticeGlyph) {
-        pNoticeGlyph->setPixmap(glyphAt(qsl(":/icons/about-mudlet.svg"), scmNoticeGlyphSize, devicePixelRatioF(), tokens.accentText));
+        pNoticeGlyph->setPixmap(glyphAt(qsl(":/icons/about-mudlet.svg"), scmAboutLicenceGlyphSize, devicePixelRatioF(), tokens.accentText));
     }
     if (auto* pPatreon = findChild<QPushButton*>(qsl("aboutPatreonButton")); pPatreon) {
         pPatreon->setIcon(QIcon(tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/about-patreon.png")), tokens.accentText)));

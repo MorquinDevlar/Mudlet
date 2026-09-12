@@ -98,9 +98,11 @@ State colours (ok, warning, error) come from `stateColor(scmStateHue_*, darkPage
 | Disclosure button (a strip or row that opens and closes) | `disclosureButtonStyleSheet(buttonSelector, tokens)` | A checkable button carrying a glyph and a word: a button's own face, the chrome tone and the border hairline at rest, `accentText` on the accent's wash and hairline while checked, so it says the thing it opened is on show. The selector names the one button, or every tool button on the form is claimed. Set the height from the caller - the padding is air round the contents, not the height |
 | Menu, context menu | `menuStyleSheet(tokens, prefix)` + `letPopupsTakeTheFieldsCorner(container)` | The list a combo box drops, on the card tone: the field's hairline, `scmRadiusInput`, the chip's corner on a row, `accentSoft`/`accentText` under the pointer's row, and the one choice mark on a checkable one. Set it on whatever the menu hangs off - a button's menu is reached by the bar's sheet - and open the corner on that same container. A menu built at the moment it is needed gets both from the code that builds it, before `exec()` |
 | Tab strip | `tabBarStyleSheet(tabWidgetSelector, tokens)` | A `QTabWidget`'s tabs as a row of chips on the page rather than the folder tabs a platform cuts: `mutedText` on nothing at rest, `hoverSoft`/`accentText` under the pointer, `accentSoft`/`accentText` while chosen, `scmRadiusChip` throughout and the accent on the border from the keyboard. The pane takes `scmTabPaneInset` of margin and no border, so a field filling it opens its corner onto the page; the strip starts at the same inset. A closable tab's cross is `editor-clear.svg` through `themedGlyphFile()`, left out where the cache could not be written. Scoped to the one tab widget, so a window's other tab bars keep what they had. What it does not draw: the scroll buttons a crowded strip shows, whose arrows are a sub-control of a tool button the bar makes itself. `prepareTabStrip(pTabBar)` is the caller's one job - the base off, or the macOS style fills the whole bar with a band of its own behind the tabs, and every cross kept to `scmTabCloseBoxSize` and inside the chip's padding, since Qt's close button sizes itself from `PM_TabCloseIndicatorWidth` in its constructor and no `::close-button` rule is asked (20 under Fusion, 14 under the macOS style), which stretches the mark inside the picture by the same ratio, and Qt places that box on the tab's raw rectangle rather than in the box the word is laid in, which puts it outside the chip altogether. A bare `QTabBar` that has to keep painting of its own - a font per tab, an indicator - cannot take this sheet at all, since a `::tab` rule hands the tab to Qt's stylesheet style: see `TTabBar`, which paints the same chip from these same constants |
+| Notice / banner | `noticeStyleSheet(frameSelector, tokens)` + `applyNoticeGlyph(label, kind, tokens)` | A line or two of words a window has to say something with: the accent's wash, a 1px accent hairline, `scmRadiusPanel` and `mutedText` words at the window's own font, with one 20px tinted Lucide glyph (`NoticeKind::Information` / `Warning` / `Error`) beside them. The selector names the one frame - the editor's `frame_notificationArea`, the connection dialog's `notificationArea` - and the caller sets `scmNoticePaddingHorizontal`/`Vertical` and `scmNoticeSpacing` on that frame's layout. Both `.ui` files ship a 3px box round 64px full-colour bitmaps at 16pt; undo those in code (rule 9), including `autoFillBackground(false)` on the frame and its labels, or the palette's window colour is painted over the wash and through the rounded corner. The words also take a `color:` sheet of their own on the message label: the area is hidden while the window is styled and the polish that brings it out writes the application's ink into the label's palette |
 | Card with a title inside the frame | `cardStyleSheet(CardMetrics, tokens)` + `cardIndicatorStyleSheet()` + `measuredCardTitleHeight()` | Measure the title height with the indicator rules in force, or the first control paints over the title |
 | Sidebar list with rail collapse | `sidebarStyleSheet(...)` + `setSidebarCollapsed(...)` + `sidebarRowWidth(...)` + `SidebarItemDelegate` + `SidebarToggle` | The rail width, the paddings, the row height and the glyph are the component's own `scmSidebar*` constants; `SidebarMetrics` carries only what a window has a reason to differ by - the expanded width, which each measures off its widest row, and the vertical padding. A row is never a constant: `sidebarRowWidth()` asks the *base* style what an item of that name in bold and that icon needs (`CT_ItemViewItem`, widget `nullptr`, so a stylesheet style defers to the style underneath) and adds the accent bar and `::item` padding the sheet writes - a style leaves its own margins round an item's text, four pixels either side on macOS light against two under the dark theme, and a row measured for one elides in the other. `SidebarToggle` is the chevron on the seam, a child of the shell holding both panes, kept under `<window>SidebarLabelsShown` |
 | Scrollbars on a surface | `scrollBarStyleSheet(prefix, tokens, surface)` | A scroll area's bars answer only to a descendant selector |
+| Rows of a list or a tree | `itemRowStyleSheet(viewSelector, tokens, surface, rowGutter)` | The view on its own surface with no frame and no focus outline, every row cut to `scmRadiusPanel`, washed in `hoverSoft` under the pointer and filled with `blend(surface, accent, scmAccentWashStrength)` and inked `accentText` while chosen. The `border-left` it writes is the gutter the accent bar stands in - transparent on every row, never coloured, and given back out of the row's leading padding, so what a delegate draws at the leading edge stays where it was. The bar itself is `paintAccentBar()` in that view's delegate, which cuts it to the pill's own corner rather than to the arc a `border-left` is bent into. `viewSelector` is `QTreeWidget` for the editor's seven item trees and `QListWidget#packageList` for the package manager's list; `surface` is the pane in both |
 | Toolbar or sidebar glyphs | `tintedIcon(glyph, tokens)` / `restyleActionGlyphs(ActionGlyph ledger, tokens)` | Re-run on every appearance change |
 | A word in a box (chip) | `uiDesign::ChipRow` / `Chip` (`src/ChipRow.h`), `chipFont()` | `scmRadiusChip` |
 | Segmented two-way control | Editor's `QRadioButton[editorSegment]` rules | Read before adding a third |
@@ -118,15 +120,34 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
 - Settings dialog `dlgProfilePreferences` (shell, sidebar, cards, fields, marks, buttons, search)
 - Script editor `dlgTriggerEditor` (toolbar, sidebar, trees via `EditorTreeDelegate` /
   `VariableTreeDelegate`, seven forms, pattern rows, options strip, chips, code heading, notice)
-- The editor's notice `dlgSystemMessageArea`, which styles itself from the tokens on every
-  appearance change rather than being written to by the window holding it
+- The editor's notice `dlgSystemMessageArea`, which draws itself from `noticeStyleSheet()` and
+  `applyNoticeGlyph()` on every appearance change - its own frame, its own three glyphs - rather
+  than being written to by the window holding it; the editor keeps only the cross that dismisses it
 - About dialog `dlgAboutDialog` (`AboutLinkButton`, `AboutSupporterBanner`)
-- Connection dialog `dlgConnectionProfiles` - the two tabs' fields, marks and labels, and
-  every button on the window (`profileAdminArea` and `widget_bottom`, Copy through
-  `scmProp_menuButton`); games list, notice and information box still platform-drawn
+- Connection dialog `dlgConnectionProfiles` - the two tabs' fields, marks and labels, every
+  button on the window (`profileAdminArea` and `widget_bottom`, Copy through
+  `scmProp_menuButton`), the notice under the games list through the shared notice recipe, and
+  the games-list chips cut to `scmRadiusChip` at the screen's pixel ratio - the generated
+  ones, every shipped game banner and a user's own picture - which carry a halo on that same
+  corner: under the pointer a 2px accent ring standing 2px off the picture, and while it is the
+  chosen one that gap filled in as a solid 4px accent frame, drawn under the picture - both inked
+  in the accent walked with `readableOn()` to `scmQuietMinimumRatio` against the list's field
+  tone, since on the light appearance the platform's accent is a pastel that reads as nothing on
+  a white list. Both come
+  from `ProfileChipDelegate`, which paints the pictures itself rather than calling the base
+  delegate - that is what drew the platform's own selection - and is painted rather than written
+  as `::item:hover` / `::item:selected` rules, since those hand the whole list to Qt's stylesheet
+  style. The item's rectangle is the delegate's own `sizeHint()`, 4px larger than the picture on
+  every side, or the view leaves halo fragments behind when the pointer moves off a row. The
+  list's own surface and the group box frame round the information box are still platform-drawn; the
+  description inside that box is a field through `inputStyleSheet()` scoped to `#informationArea`
 - Notepad `dlgNotepad` - the strip of tabs as chips, the notes as fields, the find
   bar, and the bottom toolbar with the seam on its top, carrying the send strip in
   its three readings (reach, sending, no prefix)
+- Package manager `dlgPackageManager` - the three views as a row of chips, the search field
+  with its glyph inside it, the list's rows through `PackageItemDelegate` on the shared row
+  recipe, the notice under it, the buttons of both columns, the details head at the type scale
+  and the package's notes as a field
 - Profile tab strip `TTabBar` (main window and detached windows) - chips, the chosen one filled on
   a light page with the accent walked dark enough for `field`'s white to read on it and washed with
   the sidebar's accent bar and an outline on a dark one, its word in bold as the sidebar's chosen
@@ -149,8 +170,7 @@ for anything it adds, and adoption is one window per pull request):
 
 - Main window body: command line, search field, bottom icon buttons, dock title bars
 - Mapper dock `dlgMapper` and its map controls; `dlgRoomProperties`, `dlgRoomExits`, `dlgMapLabel`
-- Package manager, module manager, package exporter (`dlgPackageManager`, `dlgModuleManager`,
-  `dlgPackageExporter`)
+- Module manager and package exporter (`dlgModuleManager`, `dlgPackageExporter`)
 - Composer `dlgComposer`, IRC `dlgIRC`
 - Colour trigger picker `dlgColorTrigger`, UI tour
 - User-made toolbars `TToolBar` / `TEasyButtonBar` (profile-owned look, mostly out of scope)

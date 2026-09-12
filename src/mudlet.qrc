@@ -199,6 +199,10 @@
         <file>icons/notepad-send-line.svg</file>
         <file>icons/notepad-send-selection.svg</file>
         <file>icons/notepad-stop.svg</file>
+        <file>icons/packages-install-file.svg</file>
+        <file>icons/packages-install.svg</file>
+        <file>icons/packages-package.svg</file>
+        <file>icons/packages-update.svg</file>
         <file>icons/package-exporter.png</file>
         <file>icons/package-manager.png</file>
         <file>icons/password-show-off.png</file>

@@ -19,13 +19,56 @@
 
 #include "PackageItemDelegate.h"
 
-#include <QApplication>
+#include "utils.h"
+
 #include <QFontMetrics>
-#include <QPalette>
+#include <QIcon>
+#include <QModelIndex>
+#include <QPainter>
+#include <QStyleOptionViewItem>
+#include <QWidget>
 
 PackageItemDelegate::PackageItemDelegate(QObject* parent)
 : QStyledItemDelegate(parent)
 {
+    restyle(uiDesign::themeTokens());
+}
+
+void PackageItemDelegate::restyle(const uiDesign::ThemeTokens& tokens)
+{
+    // The name is the value on the row - what the package is called - so it
+    // takes the ink a typed value does; the summary under it is chrome
+    mNameInk = tokens.text;
+    mSummaryInk = tokens.mutedText;
+    // A chosen row is washed in the accent and both its lines are written in
+    // that wash's ink: a row where only the name lit would read as half chosen
+    mChosenInk = tokens.accentText;
+    mAccentBar = tokens.accent;
+    mCaptionSize = uiDesign::typeSize(uiDesign::TypeStep::Caption);
+
+    // Cut at the ratio of the window the list is in, so the glyph is drawn at
+    // the screen's resolution rather than blown up from a 16px square
+    const auto* pOwner = qobject_cast<const QWidget*>(parent());
+    const qreal ratio = pOwner ? pOwner->devicePixelRatioF() : 1.0;
+    const auto glyphInked = [ratio](const QColor& colour) {
+        QPixmap glyph =
+                uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/packages-package.svg")), colour).scaled(QSize(cIconSize, cIconSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        glyph.setDevicePixelRatio(ratio);
+        return glyph;
+    };
+    mQuietGlyph = glyphInked(mSummaryInk);
+    mChosenGlyph = glyphInked(mChosenInk);
+}
+
+void PackageItemDelegate::initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const
+{
+    QStyledItemDelegate::initStyleOption(option, index);
+    // Everything on the row is drawn below, so the base is left with the row's
+    // surface: the corner, the hover wash and the accent wash the sheet gives
+    // it, and nothing on top of them
+    option->text.clear();
+    option->icon = QIcon();
+    option->features &= ~QStyleOptionViewItem::HasDecoration;
 }
 
 void PackageItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
@@ -34,63 +77,59 @@ void PackageItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
         return;
     }
 
+    // The row's surface, which is the shared recipe's doing
+    QStyledItemDelegate::paint(painter, option, index);
+
+    const bool chosen = option.state & QStyle::State_Selected;
+    const QString name = index.data(Qt::DisplayRole).toString();
+    const QString summary = index.data(Qt::UserRole).toString();
+    const QIcon icon = index.data(Qt::DecorationRole).value<QIcon>();
+
     painter->save();
 
-    // Draw background and selection state
-    QStyleOptionViewItem opt = option;
-    initStyleOption(&opt, index);
-
-    // Draw the background
-    QStyle* style = opt.widget ? opt.widget->style() : QApplication::style();
-    style->drawPrimitive(QStyle::PE_PanelItemViewItem, &opt, painter, opt.widget);
-
-    // Get data from model
-    QString packageName = index.data(Qt::DisplayRole).toString();
-    QString description = index.data(Qt::UserRole).toString();
-    QIcon icon = index.data(Qt::DecorationRole).value<QIcon>();
-
-    // Calculate rects
-    QRect iconRect = opt.rect.adjusted(cTextMargin, cTextMargin, 0, 0);
-    iconRect.setSize(opt.decorationSize);
-
-    int textLeft = iconRect.right() + cTextMargin;
-    QRect textRect = opt.rect.adjusted(textLeft, cTextMargin, -cTextMargin, -cTextMargin);
-
-    // Draw icon if available
-    if (!icon.isNull()) {
-        icon.paint(painter, iconRect, Qt::AlignLeft | Qt::AlignTop);
+    const int leading = option.rect.left() + cRowGutter;
+    const QRect iconRect(leading, option.rect.top() + (option.rect.height() - cIconSize) / 2, cIconSize, cIconSize);
+    if (icon.isNull()) {
+        // A package that ships no picture of its own is drawn with the design's
+        // package glyph rather than with a gap where one would be
+        painter->drawPixmap(iconRect, chosen ? mChosenGlyph : mQuietGlyph);
+    } else {
+        icon.paint(painter, iconRect, Qt::AlignCenter);
     }
 
-    // Setup fonts
-    QFont boldFont = opt.font;
-    boldFont.setBold(true);
-    QFont normalFont = opt.font;
+    const int textLeft = iconRect.right() + 1 + cIconGap;
+    const int textWidth = option.rect.right() - cRowPaddingTrailing - textLeft;
+    if (textWidth <= 0) {
+        painter->restore();
+        return;
+    }
 
-    QFontMetrics boldMetrics(boldFont);
-    QFontMetrics normalMetrics(normalFont);
+    QFont nameFont = option.font;
+    QFont summaryFont = option.font;
+    summaryFont.setPointSize(mCaptionSize);
+    const QFontMetrics nameMetrics(nameFont);
+    const QFontMetrics summaryMetrics(summaryFont);
 
-    // Draw package name (bold)
-    painter->setFont(boldFont);
-    painter->setPen(opt.palette.color(QPalette::Text));
+    const QRect nameRect(textLeft, option.rect.top() + cRowPaddingVertical, textWidth, nameMetrics.height());
+    painter->setFont(nameFont);
+    painter->setPen(chosen ? mChosenInk : mNameInk);
+    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, nameMetrics.elidedText(name, Qt::ElideRight, textWidth));
 
-    QString elidedName = boldMetrics.elidedText(packageName, Qt::ElideRight, textRect.width());
-    QRect nameRect = textRect;
-    nameRect.setHeight(boldMetrics.height());
-    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignTop, elidedName);
-
-    // Draw description (gray, below name)
-    if (!description.isEmpty()) {
-        painter->setFont(normalFont);
-        painter->setPen(opt.palette.color(QPalette::PlaceholderText));
-
-        QRect descRect = textRect;
-        descRect.setTop(nameRect.bottom() + cLineSpacing);
-
-        QString elidedDesc = normalMetrics.elidedText(description, Qt::ElideRight, descRect.width());
-        painter->drawText(descRect, Qt::AlignLeft | Qt::AlignTop, elidedDesc);
+    if (!summary.isEmpty()) {
+        const QRect summaryRect(textLeft, nameRect.bottom() + 1 + cLineSpacing, textWidth, summaryMetrics.height());
+        painter->setFont(summaryFont);
+        painter->setPen(chosen ? mChosenInk : mSummaryInk);
+        painter->drawText(summaryRect, Qt::AlignLeft | Qt::AlignVCenter, summaryMetrics.elidedText(summary, Qt::ElideRight, textWidth));
     }
 
     painter->restore();
+
+    // Over the wash the sheet has just filled the chosen row with, as the
+    // leading edge of it: the same bar, at the same width and in the same
+    // shape, the editor's trees carry
+    if (chosen && !option.rect.isEmpty()) {
+        uiDesign::paintAccentBar(painter, option.rect, mAccentBar, uiDesign::scmRadiusPanel);
+    }
 }
 
 QSize PackageItemDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
@@ -99,18 +138,8 @@ QSize PackageItemDelegate::sizeHint(const QStyleOptionViewItem& option, const QM
         return QStyledItemDelegate::sizeHint(option, index);
     }
 
-    // Calculate height needed for icon and two lines of text
-    QFont boldFont = option.font;
-    boldFont.setBold(true);
-    QFont normalFont = option.font;
-
-    QFontMetrics boldMetrics(boldFont);
-    QFontMetrics normalMetrics(normalFont);
-
-    int textHeight = boldMetrics.height() + cLineSpacing + normalMetrics.height();
-    int iconHeight = option.decorationSize.height();
-
-    int totalHeight = qMax(textHeight, iconHeight) + (cTextMargin * 2);
-
-    return QSize(option.rect.width(), totalHeight);
+    QFont summaryFont = option.font;
+    summaryFont.setPointSize(mCaptionSize);
+    const int textHeight = QFontMetrics(option.font).height() + cLineSpacing + QFontMetrics(summaryFont).height();
+    return QSize(option.rect.width(), qMax(textHeight, cIconSize) + 2 * cRowPaddingVertical);
 }

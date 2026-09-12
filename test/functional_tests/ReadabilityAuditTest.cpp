@@ -78,6 +78,7 @@
 #include "dlgAboutDialog.h"
 #include "dlgConnectionProfiles.h"
 #include "dlgNotepad.h"
+#include "dlgPackageManager.h"
 #include "dlgProfilePreferences.h"
 #include "dlgScriptsMainArea.h"
 #include "dlgTimersMainArea.h"
@@ -107,6 +108,7 @@ private:
     dlgAboutDialog* mpAbout = nullptr;
     dlgConnectionProfiles* mpConnection = nullptr;
     dlgNotepad* mpNotepad = nullptr;
+    dlgPackageManager* mpPackages = nullptr;
     Host* mpHost = nullptr;
     // The three items the forms walked on their own below are shown from
     QTreeWidgetItem* mpKeyItem = nullptr;
@@ -188,6 +190,17 @@ private:
     // of a send are not on the strip with nothing being sent, and the four
     // buttons that are a picture alone say nothing in words.
     static constexpr int scmLeastAuditedInTheNotepad = 6;
+    // ...and the package manager, walked a column at a time, since the sheet
+    // that draws each of them is set on that column rather than on the window.
+    // Measured at 4 on the list column - the search field's prompt, the rows of
+    // the list in both their inks, and Install from a file - and 5 on the
+    // details column: the package's name, its summary, the author and the
+    // version of the caption line, and Remove. Install is hidden in the
+    // Installed view on purpose, and Website and Report are hidden for a
+    // package the repository index does not list, which is every package here:
+    // this fixture's profile has no index on disk.
+    static constexpr int scmLeastAuditedOnThePackageList = 3;
+    static constexpr int scmLeastAuditedOnThePackageDetails = 4;
 
     // A button filled with the colour it stands for. Its fill is a value rather
     // than a surface of the design, and the words on it are chosen against that
@@ -327,6 +340,35 @@ private:
         QCoreApplication::processEvents();
     }
 
+    // The package manager, with an installed package chosen so that the details
+    // column has a name, a summary, a caption line and a row of buttons on it
+    // to be read. It restyles itself off mudlet::signal_appearanceChanged, which
+    // is what the control below emits.
+    void openPackageManager()
+    {
+        // One installed package with everything a row and a details column can
+        // show: a title, an author and a version. Written onto the host rather
+        // than installed, since what is being read is how the window draws it.
+        const QString package = qsl("readability-audit-package");
+        mpHost->mInstalledPackages << package;
+        mpHost->mPackageInfo.insert(package,
+                                    QMap<QString, QString>{{qsl("mpackage"), package},
+                                                           {qsl("title"), qsl("What this package is for, in one line")},
+                                                           {qsl("author"), qsl("An Audited Author")},
+                                                           {qsl("version"), qsl("2.0.1")},
+                                                           {qsl("description"), qsl("The notes this package ships with.\n")}});
+
+        mpPackages = new dlgPackageManager(nullptr, mpHost);
+        QVERIFY2(mpPackages, "the package manager did not open at all");
+        mpPackages->resize(900, 600);
+        mpPackages->show();
+        QVERIFY(QTest::qWaitForWindowExposed(mpPackages));
+        mpPackages->packageList->setCurrentRow(0);
+        QCoreApplication::processEvents();
+        QVERIFY2(mpPackages->packageList->count() > 0, "the package manager lists no installed packages, so its details column has nothing on it to read");
+        QVERIFY2(!mpPackages->label_packageName->text().isEmpty(), "no package is chosen, so the details column is empty");
+    }
+
     // Through the settings dialog's own control rather than through
     // mudlet::setAppearance() outright: that is the one path an appearance
     // change takes while these two windows are open, and the path a player
@@ -354,6 +396,9 @@ private:
         mpAbout->grab();
         mpConnection->grab();
         mpNotepad->grab();
+        if (mpPackages) {
+            mpPackages->grab();
+        }
     }
 
     // Where a widget actually lands on a shot of the window it is in, clipped by
@@ -672,6 +717,7 @@ private slots:
         openAbout();
         openConnection();
         openNotepad();
+        openPackageManager();
 
         // A save that does not compile, so that the note the code pane's
         // heading carries is on screen for the walk below. Its words are the
@@ -687,6 +733,8 @@ private slots:
     void cleanupTestCase()
     {
         mpNotepad = nullptr;
+        delete mpPackages;
+        mpPackages = nullptr;
         delete mpConnection;
         mpConnection = nullptr;
         delete mpAbout;
@@ -945,6 +993,33 @@ private slots:
             QVERIFY2(read >= scmLeastAuditedInTheNotepad,
                      qPrintable(qsl("only %1 things were read in the notepad on the %2 appearance, against the %3 this walk reaches")
                                         .arg(QString::number(read), appearance.first, QString::number(scmLeastAuditedInTheNotepad))));
+        }
+
+        qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));
+        for (const QString& failure : failures) {
+            qWarning().noquote() << failure;
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
+    }
+
+    // The package manager, walked a column at a time: the sheet that draws each
+    // of them is set on that column rather than on the window, so a floor on
+    // each is a floor on that column rather than on everything around it.
+    void test_thePackageManagerIsReadableInBothAppearances()
+    {
+        QStringList failures;
+        QStringList counts;
+        for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
+            setAppearance(appearance.second);
+            const int onTheList = auditWithin(mpPackages, mpPackages->leftPanel, qsl("the package manager's list column"), appearance.first, failures);
+            const int onTheDetails = auditWithin(mpPackages, mpPackages->rightPanel, qsl("the package manager's details column"), appearance.first, failures);
+            counts << qsl("%1: %2 on the list column, %3 on the details column").arg(appearance.first, QString::number(onTheList), QString::number(onTheDetails));
+            QVERIFY2(onTheList >= scmLeastAuditedOnThePackageList,
+                     qPrintable(qsl("only %1 things were read on the package manager's list column on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(onTheList), appearance.first, QString::number(scmLeastAuditedOnThePackageList))));
+            QVERIFY2(onTheDetails >= scmLeastAuditedOnThePackageDetails,
+                     qPrintable(qsl("only %1 things were read on the package manager's details column on the %2 appearance, against the %3 this walk reaches")
+                                        .arg(QString::number(onTheDetails), appearance.first, QString::number(scmLeastAuditedOnThePackageDetails))));
         }
 
         qInfo().noquote() << qsl("  audited %1").arg(counts.join(qsl("; ")));

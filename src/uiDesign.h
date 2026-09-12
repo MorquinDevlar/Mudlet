@@ -37,6 +37,7 @@ class QAbstractButton;
 class QAction;
 class QBoxLayout;
 class QGridLayout;
+class QLabel;
 class QLayout;
 class QLineEdit;
 class QListWidget;
@@ -219,6 +220,31 @@ inline constexpr qreal scmHoverWashStrength = 0.07;
 // selector. The groove is the surface the bar is set into, which is the page
 // unless the caller names the one it is actually drawing over.
 QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& tokens, const QColor& surface = QColor());
+
+// What a row of a list or a tree is drawn as, in whichever of them the design
+// reaches: the view on its own surface with no frame and no focus outline, and
+// every row cut to the panel corner, washed under the pointer and filled with
+// the accent while it is the chosen one.
+//
+// The border-left is the gutter the accent bar stands in. It is transparent on
+// every row and is never coloured: what draws the bar is paintAccentBar() in
+// the view's delegate, which cuts it to the pill's own corner rather than to
+// the arc a border-left is bent into. The row gives that width back out of its
+// own leading padding, so what the delegate draws at the row's leading edge
+// stays where it was.
+//
+// viewSelector is the view the rules are written for - "QTreeWidget" for the
+// editor's item trees, "QListWidget#packageList" for the package manager's
+// list - and surface is the tone the view is painted on, which is the pane in
+// both of the windows that draw rows this way. rowGutter is the whole of what
+// the row leaves at its leading edge, the bar's width included.
+QString itemRowStyleSheet(const QString& viewSelector, const ThemeTokens& tokens, const QColor& surface, const int rowGutter);
+
+// What a row of one of those views leaves above and below its contents, and at
+// its trailing edge. Not on the radius scale and not a form control's padding:
+// this is the air in a row that is read down a column of them.
+inline constexpr int scmItemRowPaddingVertical = 2;
+inline constexpr int scmItemRowPaddingTrailing = 4;
 
 // The measurements the two sidebars share, so that a rail in one window and a
 // rail in the other are the same object rather than two that happen to agree
@@ -457,6 +483,38 @@ QString disclosureButtonStyleSheet(const QString& buttonSelector, const ThemeTok
 // same reason a dropped-down list needs it; a menu built at the moment it is
 // needed takes both from the code that builds it, before it is exec'd.
 QString menuStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix = QString());
+
+// A notice: a line or two of words the window has to say something with, on a
+// wash of the accent, with one picture beside them saying which of the three
+// readings it is. The script editor's banner and the connection dialog's
+// notification area are the same control, so both are drawn from here.
+//
+// What a notice leaves round the words in it, and what stands between the
+// picture, those words and the cross that dismisses them. The .ui files' 3px
+// was the margin of a box drawn round 64px pictures.
+inline constexpr int scmNoticeGlyphSize = 20;
+inline constexpr int scmNoticePaddingHorizontal = 10;
+inline constexpr int scmNoticePaddingVertical = 8;
+inline constexpr int scmNoticeSpacing = 8;
+
+// Which of the three a notice is. The picture is the only thing it says without
+// words, so the kind picks both the glyph and the ink it is drawn in.
+enum class NoticeKind { Information, Warning, Error };
+
+// The frame the notice is drawn in, named by the caller's own selector - the
+// two windows' frames have different object names and a window styles only its
+// own. The labels inside it are claimed by a descendant rule, so their words
+// are chrome and their backgrounds do not break the wash.
+QString noticeStyleSheet(const QString& frameSelector, const ThemeTokens& tokens);
+
+// The picture beside the words, tinted for the reading it carries and drawn at
+// the given screen's pixel ratio
+QPixmap noticeGlyph(const NoticeKind kind, const ThemeTokens& tokens, const qreal devicePixelRatio);
+
+// ...and that picture put on the label the .ui file sized for a 64px bitmap: at
+// the label's own pixel ratio, with no margin of its own and held to the glyph's
+// square, or the label takes the height the old block needed
+void applyNoticeGlyph(QLabel* pLabel, const NoticeKind kind, const ThemeTokens& tokens);
 
 // The strip of tabs at the head of a QTabWidget, drawn as a row of chips lying
 // on the page rather than as the folder tabs a platform cuts. A tab is a word
