@@ -63,6 +63,15 @@ class EditorTreeDelegate : public QStyledItemDelegate
 
 public:
     Q_DISABLE_COPY(EditorTreeDelegate)
+
+    // Three readings of one shape, in the order they are cached in
+    enum class DotState { Off = 0, WantedOn = 1, Running = 2 };
+
+    // What the row is, where the dot does not say it. Resolved from the item the
+    // row's id names rather than from the picture the row happens to be
+    // carrying, which is no longer looked at.
+    enum class RowMark { None = 0, Folder = 1, Filter = 2, OffsetTimer = 3, Error = 4, NewFolder = 5, NewItem = 6, Package = 7 };
+
     EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeType, Host* pHost);
 
     // Re-read the colours off the application palette; called from the same pass
@@ -118,6 +127,12 @@ public:
     // the glyph in it.
     [[nodiscard]] QRect chevronHitRect(const QModelIndex& index) const;
 
+    // What a row's leading edge is saying, for the tests that read a row rather
+    // than the item behind it. The editor never asks: the delegate is what draws
+    // both, and the pictures are a poor thing to assert against.
+    [[nodiscard]] DotState dotStateOf(const QModelIndex& index) const;
+    [[nodiscard]] RowMark markOf(const QModelIndex& index) const;
+
 signals:
     // Sent once the row to switch is the tree's current one, so there is nothing
     // to carry: this reaches the slot that a double click on a row reaches by
@@ -125,20 +140,13 @@ signals:
     void toggleRequested();
 
 private:
-    // Three readings of one shape, in the order they are cached in
-    enum class DotState { Off = 0, WantedOn = 1, Running = 2 };
-
     // Whether the row holds anything, and which way round the handle that folds
     // it is drawn. A row at the top of a tree is never given one: the view drew
     // no arrow beside those either, because the trees are asked for an
     // undecorated root and the one row at that depth is the tree's own heading.
     enum class ChevronState { None = 0, Closed = 1, Open = 2 };
 
-    // What the row is, where the dot does not say it. Resolved from the item the
-    // row's id names rather than from the picture the row happens to be
-    // carrying, which is no longer looked at.
-    enum class RowMark { None = 0, Folder = 1, Filter = 2, OffsetTimer = 3, Error = 4, NewFolder = 5, NewItem = 6 };
-    static constexpr int scmRowMarkCount = 7;
+    static constexpr int scmRowMarkCount = 8;
 
     // What a row is drawn from, all of it read off the item its id names
     struct ItemState

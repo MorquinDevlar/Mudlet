@@ -118,6 +118,18 @@ if false then
 
 
 
+  --- Switches off every trigger, alias, timer, script, key and button the named
+  --- package installed, in one go. The choice is remembered across restarts, and
+  --- an item that was switched off individually inside the package stays off when
+  --- the package is switched back on. Returns true, or nil and a reason if the
+  --- name is not an installed package (a module cannot be switched off this way).
+  ---
+  --- @see enablePackage
+  function disablePackage(name)
+  end
+
+
+
   --- Disables a timer from running its script when it fires - so the timer
   --- cycles will still be happening, just no action on them. If you'd like to
   --- permanently delete it, use killTimer() instead. <br/><br/>
@@ -210,6 +222,16 @@ if false then
 
   --- Enable key or key group "name" (hot keys or action keys).
   function enableKey(name)
+  end
+
+
+
+  --- Switches a package that was switched off back on, running its scripts
+  --- again. Returns true, or nil and a reason if the name is not an installed
+  --- package.
+  ---
+  --- @see disablePackage
+  function enablePackage(name)
   end
 
 

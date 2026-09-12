@@ -2910,6 +2910,13 @@ std::pair<bool, QString> Host::installPackage(const QString& fileName, enums::Pa
         }
         file2.close();
     }
+    // Every item an install brings in is fresh and therefore switched on, so an
+    // install landing on a name the flag is still holding down has to put them
+    // straight back - otherwise the package would be running with the profile
+    // remembering it as switched off.
+    if (thing == enums::PackageModuleType::Package && mDisabledPackages.contains(packageName)) {
+        applyPackageState(packageName, false);
+    }
     if (mpEditorDialog) {
         mpEditorDialog->doCleanReset();
     }
@@ -3048,6 +3055,112 @@ void Host::removePackageInfo(const QString& packageName, const bool isModule)
     }
 }
 
+void Host::applyPackageState(const QString& packageName, const bool active)
+{
+    mTriggerUnit.setPackageActive(packageName, active);
+    mTimerUnit.setPackageActive(packageName, active);
+    mAliasUnit.setPackageActive(packageName, active);
+    mKeyUnit.setPackageActive(packageName, active);
+    mActionUnit.setPackageActive(packageName, active);
+    // Last, so that a script body re-run by switching the package on finds the
+    // rest of the package already running:
+    mScriptUnit.setPackageActive(packageName, active);
+    // The toolbars live in the profile's window, which a Host being loaded or
+    // imported into does not have yet:
+    if (mpConsole) {
+        mActionUnit.updateAllToolbars();
+    }
+}
+
+bool Host::packageEnabled(const QString& packageName) const
+{
+    return !(mInstalledPackages.contains(packageName) && mDisabledPackages.contains(packageName));
+}
+
+std::pair<bool, QString> Host::setPackageEnabled(const QString& packageName, const bool enabled)
+{
+    if (packageName.isEmpty()) {
+        return {false, qsl("no package name given")};
+    }
+    // A module is re-imported with every item forced on at each start, and its
+    // file lives outside the profile: switching one off here would not survive
+    // the next start, and a synced module written off would reach every profile
+    // that shares it.
+    if (mInstalledModules.contains(packageName)) {
+        return {false, qsl("'%1' is a module, not a package - modules cannot be switched off").arg(packageName)};
+    }
+    if (!mInstalledPackages.contains(packageName)) {
+        return {false, qsl("package '%1' is not installed").arg(packageName)};
+    }
+    if (packageEnabled(packageName) == enabled) {
+        return {true, QString()};
+    }
+
+    // A save serialises the very trees this is about to flip, so wait it out -
+    // the same reasoning as in uninstallPackage().
+    if (currentlySavingProfile()) {
+        waitForProfileSave();
+    }
+    if (currentlySavingProfile()) {
+        return {false, qsl("the profile is being saved - try again in a moment")};
+    }
+    // waitForProfileSave() pumps the event loop, so a handler may have taken the
+    // package away in the meantime
+    if (!mInstalledPackages.contains(packageName)) {
+        return {false, qsl("package '%1' is not installed").arg(packageName)};
+    }
+
+    applyPackageState(packageName, enabled);
+
+    if (enabled) {
+        mDisabledPackages.removeAll(packageName);
+    } else if (!mDisabledPackages.contains(packageName)) {
+        mDisabledPackages.append(packageName);
+    }
+
+    TEvent packageStateEvent{};
+    packageStateEvent.mArgumentList.append(enabled ? QLatin1String("sysEnablePackage") : QLatin1String("sysDisablePackage"));
+    packageStateEvent.mArgumentTypeList.append(ARGUMENT_TYPE_STRING);
+    packageStateEvent.mArgumentList.append(packageName);
+    packageStateEvent.mArgumentTypeList.append(ARGUMENT_TYPE_STRING);
+    raiseEvent(packageStateEvent);
+
+    if (mpEditorDialog) {
+        // Not doCleanReset(): that empties and refills all six trees and ends in
+        // the Triggers view, which would throw the reader out of whichever view
+        // they pressed the switch in. Nothing was added, removed or moved here -
+        // only states changed - so the editor refreshes what those states show
+        // and stays where it is.
+        mpEditorDialog->refreshPackageState();
+    }
+    if (mpPackageManager) {
+        // Not resetPackageList(): nothing was installed or removed, so refilling
+        // the list would throw the reader back to the Installed view at row 0
+        // with their search cleared, for pressing a switch on the row they were
+        // already looking at
+        mpPackageManager->refreshPackageStates();
+    }
+
+    // Same deferred save as an uninstall: the handlers of the event just raised
+    // are free to change the profile further, and a save started from inside
+    // this call would write the tree out from under them.
+    mDeferredSaveTimer.start(0ms);
+    return {true, QString()};
+}
+
+void Host::applyDisabledPackages()
+{
+    // A name whose package is not installed any more is nothing to switch off,
+    // and keeping it would switch off whatever takes the name next
+    mDisabledPackages.removeIf([this](const QString& packageName) {
+        return !mInstalledPackages.contains(packageName);
+    });
+
+    for (const auto& packageName : std::as_const(mDisabledPackages)) {
+        applyPackageState(packageName, false);
+    }
+}
+
 // This may be called by installPackage(...) in that case however it will have
 // module == 2 and in THAT situation it will NOT RE-invoke installPackage(...)
 // again - Slysven
@@ -3158,6 +3271,9 @@ bool Host::uninstallPackage(const QString& packageName, enums::PackageModuleType
         mActiveModules.removeAll(packageName);
     } else {
         mInstalledPackages.removeAll(packageName);
+        // A package installed again from scratch comes back switched on: the
+        // user asked for this one to go, not for the name to stay off forever.
+        mDisabledPackages.removeAll(packageName);
     }
 
     // Before the ModuleSync exit, not after: a sync destroys both halves' items
@@ -3167,6 +3283,7 @@ bool Host::uninstallPackage(const QString& packageName, enums::PackageModuleType
         // take the half that was not named away as well: leaving it listed would
         // offer the user something the uninstall above has already emptied
         mInstalledPackages.removeAll(packageName);
+        mDisabledPackages.removeAll(packageName);
         mInstalledModules.remove(packageName);
         mModulesLoadedOk.remove(packageName);
         mActiveModules.removeAll(packageName);

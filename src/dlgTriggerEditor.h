@@ -143,6 +143,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorNoticeGlyphTest;
     friend class EditorNoticeSeamTest;
     friend class EditorOptionsPanelDefaultTest;
+    friend class EditorPackageToggleTest;
     friend class EditorSearchTest;
     friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
@@ -427,6 +428,17 @@ public:
     // The one place the "this item is part of a package" banner is raised from,
     // and what remembers which packages have already had their say
     void showPackageWarning(const QString& packageName, QTreeWidgetItem* pItem = nullptr);
+    // The package a row's item belongs to, empty where the row is not a
+    // package's. A module's item answers empty too: packageName() is what says
+    // so, and a module cannot be switched off.
+    QString packageOfItem(const EditorViewType view, QTreeWidgetItem* pItem) const;
+    // ...and what the trees' context menu says about that package - which of the
+    // two words the action carries, or whether it is offered at all. Called
+    // whenever the row being looked at changes.
+    void updatePackageAction(const EditorViewType view, QTreeWidgetItem* pItem);
+    // The row the named view is currently on, for the act that reads the tree
+    // rather than being handed an item
+    QTreeWidgetItem* currentItemOfView(const EditorViewType view) const;
     void showInfo(const QString&);
     void children_icon_triggers(QTreeWidgetItem* pWidgetItemParent);
     void children_icon_alias(QTreeWidgetItem* pWidgetItemParent);
@@ -435,6 +447,11 @@ public:
     void children_icon_script(QTreeWidgetItem* pWidgetItemParent);
     void children_icon_action(QTreeWidgetItem* pWidgetItemParent);
     void doCleanReset();
+    // What a package being switched on or off costs the editor, which is not a
+    // reset: no item is added, removed or moved, so nothing is rebuilt and the
+    // view, the chosen row, the scroll position and whatever is half-typed into
+    // the form are all left exactly as they were.
+    void refreshPackageState();
     void writeScript(int id);
     void addVar(bool);
     int canRecast(QTreeWidgetItem*, int newNameType, int newValueType);
@@ -517,6 +534,7 @@ public slots:
     void slot_addNewItem();
     void slot_addNewGroup();
     void slot_toggleItemOrGroupActiveFlag();
+    void slot_togglePackageActiveFlag();
     void slot_searchMudletItems(const int);
     void slot_itemSelectedInSearchResults(QTreeWidgetItem*);
     void slot_deleteItemOrGroup();
@@ -1228,6 +1246,9 @@ private:
     // We need to keep a record of these buttons as we have to disable them
     // for the "Variables" view:
     QAction* mpAction_toggleActive = nullptr;
+    // ...and the one that switches the whole package the chosen row came from,
+    // which is hidden for a row that came from none
+    QAction* mpAction_togglePackage = nullptr;
     QAction* mpExportAction = nullptr;
     QAction* mpCreateModuleAction = nullptr;
 

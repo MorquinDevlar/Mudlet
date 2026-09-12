@@ -83,6 +83,7 @@ public:
     void doCleanup();
     void uninstall(const QString&);
     void _uninstall(TTrigger* pChild, const QString& packageName);
+    void setPackageActive(const QString& packageName, const bool active);
 
     int processingDepth() const { return mProcessingDepth; }
     // Raw pointer is safe: a trigger outlives its own execute() frame, as deletion

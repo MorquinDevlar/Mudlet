@@ -67,4 +67,30 @@ QPixmap treeRowChevronGlyph(const bool open, const QColor& ink, const qreal rati
     return glyph;
 }
 
+QPixmap treeRowDotGlyph(const bool filled, const QColor& ink, const qreal ratio)
+{
+    QPixmap glyph(qRound(scmTreeDotDiameter * ratio), qRound(scmTreeDotDiameter * ratio));
+    glyph.setDevicePixelRatio(ratio);
+    glyph.fill(Qt::transparent);
+
+    QPainter painter(&glyph);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    // A stroked circle is drawn centred on its path, so a hollow dot is pulled in
+    // by half a pen to end up the same size as a filled one
+    const qreal inset = filled ? 0.0 : scmTreeHollowPenWidth / 2.0;
+    const QRectF circle(inset, inset, scmTreeDotDiameter - 2.0 * inset, scmTreeDotDiameter - 2.0 * inset);
+    if (filled) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ink);
+    } else {
+        QPen pen(ink);
+        pen.setWidthF(scmTreeHollowPenWidth);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+    }
+    painter.drawEllipse(circle);
+    painter.end();
+    return glyph;
+}
+
 } // namespace uiDesign

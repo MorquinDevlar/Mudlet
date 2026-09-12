@@ -119,6 +119,21 @@ void KeyUnit::uninstall(const QString& packageName)
     uninstallList.clear();
 }
 
+// See TriggerUnit::setPackageActive(): the package's roots alone are switched,
+// and processDataStream() only offers a key press to a root that is active.
+void KeyUnit::setPackageActive(const QString& packageName, const bool active)
+{
+    for (auto rootKey : mKeyRootNodeList) {
+        if (rootKey->mPackageName != packageName) {
+            continue;
+        }
+        if (mCleanupSet.contains(rootKey) || uninstallList.contains(rootKey)) {
+            continue;
+        }
+        rootKey->setIsActive(active);
+    }
+}
+
 bool KeyUnit::processDataStream(const Qt::Key key, const Qt::KeyboardModifiers modifiers)
 {
     bool isMatchFound = false;

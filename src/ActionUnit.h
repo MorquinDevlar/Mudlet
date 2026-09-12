@@ -64,6 +64,7 @@ public:
     int getNewID();
     void uninstall(const QString&);
     void _uninstall(TAction* pChild, const QString& packageName);
+    void setPackageActive(const QString& packageName, const bool active);
     void doCleanup();
     void beginProcessing() { ++mProcessingDepth; }
     // Only decrements the depth - deliberately no doCleanup() here: that would

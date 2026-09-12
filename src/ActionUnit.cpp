@@ -105,6 +105,27 @@ void ActionUnit::uninstall(const QString& packageName)
     doCleanup();
 }
 
+// The bars a package root owns are built from its children, which do not ask
+// about their parent, so the root's state only reaches the window once the
+// toolbars are regenerated - constructToolbar() checks ancestorsActive() for
+// that. The caller does the regeneration, once for all six units.
+void ActionUnit::setPackageActive(const QString& packageName, const bool active)
+{
+    for (auto rootAction : mActionRootNodeList) {
+        if (rootAction->mPackageName != packageName || uninstallList.contains(rootAction)) {
+            continue;
+        }
+        rootAction->setIsActive(active);
+        // Each child of a package root is one of its toolbars, and
+        // constructToolbar() leaves a toolbar alone whose own data has not
+        // changed - so without this the regeneration would redraw nothing.
+        rootAction->setDataChanged();
+        for (auto* childActionNode : *rootAction->mpMyChildrenList) {
+            static_cast<TAction*>(childActionNode)->setDataChanged();
+        }
+    }
+}
+
 void ActionUnit::doCleanup()
 {
     if (mProcessingDepth > 0) {
@@ -634,7 +655,9 @@ void ActionUnit::constructToolbar(TAction* pAction, TToolBar* pToolBar)
         }
     }
 
-    if (!pAction->isActive()) {
+    // ancestorsActive() for the same reason as in the TEasyButtonBar overload:
+    // a floating toolbar of a package hangs off that package's root item.
+    if (!pAction->isActive() || !pAction->ancestorsActive()) {
         pToolBar->setFloating(false);
         mudlet::self()->removeDockWidget(pToolBar);
         return;
@@ -714,7 +737,11 @@ void ActionUnit::constructToolbar(TAction* pA, TEasyButtonBar* pTB)
     // TEasyButtonBar - it could be a menu or a button or a package/module
     // (container)
 
-    if (!pA->isActive()) {
+    // ancestorsActive() and not isActive() alone: a toolbar that came in a
+    // package is a child of the package's root item, and a child's own active
+    // flag says nothing about its parent - so a package switched off would
+    // otherwise keep showing its buttons.
+    if (!pA->isActive() || !pA->ancestorsActive()) {
         pTB->hide();
         return;
     }

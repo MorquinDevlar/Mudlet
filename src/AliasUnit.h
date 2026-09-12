@@ -66,6 +66,7 @@ public:
     void unregisterAlias(TAlias* pT);
     void uninstall(const QString&);
     void _uninstall(TAlias* pChild, const QString& packageName);
+    void setPackageActive(const QString& packageName, const bool active);
     void reParentAlias(int childID, int oldParentID, int newParentID, int parentPosition = -1, int childPosition = -1);
     void reParentAlias(int childID, int oldParentID, int newParentID, TreeItemInsertMode mode, int position = 0);
     bool processDataStream(const QString&);

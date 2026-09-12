@@ -383,6 +383,18 @@ public:
 
     std::pair<bool, QString> installPackage(const QString& fileName, enums::PackageModuleType thing, bool quiet = false);
     bool uninstallPackage(const QString&, enums::PackageModuleType thing);
+    // Whether a package's items are running. False only for an installed package
+    // the user switched off; anything else - a name that is not a package at all
+    // included - is not switched off, so it reads as enabled.
+    bool packageEnabled(const QString& packageName) const;
+    // Switches every trigger, alias, timer, script, key and button the named
+    // package installed off or on at once, and remembers the choice across
+    // restarts. Returns false and why for a name that is not an installed
+    // package, or is a module.
+    std::pair<bool, QString> setPackageEnabled(const QString& packageName, const bool enabled);
+    // Switches off again what mDisabledPackages names, once a profile has
+    // finished loading and every package item exists.
+    void applyDisabledPackages();
     bool removeDir(const QString&, const QString&);
     // whyNotRead, when given, is set to why no manifest came back - telling a
     // config.lua that would not run apart from one that simply names no package
@@ -896,6 +908,10 @@ public:
     bool mTimeStampStatus = false;
     bool mEnableSpellCheck = true;
     QStringList mInstalledPackages;
+    // The installed packages the user switched off, saved with the profile. The
+    // items' own isActive flags round-trip too, but this covers what they cannot:
+    // a package whose master folder is gone, and one re-installed by an update.
+    QStringList mDisabledPackages;
     // module name = location on disk, sync to other profiles?, priority
     QMap<QString, QStringList> mInstalledModules;
     // modules that loaded successfully - used to prevent saving modules that failed to load
@@ -1038,6 +1054,9 @@ private slots:
 
 private:
     void setBorders(const QMargins);
+    // Switches the package's items through the six units and redraws its
+    // toolbars. Raises nothing and touches no list - the callers do that.
+    void applyPackageState(const QString& packageName, const bool active);
     void installPackageFonts(const QString& packageName);
     void processGMCPDiscordStatus(const QJsonObject& discordInfo);
     void processGMCPDiscordInfo(const QJsonObject& discordInfo);

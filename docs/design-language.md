@@ -1274,8 +1274,18 @@ mark for what the dot cannot say: `editor-folder.png` for a group,
 `editor-errors.png` for an item that will not compile - the same glyph the
 Errors view carries in the sidebar - and `editor-new-folder.png` /
 `editor-new-item.png` for something the editor has made and nobody has saved.
-`EditorTreeDelegate` resolves which from the item the row's id names and draws
-it; a row's own `QIcon` is never consulted, so no call site sets one.
+`packages-package.svg` for a package's top folder - the same glyph the package
+manager draws a package with, so the row that stands for the whole package is
+told apart from the folders inside it. `EditorTreeDelegate` resolves which from
+the item the row's id names and draws it; a row's own `QIcon` is never consulted,
+so no call site sets one. The test for a package's top folder is the one the Lua
+ancestors API makes - a folder whose `mPackageName` is its own name, and not a
+module - so a module's master folder keeps the folder mark.
+
+The dot itself is `uiDesign::treeRowDotGlyph()` rather than the delegate's own
+drawing, because the package manager's list carries the same dot on each of its
+Installed rows and the two have to be the one picture rather than two that were
+measured to match.
 
 Every mark is drawn at 16px, the size `SearchResultDelegate` gives the glyphs in
 the results list, and a row leaves that much room whether it carries a mark or
@@ -1542,16 +1552,23 @@ go on their window.
 
 | Name | What it is |
 | --- | --- |
-| `leftPanel` | The list column, on the pane tone with the seam down its trailing edge |
-| `rightPanel` | The details column, on the page tone |
+| `leftPanel` | The list column, on the pane tone. No hairline down its trailing edge: the splitter's handle is the seam, and each column carries `scmProp_paneTone` so the handle draws its neighbour's own tone up to it |
+| `rightPanel` | The details column, on the page tone, never dragged narrower than 320px |
+| `packagesSplitter` | The `uiDesign::GripSplitter` the two columns hang in, in place of the row the `.ui` file put them in. Neither pane collapsible, the details column taking the growth (`setStretchFactor(1, 1)`), the list column keeping the `.ui` file's 300px floor and losing its 400px cap - a drag that stops dead reads as a broken handle. The sizes are saved in `closeEvent()` under `packageManagerSplitterState` in `mudlet::getQSettings()` and put back in `showEvent()` on the first show only, never in the constructor: on macOS a native window created before it is shown drops the geometry it is handed. With nothing saved the list column takes a third of the window |
+| `packagesHeadlineRow` | The row at the head of the details column holding `label_packageName` and `label_version`, then a stretch |
 | `packagesViewBar` | The `QTabBar` the three views are chosen from, held to the leading edge; `headerBar` keeps the three buttons it replaced, hidden, since the group, the slots and the other package tests all press those |
 | `lineEdit_searchBar` | The field the list is narrowed with, carrying `settings-search.svg` as a leading action |
 | `packageList` | The rows, drawn by `PackageItemDelegate` on `itemRowStyleSheet()` |
+| `PackageItemDelegate::cPackageEnabledRole` (`Qt::UserRole + 1`) | Whether the package the row stands for is running, written onto the item when the list is filled and re-read by `refreshPackageStates()`. Set only in the Installed view: a row without it is drawn with no dot, which is what the Explore and Updates views get. `Qt::UserRole` itself is the row's one-line summary |
+| `PackageItemDelegate::cPackageVersionRole` (`Qt::UserRole + 2`) | Which version the row stands for, drawn right-aligned on the name's own line, flush with the row's trailing padding, at `typeSize(Caption)` and in the ok tone the head of the details column writes the version in - walked twice in `restyle()`, against the pane a plain row stands on and against `blend(pane, accent, scmAccentWashStrength)` for a chosen one, or the green is lost on the accent's wash. A switched-off package keeps that green: which version is installed is a fact about the package, not a reading of whether it is running. Set wherever a row is filled - `dlgPackageManager::setRowVersion()` from `resetPackageList()`, `slot_setPackageList()` and `slot_searchTextChanged()` - out of `mPackageInfo` in the Installed view, out of the repository object in Explore, and as the "%1 → %2" pair in Updates, the same text the details column shows there. A package that names no version leaves the role unset and nothing is drawn. The name's elision width shrinks by the version's advance and a gap, so the two never touch; `sizeHint()` is untouched, since the version rides an existing line |
+| `packagesToggleButton` | The switch in the details column, first in the action row - `editor-activate.svg` through `tintedIcon()`, reading "Turn off" or "Turn on" - hidden outside the Installed view |
+| `packagesOffNote` | The line under that row saying what a switched-off package is not doing, in `mutedText` and word-wrapped, on show only while the chosen package is off |
+| `packagesMenuToggle`, `packagesMenuRemove`, `packagesMenuInstall` | The entries of the list's right-click menu, built by `buildPackageContextMenu()` on `packagesContextMenu` - the design's menu and its corner taken there rather than in the style pass, since it is built at the moment it is needed. The Installed view gets the switch, carrying the same two words as `packagesToggleButton` and left out altogether where `packageIsSwitchable()` refuses, and Remove; Explore and Updates get the one Install entry, worded as the view words the button. The row under the pointer is made the current one first, so the details column is showing what the menu is about; a row already inside a selection keeps that selection, since Remove and Install act on all of it |
 | `packagesNotice` | The `dlgSystemMessageArea` under the list, which `showImportStatus()` brings out in its warning reading; `label_importStatus` is left hidden and unused |
 | `pushButton_installFile` | Install from a file, the full width of the column under the list |
-| `pushButton_installRepo`, `pushButton_remove` | Install or Update, and Remove - moved into the details column, and hidden rather than disabled in the view they do not apply to |
+| `pushButton_installRepo`, `pushButton_remove` | Install or Update, and Remove - moved into the details column, and hidden rather than disabled in the view they do not apply to. One chosen row is the bare word; more than one says how many as a sentence ("Remove %n packages"), since "Remove 1" is a count of something nobody asked to count |
 | `pushButton_website`, `pushButton_report` | Website and Report an issue, at the trailing end of that row |
-| `label_icon`, `label_packageName`, `label_title`, `label_author`, `label_version` | The head of the details column: the picture cut to `scmRadiusInput` at 48px (or the package glyph on a card-tone box), the name at `TypeStep::Title`, the one-line summary, and the author and version as one caption line |
+| `label_icon`, `label_packageName`, `label_title`, `label_author`, `label_version` | The head of the details column: the picture cut to `scmRadiusInput` at 48px (or the package glyph on a card-tone box), the name at `TypeStep::Title` with the version beside it on `packagesHeadlineRow`, the one-line summary, and the author alone on the caption line. The version is the bare number - "1.3.3", and "1.2 → 1.4" in the Updates view - at the window's body font, written in `readableOn(page, stateColor(scmStateHue_ok, darkPage), text, scmTextMinimumRatio)`: the same green a running package's dot is filled in, walked until it reads on the page. Its words are held to the foot of a box the row makes as deep as the name's, and lifted by the difference between the two fonts' descents, which puts the number on the name's own baseline. The name is elided to what the row leaves it beside the version, taken again on every resize and on every drag of the seam |
 | `packageDescription` | The notes, as a field, with a document stylesheet mixed from the tokens |
 
 Three of the `settings*` names are not the settings dialog's alone.
@@ -1580,6 +1597,7 @@ The editor's forms add these, which its tests reach it by:
 | `widget_top` | The head row of a form: name, command, ID pill |
 | `frameId` | The ID pill on every form |
 | `editorScriptEvents` | The `ChipRow` of a script's events |
+| `mpAction_togglePackage` | Not a widget but the six trees' context menu entry that switches the package the chosen row came from, beside `mpAction_toggleActive`. Its word names that package and follows its state, and it is hidden outright over a row that came from no package or from a module |
 | `editorChip`, `editorChipLabel`, `editorChipRemove` | One chip, its name and its cross |
 | `editorChipAdd`, `editorChipEditor`, `editorChipNote` | The dashed add button, the inline field, the "already listed" note |
 | `editorTimerInterval` | The sentence row holding a timer's four fields |

@@ -81,6 +81,13 @@ int treeRowLevelOf(const QModelIndex& index);
 // whatever ink the tree's chrome is currently in.
 QPixmap treeRowChevronGlyph(const bool open, const QColor& ink, const qreal ratio);
 
+// The dot that says whether the thing a row stands for is running: filled in the
+// ink handed over where it is, hollow in it where it is not. Drawn here rather
+// than in a delegate because more than one list carries it - the editor's six
+// item trees and the package manager's list of installed packages - and the two
+// have to be one picture rather than two that were measured to match.
+QPixmap treeRowDotGlyph(const bool filled, const QColor& ink, const qreal ratio);
+
 } // namespace uiDesign
 
 #endif // MUDLET_EDITORTREEROWMETRICS_H

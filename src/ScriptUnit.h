@@ -61,6 +61,7 @@ public:
     void stopAllTriggers();
     void uninstall(const QString&);
     void _uninstall(TScript* pChild, const QString& packageName);
+    void setPackageActive(const QString& packageName, const bool active);
     // Tracks Host::raiseEvent() dispatch nesting so that uninstall() can defer
     // deleting a package's scripts while one of their event handlers is still on
     // the call stack (e.g. a handler calling uninstallPackage() on its own
@@ -90,6 +91,7 @@ private:
     void removeScriptRootNode(TScript* pT);
     void removeScript(TScript*);
     void assembleReport(TScript*);
+    void markForRecompile(TScript* pScript);
 
     QPointer<Host> mpHost;
     QMap<int, TScript*> mScriptMap;

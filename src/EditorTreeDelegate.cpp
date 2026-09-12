@@ -128,7 +128,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
     // One reading per row, in the order the pictures they replace took
     // precedence: a broken item says so before anything else, then one nobody
     // has saved, then whatever the item is
-    const auto markFor = [newByDescription](const bool compiles, const bool folder, const RowMark kind) {
+    const auto markFor = [this, newByDescription](const bool compiles, const bool folder, const QString& packageName, const QString& name, const RowMark kind) {
         if (!compiles) {
             return RowMark::Error;
         }
@@ -137,6 +137,13 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         if (kind != RowMark::None) {
             return kind;
+        }
+        // A package's top folder is a folder whose own name is the package's -
+        // the test the Lua ancestors API makes. A module's master folder is left
+        // reading as a folder: it is not a package, and nothing here can switch
+        // it off.
+        if (folder && !packageName.isEmpty() && packageName == name && !mpHost->mInstalledModules.contains(packageName)) {
+            return RowMark::Package;
         }
         return folder ? RowMark::Folder : RowMark::None;
     };
@@ -154,7 +161,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         running = pT->isActive() && pT->ancestorsActive();
         // A filter chain is a trigger that other triggers are matched inside of,
         // and the mark is the only thing that says so
-        mark = markFor(pT->state(), pT->isFolder(), pT->isFilterChain() ? RowMark::Filter : RowMark::None);
+        mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), pT->isFilterChain() ? RowMark::Filter : RowMark::None);
         break;
     }
     case TreeType::Alias: {
@@ -164,7 +171,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
+        mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), RowMark::None);
         break;
     }
     case TreeType::Timer: {
@@ -182,7 +189,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         running = pT->isOffsetTimer() ? (pT->shouldBeActive() && pT->shouldAncestorsBeActive()) : (pT->isActive() && pT->ancestorsActive());
         // An offset timer runs from another timer firing rather than from a
         // clock, which the mark is what tells the reader
-        mark = markFor(pT->state(), pT->isFolder(), pT->isOffsetTimer() ? RowMark::OffsetTimer : RowMark::None);
+        mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), pT->isOffsetTimer() ? RowMark::OffsetTimer : RowMark::None);
         break;
     }
     case TreeType::Script: {
@@ -192,7 +199,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
+        mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), RowMark::None);
         break;
     }
     case TreeType::Action: {
@@ -202,7 +209,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
+        mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), RowMark::None);
         break;
     }
     case TreeType::Key: {
@@ -212,7 +219,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        mark = markFor(pT->state(), pT->isFolder(), RowMark::None);
+        mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), RowMark::None);
         break;
     }
     default:
@@ -276,31 +283,9 @@ QPixmap EditorTreeDelegate::dotGlyph(const DotState state) const
         return glyph;
     }
 
-    glyph = QPixmap(qRound(scmTreeDotDiameter * ratio), qRound(scmTreeDotDiameter * ratio));
-    glyph.setDevicePixelRatio(ratio);
-    glyph.fill(Qt::transparent);
-
-    QPainter painter(&glyph);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    // A stroked circle is drawn centred on its path, so a hollow dot is pulled in
-    // by half a pen to end up the same size as a filled one
-    const qreal inset = (state == DotState::Off) ? scmTreeHollowPenWidth / 2.0 : 0.0;
-    const QRectF circle(inset, inset, scmTreeDotDiameter - 2.0 * inset, scmTreeDotDiameter - 2.0 * inset);
-    if (state == DotState::Off) {
-        QPen pen(mQuietDot);
-        pen.setWidthF(scmTreeHollowPenWidth);
-        painter.setPen(pen);
-        painter.setBrush(Qt::NoBrush);
-    } else {
-        painter.setPen(Qt::NoPen);
-        // Switched on inside a switched-off group is still switched on, but it is
-        // not running, so it is not drawn in the colour that says it is
-        painter.setBrush(state == DotState::Running ? mRunningDot : mQuietDot);
-    }
-    painter.drawEllipse(circle);
-    // Before the pixmap is handed out: a copy taken while a painter is still
-    // active on the original is a copy of something being written to
-    painter.end();
+    // Switched on inside a switched-off group is still switched on, but it is
+    // not running, so it is not drawn in the colour that says it is
+    glyph = treeRowDotGlyph(state != DotState::Off, state == DotState::Running ? mRunningDot : mQuietDot, ratio);
     return glyph;
 }
 
@@ -343,6 +328,11 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
         break;
     case RowMark::NewItem:
         file = qsl(":/icons/editor-new-item.svg");
+        break;
+    case RowMark::Package:
+        // The glyph the package manager draws a package with, so a package's top
+        // folder here and its row over there are the one picture
+        file = qsl(":/icons/packages-package.svg");
         break;
     case RowMark::None:
         return glyph;
@@ -529,6 +519,16 @@ QRect EditorTreeDelegate::chevronHitRect(const QModelIndex& index) const
         return {};
     }
     return chevronHitRect(rowOption(index), index);
+}
+
+EditorTreeDelegate::DotState EditorTreeDelegate::dotStateOf(const QModelIndex& index) const
+{
+    return stateOf(index).dot;
+}
+
+EditorTreeDelegate::RowMark EditorTreeDelegate::markOf(const QModelIndex& index) const
+{
+    return stateOf(index).mark;
 }
 
 bool EditorTreeDelegate::eventFilter(QObject* pWatched, QEvent* pEvent)

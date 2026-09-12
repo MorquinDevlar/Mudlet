@@ -631,6 +631,8 @@ public:
     static int setScript(lua_State*);
     static int enableScript(lua_State*);
     static int disableScript(lua_State*);
+    static int enablePackage(lua_State*);
+    static int disablePackage(lua_State*);
     static int permAlias(lua_State*);
     static int exists(lua_State*);
     static int isActive(lua_State*);

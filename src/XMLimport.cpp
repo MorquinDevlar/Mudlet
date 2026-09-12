@@ -1127,6 +1127,8 @@ void XMLimport::readHost(Host* pHost)
                 }
             } else if (name() == qsl("mInstalledPackages")) {
                 readStringList(pHost->mInstalledPackages, qsl("Host"));
+            } else if (name() == qsl("mDisabledPackages")) {
+                readStringList(pHost->mDisabledPackages, qsl("Host"));
             } else if (name() == qsl("url")) {
                 // Only read this detail into a backup location so that it can
                 // be imported without changing the main setting unless it is

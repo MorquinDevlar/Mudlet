@@ -6205,6 +6205,13 @@ void mudlet::slot_connectionDialogueFinished(const QString& profile, bool connec
 
     mPackagesToInstallList.clear();
 
+    // Every package item the profile will have now exists - the ones the XML
+    // brought back and the default packages just installed - so the packages the
+    // user switched off can be switched off again. Their roots mostly come back
+    // off on their own (the XML records each item's state), but a package whose
+    // master folder has gone, or one just re-installed, does not.
+    pHost->applyDisabledPackages();
+
     // Only now are the fonts of the modules and the default packages registered
     // too, so a family the profile names can be told apart from one that is
     // merely not loaded yet - and the real console exists, so the stand-in this

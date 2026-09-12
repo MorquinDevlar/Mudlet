@@ -2554,6 +2554,9 @@ bool dlgConnectionProfiles::extractSettingsFromProfile(pugi::xml_document& newPr
     pugi::xml_node const hostPackage = hostPackageResults.first().node();
     auto host = hostPackage.child("Host");
     host.remove_child("mInstalledPackages");
+    // nothing is installed in the copy, so a name held back from running in the
+    // original would only switch off whatever gets installed here under it
+    host.remove_child("mDisabledPackages");
     host.remove_child("mInstalledModules");
 
     // copy in the /Mudlet/HostPackage

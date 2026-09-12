@@ -109,6 +109,21 @@ void AliasUnit::uninstall(const QString& packageName)
     uninstallList.clear();
 }
 
+// See TriggerUnit::setPackageActive(): the package's roots alone are switched,
+// and processDataStream() skips a root that is neither active nor meant to be.
+void AliasUnit::setPackageActive(const QString& packageName, const bool active)
+{
+    for (auto rootAlias : mAliasRootNodeList) {
+        if (rootAlias->mPackageName != packageName) {
+            continue;
+        }
+        if (mCleanupSet.contains(rootAlias) || uninstallList.contains(rootAlias)) {
+            continue;
+        }
+        rootAlias->setIsActive(active);
+    }
+}
+
 void AliasUnit::compileAll()
 {
     for (auto alias : mAliasRootNodeList) {

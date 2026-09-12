@@ -91,6 +91,7 @@ public:
     int getNewID();
     void uninstall(const QString&);
     void _uninstall(TTimer* pChild, const QString& packageName);
+    void setPackageActive(const QString& packageName, const bool active);
     void changeHostName(const QString&);
 
 

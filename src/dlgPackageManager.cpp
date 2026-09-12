@@ -23,6 +23,7 @@
 
 #include "dlgPackageManager.h"
 
+#include "GripSplitter.h"
 #include "dlgSystemMessageArea.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -33,17 +34,24 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QMenu>
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
+#include <QPointer>
 #include <QProgressDialog>
 #include <QSettings>
 #include <QTabBar>
 #include <QTextDocument>
+#include <QTimer>
 #include <QToolButton>
 #include <QVersionNumber>
+
+using namespace std::chrono_literals;
+
+#include <algorithm>
 
 // What each of the two columns leaves round what it holds: the inset the strip
 // of chips holds its own pane at, so the search field under the chips starts on
@@ -61,10 +69,19 @@ static constexpr int scmPackagesIconGlyphSize = 24;
 // under the list: a button's word with a picture beside it, not a picture
 // standing in for the word
 static constexpr int scmPackagesButtonGlyphSize = 16;
-// What parts the two facts of the caption line - who wrote the package, and
-// which version of it this is. Wider than the gap between two words, because
-// they are two readings rather than one sentence.
+// What parts the two facts at the head of the details column - the package's
+// name and which version of it this is. Wider than the gap between two words,
+// because they are two readings rather than one sentence.
 static constexpr int scmPackagesCaptionGap = 12;
+// What the details column is never dragged narrower than: a line of the
+// package's notes and the row of buttons over them both need this much before
+// they start wrapping into a column of single words
+static constexpr int scmPackagesDetailsMinimumWidth = 320;
+// ...and where the seam stands for a reader who has never moved it: a column of
+// names beside a column of notes wants about a third of the window
+static constexpr int scmPackagesListShareDenominator = 3;
+// Where the split the reader dragged is kept between sessions
+static constexpr char scmPackagesSplitterKey[] = "packageManagerSplitterState";
 
 
 dlgPackageManager::dlgPackageManager(QWidget* parent, Host* pHost)
@@ -74,6 +91,8 @@ dlgPackageManager::dlgPackageManager(QWidget* parent, Host* pHost)
     setupUi(this);
     connect(lineEdit_searchBar, &QLineEdit::textChanged, this, &dlgPackageManager::slot_searchTextChanged);
     connect(mpHost->mpConsole, &QWidget::destroyed, this, &dlgPackageManager::close);
+    packageList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(packageList, &QWidget::customContextMenuRequested, this, &dlgPackageManager::slot_packageContextMenu);
     connect(packageList, &QListWidget::currentItemChanged, this, &dlgPackageManager::slot_itemChanged);
     connect(packageList, &QListWidget::itemSelectionChanged, this, &dlgPackageManager::slot_toggleInstallRepoButton);
     connect(packageList, &QListWidget::itemSelectionChanged, this, &dlgPackageManager::slot_toggleRemoveButton);
@@ -95,6 +114,9 @@ dlgPackageManager::dlgPackageManager(QWidget* parent, Host* pHost)
 
     mpPackageItemDelegate = new PackageItemDelegate(this);
     packageList->setItemDelegate(mpPackageItemDelegate);
+    connect(mpPackageItemDelegate, &PackageItemDelegate::packageToggleRequested, this, [this](const QString& packageName) {
+        setPackageEnabled(packageName, !mpHost->packageEnabled(packageName));
+    });
 
     buildShell();
 
@@ -128,6 +150,42 @@ void dlgPackageManager::buildShell()
     verticalLayout_right->setContentsMargins(scmPackagesColumnInset, scmPackagesColumnInset, scmPackagesColumnInset, scmPackagesColumnInset);
     uiDesign::markAsShellSurface(leftPanel);
     uiDesign::markAsShellSurface(rightPanel);
+
+    // ...and the seam between them is a handle the reader drags rather than a
+    // hairline: a list of long package names and a set of notes with pictures in
+    // it want different shares of the window, and the fixed row the .ui file
+    // held them in offered neither. Both panes come out of that row, since a
+    // splitter takes its panes as its own children.
+    uiDesign::removeFromLayoutTree(horizontalLayout_2, leftPanel);
+    uiDesign::removeFromLayoutTree(horizontalLayout_2, rightPanel);
+    mpSplitter = new uiDesign::GripSplitter(Qt::Horizontal, this);
+    mpSplitter->setObjectName(qsl("packagesSplitter"));
+    uiDesign::markAsShellSurface(mpSplitter);
+    mpSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mpSplitter->setChildrenCollapsible(false);
+    mpSplitter->addWidget(leftPanel);
+    mpSplitter->addWidget(rightPanel);
+    // Said of each pane as well as of the splitter: a pane that was never told
+    // answers QSplitter::isCollapsible() with the default rather than with what
+    // setChildrenCollapsible() left
+    mpSplitter->setCollapsible(0, false);
+    mpSplitter->setCollapsible(1, false);
+    // Whatever the window gains goes to the details column; the list column
+    // keeps the width it was dragged to
+    mpSplitter->setStretchFactor(0, 0);
+    mpSplitter->setStretchFactor(1, 1);
+    // The .ui file capped the list column at 400px, which is what a row that
+    // could not be dragged needed to keep the details column usable. The handle
+    // says how wide each column is now, so only the floor is kept: a cap a drag
+    // stops dead at reads as a handle that has broken.
+    leftPanel->setMaximumWidth(QWIDGETSIZE_MAX);
+    rightPanel->setMinimumWidth(scmPackagesDetailsMinimumWidth);
+    mainVerticalLayout->insertWidget(mainVerticalLayout->indexOf(horizontalLayout_2), mpSplitter);
+    // A drag changes what the name at the head of the details column has room
+    // for, and the name is cut to that room
+    connect(mpSplitter, &QSplitter::splitterMoved, this, [this](const int, const int) {
+        showPackageName(mPackageNameShown);
+    });
 
     // The three views, as the row of chips every other strip in the design is
     // drawn as. The buttons the .ui file put them on stay - hidden, still in
@@ -214,6 +272,27 @@ void dlgPackageManager::buildShell()
         horizontalLayout_4->insertItem(2, pTrailingSpacer);
     }
 
+    // The switch, first in the row: what a reader does most often to an
+    // installed package is not removing it. Its word says what pressing it will
+    // do rather than what the package currently is, so it is set from the
+    // chosen package rather than once here.
+    mpButton_togglePackage = new QPushButton(rightPanel);
+    mpButton_togglePackage->setObjectName(qsl("packagesToggleButton"));
+    mpButton_togglePackage->hide();
+    connect(mpButton_togglePackage, &QAbstractButton::clicked, this, &dlgPackageManager::slot_togglePackageEnabled);
+    horizontalLayout_4->insertWidget(0, mpButton_togglePackage);
+
+    // ...and under the row, the one line that says what a package being off
+    // actually means. Only ever on show while the chosen package is off: a line
+    // explaining a state nothing is in is chrome standing in for nothing.
+    mpLabel_offNote = new QLabel(rightPanel);
+    mpLabel_offNote->setObjectName(qsl("packagesOffNote"));
+    mpLabel_offNote->setWordWrap(true);
+    //: Package manager - line under the details column's buttons, shown only while the chosen package is switched off
+    mpLabel_offNote->setText(tr("Off: its triggers, aliases, scripts, timers, keys and buttons are not running. Turn it on to start them again."));
+    mpLabel_offNote->hide();
+    verticalLayout_right->insertWidget(verticalLayout_right->indexOf(horizontalLayout_4) + 1, mpLabel_offNote);
+
     // The two buttons that leave the window were a picture with no word and no
     // face at all, which read as decoration rather than as somewhere to press
     pushButton_website->setFlat(false);
@@ -235,22 +314,48 @@ void dlgPackageManager::buildShell()
     nameFont.setPointSize(uiDesign::typeSize(uiDesign::TypeStep::Title));
     nameFont.setWeight(QFont::DemiBold);
     label_packageName->setFont(nameFont);
-    // The .ui pinned the version label 100px wide and right-aligned it away
-    // from a bold author at the far end of the row. The two are one caption
-    // line now - "by <author>" and the version beside it - so neither is given
-    // room it does not need and the room left over goes after both.
+
+    // The version stands beside the name rather than on a caption line under
+    // the summary: which version of a package this is, is read at the moment
+    // its name is, and three lines apart the two were two separate facts. The
+    // .ui pinned the label 100px wide and right-aligned it away from the
+    // author at the far end of a row; neither is what a number beside a name
+    // needs.
     label_version->setMinimumWidth(0);
-    label_version->setAlignment(Qt::AlignLeading | Qt::AlignLeft | Qt::AlignVCenter);
+    // Its words held to the foot of its box, which the row makes as deep as the
+    // name's - that is what puts the number on the name's own baseline
+    label_version->setAlignment(Qt::AlignLeading | Qt::AlignLeft | Qt::AlignBottom);
+    // Maximum across, so the number never takes more room than it needs and
+    // never pushes the name off the row; free to grow down, so its box is the
+    // row's full depth for that bottom alignment to mean anything
+    label_version->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    // ...and the name likewise takes its own words' width and no more, so the
+    // version stands next to it rather than at the far end of the column
+    label_packageName->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     label_author->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-    label_version->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-    horizontalLayout_3->setSpacing(scmPackagesCaptionGap);
-    horizontalLayout_3->addStretch(1);
     label_author->setFont(font());
     label_version->setFont(font());
 
-    // Name, then the one line saying what the package is for, then the caption
-    // line under both: the .ui file had the caption between the name and the
-    // summary, which read as a heading interrupted
+    uiDesign::removeFromLayoutTree(horizontalLayout_3, label_version);
+    // What is left on the caption line is the author alone, with the room left
+    // over after it
+    horizontalLayout_3->setSpacing(scmPackagesCaptionGap);
+    horizontalLayout_3->addStretch(1);
+
+    mpLayout_headlineRow = new QHBoxLayout();
+    mpLayout_headlineRow->setObjectName(qsl("packagesHeadlineRow"));
+    mpLayout_headlineRow->setContentsMargins(0, 0, 0, 0);
+    mpLayout_headlineRow->setSpacing(scmPackagesCaptionGap);
+    const int namePlace = verticalLayout_details->indexOf(label_packageName);
+    uiDesign::removeFromLayoutTree(verticalLayout_details, label_packageName);
+    mpLayout_headlineRow->addWidget(label_packageName);
+    mpLayout_headlineRow->addWidget(label_version);
+    mpLayout_headlineRow->addStretch(1);
+    verticalLayout_details->insertLayout(namePlace, mpLayout_headlineRow);
+
+    // Name and version, then the one line saying what the package is for, then
+    // the author under both: the .ui file had the caption between the name and
+    // the summary, which read as a heading interrupted
     if (QLayoutItem* pCaptionRow = verticalLayout_details->takeAt(verticalLayout_details->indexOf(horizontalLayout_3))) {
         verticalLayout_details->addItem(pCaptionRow);
     }
@@ -264,12 +369,19 @@ void dlgPackageManager::clearPackageDetails()
     label_icon->clear();
     label_icon->setStyleSheet(QString());
     showPlainDescription(QString());
+    mPackageNameShown.clear();
     label_packageName->clear();
     label_title->clear();
     label_author->clear();
     label_version->clear();
     pushButton_website->hide();
     pushButton_report->hide();
+    if (mpButton_togglePackage) {
+        mpButton_togglePackage->hide();
+    }
+    if (mpLabel_offNote) {
+        mpLabel_offNote->hide();
+    }
 }
 
 // The package's picture, cut to the field's corner at the screen's own pixel
@@ -389,14 +501,30 @@ void dlgPackageManager::downloadRepositoryIndex()
 
 void dlgPackageManager::fillPackageDetails(const QString& name, const QString& title, const QString& author, const QString& version)
 {
-    const QFontMetrics metrics(label_packageName->font());
-    const QString elidedText = metrics.elidedText(name, Qt::ElideRight, label_packageName->width());
-    label_packageName->setText(elidedText);
     label_title->setText(title);
     //: Package manager - who wrote the package, on the caption line under its name. %1 is the author's name
     label_author->setText(author.isEmpty() ? QString() : tr("by %1").arg(author));
-    //: Package manager - label showing package version
-    label_version->setText(tr("Version ") + version);
+    // The bare number, with no word in front of it: it stands beside the name
+    // in a tone of its own, which is what says what it is. Set before the name,
+    // because what is left of the row after it is what the name is cut to.
+    label_version->setText(version);
+    showPackageName(name);
+}
+
+void dlgPackageManager::showPackageName(const QString& name)
+{
+    mPackageNameShown = name;
+    // The room the headline row leaves the name: the whole of the row less the
+    // version standing beside it and the gap between them. Measured off the row
+    // rather than off the label, whose width is still the last package's until
+    // the layout has run again - and a name set at its full length would push
+    // the version off the column before that happened.
+    int room = label_packageName->width();
+    if (mpLayout_headlineRow && mpLayout_headlineRow->geometry().width() > 0) {
+        room = mpLayout_headlineRow->geometry().width() - scmPackagesCaptionGap - label_version->sizeHint().width();
+    }
+    const QFontMetrics metrics(label_packageName->font());
+    label_packageName->setText(metrics.elidedText(name, Qt::ElideRight, std::max(0, room)));
 }
 
 // The words of the package's notes, kept as they were handed over: the document
@@ -431,6 +559,30 @@ bool dlgPackageManager::hasNewerVersion(const QString& installed, const QString&
     const QVersionNumber installedVersion = QVersionNumber::fromString(installed);
     const QVersionNumber repoVersion = QVersionNumber::fromString(repo);
     return repoVersion > installedVersion;
+}
+
+QString dlgPackageManager::updateVersionText(const QString& installedVersion, const QString& repoVersion) const
+{
+    //: Package manager - the version beside a package's name in the Updates view: the one installed, then the one waiting. %1 is the installed version, %2 the new one
+    return tr("%1 → %2").arg(installedVersion, repoVersion);
+}
+
+QString dlgPackageManager::updateRowVersion(const QString& packageName) const
+{
+    const QString installedVersion = mpHost ? mpHost->mPackageInfo.value(packageName).value(qsl("version")) : QString();
+    const QString repoVersion = packageLookup.value(packageName).value(qsl("version")).toString();
+    if (installedVersion.isEmpty() || repoVersion.isEmpty()) {
+        return {};
+    }
+    return updateVersionText(installedVersion, repoVersion);
+}
+
+void dlgPackageManager::setRowVersion(QListWidgetItem* pItem, const QString& version)
+{
+    if (!pItem || version.isEmpty()) {
+        return;
+    }
+    pItem->setData(PackageItemDelegate::cPackageVersionRole, version);
 }
 
 void dlgPackageManager::populatePackagesWithUpdates()
@@ -512,6 +664,7 @@ void dlgPackageManager::resetPackageList()
         if (!title.isEmpty()) {
             item->setData(Qt::UserRole, title);
         }
+        setRowVersion(item, packageInfo.value(qsl("version")));
         const auto iconName = packageInfo.value(qsl("icon"));
         if (!iconName.isEmpty()) {
             const auto iconDir = mudlet::getMudletPath(enums::profileDataItemPath, mpHost->getName(), qsl("%1/.mudlet/Icon/%2").arg(mpHost->mInstalledPackages.at(i), iconName));
@@ -525,6 +678,198 @@ void dlgPackageManager::resetPackageList()
     packageList->setCurrentRow(0);
     slot_toggleInstallRepoButton();
     slot_toggleRemoveButton();
+    refreshPackageStates();
+}
+
+// Installing, removing or switching a package can put this window behind the
+// profile's: a package's toolbars are dock widgets of the main window, and
+// showing one - a floating one above all - brings that window forward over this
+// dialog. So every act this window starts ends by asking for the front again,
+// once the event loop has run whatever the act deferred (the install event,
+// the toolbars' own show).
+void dlgPackageManager::comeBackToFront()
+{
+    QTimer::singleShot(0ms, this, [this]() {
+        if (!isVisible()) {
+            return;
+        }
+        raise();
+        activateWindow();
+    });
+}
+
+void dlgPackageManager::refreshPackageStates()
+{
+    if (!mpHost) {
+        return;
+    }
+
+    // Only the Installed view has a switch to report. A row in the other two
+    // stands for a package on the repository, which leaves the role unset and is
+    // drawn with no dot at all.
+    if (mCurrentView == NavigationView::Installed) {
+        for (int row = 0; row < packageList->count(); ++row) {
+            QListWidgetItem* pItem = packageList->item(row);
+            if (!packageIsSwitchable(pItem->text())) {
+                pItem->setData(PackageItemDelegate::cPackageEnabledRole, QVariant());
+                continue;
+            }
+            const bool enabled = mpHost->packageEnabled(pItem->text());
+            pItem->setData(PackageItemDelegate::cPackageEnabledRole, enabled);
+            // The dot is painted rather than being a control of its own, so what
+            // a screen reader says about the row is the only place its reading
+            // can be put
+            pItem->setData(Qt::AccessibleDescriptionRole,
+                           enabled
+                                   //: Package manager - read out after an installed package's name when the package is running
+                                   ? tr("running")
+                                   //: Package manager - read out after an installed package's name when the package is switched off
+                                   : tr("off"));
+        }
+    }
+
+    updatePackageSwitchControls();
+    packageList->viewport()->update();
+}
+
+// A module is re-imported with every item forced on at each start and its file
+// lives outside the profile, so Host::setPackageEnabled() refuses one - and a
+// switch that is refused is worse than no switch at all. A name that is both a
+// package and a module is a module for this purpose.
+bool dlgPackageManager::packageIsSwitchable(const QString& packageName) const
+{
+    return mpHost && !packageName.isEmpty() && mpHost->mInstalledPackages.contains(packageName) && !mpHost->mInstalledModules.contains(packageName);
+}
+
+// What the details column says about the chosen package's switch. Hidden
+// outright outside the Installed view: nothing listed there is installed, so
+// there is nothing to switch.
+void dlgPackageManager::updatePackageSwitchControls()
+{
+    if (!mpButton_togglePackage || !mpLabel_offNote) {
+        return;
+    }
+
+    const QListWidgetItem* pItem = packageList->currentItem();
+    const bool switchable = mCurrentView == NavigationView::Installed && pItem && packageIsSwitchable(pItem->text());
+    mpButton_togglePackage->setVisible(switchable);
+    if (!switchable) {
+        mpLabel_offNote->hide();
+        return;
+    }
+
+    const bool enabled = mpHost->packageEnabled(pItem->text());
+    if (enabled) {
+        //: Package manager - button in the details column that switches the chosen package off
+        mpButton_togglePackage->setText(tr("Turn off"));
+        //: Package manager - what a screen reader reads for the button that switches the chosen package off. %1 is the package's name
+        mpButton_togglePackage->setAccessibleName(tr("Turn off the %1 package").arg(pItem->text()));
+    } else {
+        //: Package manager - button in the details column that switches the chosen package back on
+        mpButton_togglePackage->setText(tr("Turn on"));
+        //: Package manager - what a screen reader reads for the button that switches the chosen package back on. %1 is the package's name
+        mpButton_togglePackage->setAccessibleName(tr("Turn on the %1 package").arg(pItem->text()));
+    }
+    mpLabel_offNote->setVisible(!enabled);
+}
+
+void dlgPackageManager::setPackageEnabled(const QString& packageName, const bool enabled)
+{
+    if (!mpHost || packageName.isEmpty()) {
+        return;
+    }
+    const auto [switched, why] = mpHost->setPackageEnabled(packageName, enabled);
+    if (switched) {
+        return;
+    }
+    // The reason the Host gives is written for a script's error line rather than
+    // for a reader, and what is left once modules are held back above is a save
+    // in flight or a row the profile has moved on from - both of which the same
+    // sentence covers
+    qWarning() << "dlgPackageManager::setPackageEnabled() ERROR - could not switch" << packageName << ":" << why;
+    //: Package manager - shown under the list when a package could not be switched on or off. %1 is the package's name
+    showImportStatus(tr("%1 could not be switched just now. Please try again in a moment.").arg(packageName));
+    comeBackToFront();
+}
+
+void dlgPackageManager::slot_togglePackageEnabled()
+{
+    const QListWidgetItem* pItem = packageList->currentItem();
+    if (!pItem || !mpHost) {
+        return;
+    }
+    setPackageEnabled(pItem->text(), !mpHost->packageEnabled(pItem->text()));
+}
+
+// Everything here acts on the row that is chosen, so the row the pointer is
+// over is made that row first - which also moves the details column onto it, so
+// what the menu is about is what the window is showing behind it. A row that is
+// already part of a selection leaves that selection alone: Remove and Install
+// both act on every selected row, and a right-click inside a selection that
+// threw the rest of it away would be a trap.
+void dlgPackageManager::slot_packageContextMenu(const QPoint& pos)
+{
+    QListWidgetItem* pItem = packageList->itemAt(pos);
+    if (!pItem) {
+        return;
+    }
+    packageList->setCurrentItem(pItem, pItem->isSelected() ? QItemSelectionModel::NoUpdate : QItemSelectionModel::ClearAndSelect);
+
+    // Held through a guard rather than a bare pointer: exec() runs its own event
+    // loop, and the profile going away while the menu is open closes this window
+    // and takes the menu parented to it with it
+    QPointer<QMenu> pMenu = buildPackageContextMenu(pItem);
+    if (!pMenu) {
+        return;
+    }
+    pMenu->exec(packageList->viewport()->mapToGlobal(pos));
+    if (pMenu) {
+        pMenu->deleteLater();
+    }
+}
+
+QMenu* dlgPackageManager::buildPackageContextMenu(QListWidgetItem* pItem)
+{
+    if (!pItem || !mpHost) {
+        return nullptr;
+    }
+
+    auto* pMenu = new QMenu(this);
+    pMenu->setObjectName(qsl("packagesContextMenu"));
+    // Built at the moment it is needed, so it takes both halves of the recipe
+    // from here rather than from the window's style pass
+    pMenu->setStyleSheet(uiDesign::menuStyleSheet(uiDesign::themeTokens()));
+    uiDesign::letPopupsTakeTheFieldsCorner(pMenu);
+
+    if (mCurrentView == NavigationView::Installed) {
+        // A module has no switch, and an entry that cannot act is one the reader
+        // has to read before working that out - so it is left out rather than
+        // shown greyed
+        if (packageIsSwitchable(pItem->text())) {
+            const bool enabled = mpHost->packageEnabled(pItem->text());
+            //: Package manager - the list's right-click menu, over an installed package. The same two words the switch in the details column carries.
+            QAction* pToggle = pMenu->addAction(enabled ? tr("Turn off") : tr("Turn on"));
+            pToggle->setObjectName(qsl("packagesMenuToggle"));
+            connect(pToggle, &QAction::triggered, this, &dlgPackageManager::slot_togglePackageEnabled);
+        }
+        //: Package manager - the list's right-click menu, over an installed package: takes it off the profile
+        QAction* pRemove = pMenu->addAction(tr("Remove"));
+        pRemove->setObjectName(qsl("packagesMenuRemove"));
+        connect(pRemove, &QAction::triggered, this, &dlgPackageManager::slot_removePackages);
+        return pMenu;
+    }
+
+    // Explore and Updates list what is on the repository, and fetching one is
+    // the one act either offers - the same button in its two readings, so the
+    // same entry with the word the view gives it
+    QAction* pInstall = pMenu->addAction(mCurrentView == NavigationView::Updates
+                                                 //: Package manager - the list's right-click menu in the Updates view: brings the package up to date
+                                                 ? tr("Update")
+                                                 //: Package manager - the list's right-click menu in the Explore view: fetches the package
+                                                 : tr("Install"));
+    pInstall->setObjectName(qsl("packagesMenuInstall"));
+    connect(pInstall, &QAction::triggered, this, &dlgPackageManager::slot_installPackageFromRepository);
+    return pMenu;
 }
 
 void dlgPackageManager::setupNavigationButtons()
@@ -580,6 +925,7 @@ void dlgPackageManager::slot_installPackageFromFile()
     }
 
     resetPackageList();
+    comeBackToFront();
 
     if (!failedPackages.isEmpty()) {
         //: Package manager - status message shown when some packages failed to import. %1 is a comma-separated list of package names
@@ -635,6 +981,12 @@ void dlgPackageManager::slot_installPackageFromRepository()
                 // after the archive is deleted below.
                 mpHost->waitForProfileSave();
                 bool readyToInstall = true;
+                // An update is an uninstall followed by an install, and an
+                // uninstall forgets that the package was switched off - a
+                // package taken away and fetched again from scratch is meant to
+                // run. An update is not that: the reader switched this package
+                // off and did not ask for it back on.
+                const bool wasSwitchedOff = !mpHost->packageEnabled(packageName);
                 if (mpHost->mInstalledPackages.contains(packageName)) {
                     readyToInstall = mpHost->uninstallPackage(packageName, enums::PackageModuleType::Package);
                     if (!readyToInstall) {
@@ -645,9 +997,15 @@ void dlgPackageManager::slot_installPackageFromRepository()
                         qWarning() << "dlgPackageManager::slot_installPackageFromRepository() ERROR - could not remove the installed" << packageName << "to update it";
                     }
                 }
-                if (readyToInstall && !mpHost->installPackage(filePath, enums::PackageModuleType::Package).first) {
-                    failedPackages << packageName;
-                    qWarning() << "dlgPackageManager::slot_installPackageFromRepository() ERROR - failed to install" << packageName;
+                if (readyToInstall) {
+                    if (mpHost->installPackage(filePath, enums::PackageModuleType::Package).first) {
+                        if (wasSwitchedOff) {
+                            mpHost->setPackageEnabled(packageName, false);
+                        }
+                    } else {
+                        failedPackages << packageName;
+                        qWarning() << "dlgPackageManager::slot_installPackageFromRepository() ERROR - failed to install" << packageName;
+                    }
                 }
             }
             QFile::remove(filePath);
@@ -663,6 +1021,7 @@ void dlgPackageManager::slot_installPackageFromRepository()
         manager->deleteLater();
 
         resetPackageList();
+        comeBackToFront();
 
         if (!failedPackages.isEmpty()) {
             //: Package manager - status message shown when some packages downloaded from the repository failed to install. %1 is a comma-separated list of package names
@@ -802,6 +1161,7 @@ void dlgPackageManager::slot_itemChanged(QListWidgetItem* pItem)
     }
 
     clearPackageDetails();
+    updatePackageSwitchControls();
 
     QString packageName = pItem->text();
 
@@ -858,8 +1218,10 @@ void dlgPackageManager::slot_itemChanged(QListWidgetItem* pItem)
 
             fillPackageDetails(packageObj.value(qsl("mpackage")).toString(), packageObj.value(qsl("title")).toString(), packageObj.value(qsl("author")).toString(), repoVersion);
 
-            //: Package manager - version update indicator showing old and new versions
-            label_version->setText(tr("Version %1 → %2").arg(installedVersion, repoVersion));
+            label_version->setText(updateVersionText(installedVersion, repoVersion));
+            // Two numbers where fillPackageDetails() cut the name to fit beside
+            // one, so the name is cut again to what is left now
+            showPackageName(mPackageNameShown);
 
             showDescription(packageObj.value(qsl("description")).toString());
         }
@@ -935,13 +1297,37 @@ void dlgPackageManager::slot_openPackageWebsite()
         return;
     }
 
-    const QString helpUrl = packageHelpUrl(currentItem->text());
+    mudlet::self()->openWebPage(packageWebsiteUrl(currentItem->text()));
+}
+
+// The package's own page on the repository site, unless its author named a
+// help page. The site addresses a package by a slug rather than by its name:
+// lower case, every run of anything that is not a letter or a digit folded to
+// one hyphen - "Achaean System" is /packages/achaean-system, "generic_mapper"
+// is /packages/generic-mapper. The site's own listing page, with the name as a
+// fragment, is what this opened before, which left the reader on the front
+// page scrolled to roughly the right place.
+QString dlgPackageManager::packageWebsiteUrl(const QString& packageName) const
+{
+    const QString helpUrl = packageHelpUrl(packageName);
     if (!helpUrl.isEmpty()) {
-        mudlet::self()->openWebPage(helpUrl);
-        return;
+        return helpUrl;
     }
 
-    mudlet::self()->openWebPage(qsl("https://packages.mudlet.org/packages#pkg-") + currentItem->text());
+    QString slug;
+    bool pendingHyphen = false;
+    for (const QChar c : packageName.toLower()) {
+        if (c.isLetterOrNumber()) {
+            if (pendingHyphen && !slug.isEmpty()) {
+                slug.append(QLatin1Char('-'));
+            }
+            pendingHyphen = false;
+            slug.append(c);
+        } else {
+            pendingHyphen = true;
+        }
+    }
+    return qsl("https://packages.mudlet.org/packages/") + slug;
 }
 
 // Returns what to tell the user about the removals that did not happen, empty
@@ -996,6 +1382,7 @@ void dlgPackageManager::slot_removePackages()
 
     populatePackagesWithUpdates();
     updateUpdatesBadge();
+    comeBackToFront();
 }
 
 void dlgPackageManager::slot_searchTextChanged(const QString& searchText)
@@ -1015,6 +1402,7 @@ void dlgPackageManager::slot_searchTextChanged(const QString& searchText)
                 if (!title.isEmpty()) {
                     item->setData(Qt::UserRole, title);
                 }
+                setRowVersion(item, value.value(qsl("version")));
                 const auto iconName = value.value(qsl("icon"));
                 if (!iconName.isEmpty()) {
                     const auto iconDir = mudlet::getMudletPath(enums::profileDataItemPath, mpHost->getName(), qsl("%1/.mudlet/Icon/%2").arg(name, iconName));
@@ -1037,6 +1425,7 @@ void dlgPackageManager::slot_searchTextChanged(const QString& searchText)
                 if (!title.isEmpty()) {
                     item->setData(Qt::UserRole, title);
                 }
+                setRowVersion(item, pkg[qsl("version")].toString());
                 if (pkg.contains(qsl("icon"))) {
                     const QPixmap pixmap(pkg[qsl("icon")].toString());
                     item->setIcon(QIcon(pixmap));
@@ -1057,6 +1446,7 @@ void dlgPackageManager::slot_searchTextChanged(const QString& searchText)
                 if (!title.isEmpty()) {
                     item->setData(Qt::UserRole, title);
                 }
+                setRowVersion(item, updateRowVersion(packageName));
                 const auto iconName = packageInfo.value(qsl("icon"));
                 if (!iconName.isEmpty()) {
                     const auto iconDir = mudlet::getMudletPath(enums::profileDataItemPath, mpHost->getName(), qsl("%1/.mudlet/Icon/%2").arg(packageName, iconName));
@@ -1066,6 +1456,8 @@ void dlgPackageManager::slot_searchTextChanged(const QString& searchText)
             }
         }
     }
+
+    refreshPackageStates();
 }
 
 void dlgPackageManager::slot_setPackageList()
@@ -1092,6 +1484,7 @@ void dlgPackageManager::slot_setPackageList()
             if (!title.isEmpty()) {
                 item->setData(Qt::UserRole, title);
             }
+            setRowVersion(item, packageInfo.value(qsl("version")));
             if (!iconName.isEmpty()) {
                 const auto iconDir = mudlet::getMudletPath(enums::profileDataItemPath, mpHost->getName(), qsl("%1/.mudlet/Icon/%2").arg(mpHost->mInstalledPackages.at(i), iconName));
                 item->setIcon(QIcon(iconDir));
@@ -1112,6 +1505,7 @@ void dlgPackageManager::slot_setPackageList()
                 if (!title.isEmpty()) {
                     item->setData(Qt::UserRole, title);
                 }
+                setRowVersion(item, packageObj.value(qsl("version")).toString());
                 packageList->addItem(item);
             }
         }
@@ -1132,6 +1526,9 @@ void dlgPackageManager::slot_setPackageList()
             if (!title.isEmpty()) {
                 item->setData(Qt::UserRole, title);
             }
+            // The same two numbers the details column says, since a row in this
+            // view stands for a package that is installed and behind
+            setRowVersion(item, updateRowVersion(packageName));
             if (!iconName.isEmpty()) {
                 const auto iconDir = mudlet::getMudletPath(enums::profileDataItemPath, mpHost->getName(), qsl("%1/.mudlet/Icon/%2").arg(packageName, iconName));
                 item->setIcon(QIcon(iconDir));
@@ -1145,6 +1542,7 @@ void dlgPackageManager::slot_setPackageList()
     // selection's, and a view change is what has just happened
     slot_toggleInstallRepoButton();
     slot_toggleRemoveButton();
+    refreshPackageStates();
 }
 
 void dlgPackageManager::slot_toggleInstallRepoButton()
@@ -1163,22 +1561,26 @@ void dlgPackageManager::slot_toggleInstallRepoButton()
         // as well as with its word
         pushButton_installRepo->setIcon(mCurrentView == NavigationView::Updates ? mUpdateGlyph : mInstallGlyph);
 
+        // One row chosen is the ordinary case, and "Update 1" reads as a count
+        // of something the reader never asked to count. The number is only said
+        // where there is more than one of them, and then as a sentence rather
+        // than as a tally in brackets.
         if (mCurrentView == NavigationView::Updates) {
-            if (selectionCount) {
-                //: Message on button in package manager to update one or multiple (%n is the count) selected packages.
-                pushButton_installRepo->setText(tr("Update (%n)", nullptr, selectionCount));
+            if (selectionCount > 1) {
+                //: Message on button in package manager to bring several chosen packages up to date. %n is the number of selected packages.
+                pushButton_installRepo->setText(tr("Update %n packages", nullptr, selectionCount));
             } else {
-                //: Message on button in package manager when there are no selected packages - button will also be disabled.
+                //: Message on button in package manager to bring the chosen package up to date; also its wording with nothing chosen, where the button is disabled.
                 pushButton_installRepo->setText(tr("Update"));
             }
             //: Tooltip for button in package manager when in Updates view
             pushButton_installRepo->setToolTip(tr("Update selected packages"));
         } else {
-            if (selectionCount) {
-                //: Message on button in package manager to install one or multiple (%n is the count) selected packages.
-                pushButton_installRepo->setText(tr("Install (%n)", nullptr, selectionCount));
+            if (selectionCount > 1) {
+                //: Message on button in package manager to fetch several chosen packages. %n is the number of selected packages.
+                pushButton_installRepo->setText(tr("Install %n packages", nullptr, selectionCount));
             } else {
-                //: Message on button in package manager when there are no selected packages - button will also be disabled.
+                //: Message on button in package manager to fetch the chosen package; also its wording with nothing chosen, where the button is disabled.
                 pushButton_installRepo->setText(tr("Install"));
             }
             //: Tooltip for button in package manager when in Explore view
@@ -1203,11 +1605,11 @@ void dlgPackageManager::slot_toggleRemoveButton()
         const QList selection = packageList->selectedItems();
         const int selectionCount = selection.size();
         pushButton_remove->setEnabled(selectionCount);
-        if (selectionCount) {
-            //: Message on button in package manager to remove one or multiple (%n is the count) selected packages.
-            pushButton_remove->setText(tr("Remove (%n)", nullptr, selectionCount));
+        if (selectionCount > 1) {
+            //: Message on button in package manager to take several chosen packages off the profile. %n is the number of selected packages.
+            pushButton_remove->setText(tr("Remove %n packages", nullptr, selectionCount));
         } else {
-            //: Message on button in package manager when there are no selected packages - button will also be disabled.
+            //: Message on button in package manager to take the chosen package off the profile; also its wording with nothing chosen, where the button is disabled.
             pushButton_remove->setText(tr("Remove"));
         }
     } else {
@@ -1264,9 +1666,10 @@ void dlgPackageManager::applyPackageManagerShellStyle()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
-    // The list column: a surface of its own beside the page, with the seam that
-    // parts the two down its trailing edge
-    const QString leftRules = qsl("#leftPanel { background-color: %1; border-right: %2px solid %3; }").arg(tokens.pane.name(), QString::number(uiDesign::scmInputBorderWidth), tokens.separator.name())
+    // The list column: a surface of its own beside the page. No hairline down
+    // its trailing edge - the splitter's handle is the seam that parts the two
+    // now, and it draws one of its own.
+    const QString leftRules = qsl("#leftPanel { background-color: %1; }").arg(tokens.pane.name())
                               // The ::pane and ::tab-bar halves of this land on a plain widget
                               // and do nothing; what draws the three chips is its QTabBar rules
                               + uiDesign::tabBarStyleSheet(qsl("#leftPanel"), tokens) + uiDesign::inputStyleSheet(tokens, qsl("#leftPanel")) + uiDesign::buttonStyleSheet(tokens, qsl("#leftPanel"));
@@ -1285,15 +1688,44 @@ void dlgPackageManager::applyPackageManagerShellStyle()
     rowInks.setColor(QPalette::HighlightedText, tokens.accentText);
     packageList->setPalette(rowInks);
 
+    // What the version beside the name is written in: not chrome, but the one
+    // reading the head of the column carries - this package is here, and it is
+    // this one of its lives. The design's ok tone, the same green a running
+    // package's dot is filled in, walked until it can be read on the page it
+    // stands on. It names no size of its own, so it keeps the window's body
+    // font rather than becoming a second heading beside the name.
+    const QColor versionInk = uiDesign::readableOn(tokens.page, uiDesign::stateColor(uiDesign::scmStateHue_ok, tokens.darkPage), tokens.text, uiDesign::scmTextMinimumRatio);
+    // The version sits on the name's baseline: both labels start at the top of
+    // the headline row, and the version's words are held to the foot of a box
+    // the row makes as deep as the name's - which leaves the two baselines
+    // their descents apart, so the number is lifted by the difference.
+    const int baselineLift = std::max(0, QFontMetrics(label_packageName->font()).descent() - QFontMetrics(label_version->font()).descent());
+    label_version->setContentsMargins(0, 0, 0, baselineLift);
+
     // The details column, on the window's own surface: the name in the title
-    // step, the summary in the body ink, and the author and version as one
-    // caption line of chrome under them
+    // step with the version beside it, the summary in the body ink, and the
+    // author as one caption line of chrome under them
     const QString rightRules = qsl("#rightPanel { background-color: %1; }").arg(tokens.page.name()) + uiDesign::inputStyleSheet(tokens, qsl("#rightPanel"))
                                + uiDesign::buttonStyleSheet(tokens, qsl("#rightPanel")) + qsl("#label_packageName, #label_title { color: %1; background: transparent; }").arg(tokens.text.name())
-                               + qsl("#label_author, #label_version { color: %1; background: transparent; font-size: %2pt; font-weight: normal; }")
+                               + qsl("#label_author { color: %1; background: transparent; font-size: %2pt; font-weight: normal; }")
                                          .arg(tokens.mutedText.name(), QString::number(uiDesign::typeSize(uiDesign::TypeStep::Caption)))
+                               + qsl("#label_version { color: %1; background: transparent; font-weight: normal; }").arg(versionInk.name())
+                               // What a switched-off package is not doing is a
+                               // line of chrome, so it is written in the tone
+                               // every other label on the column is
+                               + qsl("#packagesOffNote { color: %1; background: transparent; }").arg(tokens.mutedText.name())
                                + uiDesign::scrollBarStyleSheet(qsl("#packageDescription"), tokens, tokens.field);
     rightPanel->setStyleSheet(rightRules);
+
+    // What the seam between the two columns is painted with. A handle carrying
+    // no heading draws a hairline down its middle and carries each neighbour's
+    // own tone up to it, and a stylesheet is what fills these - so each column
+    // says what it was filled with rather than the handle guessing at it.
+    leftPanel->setProperty(uiDesign::scmProp_paneTone, tokens.pane);
+    rightPanel->setProperty(uiDesign::scmProp_paneTone, tokens.page);
+    if (mpSplitter && mpSplitter->handle(1)) {
+        mpSplitter->handle(1)->update();
+    }
 
     // The notes themselves. The field the words are laid out in is the input
     // recipe's; what the words are laid out *as* is the document's own
@@ -1328,8 +1760,12 @@ void dlgPackageManager::applyPackageManagerShellStyle()
     pushButton_remove->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-delete.svg"), tokens));
     pushButton_website->setIcon(uiDesign::tintedIcon(qsl(":/icons/about-homepage.svg"), tokens));
     pushButton_report->setIcon(uiDesign::tintedIcon(qsl(":/icons/about-bug.svg"), tokens));
+    // The power glyph the editor switches an item on and off with, so the two
+    // switches in the application are the one picture
+    mpButton_togglePackage->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-activate.svg"), tokens));
     for (QAbstractButton* pButton : {static_cast<QAbstractButton*>(pushButton_installFile),
                                      static_cast<QAbstractButton*>(pushButton_installRepo),
+                                     static_cast<QAbstractButton*>(mpButton_togglePackage),
                                      static_cast<QAbstractButton*>(pushButton_remove),
                                      static_cast<QAbstractButton*>(pushButton_website),
                                      static_cast<QAbstractButton*>(pushButton_report)}) {
@@ -1339,6 +1775,7 @@ void dlgPackageManager::applyPackageManagerShellStyle()
     // says it is, which the toggles below are what decide
     slot_toggleInstallRepoButton();
     slot_toggleRemoveButton();
+    updatePackageSwitchControls();
 
     // The cross that closes the notice is this window's rather than the
     // notice's own, the way the editor's banner cross is
@@ -1364,8 +1801,66 @@ void dlgPackageManager::applyPackageManagerShellStyle()
 
 void dlgPackageManager::closeEvent(QCloseEvent* event)
 {
+    // Where the reader left the seam between the two columns, for the next time
+    // this window is opened
+    if (mpSplitter) {
+        if (QSettings* pSettings = mudlet::getQSettings()) {
+            pSettings->setValue(QString::fromLatin1(scmPackagesSplitterKey), mpSplitter->saveState());
+        }
+    }
     if (mudlet::self() && !mudlet::self()->isGoingDown() && mpHost && !mpHost->isClosingDown()) {
         emit packageManagerClosing(mpHost->getName());
     }
     QDialog::closeEvent(event);
+}
+
+void dlgPackageManager::showEvent(QShowEvent* event)
+{
+    QDialog::showEvent(event);
+    // Only the first show: a reader who drags the seam and then hides and
+    // reopens the window without closing it would otherwise find it back where
+    // the last session left it
+    if (!mSplitterRestored) {
+        mSplitterRestored = true;
+        restoreColumnSplit();
+    }
+}
+
+void dlgPackageManager::resizeEvent(QResizeEvent* event)
+{
+    QDialog::resizeEvent(event);
+    // setupUi() resizes the window before it has built the labels this reads,
+    // and that resize is posted rather than sent - but only the shell being in
+    // place makes that safe to rely on
+    if (!mpLayout_headlineRow) {
+        return;
+    }
+    // The layout has already been run - a layout is an event filter on what it
+    // lays out, so it hears the resize before this does - so the headline row
+    // knows how wide it is, and the name can be cut to what is left of it
+    showPackageName(mPackageNameShown);
+}
+
+void dlgPackageManager::restoreColumnSplit()
+{
+    if (!mpSplitter) {
+        return;
+    }
+
+    QSettings* pSettings = mudlet::getQSettings();
+    const QByteArray saved = pSettings ? pSettings->value(QString::fromLatin1(scmPackagesSplitterKey)).toByteArray() : QByteArray();
+    if (!saved.isEmpty() && mpSplitter->restoreState(saved)) {
+        // restoreState() puts back the handle width that was serialized with
+        // the sizes, so a state written by a Mudlet whose handle was another
+        // width has to be told this one again
+        mpSplitter->setHandleWidth(uiDesign::GripSplitter::scmHandleThickness);
+        return;
+    }
+
+    const int across = mpSplitter->width() - uiDesign::GripSplitter::scmHandleThickness;
+    if (across <= 0) {
+        return;
+    }
+    const int list = std::max(leftPanel->minimumWidth(), across / scmPackagesListShareDenominator);
+    mpSplitter->setSizes({list, across - list});
 }

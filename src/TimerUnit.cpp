@@ -117,6 +117,34 @@ void TimerUnit::uninstall(const QString& packageName)
     uninstallList.clear();
 }
 
+// Unlike the other units, an off root is not enough here: every child timer owns
+// a QTimer that keeps firing on its own. The family walk is the one enableTimer()
+// and disableTimer() already do for a folder - TTimer::enableTimer() only revives
+// a child whose own recorded state says it should run, so an item the player
+// switched off inside the package stays off.
+void TimerUnit::setPackageActive(const QString& packageName, const bool active)
+{
+    for (auto rootTimer : mTimerRootNodeList) {
+        if (rootTimer->mPackageName != packageName) {
+            continue;
+        }
+        if (mCleanupSet.contains(rootTimer) || uninstallList.contains(rootTimer)) {
+            continue;
+        }
+        if (rootTimer->isOffsetTimer()) {
+            // the trigger engine owns an offset timer's runtime state
+            rootTimer->setShouldBeActive(active);
+        } else {
+            rootTimer->setIsActive(active);
+        }
+        if (active) {
+            rootTimer->enableTimer();
+        } else {
+            rootTimer->disableTimer();
+        }
+    }
+}
+
 void TimerUnit::stopAllTriggers()
 {
     for (auto timer : mTimerRootNodeList) {

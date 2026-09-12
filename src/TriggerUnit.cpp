@@ -118,6 +118,27 @@ void TriggerUnit::uninstall(const QString& packageName)
     uninstallList.clear();
 }
 
+// Switches every trigger a package installed off or on in one go. Only the
+// package's root items are touched: a trigger the player switched off inside the
+// package keeps its own recorded state and stays off when the package comes back,
+// and processDataStream() starts at the roots so an off root is enough to stop
+// the whole branch matching.
+void TriggerUnit::setPackageActive(const QString& packageName, const bool active)
+{
+    for (auto rootTrigger : mTriggerRootNodeList) {
+        if (rootTrigger->mPackageName != packageName) {
+            continue;
+        }
+        // A trigger queued for deletion stays in the root list until doCleanup()
+        // frees it, and re-activating one resurrects what an uninstall or a kill
+        // has already taken away - the same hazard enableTrigger() guards against.
+        if (mCleanupSet.contains(rootTrigger) || uninstallList.contains(rootTrigger)) {
+            continue;
+        }
+        rootTrigger->setIsActive(active);
+    }
+}
+
 void TriggerUnit::removeAllTempTriggers()
 {
     for (auto trigger : mTriggerRootNodeList) {

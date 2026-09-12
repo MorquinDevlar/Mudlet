@@ -112,6 +112,39 @@ void ScriptUnit::uninstall(const QString& packageName)
     doCleanup();
 }
 
+// Off is enough to stop the handlers and any future run - callEventHandler()
+// checks isActive() and ancestorsActive(). On has to compile the branch again:
+// a script's body is what runs at compile time, and the tree still holds the
+// compilation from before the switch, so without marking it the package would
+// come back with none of its setup redone.
+void ScriptUnit::setPackageActive(const QString& packageName, const bool active)
+{
+    // A body run below can uninstall its own package, so iterate a snapshot -
+    // the same reason compileAll() takes one.
+    const std::vector<TScript*> rootNodes(mScriptRootNodeList.begin(), mScriptRootNodeList.end());
+    for (auto rootScript : rootNodes) {
+        if (rootScript->mPackageName != packageName || uninstallList.contains(rootScript)) {
+            continue;
+        }
+        rootScript->setIsActive(active);
+        if (!active || !rootScript->isActive()) {
+            continue;
+        }
+        markForRecompile(rootScript);
+        rootScript->compileAll();
+    }
+    // flush what a body that uninstalled itself left queued, as compileAll() does
+    doCleanup();
+}
+
+void ScriptUnit::markForRecompile(TScript* pScript)
+{
+    pScript->mNeedsToBeCompiled = true;
+    for (auto* scriptNode : *pScript->mpMyChildrenList) {
+        markForRecompile(static_cast<TScript*>(scriptNode));
+    }
+}
+
 // Flush the deletes uninstall() deferred (#9337). uninstallList is ordered
 // children-before-parents and each ~Tree unlinks from its parent, so deleting
 // children first empties the parent's child list (no double free); the seen

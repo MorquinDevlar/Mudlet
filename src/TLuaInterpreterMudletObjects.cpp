@@ -396,6 +396,18 @@ int TLuaInterpreter::disableKey(lua_State* L)
     return 1;
 }
 
+// Documentation: https://wiki.mudlet.org/w/Manual:Lua_Functions#disablePackage
+int TLuaInterpreter::disablePackage(lua_State* L)
+{
+    const QString packageName = getVerifiedString(L, __func__, 1, "package name");
+    Host& host = getHostFromLua(L);
+    if (auto [success, message] = host.setPackageEnabled(packageName, false); !success) {
+        return warnArgumentValue(L, __func__, message);
+    }
+    lua_pushboolean(L, true);
+    return 1;
+}
+
 // Documentation: https://wiki.mudlet.org/w/Manual:Lua_Functions#disableScript
 int TLuaInterpreter::disableScript(lua_State* L)
 {
@@ -455,6 +467,18 @@ int TLuaInterpreter::enableKey(lua_State* L)
     Host& host = getHostFromLua(L);
     const bool error = host.getKeyUnit()->enableKey(keyName);
     lua_pushboolean(L, error);
+    return 1;
+}
+
+// Documentation: https://wiki.mudlet.org/w/Manual:Lua_Functions#enablePackage
+int TLuaInterpreter::enablePackage(lua_State* L)
+{
+    const QString packageName = getVerifiedString(L, __func__, 1, "package name");
+    Host& host = getHostFromLua(L);
+    if (auto [success, message] = host.setPackageEnabled(packageName, true); !success) {
+        return warnArgumentValue(L, __func__, message);
+    }
+    lua_pushboolean(L, true);
     return 1;
 }
 

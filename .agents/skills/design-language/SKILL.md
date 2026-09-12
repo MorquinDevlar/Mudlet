@@ -119,7 +119,10 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
 
 - Settings dialog `dlgProfilePreferences` (shell, sidebar, cards, fields, marks, buttons, search)
 - Script editor `dlgTriggerEditor` (toolbar, sidebar, trees via `EditorTreeDelegate` /
-  `VariableTreeDelegate`, seven forms, pattern rows, options strip, chips, code heading, notice)
+  `VariableTreeDelegate`, seven forms, pattern rows, options strip, chips, code heading, notice).
+  A package's top folder carries `RowMark::Package` - the package manager's own glyph - so it
+  reads as the package rather than as a folder somebody made, and the six trees' context menu
+  carries `mpAction_togglePackage`, which names that package and switches the whole of it
 - The editor's notice `dlgSystemMessageArea`, which draws itself from `noticeStyleSheet()` and
   `applyNoticeGlyph()` on every appearance change - its own frame, its own three glyphs - rather
   than being written to by the window holding it; the editor keeps only the cross that dismisses it
@@ -147,7 +150,34 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
 - Package manager `dlgPackageManager` - the three views as a row of chips, the search field
   with its glyph inside it, the list's rows through `PackageItemDelegate` on the shared row
   recipe, the notice under it, the buttons of both columns, the details head at the type scale
-  and the package's notes as a field
+  and the package's notes as a field. The two columns hang in a `uiDesign::GripSplitter`
+  (`packagesSplitter`) rather than in a fixed row, neither pane collapsible, its sizes saved in
+  `closeEvent()` under `packageManagerSplitterState` and put back on the first `showEvent()` -
+  not in the constructor, since cocoa drops the geometry handed to a native window made before
+  it is shown - so the hairline down the list column's trailing edge is gone and the handle's
+  own seam is what parts the two. At the head of the details column the version stands beside
+  the name rather than on the caption line under it, as the bare number at the window's body
+  font, on the name's baseline and inked
+  `readableOn(page, stateColor(scmStateHue_ok, darkPage), text, scmTextMinimumRatio)` - the same
+  green a running package's dot is filled in. Every row in the list says the same thing about
+  the package it stands for: the version right-aligned on the name's own line, flush with the
+  row's trailing padding, at the caption step and in that same green - walked against the pane
+  for a plain row and against the chosen row's accent wash for the chosen one, and kept green
+  on a switched-off package, since which version is installed is a fact rather than a state.
+  Install, Update and Remove say the bare word for
+  one chosen row and "%n packages" for more. In the Installed view each row leads with the editor's
+  own state dot - `uiDesign::treeRowDotGlyph()`, filled in `stateColor(scmStateHue_ok, ...)`
+  while the package is running and a `mutedText` ring while it is switched off, with the name
+  going `mutedText` with it - and a click on that dot is the switch, answered by the delegate's
+  `editorEvent()`. The details column carries the same switch as `packagesToggleButton`
+  (the editor's power glyph, "Turn off" / "Turn on") with `packagesOffNote` under the action
+  row saying what a switched-off package is not doing. Neither the dot nor the button is drawn
+  in the Explore and Updates views, where nothing listed is installed. The list also carries a
+  right-click menu built at the moment it is needed - `menuStyleSheet()` and
+  `letPopupsTakeTheFieldsCorner()` from the code that builds it - holding the acts of the view
+  being looked at and nothing else: `packagesMenuToggle` (the button's own two words, left out
+  where the package has no switch) and `packagesMenuRemove` in the Installed view,
+  `packagesMenuInstall` in Explore and Updates
 - Profile tab strip `TTabBar` (main window and detached windows) - chips, the chosen one filled on
   a light page with the accent walked dark enough for `field`'s white to read on it and washed with
   the sidebar's accent bar and an outline on a dark one, its word in bold as the sidebar's chosen

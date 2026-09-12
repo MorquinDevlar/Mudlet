@@ -160,6 +160,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorNoticeGlyphTest.cpp
     EditorNoticeSeamTest.cpp
     EditorOptionsPanelDefaultTest.cpp
+    EditorPackageToggleTest.cpp
     EditorPlacementPersistenceTest.cpp
     EditorSidebarCollapseTest.cpp
     EditorSplitterRestoreTest.cpp
@@ -223,6 +224,7 @@ set(PACKAGE_GROUP_TEST_SOURCES
     PackageRemovalSaveTeardownTest.cpp
     PackageRepositoryDownloadTest.cpp
     PackageSelfRemovalTest.cpp
+    PackageToggleRoundTripTest.cpp
 )
 
 # Onboarding and in-app guidance: the starter UI, the tutorial invitation,

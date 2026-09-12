@@ -5586,6 +5586,8 @@ void TLuaInterpreter::initLuaGlobals()
     lua_register(pGlobalLua, "disableTrigger", TLuaInterpreter::disableTrigger);
     lua_register(pGlobalLua, "enableScript", TLuaInterpreter::enableScript);
     lua_register(pGlobalLua, "disableScript", TLuaInterpreter::disableScript);
+    lua_register(pGlobalLua, "enablePackage", TLuaInterpreter::enablePackage);
+    lua_register(pGlobalLua, "disablePackage", TLuaInterpreter::disablePackage);
     lua_register(pGlobalLua, "killTrigger", TLuaInterpreter::killTrigger);
     lua_register(pGlobalLua, "getLineCount", TLuaInterpreter::getLineCount);
     lua_register(pGlobalLua, "getColumnNumber", TLuaInterpreter::getColumnNumber);

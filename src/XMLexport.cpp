@@ -569,6 +569,16 @@ void XMLexport::writeHost(Host* pHost, pugi::xml_node mudletPackage)
             mInstalledPackages.append_child("string").text().set(package.toUtf8().constData());
         }
 
+        // Only written when there is something to say, so a profile in which
+        // nothing was ever switched off saves exactly the XML it did before.
+        // An older Mudlet reading this ignores the element it does not know.
+        if (!pHost->mDisabledPackages.isEmpty()) {
+            auto mDisabledPackages = host.append_child("mDisabledPackages");
+            for (const auto& package : std::as_const(pHost->mDisabledPackages)) {
+                mDisabledPackages.append_child("string").text().set(package.toUtf8().constData());
+            }
+        }
+
         if (!pHost->mInstalledModules.empty()) {
             auto mInstalledModules = host.append_child("mInstalledModules");
             QMapIterator<QString, QStringList> it(pHost->mInstalledModules);

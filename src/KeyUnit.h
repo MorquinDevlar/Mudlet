@@ -73,6 +73,7 @@ public:
     void setupKeyNames();
     void uninstall(const QString&);
     void _uninstall(TKey* pChild, const QString& packageName);
+    void setPackageActive(const QString& packageName, const bool active);
     bool processDataStream(const Qt::Key, const Qt::KeyboardModifiers);
     // Query-only counterpart to processDataStream(), which executes what it matches
     bool wouldMatch(const Qt::Key, const Qt::KeyboardModifiers) const;

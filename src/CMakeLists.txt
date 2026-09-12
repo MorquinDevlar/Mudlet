@@ -89,6 +89,7 @@ set(mudlet_SRCS
     EditorItemXMLHelpers.cpp
     EditorModifyPropertyCommand.cpp
     EditorMoveItemCommand.cpp
+    EditorPackageActiveCommand.cpp
     EditorPlaceholderButton.cpp
     EditorToggleActiveCommand.cpp
     EditorTreeDelegate.cpp
@@ -355,6 +356,7 @@ set(mudlet_HDRS
     EditorItemXMLHelpers.h
     EditorModifyPropertyCommand.h
     EditorMoveItemCommand.h
+    EditorPackageActiveCommand.h
     EditorPlaceholderButton.h
     EditorToggleActiveCommand.h
     EditorTreeDelegate.h

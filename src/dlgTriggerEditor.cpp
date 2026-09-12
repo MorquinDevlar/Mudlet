@@ -56,6 +56,7 @@
 #include "EditorItemXMLHelpers.h"
 #include "EditorModifyPropertyCommand.h"
 #include "EditorMoveItemCommand.h"
+#include "EditorPackageActiveCommand.h"
 #include "EditorPlaceholderButton.h"
 #include "SidebarToggle.h"
 #include "EditorToggleActiveCommand.h"
@@ -1388,6 +1389,16 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpAction_toggleActive = new QAction(tr("Activate"), this);
     mpAction_toggleActive->setStatusTip(tr("Toggle Active or Non-Active Mode for Triggers, Scripts etc."));
     connect(mpAction_toggleActive, &QAction::triggered, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
+
+    // Switching the whole package the chosen row came from, which is otherwise
+    // only offered in the package manager. Its word names the package, so it is
+    // set from whichever row is being looked at rather than once here, and it is
+    // not offered at all for a row that came from no package.
+    mpAction_togglePackage = new QAction(this);
+    mpAction_togglePackage->setVisible(false);
+    //: Status bar line for the trees' context menu entry that switches a whole package on or off
+    mpAction_togglePackage->setStatusTip(tr("Switch every trigger, alias, script, timer, key and button this package installed on or off at once."));
+    connect(mpAction_togglePackage, &QAction::triggered, this, &dlgTriggerEditor::slot_togglePackageActiveFlag);
     connect(treeWidget_triggers, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
     connect(treeWidget_aliases, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
     connect(treeWidget_timers, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
@@ -1487,6 +1498,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     const QList<QTreeWidget*> itemTreeWidgets = {treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys};
     for (QTreeWidget* widget : itemTreeWidgets) {
         widget->addAction(mpAction_toggleActive);
+        widget->addAction(mpAction_togglePackage);
     }
 
     QAction* importAction = new QAction(QIcon(qsl(":/icons/import.png")), tr("Import"), this);
@@ -1598,6 +1610,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
                            {mProfileSaveAsAction, qsl(":/icons/editor-save-profile.svg")},
                            // Menu-only, and reached from the trees rather than the toolbar
                            {mpAction_toggleActive, qsl(":/icons/editor-activate.svg")},
+                           {mpAction_togglePackage, qsl(":/icons/packages-package.svg")},
                            {copyAction, qsl(":/icons/editor-copy.svg")},
                            {pasteAction, qsl(":/icons/editor-paste.svg")}};
 
@@ -8592,6 +8605,11 @@ void dlgTriggerEditor::slot_setupPatternControls(int type)
 
 void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
 {
+    // The menu over this tree names the package the row came from, and the row
+    // has just changed. Ahead of the guard below: a tree with nothing chosen in
+    // it has no package either.
+    updatePackageAction(EditorViewType::cmTriggerView, pItem);
+
     if (!pItem) {
         return;
     }
@@ -8781,6 +8799,11 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
 
 void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
 {
+    // The menu over this tree names the package the row came from, and the row
+    // has just changed. Ahead of the guard below: a tree with nothing chosen in
+    // it has no package either.
+    updatePackageAction(EditorViewType::cmAliasView, pItem);
+
     if (!pItem) {
         // No details to show - so show the help message:
         clearAliasForm();
@@ -8851,6 +8874,11 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
 
 void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
 {
+    // The menu over this tree names the package the row came from, and the row
+    // has just changed. Ahead of the guard below: a tree with nothing chosen in
+    // it has no package either.
+    updatePackageAction(EditorViewType::cmKeysView, pItem);
+
     if (!pItem) {
         // No details to show - so show the help message:
         clearKeyForm();
@@ -9279,6 +9307,11 @@ static void showEditorFormRow(const bool visible, const QList<QWidget*>& row)
 
 void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
 {
+    // The menu over this tree names the package the row came from, and the row
+    // has just changed. Ahead of the guard below: a tree with nothing chosen in
+    // it has no package either.
+    updatePackageAction(EditorViewType::cmActionView, pItem);
+
     if (!pItem) {
         // No details to show - so show the help message:
         clearActionForm();
@@ -9467,6 +9500,11 @@ static QList<uiDesign::Suggestion> eventSuggestions(const QList<eventNames::Entr
 
 void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
 {
+    // The menu over this tree names the package the row came from, and the row
+    // has just changed. Ahead of the guard below: a tree with nothing chosen in
+    // it has no package either.
+    updatePackageAction(EditorViewType::cmScriptView, pItem);
+
     if (!pItem) {
         // No details to show - so show the help message:
         clearScriptForm();
@@ -9536,6 +9574,11 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
 
 void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
 {
+    // The menu over this tree names the package the row came from, and the row
+    // has just changed. Ahead of the guard below: a tree with nothing chosen in
+    // it has no package either.
+    updatePackageAction(EditorViewType::cmTimerView, pItem);
+
     if (!pItem) {
         // No details to show - so show the help message:
         clearTimerForm();
@@ -11353,6 +11396,94 @@ void dlgTriggerEditor::showPackageWarning(const QString& packageName, QTreeWidge
     }
 }
 
+QString dlgTriggerEditor::packageOfItem(const EditorViewType view, QTreeWidgetItem* pItem) const
+{
+    if (!pItem || !mpHost) {
+        return QString();
+    }
+    const int id = pItem->data(0, Qt::UserRole).toInt();
+    switch (view) {
+    case EditorViewType::cmTriggerView:
+        if (TTrigger* pT = mpHost->getTriggerUnit()->getTrigger(id); pT) {
+            return pT->packageName(pT);
+        }
+        break;
+    case EditorViewType::cmAliasView:
+        if (TAlias* pT = mpHost->getAliasUnit()->getAlias(id); pT) {
+            return pT->packageName(pT);
+        }
+        break;
+    case EditorViewType::cmTimerView:
+        if (TTimer* pT = mpHost->getTimerUnit()->getTimer(id); pT) {
+            return pT->packageName(pT);
+        }
+        break;
+    case EditorViewType::cmScriptView:
+        if (TScript* pT = mpHost->getScriptUnit()->getScript(id); pT) {
+            return pT->packageName(pT);
+        }
+        break;
+    case EditorViewType::cmActionView:
+        if (TAction* pT = mpHost->getActionUnit()->getAction(id); pT) {
+            return pT->packageName(pT);
+        }
+        break;
+    case EditorViewType::cmKeysView:
+        if (TKey* pT = mpHost->getKeyUnit()->getKey(id); pT) {
+            return pT->packageName(pT);
+        }
+        break;
+    default:
+        break;
+    }
+    return QString();
+}
+
+QTreeWidgetItem* dlgTriggerEditor::currentItemOfView(const EditorViewType view) const
+{
+    switch (view) {
+    case EditorViewType::cmTriggerView:
+        return treeWidget_triggers->currentItem();
+    case EditorViewType::cmAliasView:
+        return treeWidget_aliases->currentItem();
+    case EditorViewType::cmTimerView:
+        return treeWidget_timers->currentItem();
+    case EditorViewType::cmScriptView:
+        return treeWidget_scripts->currentItem();
+    case EditorViewType::cmActionView:
+        return treeWidget_actions->currentItem();
+    case EditorViewType::cmKeysView:
+        return treeWidget_keys->currentItem();
+    default:
+        return nullptr;
+    }
+}
+
+// The action names the package it would switch, so that a menu opened over a
+// row says which package the row came from as well as what pressing the entry
+// does. A row that came from no package is offered nothing: an entry that
+// cannot act is an entry the reader has to read before working that out.
+void dlgTriggerEditor::updatePackageAction(const EditorViewType view, QTreeWidgetItem* pItem)
+{
+    if (!mpAction_togglePackage) {
+        return;
+    }
+
+    const QString packageName = packageOfItem(view, pItem);
+    mpAction_togglePackage->setVisible(!packageName.isEmpty());
+    if (packageName.isEmpty()) {
+        return;
+    }
+
+    if (mpHost->packageEnabled(packageName)) {
+        //: Trees' context menu entry that switches a whole package off. %1 is the package's name
+        mpAction_togglePackage->setText(tr("Turn off the %1 package").arg(packageName));
+    } else {
+        //: Trees' context menu entry that switches a whole package back on. %1 is the package's name
+        mpAction_togglePackage->setText(tr("Turn on the %1 package").arg(packageName));
+    }
+}
+
 // Closing the package warning by hand is taken as "yes, understood": it stays
 // away for the rest of this editor's life, however many packages are opened
 void dlgTriggerEditor::slot_packageWarningDismissed()
@@ -11704,6 +11835,24 @@ void dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag()
     default:
         qDebug() << "ERROR: dlgTriggerEditor::slot_saveEdits() undefined view";
     }
+}
+
+// The package is read off the row again rather than off the action that was
+// pressed: the action's word is set as the selection moves, and a clean reset
+// between those two moments would leave it naming a package the row no longer
+// came from.
+void dlgTriggerEditor::slot_togglePackageActiveFlag()
+{
+    const EditorViewType view = resolveCurrentView();
+    const QString packageName = packageOfItem(view, currentItemOfView(view));
+    if (packageName.isEmpty() || !mpUndoStack) {
+        return;
+    }
+
+    // Pushing is what throws the switch: the command's redo() does the work, so
+    // there is one path through Host::setPackageEnabled() whether this was
+    // pressed, redone or undone
+    mpUndoStack->pushCommand(new EditorPackageActiveCommand(view, packageName, !mpHost->packageEnabled(packageName), mpHost));
 }
 
 void dlgTriggerEditor::slot_sourceFindMove()
@@ -13502,6 +13651,56 @@ void dlgTriggerEditor::slot_import()
         //: Trigger editor - status message shown when some packages failed to import. %1 is a comma-separated list of package names
         statusBar()->showMessage(tr("Failed to import: %1").arg(failedPackages.join(qsl(", "))), std::chrono::milliseconds(4s).count());
     }
+}
+
+// A package switch changes states, not structure: every item the package
+// installed is still there, with the same id and in the same place. So nothing
+// is cleared and refilled here - what a state change shows is refreshed in
+// place. The dot and the row's ink are derived by EditorTreeDelegate at paint
+// time from shouldBeActive() / isActive() / ancestorsActive(), so a repaint of
+// each viewport is the whole of what the trees need to draw; the accessible
+// description is written into the row, so that is walked the way a single
+// toggle walks the children of the row it switched.
+void dlgTriggerEditor::refreshPackageState()
+{
+    if (!mpHost) {
+        return;
+    }
+
+    if (mpTriggerBaseItem) {
+        children_icon_triggers(mpTriggerBaseItem);
+    }
+    if (mpAliasBaseItem) {
+        children_icon_alias(mpAliasBaseItem);
+    }
+    if (mpTimerBaseItem) {
+        children_icon_timer(mpTimerBaseItem);
+    }
+    if (mpScriptsBaseItem) {
+        children_icon_script(mpScriptsBaseItem);
+    }
+    if (mpActionBaseItem) {
+        children_icon_action(mpActionBaseItem);
+    }
+    if (mpKeyBaseItem) {
+        children_icon_key(mpKeyBaseItem);
+    }
+
+    for (TTreeWidget* pTreeWidget : {treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys}) {
+        if (pTreeWidget) {
+            pTreeWidget->viewport()->update();
+        }
+    }
+
+    // "%n trigger(s) - %1 active" counts what is active, and that is exactly
+    // what has just changed
+    scheduleEditorItemCountUpdate();
+
+    // The row the reader is on is still the row they were on, so the menu entry
+    // over it has to flip its word rather than be left offering to turn off a
+    // package that is now off
+    const EditorViewType view = resolveCurrentView();
+    updatePackageAction(view, currentItemOfView(view));
 }
 
 void dlgTriggerEditor::doCleanReset()
