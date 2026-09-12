@@ -38,6 +38,7 @@ class Host;
 class QAction;
 class QHBoxLayout;
 class QLabel;
+class QEvent;
 class QMenu;
 class QNetworkReply;
 class QPushButton;
@@ -140,6 +141,8 @@ private:
     QString packageHelpUrl(const QString& packageName) const;
     QString packageWebsiteUrl(const QString& packageName) const;
     void comeBackToFront();
+    void scheduleHeadlineFit();
+    bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
     void populatePackagesWithUpdates();
     void setupNavigationButtons();
     // The words of the package's notes, kept so that an appearance change can

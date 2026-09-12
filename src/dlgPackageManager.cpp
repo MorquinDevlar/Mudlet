@@ -127,6 +127,8 @@ dlgPackageManager::dlgPackageManager(QWidget* parent, Host* pHost)
 
     pushButton_installRepo->setEnabled(false);
     mCurrentView = NavigationView::Installed;
+    mpNavigationGroup->button(static_cast<int>(NavigationView::Installed))->setChecked(true);
+    syncViewBar();
     slot_setPackageList();
 
     applyPackageManagerShellStyle();
@@ -183,9 +185,11 @@ void dlgPackageManager::buildShell()
     mainVerticalLayout->insertWidget(mainVerticalLayout->indexOf(horizontalLayout_2), mpSplitter);
     // A drag changes what the name at the head of the details column has room
     // for, and the name is cut to that room
-    connect(mpSplitter, &QSplitter::splitterMoved, this, [this](const int, const int) {
-        showPackageName(mPackageNameShown);
-    });
+    // Whatever moves the seam or the window, the details column is what the
+    // headline's room is measured off, so its resize is what asks for a fit:
+    // a drag, a restored split (setSizes() announces nothing) and the window
+    // growing all pass through here
+    rightPanel->installEventFilter(this);
 
     // The three views, as the row of chips every other strip in the design is
     // drawn as. The buttons the .ui file put them on stay - hidden, still in
@@ -201,9 +205,16 @@ void dlgPackageManager::buildShell()
     uiDesign::markAsShellSurface(mpViewBar);
     //: Package manager - what the row of Explore / Installed / Updates chips is, read out to a screen reader
     mpViewBar->setAccessibleName(tr("Packages to show"));
-    for (const QAbstractButton* pButton : {static_cast<QAbstractButton*>(pushButton_explore), static_cast<QAbstractButton*>(pushButton_installed), static_cast<QAbstractButton*>(pushButton_updates)}) {
-        const int index = mpViewBar->addTab(pButton->text());
-        mpViewBar->setAccessibleTabName(index, pButton->text());
+    {
+        // The first tab added becomes the current one and says so - which
+        // pressed the hidden Explore button before the window had chosen its
+        // view. The bar is told which tab is current once the view is known.
+        const QSignalBlocker held(mpViewBar);
+        for (const QAbstractButton* pButton :
+             {static_cast<QAbstractButton*>(pushButton_explore), static_cast<QAbstractButton*>(pushButton_installed), static_cast<QAbstractButton*>(pushButton_updates)}) {
+            const int index = mpViewBar->addTab(pButton->text());
+            mpViewBar->setAccessibleTabName(index, pButton->text());
+        }
     }
     uiDesign::prepareTabStrip(mpViewBar);
     // Held to the leading edge rather than given the column's width: a bar
@@ -1824,6 +1835,7 @@ void dlgPackageManager::showEvent(QShowEvent* event)
         mSplitterRestored = true;
         restoreColumnSplit();
     }
+    scheduleHeadlineFit();
 }
 
 void dlgPackageManager::resizeEvent(QResizeEvent* event)
@@ -1835,10 +1847,29 @@ void dlgPackageManager::resizeEvent(QResizeEvent* event)
     if (!mpLayout_headlineRow) {
         return;
     }
-    // The layout has already been run - a layout is an event filter on what it
-    // lays out, so it hears the resize before this does - so the headline row
-    // knows how wide it is, and the name can be cut to what is left of it
-    showPackageName(mPackageNameShown);
+}
+
+// The name at the head of the details column is cut to the room its row has,
+// and that room is only known once the layout has run for the new size - which
+// happens after the resize event, not inside it. Deferred to the event loop so
+// the row is measured as it will be seen; and asked for after the column split
+// is restored, since setSizes() moves the seam without saying so.
+bool dlgPackageManager::eventFilter(QObject* pWatched, QEvent* pEvent)
+{
+    if (pWatched == rightPanel && pEvent->type() == QEvent::Resize) {
+        scheduleHeadlineFit();
+    }
+    return QDialog::eventFilter(pWatched, pEvent);
+}
+
+void dlgPackageManager::scheduleHeadlineFit()
+{
+    if (mPackageNameShown.isEmpty()) {
+        return;
+    }
+    QTimer::singleShot(0ms, this, [this]() {
+        showPackageName(mPackageNameShown);
+    });
 }
 
 void dlgPackageManager::restoreColumnSplit()

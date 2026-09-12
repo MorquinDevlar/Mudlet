@@ -412,6 +412,57 @@ private slots:
     // An install or a switch can show a package's toolbars, which are dock
     // widgets of the main window and bring it forward over this dialog; every
     // act the window starts ends by asking for the front again
+    // The window opens on the Installed view, and every one of the three things
+    // that say which view it is agrees - the list, the hidden button and the
+    // chip: the first tab a bar is given becomes current and said so, which
+    // pressed Explore before the window had chosen
+    void test_theWindowOpensWithTheInstalledChipLit()
+    {
+        dlgPackageManager fresh(nullptr, mpHost);
+        auto* pBar = fresh.findChild<QTabBar*>(qsl("packagesViewBar"));
+        QVERIFY2(pBar, "the fresh window has no chip row");
+        qInfo().noquote() << qsl("  a fresh window's chip row reads tab %1, the hidden Installed button is %2checked")
+                                     .arg(pBar->currentIndex())
+                                     .arg(fresh.pushButton_installed->isChecked() ? QString() : qsl("not "));
+        QVERIFY2(pBar->currentIndex() == static_cast<int>(NavigationView::Installed),
+                 qPrintable(qsl("a fresh window lights chip %1 where the Installed view (%2) is what it opens on").arg(pBar->currentIndex()).arg(static_cast<int>(NavigationView::Installed))));
+        QVERIFY2(fresh.pushButton_installed->isChecked(), "a fresh window's hidden Installed button is not the checked one");
+        QVERIFY2(fresh.mCurrentView == NavigationView::Installed, "a fresh window's view is not Installed");
+    }
+
+    // The name at the head of the details column is cut to the room its row
+    // has, and that room follows the seam - including a seam moved by code,
+    // which announces nothing
+    void test_theHeadlineFitsTheRoomTheSeamLeavesIt()
+    {
+        showView(NavigationView::Installed);
+        QVERIFY2(mpDialog->mpSplitter, "there is no splitter to move");
+        const QList<int> before = mpDialog->mpSplitter->sizes();
+        // Long enough to be cut beside a narrow column and whole beside a wide one
+        const QString longName = qsl("a-package-name-long-enough-to-be-cut");
+        mpDialog->fillPackageDetails(longName, qsl("A summary"), qsl("An author"), qsl("1.0"));
+        QCoreApplication::processEvents();
+
+        mpDialog->mpSplitter->setSizes({mpDialog->width() - 330, 330});
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        const QString cramped = mpDialog->label_packageName->text();
+
+        mpDialog->mpSplitter->setSizes({300, mpDialog->width() - 300});
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        const QString roomy = mpDialog->label_packageName->text();
+        qInfo().noquote() << qsl("  the headline reads \"%1\" with the details column narrow and \"%2\" with it wide").arg(cramped, roomy);
+
+        QVERIFY2(cramped != longName, qPrintable(qsl("beside a 330px column the headline still reads the whole \"%1\", so the narrow case reads nothing").arg(cramped)));
+        QVERIFY2(roomy == longName,
+                 qPrintable(qsl("with the details column wide again the headline still reads \"%1\" rather than the whole name \"%2\" - the name was cut for a room the column no longer has")
+                                    .arg(roomy, longName)));
+        mpDialog->mpSplitter->setSizes(before);
+        QCoreApplication::processEvents();
+        mpDialog->refreshPackageStates();
+    }
+
     void test_theWindowComesBackToTheFrontAfterItsOwnActs()
     {
         mudlet::self()->show();

@@ -16,7 +16,7 @@ whoever writes the entry, not a citation.
 | Function | What it does | Came in with | Status |
 | --- | --- | --- | --- |
 | `enablePackage(name)` | Switches every item a package installed back on; returns true, or nil and a reason | `561d11880` | not written |
-| `disablePackage(name)` | Switches every item a package installed off, remembered across restarts; refuses modules | `561d11880` | not written |
+| `disablePackage(name)` | Switches every item a package installed off, remembered across restarts; refuses modules. The entry must say what the switch does not reach: handlers registered at runtime with `registerAnonymousEventHandler` / `registerNamedEventHandler`, and `tempTrigger` / `tempTimer` / `tempAlias` / `tempKey` items made by the package's scripts, keep running - they carry no link to the package. A package tears those down itself on `sysDisablePackage`. Switching back on recompiles the scripts, so a body that registers a function handler registers it again | `561d11880` | not written |
 | `setSvgRotation`, `setSvgShear`, `setSvgTint`, `resetSvgRotation`, `resetSvgShear`, `resetSvgTint`, `resetSvgTransform` | SVG label transforms and tint (upstream PR #8935) | `e43c5a2bb`, `36e01a545` | check the PR's own wiki status |
 | Map room symbol font functions | Set the 2D map room symbol font from Lua | `a32b39119` | check |
 
@@ -25,7 +25,7 @@ whoever writes the entry, not a citation.
 | Event | Arguments | Came in with | Status |
 | --- | --- | --- | --- |
 | `sysEnablePackage` | package name | `561d11880` | not written |
-| `sysDisablePackage` | package name | `561d11880` | not written |
+| `sysDisablePackage` | package name. The entry should tell package authors this is where to kill their runtime handlers and temp items, which the switch does not reach | `561d11880` | not written |
 | `sysSettingChanged` | the seven boolean `getConfig` keys that now ride the existing event (upstream PR #10596) | merged branch `improve/setting-changed-event-keys` | not written |
 
 ## `setConfig` / `getConfig` keys
