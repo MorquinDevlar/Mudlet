@@ -46,6 +46,7 @@ set(mudlet_SRCS
     AliasUnit.cpp
     CredentialManager.cpp
     ctelnet.cpp
+    DioramaLayout.cpp
     discord.cpp
     EditorAddItemCommand.cpp
     EditorDeleteItemCommand.cpp
@@ -54,6 +55,7 @@ set(mudlet_SRCS
     EditorMoveItemCommand.cpp
     EditorToggleActiveCommand.cpp
     EditorUndoStack.cpp
+    EnvironmentKit.cpp
     EventLoopPump.cpp
     EventNames.cpp
     ExitAppearance.cpp
@@ -67,6 +69,8 @@ set(mudlet_SRCS
     LuaInterface.cpp
     LuaLiteral.cpp
     mapInfoContributorManager.cpp
+    MapDecals.cpp
+    MapStyle.cpp
     MMCPClient.cpp
     MMCPServer.cpp
     MudletApp.cpp
@@ -351,6 +355,7 @@ set(mudlet_HDRS
     AliasUnit.h
     CredentialManager.h
     ctelnet.h
+    DioramaLayout.h
     discord.h
     EditorAddItemCommand.h
     EditorCommand.h
@@ -360,6 +365,7 @@ set(mudlet_HDRS
     EditorMoveItemCommand.h
     EditorToggleActiveCommand.h
     EditorUndoStack.h
+    EnvironmentKit.h
     enums.h
     EventLoopPump.h
     EventNames.h
@@ -375,6 +381,8 @@ set(mudlet_HDRS
     LuaLiteral.h
     MacMicrophonePermission.h
     mapInfoContributorManager.h
+    MapDecals.h
+    MapStyle.h
     MMCP.h
     MMCPClient.h
     MMCPServer.h
@@ -619,6 +627,8 @@ if(USE_3DMAPPER)
   list(APPEND mudlet_app_HDRS glwidget.h)
   list(APPEND mudlet_app_SRCS modern_glwidget.cpp)
   list(APPEND mudlet_app_HDRS modern_glwidget.h)
+  list(APPEND mudlet_SRCS BloomPass.cpp)
+  list(APPEND mudlet_HDRS BloomPass.h)
   list(APPEND mudlet_SRCS CameraController.cpp)
   list(APPEND mudlet_HDRS CameraController.h)
   list(APPEND mudlet_SRCS ExitScene.cpp)
