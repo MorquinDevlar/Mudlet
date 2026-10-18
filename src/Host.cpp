@@ -4600,6 +4600,11 @@ QString Host::readProfileIniData(const QString& item)
     return profileIni().value(item).toString();
 }
 
+void Host::removeProfileIniData(const QString& item)
+{
+    profileIni().remove(item);
+}
+
 // This function retrieves command line history settings based on the given
 // command line type and name. It reads the saveCommands setting from the
 // profile.ini file, which is intended to replace all other single data item
