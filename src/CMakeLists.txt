@@ -55,6 +55,7 @@ set(mudlet_SRCS
     EditorToggleActiveCommand.cpp
     EditorUndoStack.cpp
     EventLoopPump.cpp
+    EventNames.cpp
     ExitAppearance.cpp
     FontManager.cpp
     GifTracker.cpp
@@ -174,6 +175,8 @@ set(mudlet_SRCS
 # Every .cpp source file that needs Qt Widgets goes here instead, in mudlet_app, kept
 # in alphabetical order (case-insensitive).
 set(mudlet_app_SRCS
+    ChipRow.cpp
+    ContentScrollArea.cpp
     CustomLineDrawContextMenuHandler.cpp
     CustomLineDrawHandler.cpp
     CustomLineEditContextMenuHandler.cpp
@@ -208,8 +211,13 @@ set(mudlet_app_SRCS
     dlgVarsMainArea.cpp
     EAction.cpp
     EditorAutoCompleteFocusHandler.cpp
+    EditorPlaceholderButton.cpp
+    EditorTreeDelegate.cpp
+    EditorTreeRowMetrics.cpp
     exitstreewidget.cpp
     FileOpenHandler.cpp
+    FlowLayout.cpp
+    GripSplitter.cpp
     HostDialogs.cpp
     LabelInteractionHandler.cpp
     MiddleMousePanHandler.cpp
@@ -220,7 +228,10 @@ set(mudlet_app_SRCS
     RoomContextMenuHandler.cpp
     RoomMoveActivationHandler.cpp
     RoomMoveDragHandler.cpp
+    SearchResultDelegate.cpp
     SelectionRectangleHandler.cpp
+    SidebarItemDelegate.cpp
+    SidebarToggle.cpp
     SingleLineTextEdit.cpp
     T2DMap.cpp
     TAccessibleTextEdit.cpp
@@ -250,6 +261,8 @@ set(mudlet_app_SRCS
     TToolBar.cpp
     TTreeWidget.cpp
     TUiTour.cpp
+    uiDesign.cpp
+    VariableTreeDelegate.cpp
     WideComboBox.cpp
     widgetutils.cpp)
 
@@ -346,6 +359,7 @@ set(mudlet_HDRS
     EditorUndoStack.h
     enums.h
     EventLoopPump.h
+    EventNames.h
     ExitAppearance.h
     FontManager.h
     GifTracker.h
@@ -480,6 +494,8 @@ set(mudlet_HDRS
 # Every .h header file that needs Qt Widgets goes here instead, in mudlet_app, kept
 # in alphabetical order (case-insensitive).
 set(mudlet_app_HDRS
+    ChipRow.h
+    ContentScrollArea.h
     CustomLineDrawContextMenuHandler.h
     CustomLineDrawHandler.h
     CustomLineEditContextMenuHandler.h
@@ -514,8 +530,13 @@ set(mudlet_app_HDRS
     dlgVarsMainArea.h
     EAction.h
     EditorAutoCompleteFocusHandler.h
+    EditorPlaceholderButton.h
+    EditorTreeDelegate.h
+    EditorTreeRowMetrics.h
     exitstreewidget.h
     FileOpenHandler.h
+    FlowLayout.h
+    GripSplitter.h
     HostDialogs.h
     LabelInteractionHandler.h
     MiddleMousePanHandler.h
@@ -526,7 +547,10 @@ set(mudlet_app_HDRS
     RoomContextMenuHandler.h
     RoomMoveActivationHandler.h
     RoomMoveDragHandler.h
+    SearchResultDelegate.h
     SelectionRectangleHandler.h
+    SidebarItemDelegate.h
+    SidebarToggle.h
     SingleLineTextEdit.h
     T2DMap.h
     TAccessibleConsole.h
@@ -557,6 +581,8 @@ set(mudlet_app_HDRS
     TToolBar.h
     TTreeWidget.h
     TUiTour.h
+    uiDesign.h
+    VariableTreeDelegate.h
     WideComboBox.h
     widgetutils.h)
 

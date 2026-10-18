@@ -191,6 +191,7 @@ set(TRIGGER_GROUP_TEST_SOURCES
 
 # The script editor, and the trigger, variable and script forms it hosts
 set(EDITOR_GROUP_TEST_SOURCES
+    ControlSentenceRowTest.cpp
     dlgTriggerEditorUndoRedoTest.cpp
     EdbeeReinitTest.cpp
     EditorAutoCompleteFocusTest.cpp
@@ -201,6 +202,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorReshowTest.cpp
     PackageExporterTest.cpp
     EditorWindowPositionTest.cpp
+    EventNamesTest.cpp
     MissingEditorThemeTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     EditorAddItemTest.cpp

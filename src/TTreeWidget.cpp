@@ -159,6 +159,13 @@ void TTreeWidget::mousePressEvent(QMouseEvent* event)
     QTreeWidget::mousePressEvent(event);
 }
 
+QStyleOptionViewItem TTreeWidget::viewItemOption() const
+{
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
+    return option;
+}
+
 void TTreeWidget::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end)
 {
     // We only move one element (though it may have its own children) at a time

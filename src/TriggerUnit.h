@@ -56,6 +56,7 @@ public:
     ~TriggerUnit();
 
     std::list<TTrigger*> getTriggerRootNodeList() { return mTriggerRootNodeList; }
+    QMap<int, TTrigger*> getTriggerList() { return mTriggerMap; }
 
     void resetStats();
     TTrigger* getTrigger(int id);
