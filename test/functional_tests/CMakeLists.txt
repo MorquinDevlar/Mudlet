@@ -77,6 +77,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     NarrowWindowWrapTest.cpp
     NotepadTest.cpp
     NotepadShellTest.cpp
+    PackageManagerShellTest.cpp
     TabActivityMarkTest.cpp
     MenuShortcutTeardownTest.cpp
     NawsWidthReportTest.cpp

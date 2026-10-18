@@ -28,19 +28,33 @@
 #include "ui_package_manager.h"
 #include <QButtonGroup>
 #include <QDialog>
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QListWidget>
 #include <QTextBrowser>
 
 class Host;
+class QAction;
+class QHBoxLayout;
+class QEvent;
+class QMenu;
 class QNetworkReply;
+class QPushButton;
+class QTabBar;
+class dlgSystemMessageArea;
+
+namespace uiDesign {
+class GripSplitter;
+}
 
 enum class NavigationView { Explore, Installed, Updates };
 
 class dlgPackageManager : public QDialog, public Ui::package_manager
 {
     Q_OBJECT
+
+    friend class PackageManagerShellTest;
 
 public:
     Q_DISABLE_COPY(dlgPackageManager)
@@ -53,11 +67,15 @@ signals:
     void packageManagerClosing(const QString& profileName);
 
 private slots:
+    void slot_applyAppearance();
     void slot_installPackageFromFile();
     void slot_installPackageFromRepository();
     void slot_itemChanged(QListWidgetItem*);
     void slot_navigationButtonClicked(int buttonId);
     void slot_openBugWebsite();
+    // The list's right-click menu: the same acts the buttons carry, offered
+    // where the pointer already is
+    void slot_packageContextMenu(const QPoint& pos);
     void slot_openPackageWebsite();
     void slot_onIconDownloaded(QNetworkReply* reply);
     void slot_removePackages();
@@ -67,30 +85,134 @@ private slots:
     void slot_toggleRemoveButton();
 
 private:
-    void applyNavigationStyles();
+    // The window in the design language, composed from the recipes in
+    // src/uiDesign.h and run again on every appearance change. Every sheet goes
+    // on one of the two columns rather than on the dialog: mudlet assigns a
+    // profile's Lua stylesheet to a dialog on show, so a sheet set here would
+    // simply be replaced by it.
+    void applyPackageManagerShellStyle();
+    // The shell built over the .ui file: the row of chips the view is chosen
+    // from, the glyph inside the search field, the notice under the list, and
+    // the two action buttons moved across to the details column
+    void buildShell();
+    // What the list's right-click menu holds over the given row, in the design's
+    // menu: the entries of the view being looked at, and nothing an entry could
+    // not act on. Kept apart from the slot that shows it so that a test can read
+    // the entries without running a menu's own event loop. The caller owns what
+    // comes back.
+    QMenu* buildPackageContextMenu(QListWidgetItem* pItem);
     void clearPackageDetails();
     void closeEvent(QCloseEvent* event) override;
+    // The split between the two columns is put back here rather than in the
+    // constructor: on macOS a native window created before it is shown drops
+    // the geometry it is handed, and a splitter dividing a window with no width
+    // yet divides nothing
+    void showEvent(QShowEvent* event) override;
+    // The name at the head of the details column is cut to the room the version
+    // beside it leaves, and that room is the window's - so a resize, and the
+    // seam between the columns being dragged, both change it
+    // Where the seam between the two columns stood when this window was last
+    // closed, or a third of the window for a reader who has never moved it
+    void restoreColumnSplit();
     void downloadIcon(const QString& packageName);
     void downloadRepositoryIndex();
-    void elidePackageName();
-    bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
     void fillPackageDetails(const QString& name, const QString& title, const QString& author, const QString& version);
     bool hasNewerVersion(const QString& installed, const QString& repo) const;
+    // The two numbers a package waiting for an update is named by - the one
+    // installed, then the one on the repository. Said once, because the row in
+    // the list and the head of the details column beside it say the same thing.
+    QString updateVersionText(const QString& installedVersion, const QString& repoVersion) const;
+    // ...that pair for one package, or nothing at all where either half is
+    // missing and the two would read as a dangling arrow
+    QString updateRowVersion(const QString& packageName) const;
+    // The version a row carries at its trailing edge, written onto the item
+    // wherever the list is filled. A package that names none leaves the role
+    // unset, and the delegate draws nothing.
+    static void setRowVersion(QListWidgetItem* pItem, const QString& version);
     QString packageHelpUrl(const QString& packageName) const;
+    QString packageWebsiteUrl(const QString& packageName) const;
+    void comeBackToFront();
+    void scheduleHeadlineFit();
+    // What each of the two buttons that lead out of the window measures with
+    // its word beside its glyph and with the glyph alone, and the floor those
+    // glyph-only widths give them - which is what lets the row be squeezed at
+    // all. Taken again on every pass of the style: the padding round a label is
+    // the style's, and it changes with the appearance.
+    void measureActionRowButtons();
+    // What the action row needs with every button carrying its word: the
+    // buttons the current view and selection show, the gaps between them and
+    // the margins round them
+    int actionRowWordedNeed() const;
+    // Below that need the two link buttons stand as their glyphs alone, and
+    // they take their words back above it plus a gap's worth of slack - two
+    // thresholds, so a width on the line does not flicker
+    void fitActionRowToItsColumn();
+    void scheduleActionRowFit();
+    bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
     void populatePackagesWithUpdates();
     void setupNavigationButtons();
+    // The words of the package's notes, kept so that an appearance change can
+    // lay them out again under the document stylesheet it mixes anew
+    void showDescription(const QString& markdown);
+    void showPlainDescription(const QString& text);
+    void relayDescription();
+    // The package's picture at the head of the details column, cut to the
+    // field's corner - or, for a package that ships none, the design's package
+    // glyph on a card-tone box
+    void showPackageIcon(const QPixmap& face);
+    void showPackagePlaceholder();
+    // The package's name on the headline row, cut to what the version standing
+    // beside it leaves. The whole name is kept in mPackageNameShown, so the row
+    // can be laid out again - the window resized, the seam dragged, the version
+    // growing from one number to two in the Updates view - without eating
+    // further into a name that has already been cut once.
+    void showPackageName(const QString& name);
     void showImportStatus(const QString& message);
     void showMissingFromIndex(const QString& packageName);
+    // The chosen chip follows the view whichever way the view was changed - the
+    // bar itself, one of the hidden buttons, or a reset
+    void syncViewBar();
     void updateUpdatesBadge();
 
     Host* mpHost = nullptr;
     QButtonGroup* mpNavigationGroup = nullptr;
     NavigationView mCurrentView = NavigationView::Installed;
-    QString mPackageName;
     QList<QString> mPackagesWithUpdates;
     PackageItemDelegate* mpPackageItemDelegate = nullptr;
     QHash<QString, QJsonObject> packageLookup;
     QJsonArray repositoryPackages;
+
+    QTabBar* mpViewBar = nullptr;
+    // The seam between the list column and the details column, which the reader
+    // drags. Its sizes are kept under "packageManagerSplitterState".
+    uiDesign::GripSplitter* mpSplitter = nullptr;
+    bool mSplitterRestored = false;
+    // The row the package's name and its version share at the head of the
+    // details column, and the whole of that name before it was cut to fit
+    QHBoxLayout* mpLayout_headlineRow = nullptr;
+    QString mPackageNameShown;
+    // The two buttons on the action row that lead out of the window: the word
+    // each carries, and what it measures with that word and with its glyph
+    // alone. Both numbers are the style's rather than the source's.
+    struct ActionRowLink
+    {
+        QPushButton* pButton = nullptr;
+        QString word;
+        int worded = 0;
+        int glyphOnly = 0;
+    };
+    QList<ActionRowLink> mActionRowLinks;
+    bool mActionRowWordsShown = true;
+    bool mActionRowFitting = false;
+    bool mActionRowFitPending = false;
+    dlgSystemMessageArea* mpNotice = nullptr;
+    QAction* mpAction_searchGlyph = nullptr;
+    // Install and Update are the same button in two readings, so it carries
+    // whichever of the two glyphs the current view's word says it is
+    QIcon mInstallGlyph;
+    QIcon mUpdateGlyph;
+    QString mDescription;
+    bool mDescriptionIsMarkdown = true;
 };
 
 #endif
