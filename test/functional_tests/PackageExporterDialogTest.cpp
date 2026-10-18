@@ -936,8 +936,9 @@ private slots:
     }
 
     // Choosing an installed package fills the form from what that package
-    // declared and checks the items belonging to it - but not its master
-    // folder, which would only add a level of nesting to the new package.
+    // declared and checks the items belonging to it. Its master folder shows the
+    // reading of what is inside it, and is still left out of the file itself,
+    // which would only add a level of nesting to the new package.
     void test_choosingAnInstalledPackageFillsTheFormAndChecksItsItems()
     {
         const QString existingPackage = qsl("exporter-existing");
@@ -978,8 +979,17 @@ private slots:
         QVERIFY(masterItem);
         QCOMPARE(masterItem->childCount(), 1);
         QCOMPARE(masterItem->child(0)->checkState(0), Qt::Checked);
-        QCOMPARE(masterItem->checkState(0), Qt::Unchecked);
+        // the folder named after the package reads as its contents - all of them
+        // ticked here - and is left out of the file it would otherwise nest
+        QCOMPARE(masterItem->checkState(0), Qt::Checked);
         QCOMPARE(itemNamed(triggersTop(), qsl("exporter outsider"))->checkState(0), Qt::Unchecked);
+
+        // the package's own .mudlet folder is metadata the export writes afresh,
+        // so it must not be offered back as a file to ship
+        for (int row = 0; row < addedFiles()->count(); ++row) {
+            const QString shipped = addedFiles()->item(row)->text();
+            QVERIFY2(!shipped.endsWith(qsl("/.mudlet")), qPrintable(qsl("the installed package's own metadata folder was listed as a file to ship: %1").arg(shipped)));
+        }
 
         // the icon the package declared is carried into whatever is exported next
         const QString rebuiltName = packageNamed(qsl("exporter-rebuilt"));
@@ -1312,8 +1322,9 @@ private slots:
     }
 
     // The icon of the package being updated is drawn as a pixmap in a label
-    // rather than as a stylesheet border image, and the label is shown only
-    // when there is an icon to put in it.
+    // rather than as a stylesheet border image. The label is always on show, so
+    // a package without an icon has to leave it to the placeholder rather than
+    // to the last package's picture.
     void test_theIconPreviewIsShownOnlyForAPackageThatHasOne_5028()
     {
         const QString withIcon = qsl("exporter-with-icon");
@@ -1337,9 +1348,14 @@ private slots:
         packageList->setCurrentIndex(withIconIndex);
         QVERIFY2(!iconLabel->isHidden(), "the icon of the package being updated was not shown");
         QVERIFY2(!iconLabel->pixmap().isNull(), "the icon label was left with nothing to draw");
+        const QImage shown = iconLabel->pixmap().toImage();
+        QVERIFY2(shown.pixel(shown.width() / 2, shown.height() / 2) == qRgb(255, 0, 255), "the icon label does not show the package's own icon");
+        QVERIFY2(!buttonNamed(qsl("pushButton_removeIcon"))->isHidden(), "the icon of the package being updated cannot be removed");
 
         packageList->setCurrentIndex(withoutIconIndex);
-        QVERIFY2(iconLabel->isHidden(), "the icon label was left showing for a package that has no icon");
+        const QImage left = iconLabel->pixmap().toImage();
+        QVERIFY2(left.isNull() || left.pixel(left.width() / 2, left.height() / 2) != qRgb(255, 0, 255), "the icon label was left showing the previous package's icon");
+        QVERIFY2(buttonNamed(qsl("pushButton_removeIcon"))->isHidden(), "the remove button was left showing for a package that has no icon");
     }
 
     // The zip's finished handler dies with the dialog, so the dialog's destructor

@@ -307,6 +307,7 @@ set(PACKAGE_GROUP_TEST_SOURCES
     ModuleSaveTeardownTest.cpp
     PackageDownloadDialogRestyleTest.cpp
     PackageExporterDialogTest.cpp
+    PackageExporterShellTest.cpp
     PackageFolderRemovalTest.cpp
     PackageFontsOnRefusedArchiveTest.cpp
     PackageManagerHeadingTest.cpp

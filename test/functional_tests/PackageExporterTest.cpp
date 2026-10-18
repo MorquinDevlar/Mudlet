@@ -137,9 +137,19 @@ private:
         return label->text();
     }
 
-    // displayResultMessage() paints failures in this colour and nothing else in
-    // the dialog uses it, so it is the language-independent "did it fail" test
-    bool reportedFailure(dlgPackageExporter* exporter) const { return infoText(exporter).contains(qsl("#FF6B6B")); }
+    // Which of the two readings the notice under the form is showing, which is
+    // the language-independent "did it fail" test: displayResultMessage() shows
+    // the error picture beside the words for a failure and the information one
+    // otherwise. It used to be a colour written into the text, which the design
+    // language mixes from the theme now.
+    bool reportedFailure(dlgPackageExporter* exporter) const
+    {
+        auto* notice = exporter->findChild<QWidget*>(qsl("exporterNotice"));
+        Q_ASSERT(notice);
+        auto* errorGlyph = notice->findChild<QLabel*>(qsl("notificationAreaIconLabelError"));
+        Q_ASSERT(errorGlyph);
+        return !notice->isHidden() && !errorGlyph->isHidden();
+    }
 
     // The zip runs on a worker thread behind a QFutureWatcher, which hides the
     // Close button for the duration and shows it again from its finished

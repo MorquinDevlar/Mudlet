@@ -217,6 +217,7 @@ set(mudlet_app_SRCS
     EditorTreeDelegate.cpp
     EditorTreeRowMetrics.cpp
     exitstreewidget.cpp
+    ExporterTreeDelegate.cpp
     FileOpenHandler.cpp
     FlowLayout.cpp
     GripSplitter.cpp
@@ -538,6 +539,7 @@ set(mudlet_app_HDRS
     EditorTreeDelegate.h
     EditorTreeRowMetrics.h
     exitstreewidget.h
+    ExporterTreeDelegate.h
     FileOpenHandler.h
     FlowLayout.h
     GripSplitter.h
