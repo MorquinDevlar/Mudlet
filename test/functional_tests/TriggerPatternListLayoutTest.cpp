@@ -71,6 +71,11 @@ private:
     const QString mNinthPattern = qsl("qaNinthPattern");
     const QString mColourPatternTrigger = qsl("qaColourNinth");
     const QString mSpacerPatternTrigger = qsl("qaSpacerNinth");
+    // What a long list shows at the sizes these cases use. Not a floor the
+    // editor keeps: the list is given what is left of the form column's share of
+    // the panes, and at these sizes that share holds this many rows.
+    static constexpr int scmRowsALongListShows = 5;
+    static constexpr int scmSeamTolerance = 2;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -176,6 +181,23 @@ private:
         auto* viewport = mpEditor->mpScrollArea->viewport();
         const int top = pRow->mapTo(viewport, QPoint(0, 0)).y();
         return top >= 0 && top + pRow->height() <= viewport->height();
+    }
+
+    // The form column asks for every row and is held to what the code pane's
+    // share leaves it (codePaneFloor()), so a list too long to fit is given that
+    // whole share rather than squeezed under it. Empty when it is.
+    QString formColumnShortOfItsShare() const
+    {
+        const QList<int> sizes = mpEditor->splitter_right->sizes();
+        if (sizes.size() < 2) {
+            return qsl("the right hand splitter has lost a pane");
+        }
+        const int paneTotal = sizes.at(0) + sizes.at(1);
+        const int share = paneTotal - mpEditor->codePaneFloor(paneTotal);
+        if (sizes.at(0) < share - scmSeamTolerance) {
+            return qsl("the form column is %1 of the %2 the two panes have, short of the %3 the code pane's share leaves it").arg(sizes.at(0)).arg(paneTotal).arg(share);
+        }
+        return QString();
     }
 
     // By trigger and row, so a match in some other item cannot stand in for it
@@ -416,31 +438,34 @@ private slots:
         QCOMPARE(mpEditor->mpScrollArea->verticalScrollBar()->value(), scrollBeforeJump);
     }
 
-    // A three pattern trigger draws four rows: its patterns and the blank one
-    // waiting for a fourth. All four have to be readable without scrolling.
+    // A three pattern trigger draws its three rows, with the button that adds a
+    // fourth under them rather than a blank row waiting for one. All of it has to
+    // be readable without scrolling.
     void test_collapsedAdvancedOptionsShowsAWholeSmallTrigger()
     {
         QVERIFY2(selectTrigger(mThreePatternTrigger), "could not select the three pattern trigger");
         QVERIFY2(!mpEditor->mpTriggersMainArea->toolButton_toggleExtraControls->isChecked(), "this test is about the collapsed state and the advanced options are showing");
 
-        QCOMPARE(mpEditor->mVisiblePatternCount, 4);
+        QCOMPARE(mpEditor->mVisiblePatternCount, 3);
         const int shown = fullyVisiblePatternRows();
-        QVERIFY2(shown >= 4,
-                 qPrintable(qsl("all 4 rows of a three pattern trigger should be readable at 1100x700 with the advanced options collapsed, but only %1 of them are - the "
+        QVERIFY2(shown >= 3,
+                 qPrintable(qsl("all 3 rows of a three pattern trigger should be readable at 1100x700 with the advanced options collapsed, but only %1 of them are - the "
                                 "pattern list viewport is %2 pixels tall and a row is %3")
                                     .arg(QString::number(shown), QString::number(mpEditor->mpScrollArea->viewport()->height()), QString::number(mpEditor->mTriggerPatternEdit.at(0)->height()))));
         QCOMPARE(mpEditor->mpScrollArea->verticalScrollBar()->maximum(), 0);
     }
 
-    // However many patterns a trigger has, the list is never squeezed down to
-    // the row and a half that started this
+    // However many patterns a trigger has, the list is given the form column's
+    // whole share rather than squeezed down to the row and a half that started this
     void test_aLongPatternListStillShowsSeveralRows()
     {
         QVERIFY2(selectTrigger(mNinePatternTrigger), "could not select the nine pattern trigger");
 
+        const QString shortOfShare = formColumnShortOfItsShare();
+        QVERIFY2(shortOfShare.isEmpty(), qPrintable(shortOfShare));
         const int shown = fullyVisiblePatternRows();
-        QVERIFY2(shown >= dlgTriggerEditor::csmMinimumVisiblePatternRows,
-                 qPrintable(qsl("the pattern list should always have room for %1 rows, but shows %2").arg(QString::number(dlgTriggerEditor::csmMinimumVisiblePatternRows), QString::number(shown))));
+        QVERIFY2(shown >= scmRowsALongListShows,
+                 qPrintable(qsl("the pattern list should have room for %1 rows at 1100x700, but shows %2").arg(QString::number(scmRowsALongListShows), QString::number(shown))));
     }
 
     // Selecting a trigger is the moment a user goes looking for pattern 1, so
@@ -467,7 +492,7 @@ private slots:
     // A colour trigger's row carries two buttons captioned with the colours
     // they set, so it is far wider than a narrow editor and the list puts up a
     // horizontal scrollbar. That scrollbar is taken out of the viewport, so the
-    // five rows have to be budgeted for with it there. The buttons also stand
+    // rows have to be budgeted for with it there. The buttons also stand
     // taller than the pattern field they replace on some platforms, so the row
     // height the budget is built from has to be the tallest a row can be laid
     // out at rather than the one the pattern types that show a text field get.
@@ -489,13 +514,12 @@ private slots:
                  qPrintable(qsl("this test needs the horizontal scrollbar up to mean anything - the row wants %1 pixels across and the viewport has %2")
                                     .arg(QString::number(pFirstRow->minimumSizeHint().width()), QString::number(pScrollArea->viewport()->width()))));
 
+        const QString shortOfShare = formColumnShortOfItsShare();
+        QVERIFY2(shortOfShare.isEmpty(), qPrintable(shortOfShare));
         const int shown = fullyVisiblePatternRows();
-        QVERIFY2(shown >= dlgTriggerEditor::csmMinimumVisiblePatternRows,
+        QVERIFY2(shown >= scmRowsALongListShows,
                  qPrintable(qsl("%1 rows should still be readable with the horizontal scrollbar up, but %2 are - the viewport is %3 pixels tall and a row is %4")
-                                    .arg(QString::number(dlgTriggerEditor::csmMinimumVisiblePatternRows),
-                                         QString::number(shown),
-                                         QString::number(pScrollArea->viewport()->height()),
-                                         QString::number(pFirstRow->height()))));
+                                    .arg(QString::number(scmRowsALongListShows), QString::number(shown), QString::number(pScrollArea->viewport()->height()), QString::number(pFirstRow->height()))));
     }
 };
 

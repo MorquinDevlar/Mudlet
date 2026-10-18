@@ -1207,9 +1207,6 @@ private:
     // handed, the line it stopped on, and what it made of that line
     inline static const QRegularExpression csmCompileErrorLineRegex{qsl(R"(^(?:Lua syntax error:\s*)?\[string ".*?"\]:(\d+):\s*(.*)$)")};
 
-    // Pattern rows the list shows in full however the splitter and advanced options are arranged (#2548)
-    static constexpr int csmMinimumVisiblePatternRows = 5;
-
     QAction* mAddItem = nullptr;
     QAction* mDeleteItem = nullptr;
     QAction* mAddGroup = nullptr;

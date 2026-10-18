@@ -11138,6 +11138,9 @@ void dlgTriggerEditor::rebuildStaleTrees()
     treeWidget_actions->clear();
     treeWidget_keys->clear();
     treeWidget_variables->clear();
+    // The clear freed the Variables heading, which only repopulateVars() makes
+    // again, and fillout_form() restyles every heading it is still pointed at
+    mpVarBaseItem = nullptr;
     fillout_form();
     mNeedUpdateData = false;
     resolveCurrentView();

@@ -74,6 +74,7 @@
 #include "dlgProfilePreferences.h"
 #include "dlgTriggerEditor.h"
 #include "edbee/edbee.h"
+#include "uiDesign.h"
 #include "widgetutils.h"
 
 #include <QDataStream>
@@ -1522,12 +1523,24 @@ void mudlet::init()
     if (QStringList{qsl("windowsvista"), qsl("macintosh"), qsl("macos")}.contains(mDefaultStyle, Qt::CaseInsensitive)) {
         qDebug().nospace().noquote() << "mudlet::mudlet() INFO - '" << mDefaultStyle << "' has been detected as the style factory in use - QPushButton styling fix applied!";
         mBG_ONLY_STYLESHEET = qsl("QPushButton {background-color: %1; border: 1px solid #8f8f91;}");
-        mTEXT_ON_BG_STYLESHEET = qsl("QPushButton {color: %1; background-color: %2; border: 1px solid #8f8f91;}");
     } else {
         qDebug().nospace().noquote() << "mudlet::mudlet() INFO - '" << mDefaultStyle << "' has been detected as the style factory in use - no styling fixes applied.";
         mBG_ONLY_STYLESHEET = qsl("QPushButton {background-color: %1;}");
-        mTEXT_ON_BG_STYLESHEET = qsl("QPushButton {color: %1; background-color: %2;}");
     }
+
+    // A button showing a colour is a well rather than a button: the design's
+    // input corner and a hairline round it, with the tone left to say what it
+    // is. Which style factory is in force has nothing to say about that, so
+    // unlike the sheet above this one is the same everywhere - and neither
+    // colour in it can be baked in here, the hairline's because it follows the
+    // theme and the fill's because it is the value being shown. The corner and
+    // the room round the words can be, and are: QString::arg() fills the lowest
+    // numbered marker it finds, so the two the caller passes are %2 and %3.
+    // The height is named, and named as none: a well is as tall as the row it
+    // is on, not as tall as a form control. Left unsaid, the shared button rule
+    // of whichever window the well is on would answer it instead, and a well
+    // that grew to a field's height stopped sharing its line's centre.
+    mTEXT_ON_BG_STYLESHEET = qsl("QPushButton {color: %2; background-color: %3; border: 1px solid %4; border-radius: %1px; padding: 3px 8px; min-height: 0px;}").arg(uiDesign::scmRadiusInput);
 
     setupUi(this);
     setUnifiedTitleAndToolBarOnMac(true);

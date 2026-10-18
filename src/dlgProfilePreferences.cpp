@@ -52,6 +52,7 @@
 #include "dlgTriggerEditor.h"
 #include "edbee/views/texteditorscrollarea.h"
 #include "MMCP.h"
+#include "uiDesign.h"
 #include "widgetutils.h"
 #include "utils.h"
 
@@ -5130,9 +5131,16 @@ void dlgProfilePreferences::loadEditorTab()
         populateScriptsList();
     }
 
-    // pre-select the current theme
+    // pre-select the current theme. What the profile recorded rather than what
+    // the editor is drawn with: those differ when the recorded theme is not on
+    // this machine, and the control is where the profile's own choice is shown
+    // and written back from. Showing the fallback here would offer to save it
+    // over the choice.
+    QString storedThemeName;
+    QString storedThemeFile;
+    pHost->storedEditorTheme(storedThemeName, storedThemeFile);
     code_editor_theme_selection_combobox->lineEdit()->setPlaceholderText(qsl("Select theme"));
-    auto themeIndex = code_editor_theme_selection_combobox->findText(pHost->getEditorTheme());
+    auto themeIndex = code_editor_theme_selection_combobox->findText(storedThemeName);
     code_editor_theme_selection_combobox->setCurrentIndex(themeIndex);
     slot_themeSelected(themeIndex);
 
@@ -8203,7 +8211,8 @@ void dlgProfilePreferences::setButtonColor(QPushButton* button, const QColor& co
                 painter.end();
                 button->setIcon(QIcon(labelBackground));
             } else {
-                button->setStyleSheet(mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(color.lightness() > 127 ? QLatin1String("black") : QLatin1String("white"), color.name()));
+                button->setStyleSheet(
+                        mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(color.lightness() > 127 ? QLatin1String("black") : QLatin1String("white"), color.name(), uiDesign::themeTokens().border.name()));
             }
             return;
         }
@@ -8231,7 +8240,7 @@ void dlgProfilePreferences::setButtonColor(QPushButton* button, const QColor& co
             icon.addPixmap(iconBackground, QIcon::Disabled, QIcon::Off);
             button->setIcon(icon);
         } else {
-            button->setStyleSheet(mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(QLatin1String("darkGray"), disabledColor.name()));
+            button->setStyleSheet(mudlet::self()->mTEXT_ON_BG_STYLESHEET.arg(QLatin1String("darkGray"), disabledColor.name(), uiDesign::themeTokens().border.name()));
         }
         return;
     }

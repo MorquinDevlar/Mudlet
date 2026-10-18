@@ -192,14 +192,50 @@ set(TRIGGER_GROUP_TEST_SOURCES
 # The script editor, and the trigger, variable and script forms it hosts
 set(EDITOR_GROUP_TEST_SOURCES
     ControlSentenceRowTest.cpp
+    DebugFilterBarGlyphTest.cpp
     dlgTriggerEditorUndoRedoTest.cpp
     EdbeeReinitTest.cpp
     EditorAutoCompleteFocusTest.cpp
+    EditorCaretReadingTest.cpp
+    EditorChromeInkTest.cpp
+    EditorChromeShapeTest.cpp
     EditorClipboardXmlTest.cpp
     EditorBannerViewSwitchTest.cpp
+    EditorCodeHeadingTest.cpp
+    EditorColumnAlignmentTest.cpp
+    EditorColumnFontTest.cpp
+    EditorDefaultSizeTest.cpp
+    EditorEventChipRowTest.cpp
+    EditorFormShellTest.cpp
+    EditorGeometryWriteGuardTest.cpp
+    EditorIconScaleTest.cpp
     EditorItemXMLHelpersTest.cpp
     ColorTriggerDialogTest.cpp
+    EditorKeyCaptureTest.cpp
+    EditorKeyGrabShortcutsTest.cpp
+    EditorMenuStyleTest.cpp
+    EditorMinimumSizeTest.cpp
+    EditorNoticeGlyphTest.cpp
+    EditorNoticeSeamTest.cpp
+    EditorOptionsPanelDefaultTest.cpp
+    EditorPlacementPersistenceTest.cpp
     EditorReshowTest.cpp
+    EditorSidebarCollapseTest.cpp
+    EditorSplitterRestoreTest.cpp
+    EditorStatusBarTest.cpp
+    EditorSurfaceToneTest.cpp
+    EditorTabAtStartTest.cpp
+    EditorThemePairTest.cpp
+    EditorTimerIntervalTest.cpp
+    EditorToolBarOverflowTest.cpp
+    EditorTreeDotClickTest.cpp
+    EditorTreeErrorMarkTest.cpp
+    EditorTreeHeadingIconTest.cpp
+    EditorTreeRowHeightTest.cpp
+    EditorTreeSelectionPillTest.cpp
+    EditorTriggerOptionsStripTest.cpp
+    EditorVariablesFormTest.cpp
+    EditorVariablesTreeTest.cpp
     PackageExporterTest.cpp
     EditorWindowPositionTest.cpp
     EventNamesTest.cpp
