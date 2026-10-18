@@ -164,6 +164,7 @@ dlgNotepad::dlgNotepad(Host* pH)
         restore();
         restoreSettings();
         connect(mpHost, &Host::signal_profileStyleSheetChanged, this, &dlgNotepad::setStyleSheet);
+        connect(mpHost, &Host::signal_profileStyleSheetChanged, this, &dlgNotepad::setTabsStyleSheet);
         connect(mpHost, &Host::signal_consoleFontChanged, this, &dlgNotepad::setFont);
     }
 
@@ -423,6 +424,15 @@ void dlgNotepad::setFont(const QFont& font)
     }
 }
 
+void dlgNotepad::setTabsStyleSheet(const QString& styleSheet)
+{
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        if (auto* textEdit = qobject_cast<QPlainTextEdit*>(tabWidget->widget(i))) {
+            textEdit->setStyleSheet(styleSheet);
+        }
+    }
+}
+
 void dlgNotepad::slot_applyAppearance()
 {
     applyNotepadShellStyle();
@@ -552,13 +562,12 @@ dlgNotepad::~dlgNotepad()
 
 int dlgNotepad::addTab(const QString& name, const QString& content)
 {
-    // The note is drawn by the shell's own sheet, which reaches it through the
-    // central widget: a stylesheet set on the note itself would beat that one,
-    // and a profile's Lua stylesheet still reaches the window as a whole. The
-    // display font is the profile's and stays here.
+    // The shell draws the note through the central widget's sheet; the profile's
+    // sheet is set on the note itself, so its rules win wherever the two collide
     auto* textEdit = new QPlainTextEdit(this);
     if (mpHost) {
         textEdit->setFont(mpHost->getDisplayFont());
+        textEdit->setStyleSheet(mpHost->mProfileStyleSheet);
     }
     if (!content.isEmpty()) {
         textEdit->setPlainText(content);

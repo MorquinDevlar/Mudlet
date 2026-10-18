@@ -951,6 +951,9 @@ nullViewActionKept = next(nullViewActions) ~= nil
         QCOMPARE(preferences->styleSheet(), styleSheet);
         QCOMPARE(notepad->styleSheet(), styleSheet);
         QCOMPARE(note->styleSheet(), styleSheet);
+        auto* laterNote = notepad->tabWidget->widget(notepad->addTab());
+        QVERIFY2(laterNote && laterNote != note, "Adding a note did not make a tab of its own.");
+        QCOMPARE(laterNote->styleSheet(), styleSheet);
     }
 
     // The main window's own bars take the style sheet of the profile on show,
@@ -967,13 +970,14 @@ nullViewActionKept = next(nullViewActions) ~= nil
         QVERIFY2(toolBar && tabBar, "The main window has no toolbar or tab bar.");
 
         const QString styleSheet = qsl("QWidget { color: #123456; }");
-        QVERIFY2(menuBar->styleSheet() != styleSheet && toolBar->styleSheet() != styleSheet && tabBar->styleSheet() != styleSheet,
+        QVERIFY2(menuBar->styleSheet() != styleSheet && !toolBar->styleSheet().endsWith(styleSheet) && tabBar->styleSheet() != styleSheet,
                  "SETUP: a bar already carries the style sheet, so the assertions below cannot fail.");
 
         QVERIFY(host->setProfileStyleSheet(styleSheet));
 
         QCOMPARE(menuBar->styleSheet(), styleSheet);
-        QCOMPARE(toolBar->styleSheet(), styleSheet);
+        // The toolbar carries the design's own sheet with the profile's appended, so the profile's rules come last and win
+        QVERIFY2(toolBar->styleSheet().endsWith(styleSheet), qPrintable(qsl("The toolbar's sheet does not end with the profile's: %1").arg(toolBar->styleSheet().right(200))));
         QCOMPARE(tabBar->styleSheet(), styleSheet);
     }
 
@@ -994,13 +998,14 @@ nullViewActionKept = next(nullViewActions) ~= nil
 
         const QString firstStyleSheet = qsl("QWidget { color: #111111; }");
         QVERIFY(first->setProfileStyleSheet(firstStyleSheet));
-        QVERIFY2(menuBar->styleSheet() != firstStyleSheet && toolBar->styleSheet() != firstStyleSheet && tabBar->styleSheet() != firstStyleSheet,
+        // The toolbar carries the design's own sheet with the profile's appended, so the profile's rules come last and win
+        QVERIFY2(menuBar->styleSheet() != firstStyleSheet && !toolBar->styleSheet().endsWith(firstStyleSheet) && tabBar->styleSheet() != firstStyleSheet,
                  "A profile that is not the active one restyled the main window.");
 
         const QString secondStyleSheet = qsl("QWidget { color: #222222; }");
         QVERIFY(second->setProfileStyleSheet(secondStyleSheet));
         QCOMPARE(menuBar->styleSheet(), secondStyleSheet);
-        QCOMPARE(toolBar->styleSheet(), secondStyleSheet);
+        QVERIFY2(toolBar->styleSheet().endsWith(secondStyleSheet), qPrintable(qsl("The toolbar's sheet does not end with the active profile's: %1").arg(toolBar->styleSheet().right(200))));
         QCOMPARE(tabBar->styleSheet(), secondStyleSheet);
 
         tabBar->setCurrentIndex(tabBar->tabIndex(first->getName()));
@@ -1008,7 +1013,7 @@ nullViewActionKept = next(nullViewActions) ~= nil
 
         QVERIFY(second->setProfileStyleSheet(qsl("QWidget { color: #333333; }")));
         QCOMPARE(menuBar->styleSheet(), firstStyleSheet);
-        QCOMPARE(toolBar->styleSheet(), firstStyleSheet);
+        QVERIFY2(toolBar->styleSheet().endsWith(firstStyleSheet), qPrintable(qsl("The toolbar's sheet does not end with the active profile's: %1").arg(toolBar->styleSheet().right(200))));
         QCOMPARE(tabBar->styleSheet(), firstStyleSheet);
     }
 

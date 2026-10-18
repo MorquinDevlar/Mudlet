@@ -59,6 +59,7 @@ public:
     void saveSettings();
     void restoreSettings();
     void setFont(const QFont&);
+    void setTabsStyleSheet(const QString& styleSheet);
 
 signals:
     void notepadClosing(const QString& profileName);
