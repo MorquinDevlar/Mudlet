@@ -245,6 +245,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorWindowPositionTest.cpp
     EventNamesTest.cpp
     MissingEditorThemeTest.cpp
+    ReadabilityAuditTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     EditorAddItemTest.cpp
     EditorSearchTest.cpp

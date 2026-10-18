@@ -267,6 +267,18 @@ set_tests_properties(LuaFunctionListTest PROPERTIES
     ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0"
 )
 
+# Colours written out on the surfaces that have adopted the design language.
+# Reads those sources the same way, so it links nothing either.
+add_executable(DesignColourLiteralTest DesignColourLiteralTest.cpp)
+# Qt6::Gui for QColor::colorNames(), which is where the colour names it looks
+# for come from rather than a list kept by hand in the test
+target_link_libraries(DesignColourLiteralTest PRIVATE Qt6::Test Qt6::Gui)
+target_compile_definitions(DesignColourLiteralTest PRIVATE MUDLET_SRC_DIR="${CMAKE_SOURCE_DIR}/src")
+add_test(NAME DesignColourLiteralTest COMMAND $<TARGET_FILE:DesignColourLiteralTest>)
+set_tests_properties(DesignColourLiteralTest PROPERTIES
+    ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0"
+)
+
 # The version comparison every update offer is decided by. Built from the one
 # updater source it covers rather than linked against the Mudlet library, because
 # the library only contains it when configured with USE_UPDATER - which CI's

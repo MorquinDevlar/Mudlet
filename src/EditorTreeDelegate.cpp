@@ -142,8 +142,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         // A package's top folder is a folder whose own name is the package's -
         // the test the Lua ancestors API makes. A module's master folder is left
-        // reading as a folder: it is not a package, and nothing here can switch
-        // it off.
+        // reading as a folder: it is not a package.
         if (folder && !packageName.isEmpty() && packageName == name && !mpHost->mInstalledModules.contains(packageName)) {
             return RowMark::Package;
         }
