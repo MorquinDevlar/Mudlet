@@ -54,6 +54,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     HostConsolePrintTest.cpp
     DetachedWindowTabActivityTest.cpp
     AboutDialogLicencesTest.cpp
+    AboutDialogShellTest.cpp
     LabelAnchorInteractionTest.cpp
     MainWindowTitleTest.cpp
     LabelMovieRefusalTest.cpp

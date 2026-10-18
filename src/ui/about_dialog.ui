@@ -12,27 +12,9 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>926</width>
-    <height>380</height>
+    <width>1080</width>
+    <height>680</height>
    </rect>
-  </property>
-  <property name="sizePolicy">
-   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
-   </sizepolicy>
-  </property>
-  <property name="minimumSize">
-   <size>
-    <width>0</width>
-    <height>380</height>
-   </size>
-  </property>
-  <property name="font">
-   <font>
-    <family>Bitstream Vera Sans</family>
-    <pointsize>10</pointsize>
-   </font>
   </property>
   <property name="contextMenuPolicy">
    <enum>Qt::PreventContextMenu</enum>
@@ -51,23 +33,6 @@
   <layout class="QHBoxLayout" name="horizontalLayout_main" stretch="0,1">
    <item>
     <widget class="QLabel" name="mudletTitleLabel">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="minimumSize">
-      <size>
-       <width>320</width>
-       <height>360</height>
-      </size>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>15</pointsize>
-      </font>
-     </property>
      <property name="contextMenuPolicy">
       <enum>Qt::NoContextMenu</enum>
      </property>
@@ -130,11 +95,6 @@
            <height>0</height>
           </size>
          </property>
-         <property name="font">
-          <font>
-           <pointsize>9</pointsize>
-          </font>
-         </property>
          <property name="autoFillBackground">
           <bool>true</bool>
          </property>
@@ -155,11 +115,6 @@
       </layout>
      </widget>
      <widget class="QWidget" name="tab_supporters">
-      <attribute name="icon">
-       <iconset resource="../mudlet.qrc">
-        <normaloff>:/icons/Patreon_Mark_Primary.png</normaloff>:/icons/Patreon_Mark_Primary.png
-       </iconset>
-      </attribute>
       <attribute name="title">
        <string>Supporters</string>
       </attribute>

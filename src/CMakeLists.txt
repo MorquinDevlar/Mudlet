@@ -175,6 +175,8 @@ set(mudlet_SRCS
 # Every .cpp source file that needs Qt Widgets goes here instead, in mudlet_app, kept
 # in alphabetical order (case-insensitive).
 set(mudlet_app_SRCS
+    AboutLinkButton.cpp
+    AboutSupporterBanner.cpp
     ChipRow.cpp
     ContentScrollArea.cpp
     CustomLineDrawContextMenuHandler.cpp
@@ -494,6 +496,8 @@ set(mudlet_HDRS
 # Every .h header file that needs Qt Widgets goes here instead, in mudlet_app, kept
 # in alphabetical order (case-insensitive).
 set(mudlet_app_HDRS
+    AboutLinkButton.h
+    AboutSupporterBanner.h
     ChipRow.h
     ContentScrollArea.h
     CustomLineDrawContextMenuHandler.h
