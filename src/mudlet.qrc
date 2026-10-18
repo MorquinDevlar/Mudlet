@@ -319,7 +319,10 @@
         <file>icons/toolbar-packages.svg</file>
         <file>icons/toolbar-reconnect.svg</file>
         <file>icons/toolbar-replay-faster.svg</file>
+        <file>icons/toolbar-replay-pause.svg</file>
+        <file>icons/toolbar-replay-resume.svg</file>
         <file>icons/toolbar-replay-slower.svg</file>
+        <file>icons/toolbar-replay-stop.svg</file>
         <file>icons/toolbar-replay.svg</file>
         <file>icons/toolbar-settings.svg</file>
         <file>icons/toolbar-sound-off.svg</file>

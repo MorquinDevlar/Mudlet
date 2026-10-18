@@ -41,6 +41,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     CopyAsImageTest.cpp
     SplitCharacterFormatTest.cpp
     DebugConsoleFilterTest.cpp
+    DebugFilterBarGlyphTest.cpp
     FrontendRefreshSeamTest.cpp
     CommandLineKeyHandlingTest.cpp
     PasswordEntryTest.cpp
@@ -56,11 +57,12 @@ set(WINDOW_GROUP_TEST_SOURCES
     LabelAnchorInteractionTest.cpp
     MainWindowTitleTest.cpp
     LabelMovieRefusalTest.cpp
-    TabBarStyleTest.cpp
     CommandLineSpellCheckTest.cpp
     LabelSvgBackgroundTest.cpp
     CaretNavigationTest.cpp
     MainConsoleSelectionTest.cpp
+    MainToolBarGlyphTest.cpp
+    MainToolBarStyleTest.cpp
     TabDetachThresholdTest.cpp
     DetachedWindowDiscordButtonTest.cpp
     MainWindowSizeReportTest.cpp
@@ -87,6 +89,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     TextEditAccessibleInterfaceTest.cpp
     TrackedLinkTrimTest.cpp
     ProfileSwitchShortcutTest.cpp
+    ProfileTabBarStyleTest.cpp
     SubCommandLineLifetimeTest.cpp
     ReplaySpeedClampTest.cpp
     WindowBackgroundTest.cpp
@@ -192,7 +195,6 @@ set(TRIGGER_GROUP_TEST_SOURCES
 # The script editor, and the trigger, variable and script forms it hosts
 set(EDITOR_GROUP_TEST_SOURCES
     ControlSentenceRowTest.cpp
-    DebugFilterBarGlyphTest.cpp
     dlgTriggerEditorUndoRedoTest.cpp
     EdbeeReinitTest.cpp
     EditorAutoCompleteFocusTest.cpp

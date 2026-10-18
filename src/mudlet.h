@@ -31,6 +31,7 @@
 #include "MudletReplay.h"
 #include "ShortcutsManager.h"
 #include "TAppFrontend.h"
+#include "uiDesign.h"
 #include "utils.h"
 #include <memory>
 
@@ -247,6 +248,17 @@ public:
     void resizeMainWindow(int width, int height) override { resize(width, height); }
     void setupPreInstallPackages(const QString&, const QString&, const bool);
     void setToolBarIconSize(int);
+    // Re-inks every glyph on the main toolbar from the palette as it now stands
+    void restyleToolBarIcons();
+    // ...and redraws the bars themselves: the main one, with the profile's own
+    // stylesheet composed after the design's rules, and the replay bar while
+    // one is running
+    void restyleMainToolBar();
+    // The design's flat bar plus what every bar in this application carries on
+    // top of it - Qt's overflow button and the split buttons - for the bar the
+    // selector names. Shared with TDetachedWindow, whose bar is a copy of this
+    // one down to the actions on it.
+    static QString toolBarShellStyleSheet(const QString& barSelector);
     void setToolBarVisibility(enums::controlsVisibility);
     void showChangelogIfUpdated();
     void slot_showConnectionDialog();
@@ -374,6 +386,14 @@ public:
     // Flag to prevent connection dialog from opening during telnet:// URI processing
     bool mProcessingTelnetUri = false;
     QToolBar* mpMainToolBar = nullptr;
+    // The profile's own Lua stylesheet, kept rather than assigned to the bar:
+    // the design's rules and this one live on the same widget, so this is
+    // appended after them every time the bar is drawn
+    QString mMainToolBarProfileStyleSheet;
+    // Which glyph each of the toolbar's actions carries, so that a theme change
+    // can re-ink all of them from one place. The replay bar's pair joins it when
+    // that bar is built.
+    QList<uiDesign::ActionGlyph> mToolBarGlyphs;
     QPointer<ShortcutsManager> mpShortcutsManager;
     TTabBar* mpTabBar = nullptr;
     // More modern Desktop styles no longer include icons on the buttons in
@@ -397,8 +417,10 @@ public:
     // sysApplicationFocusChangeEvent is raised on a change of that and not on
     // every transition Qt reports between its inactive states
     bool mApplicationActive = true;
-    // 2 (of 2) needed to work around a (Windows/MacOs specific QStyleFactory)
-    // issue:
+    // A button or label showing a colour, drawn as a well: the caller fills in
+    // the ink, the fill and the hairline, in that order - the corner and the
+    // padding are already in it. See the constructor for why it is not the pair
+    // of platform variants the sheet above it still is.
     QString mTEXT_ON_BG_STYLESHEET;
     int mToolbarIconSize = 0;
     QMap<QString, translation> mTranslationsMap;
