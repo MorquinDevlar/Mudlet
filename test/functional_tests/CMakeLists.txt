@@ -225,7 +225,6 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorStatusBarTest.cpp
     EditorSurfaceToneTest.cpp
     EditorTabAtStartTest.cpp
-    EditorThemePairTest.cpp
     EditorTimerIntervalTest.cpp
     EditorToolBarOverflowTest.cpp
     EditorTreeDotClickTest.cpp
@@ -330,6 +329,7 @@ set(STARTERUI_GROUP_TEST_SOURCES
 # The settings dialog: its sidebar-and-cards shell, the deep links into it, how
 # a change reaches the Host, and what it does with no profile loaded
 set(SETTINGS_GROUP_TEST_SOURCES
+    EditorThemePairTest.cpp
     SettingsAppearanceTest.cpp
     SettingsBannerTest.cpp
     SettingsDeepLinkTest.cpp
@@ -342,6 +342,7 @@ set(SETTINGS_GROUP_TEST_SOURCES
     SettingsRoundTripTest.cpp
     SettingsSearchTest.cpp
     SettingsShellNavigationTest.cpp
+    SettingsSidebarToggleTest.cpp
     SettingsSpellCheckEnableTest.cpp
     SettingsThemeFetchErrorTest.cpp
 )
@@ -607,6 +608,13 @@ endforeach()
 # Offscreen has no GL context, so this skips; listed as not run rather than as passed
 if(TEST LabelTextureCacheTest)
     set_tests_properties(LabelTextureCacheTest PROPERTIES SKIP_REGULAR_EXPRESSION "SKIP   : LabelTextureCacheTest::initTestCase")
+endif()
+
+# Offscreen's own screen is 800px wide, narrower than the settings dialog at its widest, and a
+# language that lengthens the sidebar's names widens the dialog only as far as its screen allows
+if(TEST SettingsShellNavigationTest)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/offscreen-wide-screen.json" "{\"screens\": [{\"name\": \"OffscreenWide\", \"x\": 0, \"y\": 0, \"width\": 1920, \"height\": 1200}]}\n")
+    set_property(TEST SettingsShellNavigationTest APPEND PROPERTY ENVIRONMENT_MODIFICATION "QT_QPA_PLATFORM=set:offscreen:configfile=${CMAKE_CURRENT_BINARY_DIR}/offscreen-wide-screen.json")
 endif()
 
 # A buffer's default font gives the same row count for its pane's stale and laid-out

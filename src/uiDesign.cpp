@@ -2207,6 +2207,10 @@ QVariant controlValue(const QObject* pControl)
 
 bool beingTypedInto(const QObject* pControl)
 {
+    // A spin box types into a line edit of its own, while emitting valueChanged() for each digit that makes a number
+    if (const auto* pSpinBox = qobject_cast<const QAbstractSpinBox*>(pControl)) {
+        pControl = pSpinBox->findChild<QLineEdit*>(QString(), Qt::FindDirectChildrenOnly);
+    }
     const auto* pLineEdit = qobject_cast<const QLineEdit*>(pControl);
     return pLineEdit && pLineEdit->hasFocus() && pLineEdit->isModified();
 }
