@@ -198,6 +198,29 @@ public:
     static bool development();
     static void setNetworkRequestDefaults(const QUrl& url, QNetworkRequest& request);
 
+    // The two editor themes Mudlet carries in its own resource file rather than
+    // downloading into the theme cache. They are named as a light/dark pair so
+    // that the counterpart lookup in the preferences carries a profile from one
+    // to the other when the application appearance changes, the same way it
+    // does for every downloaded theme that comes as a pair.
+    static constexpr QLatin1String scmEditorThemeNameLight{"Mudlet Light"};
+    static constexpr QLatin1String scmEditorThemeFileLight{"Mudlet Light.tmTheme"};
+    static constexpr QLatin1String scmEditorThemeNameDark{"Mudlet Dark"};
+    static constexpr QLatin1String scmEditorThemeFileDark{"Mudlet Dark.tmTheme"};
+    // What the light theme was called while it was the only one Mudlet shipped.
+    // Profiles saved by those versions still carry these two, so both forms have
+    // to keep resolving.
+    static constexpr QLatin1String scmEditorThemeNameLegacy{"Mudlet"};
+    static constexpr QLatin1String scmEditorThemeFileLegacy{"Mudlet.tmTheme"};
+    // Brings a theme a profile saved before the bundled theme became half of a
+    // light/dark pair forward to the name and file it goes by now; leaves every
+    // other theme alone
+    static void migrateBundledEditorTheme(QString& themeName, QString& themeFile);
+    // Whether the theme file a profile carries is one that can still be found -
+    // in the resources for the two bundled themes, in the download cache for
+    // every other
+    static bool editorThemeResolves(const QString& themeFile);
+
 private:
     // Only the main window moves the config root, the language or the
     // preferences below in a running Mudlet: setupConfig() installs the root it

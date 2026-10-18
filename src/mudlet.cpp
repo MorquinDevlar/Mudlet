@@ -2270,7 +2270,7 @@ void mudlet::initEdbee()
     //QFile file(fileName);
     //if( file.exists() && file.open(QIODevice::ReadOnly) ) {
 
-    loadEdbeeTheme(qsl("Mudlet"), qsl("Mudlet.tmTheme"));
+    loadEdbeeTheme(MudletApp::scmEditorThemeNameLight, MudletApp::scmEditorThemeFileLight);
 }
 
 void mudlet::loadMaps()

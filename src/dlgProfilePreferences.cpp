@@ -7503,7 +7503,13 @@ void dlgProfilePreferences::populateThemesList()
             }
         }
     }
-    sortedThemes << std::make_pair(qsl("Mudlet"), qsl("Mudlet.tmTheme"));
+    // The two Mudlet carries itself rather than downloading. Naming them as a
+    // light/dark pair is all it takes for findThemeCounterpart() to carry a
+    // profile from one to the other on an appearance change - and for the user
+    // to say no to that by picking anything else, which is then remembered as
+    // that appearance's choice.
+    sortedThemes << std::make_pair(QString(MudletApp::scmEditorThemeNameLight), QString(MudletApp::scmEditorThemeFileLight));
+    sortedThemes << std::make_pair(QString(MudletApp::scmEditorThemeNameDark), QString(MudletApp::scmEditorThemeFileDark));
 
     std::sort(sortedThemes.begin(), sortedThemes.end(), [](const auto& a, const auto& b) {
         return QString::localeAwareCompare(a.first, b.first) < 0;

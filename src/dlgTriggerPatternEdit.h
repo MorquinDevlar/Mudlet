@@ -24,6 +24,10 @@
 
 
 #include "ui_trigger_pattern_edit.h"
+#include "utils.h"
+
+#include <QColor>
+#include <QIcon>
 #include <QPalette>
 
 
@@ -39,15 +43,41 @@ public:
 
     void applyThemePalette(const QPalette& editorPalette);
 
+    // The button that takes the row away is only drawn while the row is under
+    // the mouse, or while the button itself holds the keyboard focus - a control
+    // that can be tabbed to has to be visible once it has been. It keeps its
+    // place in the row either way - an empty icon rather than a hidden button -
+    // so that crossing the rows does not shuffle them.
+    void setDeleteGlyph(const QIcon& deleteGlyph);
+
+    // The wash the row is drawn with while the mouse is on it, mixed from the
+    // theme by the editor and handed to every row rather than to each its own
+    void setHoverTint(const QColor& hoverTint);
+
     int mRow = 0;
 
 
-public slots:
-    void slot_triggerTypeComboBoxChanged(const int);
+protected:
+    // A QWidget subclass draws nothing a stylesheet gives it without this, and
+    // the row's hover is painted on top of what it draws
+    void paintEvent(QPaintEvent*) override;
+    // Qt sends these along the whole chain under the mouse, so moving onto one
+    // of the row's own controls is still the row being hovered
+    void enterEvent(TEnterEvent*) override;
+    void leaveEvent(QEvent*) override;
+    // Watches the delete button for the focus it can now be given
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 
 private:
     void resetThemePalette();
+    void setRowHovered(const bool hovered);
+    void updateDeleteGlyph();
+
+    QIcon mDeleteGlyph;
+    QColor mHoverTint;
+    bool mRowHovered = false;
+    bool mDeleteButtonFocused = false;
 
     QPalette mDefaultPalette;
     QPalette mDefaultPatternNumberPalette;

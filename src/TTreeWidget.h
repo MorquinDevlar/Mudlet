@@ -63,9 +63,6 @@ public:
     bool dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData* data, Qt::DropAction action) override;
     void rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end) override;
     void rowsInserted(const QModelIndex& parent, int start, int end) override;
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
-    void mouseMoveEvent(QMouseEvent* event) override;
     // The option the view lays a row out from. QAbstractItemView keeps
     // initViewItemOption() to itself, and measuring a row against the style from
     // outside the view needs the same starting point the view uses.
@@ -86,10 +83,6 @@ public:
     // Gives up the row's unsaved variable without deleting it, for when the variable tree adopts it
     void forgetNewVariableForRow(QTreeWidgetItem* pItem);
     bool rowCanBeSaved(VarUnit* pVarUnit, QTreeWidgetItem* pItem) const;
-
-    void updateTriggerIcon(QTreeWidgetItem* pItem, int triggerID);
-    void updateTriggerIconsRecursively(QTreeWidgetItem* pItem);
-    QTreeWidgetItem* findItemByTriggerID(QTreeWidgetItem* pParent, int triggerID);
 
 signals:
     void itemMoved(int itemID, int oldParentID, int newParentID, int oldPosition, int newPosition);
@@ -120,9 +113,6 @@ private:
     // An unsaved new variable is in no table yet, so its row's entry is the only owner it has
     std::map<QTreeWidgetItem*, std::unique_ptr<TVar>> mNewVariableForRow;
     quint64 mVariablesGeneration = 0;
-    // CHECK: Should this actually be a: QPersistentModelIndex ?
-    QModelIndex mClickedItem;
-    bool mTickPressHeldFromView = false;
 };
 
 #endif // MUDLET_TTREEWIDGET_H
