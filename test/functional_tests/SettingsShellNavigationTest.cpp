@@ -278,6 +278,89 @@ private:
         return mpPreferences->grab().toImage();
     }
 
+    // Walks the window from the widest it goes down to the narrowest, a step at
+    // a time so that no width in between is skipped, with the Editor page
+    // showing and with the widest page there is. At every width the page fits
+    // its viewport, and the names are on show exactly while the window holds
+    // them beside the page showing - never beside less than the reading column,
+    // or a page switch would fold them for nothing.
+    void walkTheWindowDown()
+    {
+        auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
+        auto* pContent = mpPreferences->findChild<QWidget*>(qsl("settingsContent"));
+        QVERIFY2(pSidebar && pContent && pContent->layout(), "the settings shell has no sidebar or no content pane");
+        mpPreferences->resize(mpPreferences->maximumWidth(), 760);
+        qApp->processEvents();
+        const int widest = mpPreferences->width();
+        const int fullSidebar = pSidebar->width();
+        QVERIFY2(fullSidebar > 100, qPrintable(qsl("the sidebar is only %1px wide at the widest the window goes, so this case cannot tell a fold from where it started").arg(fullSidebar)));
+
+        int widestPageMinimum = 0;
+        QString widestPage;
+        for (int index = 0, pages = stack()->count(); index < pages; ++index) {
+            auto* pPage = qobject_cast<QScrollArea*>(stack()->widget(index));
+            if (!pPage || !pPage->widget() || pPage->widget()->minimumSizeHint().width() <= widestPageMinimum) {
+                continue;
+            }
+            widestPageMinimum = pPage->widget()->minimumSizeHint().width();
+            // As setTab() takes it, "category" or "category/subpage"; the search results are reached by a search
+            if (const QString key = pPage->objectName().section(QLatin1Char('_'), 1); key != qsl("searchResults")) {
+                widestPage = key.contains(QLatin1Char('_')) ? qsl("%1/%2").arg(key.section(QLatin1Char('_'), 0, 0), key.section(QLatin1Char('_'), 1)) : key;
+            }
+        }
+        QVERIFY2(!widestPage.isEmpty(), "no settings page has a column to measure");
+        const QMargins margins = pContent->layout()->contentsMargins();
+        const int sidebarAndMargins = fullSidebar + margins.left() + margins.right();
+        const int scrollBar = pageOf(qsl("general"))->verticalScrollBar()->sizeHint().width();
+
+        QStringList walked{qsl("editor")};
+        if (widestPage != walked.constFirst()) {
+            walked.append(widestPage);
+        }
+        for (const QString& page : std::as_const(walked)) {
+            mpPreferences->resize(widest, 760);
+            qApp->processEvents();
+            mpPreferences->setTab(page);
+            qApp->processEvents();
+            auto* pPage = qobject_cast<QScrollArea*>(stack()->currentWidget());
+            QVERIFY2(pPage && pPage->widget(), qPrintable(qsl("the '%1' page did not come up").arg(page)));
+            QWidget* pColumn = pPage->widget();
+            const int threshold = sidebarAndMargins + std::max(std::min(640, widestPageMinimum), pColumn->minimumSizeHint().width()) + scrollBar;
+            const int narrowest = mpPreferences->minimumWidth();
+            bool sawNames = false;
+            bool sawRail = false;
+            for (int width = widest; width > narrowest - 8; width -= 8) {
+                mpPreferences->resize(std::max(width, narrowest), 760);
+                qApp->processEvents();
+                const int actual = mpPreferences->width();
+                QVERIFY2(!pPage->horizontalScrollBar()->isVisible(),
+                         qPrintable(qsl("the '%1' page scrolls sideways in a %2px window, with the sidebar %3px wide").arg(page).arg(actual).arg(pSidebar->width())));
+                QVERIFY2(pColumn->geometry().right() < pPage->viewport()->width(),
+                         qPrintable(qsl("the '%1' page's cards end at %2px in a %3px viewport, in a %4px window with the sidebar %5px wide")
+                                            .arg(page)
+                                            .arg(pColumn->geometry().right() + 1)
+                                            .arg(pPage->viewport()->width())
+                                            .arg(actual)
+                                            .arg(pSidebar->width())));
+                const bool rail = sidebar()->property(uiDesign::scmProp_rail).toBool();
+                if (actual < threshold) {
+                    QVERIFY2(rail,
+                             qPrintable(qsl("the sidebar kept its names in a %1px window on the '%2' page, %3px short of the %4px they need beside it")
+                                                .arg(actual)
+                                                .arg(page)
+                                                .arg(threshold - actual)
+                                                .arg(threshold)));
+                } else {
+                    QVERIFY2(!rail, qPrintable(qsl("the sidebar folded in a %1px window on the '%2' page, which holds the %3px its names need beside it").arg(actual).arg(page).arg(threshold)));
+                }
+                sawNames |= !rail;
+                sawRail |= rail;
+            }
+            QVERIFY2(sawNames && sawRail, qPrintable(qsl("walking the '%1' page from %2px down to %3px never saw both the names and the rail").arg(page).arg(widest).arg(narrowest)));
+        }
+        mpPreferences->resize(1060, 760);
+    }
+
     void openPreferences()
     {
         mpPreferences = new dlgProfilePreferences(mudlet::self(), mpHost);
@@ -1587,6 +1670,45 @@ private slots:
         // The longer names are drawn in full, so the sidebar is at least as wide as before rather than the rail
         QVERIFY2(!railAfter && sidebarAfter >= fullSidebar,
                  qPrintable(qsl("changing the language collapsed the sidebar from %1px to %2px, on a window %3px wide").arg(fullSidebar).arg(sidebarAfter).arg(widthAfter)));
+    }
+
+    // Reported against the redesign: narrowing the window with the sidebar's
+    // names showing cut the cards off on the right and scrolled the page
+    // sideways a few pixels before the names gave way. The Editor page was the
+    // one: its theme preview list grew to the profile's longest item name.
+    void test_theSidebarFoldsBeforeAnyPageScrollsSideways()
+    {
+        QVERIFY(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl(
+                "permScript(\"A script with a name as long as a real profile can give one, far too long for the theme preview list to be as wide as it\", \"\", \"-- shown in the theme preview\")")));
+        // The preview list is filled as the dialog is built
+        delete mpPreferences;
+        mpPreferences = nullptr;
+        openPreferences();
+        walkTheWindowDown();
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+        // ...and the name is no reason to fold the names either
+        QWidget* pEditorColumn = pageOf(qsl("editor"))->widget();
+        QVERIFY2(pEditorColumn->minimumSizeHint().width() <= 640,
+                 qPrintable(qsl("one long item name in the profile widened the Editor page to %1px, past the 640px reading column").arg(pEditorColumn->minimumSizeHint().width())));
+    }
+
+    // ...and with a translation that pushes pages past the reading column, which
+    // is where the names have to give way for a page rather than for the column
+    void test_theSidebarFoldsBeforeAnyGermanPageScrollsSideways()
+    {
+        delete mpPreferences;
+        mpPreferences = nullptr;
+        auto* pGerman = new QTranslator(qApp);
+        QVERIFY2(pGerman->load(qsl("mudlet_de_DE"), qsl(":/lang")), "no German translation in the binary's resources, so no page is wider than the reading column to walk past");
+        QVERIFY(qApp->installTranslator(pGerman));
+        auto removeTranslator = qScopeGuard([pGerman]() {
+            qApp->removeTranslator(pGerman);
+            delete pGerman;
+        });
+        openPreferences();
+        walkTheWindowDown();
     }
 };
 

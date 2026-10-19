@@ -361,11 +361,12 @@ private:
     void wrapCheckBox(QCheckBox* pCheckBox);
     void unwrapCheckBox(QCheckBox* pCheckBox);
     // Window widths: below collapseBelow the sidebar becomes an icon rail; past fullyExpanded the dialog
-    // gains only empty space
+    // gains only empty space; below narrowest even the rail leaves the widest page too little room
     struct SidebarWidths
     {
         int collapseBelow = 0;
         int fullyExpanded = 0;
+        int narrowest = 0;
     };
     SidebarWidths sidebarWidths() const;
     // What the sidebar is drawn at with its names showing, measured off the

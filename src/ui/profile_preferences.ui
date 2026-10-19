@@ -1730,7 +1730,10 @@ you can use it but there could be issues with aligning columns of text</string>
              <bool>true</bool>
             </property>
             <property name="sizeAdjustPolicy">
-             <enum>QComboBox::SizeAdjustPolicy::AdjustToContents</enum>
+             <enum>QComboBox::SizeAdjustPolicy::AdjustToMinimumContentsLengthWithIcon</enum>
+            </property>
+            <property name="minimumContentsLength">
+             <number>24</number>
             </property>
            </widget>
           </item>
@@ -1767,7 +1770,7 @@ you can use it but there could be issues with aligning columns of text</string>
              <string extracomment="Accessibility-friendly description of the Editor settings page option that writes the script editor's code in the font set for the game's text">Shows code, the error messages under it and trigger patterns in the font and size set for the game's text on the Main display page. Untick it to give the script editor a font and size of its own.</string>
             </property>
             <property name="text">
-             <string extracomment="Option on the Editor settings page: when ticked, the script editor's code is written in the font and size of the game's text, set on the Main display page">Use the display font</string>
+             <string extracomment="Option on the Editor settings page: when ticked, the script editor's code is written in the font and size of the game's text, set on the Main display page, so main display is that page's name and is translated as it is">Use the main display font</string>
             </property>
             <property name="checked">
              <bool>true</bool>

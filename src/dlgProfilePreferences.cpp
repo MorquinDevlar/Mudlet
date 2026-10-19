@@ -174,6 +174,8 @@ static constexpr char scmProp_settingsRichText[] = "settingsRichText";
 
 // A reading width: a wide window gains whitespace rather than stretching the controls
 static constexpr int scmContentColumnWidth = 640;
+// The narrowest the window goes, however little its pages need
+static constexpr int scmMinimumWindowWidth = 780;
 
 // Above and below the sidebar's rows. The one measurement this dialog's sidebar
 // keeps of its own: it is the inset this window's own columns start at, the way
@@ -577,7 +579,7 @@ dlgProfilePreferences::dlgProfilePreferences(QWidget* pParentWidget, Host* pHost
     updateColumnWidthCaps();
     rebuildTabOrder();
 
-    setMinimumSize(780, 560);
+    setMinimumSize(scmMinimumWindowWidth, 560);
     const auto geometry = MudletApp::getQSettings()->value(qsl("profilePreferencesGeometry")).toByteArray();
     if (geometry.isEmpty() || !restoreGeometry(geometry)) {
         resize(1060, 760);
@@ -834,6 +836,8 @@ void dlgProfilePreferences::buildShell()
 
     mpStackedWidget_categories = new QStackedWidget(pContent);
     mpStackedWidget_categories->setObjectName(qsl("settingsStack"));
+    // The page on show is part of the breakpoint - see sidebarWidths()
+    connect(mpStackedWidget_categories, &QStackedWidget::currentChanged, this, &dlgProfilePreferences::updateSidebarMode);
     pContentLayout->addWidget(mpStackedWidget_categories, 1);
 
     auto* pFindShortcut = new QShortcut(QKeySequence::Find, this);
@@ -1494,6 +1498,7 @@ void dlgProfilePreferences::showSubpage(const QString& categoryKey, const QStrin
     QTimer::singleShot(0ms, this, [this, pPage]() {
         if (pPage && mpStackedWidget_categories->currentWidget() == pPage) {
             capColumnWidth(pPage);
+            updateSidebarMode();
         }
     });
 
@@ -2354,9 +2359,14 @@ dlgProfilePreferences::SidebarWidths dlgProfilePreferences::sidebarWidths() cons
     const int sidebarAndMargins = measuredSidebarWidth() + contentMargins.left() + contentMargins.right();
     widths.fullyExpanded = sidebarAndMargins + std::max(contentColumn + scrollBarWidth, titleRowChrome + widestTitle);
     // Must differ from fullyExpanded, the window's maximum: if equal, the names show at that one width only.
-    // It is the widest page's minimum, capped at the reading column, so a wide page moves the maximum without
-    // moving the collapse point. Longer names move both, and updateSidebarMode() widens the window after them.
-    widths.collapseBelow = sidebarAndMargins + std::min(scmContentColumnWidth, widestPageMinimum) + scrollBarWidth;
+    // It is the widest page's minimum capped at the reading column, so a wide page moves the maximum without
+    // moving the collapse point for the others - raised to what the page on show needs, so a page wider than
+    // the column takes the names rather than scrolling sideways. Longer names move both, and
+    // updateSidebarMode() widens the window after them.
+    const QWidget* pShownColumn = pPage ? pPage->widget() : nullptr;
+    const int shownPageMinimum = pShownColumn ? pShownColumn->minimumSizeHint().width() : 0;
+    widths.collapseBelow = sidebarAndMargins + std::max(std::min(scmContentColumnWidth, widestPageMinimum), shownPageMinimum) + scrollBarWidth;
+    widths.narrowest = uiDesign::scmSidebarRailWidth + contentMargins.left() + contentMargins.right() + widestPageMinimum + scrollBarWidth;
     return widths;
 }
 
@@ -2379,6 +2389,9 @@ void dlgProfilePreferences::updateSidebarMode()
     if (!widths.fullyExpanded) {
         return;
     }
+    // Below narrowest even the rail leaves the widest page too little, so the window stops there rather than
+    // cutting it off
+    setMinimumWidth(std::max(scmMinimumWindowWidth, widths.narrowest));
     // Pages never grow past their column, so width beyond fullyExpanded is empty strip on one side. Refused,
     // since centring would strand the sidebar from its settings and stretching defeats the column. Set
     // before the refit below, which may need the room it allows.
@@ -5158,6 +5171,9 @@ void dlgProfilePreferences::loadEditorTab()
     script_preview_combobox->setInsertPolicy(QComboBox::NoInsert);
     script_preview_combobox->setMaxVisibleItems(20);
     script_preview_combobox->setDuplicatesEnabled(true);
+    // The list is no wider than the box, which is held to a fixed length so the profile's longest item name
+    // cannot widen the page; eliding in the middle keeps the item's kind at the end of its name in view
+    script_preview_combobox->view()->setTextElideMode(Qt::ElideMiddle);
 
     // Once fetched, the label reports how that went for as long as the dialog is open, and this runs again
     // every time the dialog is reactivated

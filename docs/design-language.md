@@ -799,7 +799,11 @@ is `sidebarWidths()` / `updateSidebarMode()` in
 `src/dlgProfilePreferences.cpp`:
 
 - Widths are measured off font metrics, `sizeHint()`s and the actual scrollbar
-  width, over every page rather than the one on show.
+  width, over every page rather than the one on show, so a page switch moves
+  neither the window's maximum nor the collapse point - unless the page on show
+  is wider than the reading column, when the collapse point follows that page
+  and the names fold rather than the page scrolling sideways. The window's
+  minimum is where even the rail leaves the widest page too little room.
 - `fullyExpanded` caps the window's maximum width; `collapseBelow` is a
   deliberately *different*, smaller number, so the sidebar cannot oscillate
   between its expanded and rail modes on a one-pixel drag.
@@ -1739,7 +1743,7 @@ Available as a pattern; the editor keeps its explicit save for now.
 - A control that means something only while another setting is off is disabled
   rather than hidden, and shows what the other setting gives meanwhile: the
   Editor page's family and size pickers are greyed out holding the display font
-  for as long as "Use the display font" is ticked, and are written in
+  for as long as "Use the main display font" is ticked, and are written in
   `applyAll()` ahead of the switch, so a family picked straight after unticking
   it is the one the editor leaves the display font for.
 - `guardScrollWheel()` plus the `eventFilter()` wheel branch stop a wheel passing
