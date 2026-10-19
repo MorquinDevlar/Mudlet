@@ -86,12 +86,8 @@ TCommandLine::TCommandLine(Host* pHost, const QString& name, enums::CommandLineT
     connect(document(), &QTextDocument::contentsChange, this, &TCommandLine::slot_contentsChange);
 
     if (mType & (enums::MainCommandLine | enums::ConsoleCommandLine)) {
-        // put an outline around the command line when it is integrated into
-        // bottom of a TConsole - so that it can be visually separated from
-        // the text output area - particulary when "dark" mode is in effect
-        // as that modified "Fusion" style suffers from the division being
-        // invisible without this:
-        setFrameShape(QFrame::Box);
+        // The seam along the top of the console's foot parts it from the text above
+        setFrameShape(QFrame::NoFrame);
     }
 
     mRegularPalette.setColor(QPalette::Text, mpHost->mCommandLineFgColor);
@@ -777,8 +773,9 @@ void TCommandLine::adjustHeight()
         _height = mpHost->commandLineMinimumHeight;
     }
     if (_height > height() || _height < height()) {
-        mpConsole->layerCommandLine->setMinimumHeight(_height);
-        mpConsole->layerCommandLine->setMaximumHeight(_height);
+        const int layerHeight = mpConsole->commandLineLayerHeight(_height);
+        mpConsole->layerCommandLine->setMinimumHeight(layerHeight);
+        mpConsole->layerCommandLine->setMaximumHeight(layerHeight);
         const int x = mpConsole->width();
         const int y = mpConsole->height();
         const QSize s = QSize(x, y);

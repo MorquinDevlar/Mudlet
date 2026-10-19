@@ -235,11 +235,14 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
   rather than sunk, and the profile's own Lua sheet appended after the design's on the same
   widget; guarded by `MainToolBarStyleTest`
 - Debug filter bar `TDebugFilterBar`
+- The console's foot `TConsole` (main window, user windows and miniconsoles with a command
+  line) - one 1px seam along its top mixed from the profile's command-line colours at
+  `scmConsoleFootSeamStrength`, no frame on the input; guarded by `ConsoleFootSeamTest`
 
 Not yet adopted (platform or Fusion drawn; a new feature there still uses the recipes above
 for anything it adds, and adoption is one window per pull request):
 
-- Main window body: command line, search field, bottom icon buttons, dock title bars
+- Main window body: search field, bottom icon buttons, dock title bars
 - Mapper dock `dlgMapper` and its map controls; `dlgRoomProperties`, `dlgRoomExits`, `dlgMapLabel`
 - Module manager `dlgModuleManager`
 - Composer `dlgComposer`, IRC `dlgIRC`

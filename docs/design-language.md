@@ -932,6 +932,15 @@ into a corner of it.
 composition, and the hover wash, the accent wash and the seam on the menu half
 read off a grab in both appearances.
 
+#### The console's foot
+
+A console's foot - the command line, and in the main window the search box,
+buttons and latency readout beside it - is parted from the text above by one 1px
+seam across its whole width, `blend()` of the profile's command-line background
+towards its text colour at `scmConsoleFootSeamStrength` (20%), with no frame on
+the input or on the password box laid over it, so a border a profile sets with
+`setCmdLineStyleSheet()` is the only one drawn there (`ConsoleFootSeamTest`).
+
 ### Shell over .ui
 
 The `.ui` file is not rewritten. Existing widgets are detached from their

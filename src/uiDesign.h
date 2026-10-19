@@ -222,6 +222,11 @@ inline constexpr qreal scmSoftWashStrength = 0.14;
 // says where the pointer is without saying anything has been chosen
 inline constexpr qreal scmHoverWashStrength = 0.07;
 
+// The line along the top of a console's foot: the profile's command-line
+// background taken this far towards its text colour, since a console is drawn in
+// the profile's colours rather than the theme's
+inline constexpr qreal scmConsoleFootSeamStrength = 0.20;
+
 // A scroll bar is chrome the reader is not meant to notice until they reach for
 // it, and one window's idea of that is every window's. The prefix is what the
 // rules are scoped by - a scroll area's own bars answer only to a descendant

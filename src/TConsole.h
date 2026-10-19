@@ -128,6 +128,8 @@ public:
     THyperlinkVisibilityManager& getHyperlinkVisibilityManager() { return mpModel->mHyperlinkVisibilityManager; }
 
     void setCmdVisible(bool);
+    // What layerCommandLine has to be given to hold a command line this high
+    int commandLineLayerHeight(const int commandLineHeight) const;
     void changeColors();
     void scrollDown(int lines);
     void scrollUp(int lines);
@@ -338,6 +340,8 @@ private:
     void raiseFontChangeEvent();
     void restoreCommandSearchSettings();
     void updateScrollBarStyle();
+    void applyFootSeamColour();
+    int footSeamHeightShown() const;
 
     ConsoleType mType = UnknownType;
     // the size the last resize reported to Lua
@@ -359,6 +363,11 @@ private:
     QColor& mBorderColor;
     // latches the 'cover' scale failure so a resize drag does not repeat the warning
     bool mWindowBgCoverScaleFailed = false;
+    // The line along the top of the foot. In the main console the search box and
+    // buttons sit beside layerCommandLine in commandSplitter, so mpFoot holds the
+    // seam over that whole row; every other console has it inside layerCommandLine.
+    QWidget* mpFootSeam = nullptr;
+    QWidget* mpFoot = nullptr;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(TConsole::ConsoleType)

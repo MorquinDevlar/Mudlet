@@ -53,6 +53,8 @@ TPasswordEntry::TPasswordEntry(Host* pHost, TCommandLine* pCommandLine, QWidget*
     placeholderColor.setAlpha(128);
     palette.setColor(QPalette::PlaceholderText, placeholderColor);
     setPalette(palette);
+    // It lies over the command line, which has no frame either
+    setFrame(false);
 
     mpRevealAction = addAction(QIcon(qsl(":/icons/password-show-on.png")), QLineEdit::TrailingPosition);
     connect(mpRevealAction, &QAction::triggered, this, [this]() {

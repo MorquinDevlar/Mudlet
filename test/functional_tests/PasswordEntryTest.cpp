@@ -341,6 +341,7 @@ private slots:
         QVERIFY2(box(), "WILL ECHO opened no box");
         QVERIFY(box()->isVisible());
         QCOMPARE(box()->geometry(), commandLine()->geometry());
+        QVERIFY2(!box()->hasFrame(), "the box draws a frame over a command line that has none");
         QCOMPARE(box()->echoMode(), QLineEdit::Password);
         QCOMPARE(box()->text(), QString());
         QCOMPARE(box()->palette().color(QPalette::PlaceholderText).rgb(), commandLine()->mRegularPalette.color(QPalette::Text).rgb());
