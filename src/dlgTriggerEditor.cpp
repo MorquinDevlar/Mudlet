@@ -1134,6 +1134,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpErrorConsole->slot_toggleTimeStamps(true);
     mpErrorConsole->print(qsl("%1\n").arg(tr("*** starting new session ***")));
     mpErrorConsole->setMinimumHeight(100);
+    mpErrorConsole->setFont(mpHost->getEditorFont());
     mpErrorConsole->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     splitter_right->addWidget(mpErrorConsole);
 
@@ -1736,7 +1737,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     auto config = mpSourceEditorEdbee->config();
     config->beginChanges();
     config->setThemeName(mpHost->getEditorTheme());
-    config->setFont(mpHost->getDisplayFont());
+    config->setFont(mpHost->getEditorFont());
     config->setShowWhitespaceMode((mudlet::self()->mEditorTextOptions & QTextOption::ShowTabsAndSpaces) ? edbee::TextEditorConfig::ShowWhitespaces : edbee::TextEditorConfig::HideWhitespaces);
     config->setUseLineSeparator(mudlet::self()->mEditorTextOptions & QTextOption::ShowLineAndParagraphSeparators);
     config->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
@@ -2134,7 +2135,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mpHost, &Host::signal_editorThemeChanged, this, &dlgTriggerEditor::slot_editorThemeChanged);
     connect(mpHost, &Host::signal_editorCleanResetRequested, this, &dlgTriggerEditor::doCleanReset);
     connect(mpHost, &Host::signal_profileStyleSheetChanged, this, &dlgTriggerEditor::setStyleSheet);
-    connect(mpHost, &Host::signal_consoleFontChanged, this, &dlgTriggerEditor::setDisplayFont);
+    connect(mpHost, &Host::signal_editorFontChanged, this, &dlgTriggerEditor::setEditorFont);
     connect(mpHost, &Host::signal_editorSearchOptionsChanged, this, &dlgTriggerEditor::setSearchOptions);
     connect(mpHost, &Host::signal_editorShowBidiChanged, this, &dlgTriggerEditor::setEditorShowBidi);
     connect(mpHost, &Host::signal_showIdsInEditorChanged, this, &dlgTriggerEditor::showIDLabels);
@@ -2400,16 +2401,16 @@ void dlgTriggerEditor::applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWid
     patternWidget->singleLineTextEdit_pattern->setFieldColors(tokens.field, tokens.text);
 
     // A pattern is game text rather than interface text, so it is read in the
-    // font the game and the script beside it are read in: a space is then as
-    // wide as a letter, and what would match is what is on the row
-    const QFont patternFont = mpHost->getDisplayFont();
+    // font the script beside it is read in: a space is then as wide as a
+    // letter, and what would match is what is on the row
+    const QFont patternFont = mpHost->getEditorFont();
     patternWidget->singleLineTextEdit_pattern->setFont(patternFont);
     patternWidget->label_patternNumber->setFont(patternFont);
 
     const QFontMetrics patternMetrics(patternFont);
     patternWidget->label_patternNumber->setFixedWidth(patternMetrics.horizontalAdvance(QString(scmEditorPatternNumberDigits, QLatin1Char('0'))));
     // The .ui file's heights are for a row of interface text; what the row holds
-    // now is a line of the display font, which is whatever the profile set it to
+    // now is a line of the editor's font, which is whatever the profile set it to
     const int rowHeight = std::max(scmEditorPatternRowMinimumHeight, patternMetrics.height() + scmEditorPatternRowPadding);
     patternWidget->setFixedHeight(rowHeight);
     const QMargins rowMargins = patternWidget->layout()->contentsMargins();
@@ -15052,7 +15053,7 @@ void dlgTriggerEditor::clearDocument(edbee::TextEditorWidget* pEditorWidget, con
     auto config = mpSourceEditorEdbee->config();
     config->beginChanges();
     config->setThemeName(mpHost->getEditorTheme());
-    config->setFont(mpHost->getDisplayFont());
+    config->setFont(mpHost->getEditorFont());
     config->setShowWhitespaceMode((mudlet::self()->mEditorTextOptions & QTextOption::ShowTabsAndSpaces) ? edbee::TextEditorConfig::ShowWhitespaces : edbee::TextEditorConfig::HideWhitespaces);
     config->setUseLineSeparator(mudlet::self()->mEditorTextOptions & QTextOption::ShowLineAndParagraphSeparators);
     config->setSmartTab(true);
@@ -15168,7 +15169,7 @@ void dlgTriggerEditor::setThemeAndOtherSettings(const QString& theme)
     localConfig->beginChanges();
     localConfig->setThemeName(theme);
     mpHost->editorThemeChanged();
-    localConfig->setFont(mpHost->getDisplayFont());
+    localConfig->setFont(mpHost->getEditorFont());
     localConfig->setShowWhitespaceMode((mudlet::self()->mEditorTextOptions & QTextOption::ShowTabsAndSpaces) ? edbee::TextEditorConfig::ShowWhitespaces : edbee::TextEditorConfig::HideWhitespaces);
     localConfig->setUseLineSeparator(mudlet::self()->mEditorTextOptions & QTextOption::ShowLineAndParagraphSeparators);
     localConfig->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
@@ -18590,7 +18591,7 @@ void dlgTriggerEditor::checkForMoreThanOneTriggerItem()
     }
 }
 
-void dlgTriggerEditor::setDisplayFont(const QFont& newFont)
+void dlgTriggerEditor::setEditorFont(const QFont& newFont)
 {
     if (mpErrorConsole) {
         mpErrorConsole->setFont(newFont);
@@ -18601,7 +18602,7 @@ void dlgTriggerEditor::setDisplayFont(const QFont& newFont)
     config->setFont(newFont);
     config->endChanges();
 
-    // A pattern is read in the display font too, and every measurement a row is
+    // A pattern is read in the editor's font too, and every measurement a row is
     // built from - the number column's width, the row's height, what its
     // controls are capped at - comes off that font's metrics
     for (auto* patternEdit : std::as_const(mTriggerPatternEdit)) {

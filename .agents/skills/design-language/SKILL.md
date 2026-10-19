@@ -120,7 +120,9 @@ State colours (ok, warning, error) come from `stateColor(scmStateHue_*, darkPage
 
 Adopted (styled through `uiDesign`, guarded by the tests below):
 
-- Settings dialog `dlgProfilePreferences` (shell, sidebar, cards, fields, marks, buttons, search)
+- Settings dialog `dlgProfilePreferences` (shell, sidebar, cards, fields, marks, buttons, search).
+  The Editor page's Font card - `checkBox_editorFontFollowsDisplay`, `fontComboBox_editorFont`,
+  `spinBox_editorFontSize` - is ordinary `.ui` controls under the shared check-mark and field recipes
 - Script editor `dlgTriggerEditor` (toolbar, sidebar, trees via `EditorTreeDelegate` /
   `VariableTreeDelegate` - the Folders view's tree included, see `docs/design-language.md`
   "One sidebar for both windows" - seven forms, pattern rows, options strip, chips, code heading, notice).

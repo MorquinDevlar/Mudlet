@@ -216,6 +216,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EditorColumnFontTest.cpp
     EditorDefaultSizeTest.cpp
     EditorEventChipRowTest.cpp
+    EditorFontTest.cpp
     EditorFormShellTest.cpp
     EditorGeometryWriteGuardTest.cpp
     EditorIconScaleTest.cpp
