@@ -725,12 +725,36 @@ void dlgConnectionProfiles::applyConnectionShellStyle()
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelWarning, uiDesign::NoticeKind::Warning, tokens);
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelError, uiDesign::NoticeKind::Error, tokens);
 
+    resolveTabFonts();
+
     // Measured rather than named: the .ui pinned this field to 40-50px for the
     // 9pt font it also set, and the field is at the dialog's own font now. Five
     // digits is the widest port there is, plus what the recipe leaves either
     // side of them and one digit of slack for the cursor.
     const QFontMetrics fm(port_entry->font());
     port_entry->setFixedWidth(fm.horizontalAdvance(qsl("65535")) + 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth) + fm.horizontalAdvance(QLatin1Char('0')));
+}
+
+// A widget with a class font - a label or a checkbox on macOS - is resolved at
+// its polish against that font rather than its parent's once a sheet is above
+// it. setupUi() polishes the Connect-to page before its sheet is set and the
+// Options page is polished with the dialog, after, so each read in another face.
+void dlgConnectionProfiles::resolveTabFonts()
+{
+    tabWidget_connectionInfo->ensurePolished();
+    uiDesign::resolveFontsUnderStyleSheets(tab_connection_info);
+    uiDesign::resolveFontsUnderStyleSheets(tab_options);
+}
+
+// A new interface font reaches each widget under a sheet by an event of its own,
+// and there it takes the application's face rather than the dialog's: the tabs
+// are resolved again once that round is over.
+bool dlgConnectionProfiles::event(QEvent* event)
+{
+    if (event->type() == QEvent::ApplicationFontChange || event->type() == QEvent::FontChange) {
+        QMetaObject::invokeMethod(this, &dlgConnectionProfiles::resolveTabFonts, Qt::QueuedConnection);
+    }
+    return QDialog::event(event);
 }
 
 // validateProfile() runs on every keystroke, so the property is compared before
@@ -743,6 +767,8 @@ void dlgConnectionProfiles::setFieldState(QLineEdit* pField, const QString& stat
     }
     pField->setProperty(scmProp_fieldState, state.isEmpty() ? QVariant() : QVariant(state));
     uiDesign::repolish(pField);
+    // the polish under the page's sheet hands the field the application's face
+    uiDesign::resolveFontsUnderStyleSheets(pField);
 }
 
 dlgConnectionProfiles::~dlgConnectionProfiles()

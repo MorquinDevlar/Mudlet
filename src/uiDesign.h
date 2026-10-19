@@ -801,6 +801,46 @@ void repolish(QWidget* pWidget);
 
 void setSearchMatch(QWidget* pWidget, const QVariant& matched);
 
+// Qt's default stylesheet mode keeps a parent's font from any widget a
+// stylesheet style has polished, which is what Qt::WA_StyleSheet marks:
+// QWidgetPrivate::updateFont() skips such a child, naturalWidgetFont()
+// ignores such a parent, and QWidget::setParent() resolves nothing when
+// either side has it. Every widget under the one a sheet was set on carries
+// the flag - a whole window once a profile's sheet lands on it, a form
+// under a sheet of its own. For as long as one of these lives, the flag is
+// off on the given widget, its parent, and every widget under it in the same
+// window, so one of Qt's own propagations run inside the scope crosses the
+// sheets and resolves each widget with the masks it would have had with no
+// sheet in the way: a label with a size of its own keeps it, a merely bold
+// one follows the size, and a size a sheet sets is put back by the same Qt
+// code that puts it there on any other font change. Qt sets the flag again
+// itself on each widget as its render rule is looked up at the end of that
+// widget's own update - after its subtree has been walked, so the walk is not
+// cut short - and the destructor sets it on the rest.
+class StyleSheetFontLift
+{
+public:
+    explicit StyleSheetFontLift(QWidget* pWidget);
+    ~StyleSheetFontLift();
+    Q_DISABLE_COPY_MOVE(StyleSheetFontLift)
+
+private:
+    void lift(QWidget* pWidget);
+
+    // QPointer, as a FontChange handler in the tree is free to rebuild widgets
+    QList<QPointer<QWidget>> mLifted;
+};
+
+// Every widget under pRoot, and pRoot itself unless it is a window, resolves
+// its font again from its parent past the sheets - which is what Qt does to
+// a window's widgets when the application font changes, and what a widget
+// polished under a sheet needs once it has been given the application font
+// instead. One of Qt's own internals - a viewport, a spin box's line edit,
+// the "qt_" names - is handed its parent's font at polish with the parent's
+// whole resolve mask as its own, which would pin it, so those go back to an
+// unresolved font instead.
+void resolveFontsUnderStyleSheets(QWidget* pRoot);
+
 // Every surface is blended from the palette rather than written out as hex, so
 // the shell follows whichever theme it is handed
 QColor blend(const QColor& from, const QColor& to, const qreal amount);

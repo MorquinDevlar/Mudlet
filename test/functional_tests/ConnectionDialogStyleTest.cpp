@@ -41,6 +41,8 @@
 
 #include <QtTest/QtTest>
 
+#include <QCheckBox>
+#include <QComboBox>
 #include <QFontMetrics>
 #include <QHoverEvent>
 #include <QImage>
@@ -125,6 +127,28 @@ private:
     // what the item's rectangle carries over the 120x30 chip centred in it
     static constexpr int scmHaloRoom = ProfileChipDelegate::scmChipHaloGap + ProfileChipDelegate::scmChipHaloWidth;
 
+    // The first label, field, list or mark on either tab whose face or size is
+    // not the dialog's, named, or nothing when they all match
+    static QString tabFontMismatch(const dlgConnectionProfiles* pDialog)
+    {
+        const QFont expected = pDialog->font();
+        int checked = 0;
+        for (const QWidget* pPage : {pDialog->tab_connection_info, pDialog->tab_options}) {
+            for (const QWidget* pWidget : pPage->findChildren<QWidget*>()) {
+                if (!qobject_cast<const QLabel*>(pWidget) && !qobject_cast<const QLineEdit*>(pWidget) && !qobject_cast<const QComboBox*>(pWidget) && !qobject_cast<const QCheckBox*>(pWidget)) {
+                    continue;
+                }
+                ++checked;
+                const QFont font = pWidget->font();
+                if (font.family() != expected.family() || font.pointSizeF() != expected.pointSizeF()) {
+                    return qsl("%1 reads in %2 at %3pt against the dialog's %4 at %5pt")
+                            .arg(pWidget->objectName(), font.family(), QString::number(font.pointSizeF()), expected.family(), QString::number(expected.pointSizeF()));
+                }
+            }
+        }
+        return checked ? QString() : qsl("there is no label, field or checkbox on either tab to read");
+    }
+
 private slots:
     void initTestCase()
     {
@@ -144,6 +168,14 @@ private slots:
         mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
         mudlet::self()->init();
         mudlet::self()->setStorePasswordsSecurely(false);
+
+        // The macOS theme registers a font of its own for labels and checkboxes,
+        // and offscreen registers none. Built rather than copied from the
+        // application font, or Qt takes it for that font.
+        const QFont classFont(QApplication::font().family(), qRound(QApplication::font().pointSizeF()));
+        QVERIFY(!classFont.isCopyOf(QApplication::font()));
+        QApplication::setFont(classFont, "QLabel");
+        QApplication::setFont(classFont, "QCheckBox");
 
         mudlet::self()->startAutoLogin({});
         // the dialog is only shown from a queued lambda, so the pointer turning
@@ -877,6 +909,86 @@ private slots:
         mudlet::self()->setAppearance(wasDark ? enums::Appearance::dark : enums::Appearance::light);
         QCoreApplication::processEvents();
         QTest::qWait(50ms);
+    }
+
+    // Both tab pages carry a sheet, and setupUi() polishes the Connect-to page
+    // before its sheet is set while the Options page is polished with the
+    // dialog, after: a label or a checkbox polished under a sheet took its class
+    // font's face rather than the dialog's, so the two tabs read in two faces
+    void test_bothTabsReadInTheDialogsFont()
+    {
+        auto* pDialog = dialog();
+        QVERIFY2(pDialog, "No connection dialog to test against");
+
+        QString mismatch = tabFontMismatch(pDialog);
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("with the Connect-to tab showing: %1").arg(mismatch)));
+
+        pDialog->tabWidget_connectionInfo->setCurrentWidget(pDialog->tab_options);
+        QCoreApplication::processEvents();
+        mismatch = tabFontMismatch(pDialog);
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("on the Options tab: %1").arg(mismatch)));
+
+        pDialog->tabWidget_connectionInfo->setCurrentWidget(pDialog->tab_connection_info);
+        QCoreApplication::processEvents();
+        mismatch = tabFontMismatch(pDialog);
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("back on the Connect-to tab: %1").arg(mismatch)));
+
+        // The validator marks a field, and clears the mark, by polishing it again
+        selectTheTestProfile();
+        pDialog->host_name_entry->setText(qsl("mudlet.org"));
+        pDialog->port_entry->setText(qsl("12a"));
+        QCoreApplication::processEvents();
+        QCOMPARE(fieldState(pDialog->port_entry), qsl("error"));
+        mismatch = tabFontMismatch(pDialog);
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("with the port marked: %1").arg(mismatch)));
+        pDialog->port_entry->setText(qsl("23"));
+        QCoreApplication::processEvents();
+        QVERIFY(fieldState(pDialog->port_entry).isEmpty());
+        mismatch = tabFontMismatch(pDialog);
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("with the mark cleared: %1").arg(mismatch)));
+
+        // A new appearance sets the pages' sheets again
+        const bool wasDark = MudletApp::darkMode();
+        mudlet::self()->setAppearance(wasDark ? enums::Appearance::light : enums::Appearance::dark);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        mismatch = tabFontMismatch(pDialog);
+        mudlet::self()->setAppearance(wasDark ? enums::Appearance::dark : enums::Appearance::light);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("in the other appearance: %1").arg(mismatch)));
+    }
+
+    // A new interface font reaches both tabs, face and size. A platform hands
+    // its class fonts out anew along with the application font, so those go first.
+    void test_bothTabsFollowANewApplicationFont()
+    {
+        auto* pDialog = dialog();
+        QVERIFY2(pDialog, "No connection dialog to test against");
+
+        const QFont original = QApplication::font();
+        const QFont originalLabel = QApplication::font("QLabel");
+        const QFont originalCheckBox = QApplication::font("QCheckBox");
+        const QString family = original.family();
+        const int larger = qRound(original.pointSizeF()) + 4;
+        QApplication::setFont(QFont(family, larger), "QLabel");
+        QApplication::setFont(QFont(family, larger), "QCheckBox");
+        QApplication::setFont(QFont(family, larger));
+        // The dialog answers its own font change with a call posted for later,
+        // which one turn of the loop does not reach
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+        const qreal dialogSize = pDialog->font().pointSizeF();
+        const QString mismatch = tabFontMismatch(pDialog);
+
+        QApplication::setFont(originalLabel, "QLabel");
+        QApplication::setFont(originalCheckBox, "QCheckBox");
+        QApplication::setFont(original);
+        QCoreApplication::processEvents();
+        QTest::qWait(50ms);
+
+        QCOMPARE(dialogSize, static_cast<qreal>(larger));
+        QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("after the interface font grew: %1").arg(mismatch)));
     }
 };
 

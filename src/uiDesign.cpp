@@ -521,6 +521,61 @@ void setSearchMatch(QWidget* pWidget, const QVariant& matched)
     repolish(pWidget);
 }
 
+StyleSheetFontLift::StyleSheetFontLift(QWidget* pWidget)
+{
+    // a widget takes nothing from a parent that carries the flag, whatever its own says
+    if (auto* pParent = pWidget->parentWidget(); pParent && pParent->testAttribute(Qt::WA_StyleSheet)) {
+        pParent->setAttribute(Qt::WA_StyleSheet, false);
+        mLifted.append(pParent);
+    }
+    lift(pWidget);
+}
+
+void StyleSheetFontLift::lift(QWidget* pWidget)
+{
+    if (pWidget->testAttribute(Qt::WA_StyleSheet)) {
+        pWidget->setAttribute(Qt::WA_StyleSheet, false);
+        mLifted.append(pWidget);
+    }
+    for (auto* pChild : pWidget->children()) {
+        auto* pChildWidget = qobject_cast<QWidget*>(pChild);
+        // a popup or a window of its own is a font tree of its own, as it is for Qt
+        if (pChildWidget && !pChildWidget->isWindow()) {
+            lift(pChildWidget);
+        }
+    }
+}
+
+StyleSheetFontLift::~StyleSheetFontLift()
+{
+    for (const auto& pWidget : mLifted) {
+        if (pWidget) {
+            pWidget->setAttribute(Qt::WA_StyleSheet, true);
+        }
+    }
+}
+
+void resolveFontsUnderStyleSheets(QWidget* pRoot)
+{
+    const StyleSheetFontLift lift(pRoot);
+    QEvent fontEvent(QEvent::ApplicationFontChange);
+    const auto resolve = [&fontEvent](QWidget* pWidget) {
+        if (pWidget->objectName().startsWith(QLatin1String("qt_"))) {
+            pWidget->setFont(QFont());
+        } else {
+            QCoreApplication::sendEvent(pWidget, &fontEvent);
+        }
+    };
+    if (!pRoot->isWindow()) {
+        resolve(pRoot);
+    }
+    for (auto* pChild : pRoot->findChildren<QWidget*>()) {
+        if (pChild->window() == pRoot->window()) {
+            resolve(pChild);
+        }
+    }
+}
+
 QColor blend(const QColor& from, const QColor& to, const qreal amount)
 {
     return QColor::fromRgbF(from.redF() + (to.redF() - from.redF()) * amount, from.greenF() + (to.greenF() - from.greenF()) * amount, from.blueF() + (to.blueF() - from.blueF()) * amount);

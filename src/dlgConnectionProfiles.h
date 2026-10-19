@@ -161,6 +161,7 @@ public slots:
 
 protected:
     bool eventFilter(QObject*, QEvent*) override;
+    bool event(QEvent*) override;
     void showEvent(QShowEvent*) override;
     void loadPasswordFromSettings(const QString& profile_name);
     void ensurePasswordLoadedThenConnect(bool alsoConnect);
@@ -229,6 +230,8 @@ private:
     void addLetterToProfileSearch(const int);
     // The two tab pages' fields, marks and labels drawn from the shared recipes
     void applyConnectionShellStyle();
+    // Everything on the two tab pages in the dialog's own font, past their sheets
+    void resolveTabFonts();
     // What a field the validator has something to say about is marked with, so
     // that a rule rather than a palette draws the wash on it
     void setFieldState(QLineEdit* pField, const QString& state);
