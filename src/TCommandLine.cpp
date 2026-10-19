@@ -79,6 +79,8 @@ TCommandLine::TCommandLine(Host* pHost, const QString& name, enums::CommandLineT
     setObjectName(qsl("commandLine_%1_%2").arg(mpHost->getName(), name));
 
     setAutoFillBackground(true);
+    // The strips centerRows() leaves above and below the viewport fill like the viewport
+    setBackgroundRole(QPalette::Base);
     setFocusPolicy(Qt::StrongFocus);
 
     setFont(mpConsole->font());
@@ -753,6 +755,7 @@ void TCommandLine::adjustHeight()
     // Workaround for SubCommandLines textCursor not visible in some situations
     // SubCommandLines cannot autoresize
     if (mType == enums::SubCommandLine) {
+        centerRows();
         if (lines <= 1) {
             verticalScrollBar()->triggerAction(QScrollBar::SliderToMinimum);
         }
@@ -781,6 +784,35 @@ void TCommandLine::adjustHeight()
         const QSize s = QSize(x, y);
         QResizeEvent event(s, s);
         QApplication::sendEvent(mpConsole, &event);
+    }
+    centerRows();
+}
+
+// The slack goes one pixel more above the rows than below: heightForRows() leaves its spare pixel
+// under them, and this way a row's top lands where QLineEdit, the hidden-input box, puts its own.
+void TCommandLine::centerRows()
+{
+    const int rows = std::max(1, static_cast<int>(document()->size().height()));
+    const int slack = std::max(0, height() - heightForRows(rows));
+    const int top = std::min(slack, slack / 2 + 1);
+    const QMargins margins(0, top, 0, slack - top);
+    if (viewportMargins() != margins) {
+        setViewportMargins(margins);
+    }
+}
+
+void TCommandLine::resizeEvent(QResizeEvent* event)
+{
+    QPlainTextEdit::resizeEvent(event);
+    centerRows();
+}
+
+void TCommandLine::changeEvent(QEvent* event)
+{
+    QPlainTextEdit::changeEvent(event);
+    // setCmdLineStyleSheet() can bring a font or a frame with no adjustHeight() to follow
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange) {
+        centerRows();
     }
 }
 

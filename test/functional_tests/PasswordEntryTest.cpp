@@ -1048,6 +1048,41 @@ private slots:
         QTRY_COMPARE(box()->geometry(), commandLine()->geometry());
     }
 
+    // The box opens over the command line and goes with the game's next line, so a
+    // row that sat anywhere else in the command line would jump as it came and went
+    void test_theBoxPutsItsTextWhereTheCommandLinePutsItsRow()
+    {
+        const int fontSizeBefore = commandLine()->font().pointSize();
+        const auto restore = qScopeGuard([this, fontSizeBefore]() {
+            mpHost->mpConsole->setFontSize(fontSizeBefore);
+        });
+
+        // Well under the minimum height, the profile's own, and over it
+        for (const int fontSize : {10, fontSizeBefore, 20}) {
+            mpHost->mpConsole->setFontSize(fontSize);
+            commandLine()->setPlainText(qsl("look"));
+            commandLine()->adjustHeight();
+            serverSaysEcho(TN_WILL);
+            QVERIFY2(box(), "WILL ECHO opened no box");
+            QTRY_COMPARE(box()->geometry(), commandLine()->geometry());
+            box()->setText(qsl("hunter2"));
+            // QLineEdit only works out where its text goes when it paints
+            box()->grab();
+
+            const QRectF row = QRectF(commandLine()->cursorRect()).translated(commandLine()->viewport()->pos());
+            const QRectF boxCaret = box()->inputMethodQuery(Qt::ImCursorRectangle).toRectF();
+            const qreal rowCenter = commandLine()->mapToGlobal(row.center()).y();
+            const qreal boxCenter = box()->mapToGlobal(boxCaret.center()).y();
+            QVERIFY2(qAbs(rowCenter - boxCenter) <= 1.0,
+                     qPrintable(qsl("at %1pt in a %2px box the command line's caret is centered at %3px and the box's at %4px")
+                                        .arg(QString::number(fontSize), QString::number(commandLine()->height()), QString::number(row.center().y()), QString::number(boxCaret.center().y()))));
+
+            // Clears the echo toggles too, or the third WILL would be taken for an anomaly
+            resetState();
+            QTRY_VERIFY(!box());
+        }
+    }
+
     void test_aSubCommandLineActionRunsDuringAPrompt()
     {
         TCommandLine* pSubLine = freshSubCommandLine();

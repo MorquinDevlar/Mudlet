@@ -102,6 +102,8 @@ public slots:
 
 private:
     bool event(QEvent*) override;
+    void resizeEvent(QResizeEvent*) override;
+    void changeEvent(QEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
     void handleAutoCompletion();
@@ -119,6 +121,7 @@ private:
     bool handleCtrlTabChange(QKeyEvent* key, int tabNumber);
     void restoreHistory();
     int heightForRows(const int) const;
+    void centerRows();
 
     QPointer<Host> mpHost;
     enums::CommandLineType mType = enums::UnknownCommandLine;
