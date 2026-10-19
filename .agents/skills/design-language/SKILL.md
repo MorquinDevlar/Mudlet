@@ -122,7 +122,8 @@ Adopted (styled through `uiDesign`, guarded by the tests below):
 
 - Settings dialog `dlgProfilePreferences` (shell, sidebar, cards, fields, marks, buttons, search)
 - Script editor `dlgTriggerEditor` (toolbar, sidebar, trees via `EditorTreeDelegate` /
-  `VariableTreeDelegate`, seven forms, pattern rows, options strip, chips, code heading, notice).
+  `VariableTreeDelegate` - the Folders view's tree included, see `docs/design-language.md`
+  "One sidebar for both windows" - seven forms, pattern rows, options strip, chips, code heading, notice).
   A package's top folder carries `RowMark::Package` - the package manager's own glyph - so it
   reads as the package rather than as a folder somebody made
 - The editor's notice `dlgSystemMessageArea`, which draws itself from `noticeStyleSheet()` and

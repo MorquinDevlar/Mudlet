@@ -677,6 +677,19 @@ the measurements both delegates take from `src/EditorTreeRowMetrics.h` - with
 the two slots at the row's leading edge read differently, which "One mark, one
 size" below describes.
 
+The Folders view, which a profile turns on in its settings, is a sidebar row
+after Variables (`editor-folder.svg`), hidden while the setting is off, and an
+eighth tree, `treeWidget_folders`, holding items of every type grouped by folder
+name. It is drawn by `EditorTreeDelegate` built with `TreeType::None`: each row
+names its type in `EditorTreeDelegate::scmRole_rowTreeType` beside its id and
+reads its state off that item as a row of the item's own tree does, and a row
+naming no item - folders of several types merged into one, or "Not in a folder" -
+carries the folder mark and no dot, keeping the dot's room so its mark lines up
+with its siblings'. The tree has no heading row, so its top rows are held in one
+step as an item tree's first rows are. The item type is the tree's hidden second
+column, written in `mutedText` at the row's trailing edge in whatever room the
+name leaves.
+
 ### Radius follows control size
 
 How round a corner is says how big the thing behind it is. The same 8px that

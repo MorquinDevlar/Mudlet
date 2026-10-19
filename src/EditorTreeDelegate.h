@@ -74,6 +74,11 @@ public:
     // carrying, which is no longer looked at.
     enum class RowMark { None = 0, Folder = 1, Filter = 2, OffsetTimer = 3, Error = 4, NewFolder = 5, NewItem = 6, Package = 7 };
 
+    // The Folders view holds every item type in one tree and is given TreeType::None: each of
+    // its rows names its type in this role beside the id, and a row with neither is a group
+    // of folders, drawn as a folder with no switch. That tree has no heading row of its own.
+    static constexpr int scmRole_rowTreeType = Qt::UserRole + 40;
+
     EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeType, Host* pHost);
 
     // Re-read the colours off the application palette; called from the same pass
@@ -155,6 +160,9 @@ private:
     struct ItemState
     {
         bool known = false;
+        // A group of folders has no switch, but keeps the dot's room so that its
+        // mark lines up with its siblings'
+        bool dotSlot = false;
         DotState dot = DotState::Off;
         RowMark mark = RowMark::None;
     };
@@ -188,6 +196,12 @@ private:
     void syncGlyphRatio() const;
     [[nodiscard]] qreal glyphRatio() const;
     [[nodiscard]] ItemState stateOf(const QModelIndex& index) const;
+    // How far in a row is held: the Folders view has no heading, so its top rows
+    // stand where an item tree's first items do
+    [[nodiscard]] int rowLevelOf(const QModelIndex& index) const;
+    // The Folders view's second column, at the trailing edge of the first: the name
+    // keeps its room and the type gets what is left
+    void paintTypeLabel(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const;
     [[nodiscard]] ChevronState chevronOf(const QModelIndex& index, const int level) const;
     // The dot in its three shapes and its two inks. A row whose item will not
     // compile keeps the shape its state asks for and takes the red its mark is

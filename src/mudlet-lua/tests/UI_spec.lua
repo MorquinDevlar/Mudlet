@@ -1666,6 +1666,20 @@ describe("Tests UI functions", function()
       assert.are.equal(250, mp.max)
     end)
 
+    it("should parse a Swedish LK/MP prompt with aligned numbers", function()
+      local hits = BaseUI.parseVitalsLine("LK:  74/114  MP:   34/98")
+      local hp = reading(hits, "hp", "curmax")
+      assert.is_not_nil(hp)
+      assert.are.equal(74, hp.current)
+      assert.are.equal(114, hp.max)
+      for _, hit in ipairs(hits) do
+        if hit.stat == "mp" then
+          assert.are.equal(34, hit.current)
+          assert.are.equal(98, hit.max)
+        end
+      end
+    end)
+
     it("should read each line's own numbers when lines differ only in them", function()
       -- a max of zero drops the first line's readings, the others still have theirs
       assert.are.same({}, BaseUI.parseVitalsLine("HP: 523/000 MP: 210/000 [same shape]"))
@@ -2659,6 +2673,56 @@ describe("Tests UI functions", function()
       assert.is_true(buttonId > 0)
       assert.are.equal(1, exists(buttonId, "button"))
       assert.are.equal(1, isActive(buttonId, "button"))
+    end)
+
+    local function pack(...)
+      return select("#", ...), ...
+    end
+
+    it("tempButtonToolbar answers nil and a message for a name already taken", function()
+      local takenName = "bustedTempTakenToolbar" .. suffix
+      finally(function() hideToolBar(takenName) end)
+      assert.is_true(tempButtonToolbar(takenName, 0, 0) > 0)
+
+      local count, id, message = pack(tempButtonToolbar(takenName, 0, 0))
+      assert.are.equal(2, count)
+      assert.is_nil(id)
+      assert.is_truthy(tostring(message):find(takenName, 1, true), "the refusal should name the toolbar, got: " .. tostring(message))
+    end)
+
+    it("tempButton answers nil and a message for a missing toolbar or a name already taken", function()
+      local parentName = "bustedTempRefusalParent" .. suffix
+      local takenName = "bustedTempTakenButton" .. suffix
+      local missingName = "bustedNoSuchToolbar" .. suffix
+      finally(function() hideToolBar(parentName) end)
+
+      local count, id, message = pack(tempButton(missingName, "bustedTempOrphanButton" .. suffix, 0))
+      assert.are.equal(2, count)
+      assert.is_nil(id)
+      assert.is_truthy(tostring(message):find(missingName, 1, true), "the refusal should name the toolbar, got: " .. tostring(message))
+
+      assert.is_true(tempButtonToolbar(parentName, 0, 0) > 0)
+      assert.is_true(tempButton(parentName, takenName, 0) > 0)
+      count, id, message = pack(tempButton(parentName, takenName, 0))
+      assert.are.equal(2, count)
+      assert.is_nil(id)
+      assert.is_truthy(tostring(message):find(takenName, 1, true), "the refusal should name the button, got: " .. tostring(message))
+
+      count, id, message = pack(tempButton(parentName, parentName, 0))
+      assert.are.equal(2, count)
+      assert.is_nil(id)
+      assert.is_truthy(tostring(message):find(parentName, 1, true), "a button may not take a toolbar's name, got: " .. tostring(message))
+
+      count, id, message = pack(tempButtonToolbar(takenName, 0, 0))
+      assert.are.equal(2, count)
+      assert.is_nil(id)
+      assert.is_truthy(tostring(message):find(takenName, 1, true), "a toolbar may not take a button's name, got: " .. tostring(message))
+
+      -- it would never be shown, as only toolbars and menus lay out their children
+      count, id, message = pack(tempButton(takenName, "bustedTempUnderButton" .. suffix, 0))
+      assert.are.equal(2, count)
+      assert.is_nil(id)
+      assert.is_truthy(tostring(message):find(takenName, 1, true), "a plain button is no toolbar, got: " .. tostring(message))
     end)
 
     it("showing a button toolbar again does not stack another copy of its buttons", function()
@@ -7528,25 +7592,25 @@ describe("Toolbar buttons", function()
   end
 
   -- Installing and uninstalling each start a profile save, and Lua cannot ask
-  -- whether one is running - but installPackage() gives it away: while a save is
-  -- in flight it postpones whatever it was asked to do and answers true, even
-  -- for the empty path it would otherwise refuse outright.
+  -- whether one is running - but installPackage() from a script waits a running
+  -- save out before it answers, and gives up only on one still saying it is
+  -- running once its writes are done.
   local function waitForProfileSaveToPass()
-    return waitUntil(function() return installPackage("") == nil end, 5000)
+    local _, err = installPackage("")
+    return not tostring(err):find("still in progress", 1, true)
   end
 
   setup(function()
     writeSpecFile(packageFile, packageXml())
-    assert.is_true(waitForProfileSaveToPass(), "a profile save was already running, so this install would be postponed")
+    assert.is_true(waitForProfileSaveToPass(), "a profile save never finished")
     assert.is_true(installPackage(packageFile), "could not install " .. packageFile)
     assert.is_true(waitUntil(packageIsInstalled, 5000), packageName .. " did not turn up in getPackages()")
   end)
 
   teardown(function()
     -- asking whether the package is here rather than whether setup thought it
-    -- arrived: installPackage() postpones itself behind a running profile save,
-    -- so it can still land after setup gave up waiting, and then nothing else
-    -- would ever take it out of the reused profile again
+    -- arrived: a setup that failed after the install would otherwise leave it in
+    -- the reused profile, and nothing else would ever take it out again
     if packageIsInstalled() then
       -- uninstalling is refused while the save the install started is still
       -- draining, and that only finishes when the event loop runs

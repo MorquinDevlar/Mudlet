@@ -242,8 +242,9 @@ private:
         QString tightestName;
         for (int row = 0, rows = pList->count(); row < rows; ++row) {
             QListWidgetItem* pItem = pList->item(row);
-            // The divider rows, which have a frame in place of a name
-            if (pItem->text().isEmpty()) {
+            // The divider rows, which have a frame in place of a name, and the
+            // Folders row while the profile does not offer that view
+            if (pItem->text().isEmpty() || pItem->isHidden()) {
                 continue;
             }
             option.text = pItem->text();
@@ -302,7 +303,7 @@ private:
         int longest = -1;
         for (int row = 0, rows = pList->count(); row < rows; ++row) {
             QListWidgetItem* pItem = pList->item(row);
-            if (pItem->text().isEmpty() || !(pItem->flags() & Qt::ItemIsSelectable)) {
+            if (pItem->text().isEmpty() || pItem->isHidden() || !(pItem->flags() & Qt::ItemIsSelectable)) {
                 continue;
             }
             if (longest < 0 || pItem->text().length() > pList->item(longest)->text().length()) {
@@ -317,7 +318,7 @@ private:
         QListWidget* pList = mpEditor->mpListWidget_editorSidebar;
         for (int other = 0, rows = pList->count(); other < rows; ++other) {
             QListWidgetItem* pItem = pList->item(other);
-            if (other != row && !pItem->text().isEmpty() && (pItem->flags() & Qt::ItemIsSelectable)) {
+            if (other != row && !pItem->text().isEmpty() && !pItem->isHidden() && (pItem->flags() & Qt::ItemIsSelectable)) {
                 return other;
             }
         }

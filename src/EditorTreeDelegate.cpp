@@ -38,6 +38,13 @@
 
 namespace uiDesign {
 
+namespace {
+// Between a row's name and the item type the Folders view writes after it
+constexpr int scmTypeLabelGap = 12;
+// Less room than this and the type is left off rather than cut to an ellipsis
+constexpr int scmTypeLabelMinimumCharacters = 4;
+} // namespace
+
 EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeType, Host* pHost)
 : QStyledItemDelegate(pTree)
 , mpTree(pTree)
@@ -111,7 +118,12 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         return state;
     }
     const QVariant idData = index.data(Qt::UserRole);
-    if (!idData.isValid()) {
+    const TreeType treeType = mTreeType == TreeType::None ? static_cast<TreeType>(index.data(scmRole_rowTreeType).toInt()) : mTreeType;
+    if (!idData.isValid() || treeType == TreeType::None) {
+        if (mTreeType == TreeType::None) {
+            state.dotSlot = true;
+            state.mark = RowMark::Folder;
+        }
         return state;
     }
     const int id = idData.toInt();
@@ -152,7 +164,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
     bool wantedOn = false;
     bool running = false;
     RowMark mark = RowMark::None;
-    switch (mTreeType) {
+    switch (treeType) {
     case TreeType::Trigger: {
         TTrigger* pT = mpHost->getTriggerUnit()->getTrigger(id);
         if (!pT) {
@@ -231,6 +243,11 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
     state.dot = running ? DotState::Running : (wantedOn ? DotState::WantedOn : DotState::Off);
     state.mark = mark;
     return state;
+}
+
+int EditorTreeDelegate::rowLevelOf(const QModelIndex& index) const
+{
+    return treeRowLevelOf(index) + (mTreeType == TreeType::None ? 1 : 0);
 }
 
 // A row at the top of a tree is given no chevron: the trees are asked for an
@@ -366,7 +383,8 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
     // Everything the leading edge is composed from, in one number: what the dot
     // is reading, which way the chevron points, which mark the row carries,
     // whether the row is chosen, and how far in it is held
-    const int key = (state.known ? 1 + static_cast<int>(state.dot) : 0) | (static_cast<int>(chevron) << 2) | (static_cast<int>(state.mark) << 4) | ((selected ? 1 : 0) << 7) | (level << 8);
+    const int key = (state.known ? 1 + static_cast<int>(state.dot) : 0) | (static_cast<int>(chevron) << 2) | (static_cast<int>(state.mark) << 4) | ((selected ? 1 : 0) << 7)
+                    | ((state.dotSlot ? 1 : 0) << 8) | (level << 9);
     if (const auto cached = mDecorations.constFind(key); cached != mDecorations.constEnd()) {
         return cached.value();
     }
@@ -380,7 +398,7 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
     // of those the row has, which is what makes every row in the tree one
     // height; only its width follows what is actually in it.
     const int lead = level * mIndentStep;
-    const int dotWidth = state.known ? scmTreeDotDiameter : 0;
+    const int dotWidth = (state.known || state.dotSlot) ? scmTreeDotDiameter : 0;
     const int markWidth = state.mark == RowMark::None ? 0 : scmTreeMarkSize;
     const int gap = (dotWidth > 0 && markWidth > 0) ? scmTreeDotGap : 0;
     const int slotWidth = std::max(lead + dotWidth + gap + markWidth, 1);
@@ -413,7 +431,7 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
     QStyledItemDelegate::initStyleOption(pOption, index);
 
     const ItemState state = stateOf(index);
-    const int level = treeRowLevelOf(index);
+    const int level = rowLevelOf(index);
     const ChevronState chevron = chevronOf(index, level);
     // Nothing to lead the row with: no dot, no room to hold it in and nothing
     // folded inside it, which is what a tree's own heading row is. It keeps the
@@ -446,7 +464,13 @@ void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& o
 {
     QStyledItemDelegate::paint(pPainter, option, index);
 
-    if (index.column() != 0 || !(option.state & QStyle::State_Selected) || option.rect.isEmpty()) {
+    if (index.column() != 0 || option.rect.isEmpty()) {
+        return;
+    }
+    if (mTreeType == TreeType::None) {
+        paintTypeLabel(pPainter, option, index);
+    }
+    if (!(option.state & QStyle::State_Selected)) {
         return;
     }
 
@@ -456,6 +480,32 @@ void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& o
     // read as a bracket, and a plain rectangle would stand square past the
     // corners the pill is cut to.
     paintAccentBar(pPainter, option.rect, mAccentBar);
+}
+
+void EditorTreeDelegate::paintTypeLabel(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    const QString label = index.siblingAtColumn(1).data(Qt::DisplayRole).toString();
+    if (!mpTree || label.isEmpty()) {
+        return;
+    }
+    QStyleOptionViewItem labelOption(option);
+    initStyleOption(&labelOption, index);
+    const QWidget* pWidget = labelOption.widget ? labelOption.widget : mpTree;
+    QStyle* pStyle = pWidget->style();
+    // QCommonStyle draws a row's words inside the text rectangle less this much on either side
+    const int textMargin = pStyle->pixelMetric(QStyle::PM_FocusFrameHMargin, &labelOption, pWidget) + 1;
+    const QRect textRect = pStyle->subElementRect(QStyle::SE_ItemViewItemText, &labelOption, pWidget).adjusted(textMargin, 0, -textMargin, 0);
+    const QFontMetrics metrics(labelOption.font);
+    const int room = textRect.width() - metrics.horizontalAdvance(labelOption.text) - scmTypeLabelGap;
+    if (room < scmTypeLabelMinimumCharacters * metrics.horizontalAdvance(QLatin1Char('0'))) {
+        return;
+    }
+    pPainter->save();
+    pPainter->setClipRect(labelOption.rect);
+    pPainter->setFont(labelOption.font);
+    pPainter->setPen((labelOption.state & QStyle::State_Selected) ? mSelectedMarkInk : mMarkInk);
+    pPainter->drawText(QRect(textRect.right() - room + 1, textRect.top(), room, textRect.height()), Qt::AlignRight | Qt::AlignVCenter, metrics.elidedText(label, Qt::ElideRight, room));
+    pPainter->restore();
 }
 
 QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
@@ -477,14 +527,14 @@ QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const Q
     // The decoration leads with the room the row's depth holds it in, and the
     // dot is the square that follows it - then the row's mark, if it has one.
     // The rest of the row's leading edge is left to start a drag from.
-    const int lead = treeRowLevelOf(index) * mIndentStep;
+    const int lead = rowLevelOf(index) * mIndentStep;
     const QRect dotRect(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmTreeDotDiameter) / 2, scmTreeDotDiameter, scmTreeDotDiameter);
     return dotRect.adjusted(-scmTreeMarkHitSlack, -scmTreeMarkHitSlack, scmTreeMarkHitSlack, scmTreeMarkHitSlack);
 }
 
 QRect EditorTreeDelegate::chevronHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
-    const int level = treeRowLevelOf(index);
+    const int level = rowLevelOf(index);
     if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || chevronOf(index, level) == ChevronState::None) {
         return {};
     }

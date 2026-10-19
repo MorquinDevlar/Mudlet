@@ -57,6 +57,20 @@ XMLimport::XMLimport(Host* pH)
 {
 }
 
+// Called once the item is read, as its <script> and <regex> can come before its <name>, so its
+// children are recorded first: inserting at the sizes taken before them keeps document order
+void XMLimport::recordItemErrors(const QString& itemName, const QStringList& errors, const qsizetype errorsAt, const qsizetype namesAt)
+{
+    if (errors.isEmpty()) {
+        return;
+    }
+    qsizetype at = errorsAt;
+    for (const QString& error : errors) {
+        mItemsWithErrors.insert(at++, qsl("%1: %2").arg(itemName, error));
+    }
+    mItemsWithErrorNames.insert(namesAt, itemName);
+}
+
 std::pair<bool, QString> XMLimport::importPackage(QFile* pfile, QString packName, int moduleFlag, QString* pVersionString)
 {
     mPackageName = packName;
@@ -839,6 +853,7 @@ void XMLimport::readHost(Host* pHost)
     setBoolAttribute(qsl("mAcceptServerMedia"), pHost->mAcceptServerMedia);
     setBoolAttribute(qsl("mMapperUseAntiAlias"), pHost->mMapperUseAntiAlias);
     setBoolAttribute(qsl("mMapperShowGrid"), pHost->mMapperShowGrid);
+    setBoolAttributeWithDefault(qsl("mMapperStitchAreas"), pHost->mMapperStitchAreas, true);
     setBoolAttribute(qsl("mEditorAutoComplete"), pHost->mEditorAutoComplete);
     setBoolAttribute(qsl("mVersionInTTYPE"), pHost->mVersionInTTYPE);
     setBoolAttribute(qsl("mPromptedForVersionInTTYPE"), pHost->mPromptedForVersionInTTYPE);
@@ -1136,6 +1151,7 @@ void XMLimport::readHost(Host* pHost)
     if (!attributes().hasAttribute(qsl("mapStyle")) || !pHost->setMapStyle(attributes().value(qsl("mapStyle")).toString())) {
         pHost->setMapStyle(MapStyle::defaultId());
     }
+    pHost->setFolderViewInEditor(attributes().value(qsl("FolderViewInEditor")) == YES);
 
     if (attributes().hasAttribute(qsl("Large2DMapAreaExitArrows"))) {
         pHost->setLargeAreaExitArrows(attributes().value(qsl("Large2DMapAreaExitArrows")) == YES);
@@ -1280,6 +1296,9 @@ void XMLimport::readHost(Host* pHost)
 
     pHost->setUserBorders(borders);
     pHost->loadPackageInfo();
+    // The map holds its own copy of the ANSI colours just read, for environments 257 to 272
+    pHost->mpMap->restore16ColorSet();
+    pHost->mpMap->updateArea(-1);
     // A package import comes through here too, into a profile that does have a
     // console - and that one needs the whole restyle, not just the model:
     pHost->applyMainConsoleColors();
@@ -1436,6 +1455,9 @@ int XMLimport::readTrigger(TTrigger* pParent)
     pT->mSoundTrigger = attributes().value(qsl("isSoundTrigger")) == YES;
     pT->mColorTrigger = attributes().value(qsl("isColorTrigger")) == YES;
 
+    QStringList itemErrors;
+    const qsizetype errorsAt = mItemsWithErrors.size();
+    const qsizetype namesAt = mItemsWithErrorNames.size();
     // Is this a "TriggerGroup" or a "Trigger"
     const QString what = name().toString();
     while (!atEnd()) {
@@ -1451,8 +1473,7 @@ int XMLimport::readTrigger(TTrigger* pParent)
                 const QString tempScript = readScriptElement();
                 if (!pT->setScript(tempScript)) {
                     qDebug().nospace() << "XMLimport::readTrigger(...): ERROR: can not compile trigger's lua code for: " << pT->getName();
-                    mItemsWithErrors.append(qsl("%1: %2").arg(pT->getName(), TLuaInterpreter::compileErrorAsPlainText(pT->getError())));
-                    mItemsWithErrorNames.append(pT->getName());
+                    itemErrors.append(TLuaInterpreter::compileErrorAsPlainText(pT->getError()));
                 }
             } else if (name() == qsl("packageName")) {
                 pT->mPackageName = readElementText();
@@ -1507,11 +1528,14 @@ int XMLimport::readTrigger(TTrigger* pParent)
         }
     }
 
-    if (!pT->setRegexCodeList(pT->mPatterns, pT->mPatternKinds)) {
-        qDebug().nospace() << "XMLimport::readTrigger(...): ERROR: can not "
-                              "initialize pattern list for trigger: "
-                           << pT->getName();
+    // Taken before the call, which clears mPatterns: a trigger with none is refused, but one kept
+    // only for its script is not broken
+    const bool hasPatterns = !pT->mPatterns.isEmpty();
+    if (!pT->setRegexCodeList(pT->mPatterns, pT->mPatternKinds) && hasPatterns) {
+        qDebug().nospace() << "XMLimport::readTrigger(...): ERROR: can not compile pattern list for trigger: " << pT->getName();
+        itemErrors.append(TLuaInterpreter::compileErrorAsPlainText(pT->getError()));
     }
+    recordItemErrors(pT->getName(), itemErrors, errorsAt, namesAt);
 
     return pT->getID();
 }
@@ -1628,6 +1652,9 @@ int XMLimport::readAlias(TAlias* pParent)
         pT->mModuleMember = true;
     }
 
+    QStringList itemErrors;
+    const qsizetype errorsAt = mItemsWithErrors.size();
+    const qsizetype namesAt = mItemsWithErrorNames.size();
     const QString what = name().toString();
     while (!atEnd()) {
         readNext();
@@ -1644,13 +1671,16 @@ int XMLimport::readAlias(TAlias* pParent)
                 const QString tempScript = readScriptElement();
                 if (!pT->setScript(tempScript)) {
                     qDebug().nospace() << "XMLimport::readAlias(...): ERROR: can not compile alias's lua code for: " << pT->getName();
-                    mItemsWithErrors.append(qsl("%1: %2").arg(pT->getName(), TLuaInterpreter::compileErrorAsPlainText(pT->getError())));
-                    mItemsWithErrorNames.append(pT->getName());
+                    itemErrors.append(TLuaInterpreter::compileErrorAsPlainText(pT->getError()));
                 }
             } else if (name() == qsl("command")) {
                 pT->mCommand = readElementText();
             } else if (name() == qsl("regex")) {
                 pT->setRegexCode(readElementText());
+                // Taken here, as a later <script> that fails replaces getError()
+                if (!pT->mOK_init) {
+                    itemErrors.append(TLuaInterpreter::compileErrorAsPlainText(pT->getError()));
+                }
             } else if (name() == qsl("AliasGroup") || name() == qsl("Alias")) {
                 readAlias(pT);
             } else {
@@ -1658,6 +1688,8 @@ int XMLimport::readAlias(TAlias* pParent)
             }
         }
     }
+
+    recordItemErrors(pT->getName(), itemErrors, errorsAt, namesAt);
 
     return pT->getID();
 }

@@ -117,6 +117,7 @@ set(PROFILE_GROUP_TEST_SOURCES
     ConnectionDialogNewProfileTest.cpp
     ConnectionDialogOfflineProfileTest.cpp
     ConnectionDialogOpenProfileTest.cpp
+    ConnectionDialogSecureSettingTest.cpp
     ConnectionDialogStyleTest.cpp
     CredentialFilePermissionsTest.cpp
     DefaultGameDeleteTest.cpp
@@ -138,6 +139,7 @@ set(PROFILE_GROUP_TEST_SOURCES
     SavedVariableFenceTest.cpp
     SelfTestProfileIconTest.cpp
     SpellDictionaryFailureTest.cpp
+    TestProfileFirstRunTourTest.cpp
     XMLexportVariablesTest.cpp
 )
 
@@ -191,6 +193,7 @@ set(TRIGGER_GROUP_TEST_SOURCES
     TFeedTriggersRecursionTest.cpp
     TriggerMatchPoolTest.cpp
     TreeChildTeardownTest.cpp
+    TriggerSoundArgumentTest.cpp
     UnitDeferredDeleteTest.cpp
     UnitProcessingDepthTest.cpp
     UnitsReachHostTest.cpp
@@ -248,6 +251,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     ReadabilityAuditTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
     EditorAddItemTest.cpp
+    EditorFolderViewTest.cpp
     EditorSearchTest.cpp
     TreeWidgetItemMoveTest.cpp
     TriggerEditorDisclosureTest.cpp
@@ -296,7 +300,7 @@ set(MAP_GROUP_TEST_SOURCES
 
 # CameraController and GeometryManager are only compiled into the library with the 3D mapper
 if(USE_3DMAPPER)
-    list(APPEND MAP_GROUP_TEST_SOURCES CameraAngleLimitTest.cpp CameraViewTest.cpp ExitSceneTest.cpp LabelTextureCacheTest.cpp Map3DViewEditingTest.cpp Map3DViewInteractionTest.cpp Map3DViewSyncTest.cpp ModernMapperGeometryTest.cpp ModernMapperRenderTest.cpp ModernRoomTextureTest.cpp)
+    list(APPEND MAP_GROUP_TEST_SOURCES CameraAngleLimitTest.cpp CameraViewTest.cpp ExitSceneTest.cpp LabelTextureCacheTest.cpp Map3DViewEditingTest.cpp Map3DViewInteractionTest.cpp Map3DViewSyncTest.cpp ModernMapperGeometryTest.cpp ModernMapperRenderTest.cpp ModernMapperSceneTest.cpp ModernRoomTextureTest.cpp)
 endif()
 
 # Packages and modules: installing them, saving them and removing them
@@ -309,6 +313,8 @@ set(PACKAGE_GROUP_TEST_SOURCES
     DualPackageModuleTest.cpp
     ModuleManagerListingTest.cpp
     ModuleSaveTeardownTest.cpp
+    ModuleSyncReloadTest.cpp
+    ModuleSyncSaveReentryTest.cpp
     PackageDownloadDialogRestyleTest.cpp
     PackageExporterDialogTest.cpp
     PackageExporterShellTest.cpp
@@ -345,6 +351,7 @@ set(SETTINGS_GROUP_TEST_SOURCES
     SettingsBannerTest.cpp
     SettingsDeepLinkTest.cpp
     SettingsDirtyApplyTest.cpp
+    SettingsExperimentsTest.cpp
     SettingsHostLifecycleTest.cpp
     SettingsInstantApplyTest.cpp
     SettingsLiveSyncTest.cpp
