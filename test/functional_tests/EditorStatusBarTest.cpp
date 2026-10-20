@@ -35,6 +35,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -59,8 +60,6 @@ private:
 
     static QRect placeInTheBar(const QWidget* pLabel, const QWidget* pBar) { return QRect(pLabel->mapTo(pBar, QPoint(0, 0)), pLabel->size()); }
 
-    static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
-
     // A palette can say one thing and the style paint another, so the paint is read
     static QColor paintedInk(const QImage& shot, const QRect& rect)
     {
@@ -74,7 +73,7 @@ private:
         for (int y = inShot.top(); y <= inShot.bottom(); ++y) {
             for (int x = inShot.left(); x <= inShot.right(); ++x) {
                 const QColor candidate = shot.pixelColor(x, y);
-                const int distance = qAbs(candidate.red() - ground.red()) + qAbs(candidate.green() - ground.green()) + qAbs(candidate.blue() - ground.blue());
+                const int distance = TestPixels::distance(candidate, ground);
                 if (distance > furthest) {
                     furthest = distance;
                     ink = candidate;
@@ -83,8 +82,6 @@ private:
         }
         return ink;
     }
-
-    static int apart(const QColor& a, const QColor& b) { return qAbs(a.red() - b.red()) + qAbs(a.green() - b.green()) + qAbs(a.blue() - b.blue()); }
 
 private slots:
     void initTestCase()
@@ -146,7 +143,7 @@ private slots:
         QTRY_VERIFY2(pCounts->isVisible(), "the counts label is not on show");
         // Filled behind a 200ms wait, so that a fillout is one walk of the tree
         QTRY_VERIFY2(!pCounts->text().isEmpty(), "the counts label never filled");
-        qInfo().noquote() << qsl("  the counts read \"%1\" at %2, with the bar carrying no message").arg(pCounts->text(), describe(placeInTheBar(pCounts, statusBar())));
+        qInfo().noquote() << qsl("  the counts read \"%1\" at %2, with the bar carrying no message").arg(pCounts->text(), TestPixels::describe(placeInTheBar(pCounts, statusBar())));
     }
 
     // The counts sit on the message side on purpose, so a timed message can borrow their place
@@ -196,8 +193,8 @@ private slots:
         const QColor nameInk = paintedInk(shot, nameRect);
         const QColor countsInk = paintedInk(shot, countsRect);
         qInfo().noquote() << qsl("  the sidebar's \"%1\" is painted in %2 and the counts in %3, %4 apart")
-                                     .arg(pSidebar->item(1)->text(), nameInk.name(), countsInk.name(), QString::number(apart(nameInk, countsInk)));
-        QVERIFY2(apart(nameInk, countsInk) <= scmInkTolerance, qPrintable(qsl("the bar is written in %1 while the sidebar's names are in %2").arg(countsInk.name(), nameInk.name())));
+                                     .arg(pSidebar->item(1)->text(), nameInk.name(), countsInk.name(), QString::number(TestPixels::distance(nameInk, countsInk)));
+        QVERIFY2(TestPixels::distance(nameInk, countsInk) <= scmInkTolerance, qPrintable(qsl("the bar is written in %1 while the sidebar's names are in %2").arg(countsInk.name(), nameInk.name())));
     }
 };
 

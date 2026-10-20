@@ -33,6 +33,7 @@
 
 #include "GroupedTest.h"
 #include "Host.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TDebug.h"
 #include "TDebugFilterBar.h"
@@ -52,25 +53,7 @@ private:
     // Any size settles it: both pictures are scaled from the resolution they were drawn at
     static constexpr int scmComparisonSize = 24;
 
-    static QImage drawnAt(const QIcon& icon, const QIcon::State state = QIcon::Off) { return icon.pixmap(QSize(scmComparisonSize, scmComparisonSize), QIcon::Normal, state).toImage(); }
-
-    static QString inkOf(const QImage& glyph)
-    {
-        QColor darkest;
-        int strongest = -1;
-        for (int y = 0; y < glyph.height(); ++y) {
-            for (int x = 0; x < glyph.width(); ++x) {
-                const QColor pixel = glyph.pixelColor(x, y);
-                if (pixel.alpha() > strongest) {
-                    strongest = pixel.alpha();
-                    darkest = pixel;
-                }
-            }
-        }
-        return strongest <= 0 ? qsl("nothing at all") : qsl("%1 at alpha %2").arg(darkest.name(), QString::number(strongest));
-    }
-
-    // inkOf() cannot report a difference in shape alone between two glyphs of one ink
+    // TestPixels::inkOf() cannot report a difference in shape alone between two glyphs of one ink
     static QString differenceBetween(const QImage& left, const QImage& right)
     {
         if (left.size() != right.size()) {
@@ -87,7 +70,7 @@ private:
         return qsl("%1 of %2 pixels differ").arg(QString::number(differing), QString::number(left.width() * left.height()));
     }
 
-    static QImage expectedGlyph(const QString& file, const QColor& ink) { return drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(file), ink))); }
+    static QImage expectedGlyph(const QString& file, const QColor& ink) { return TestPixels::drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(file), ink)), scmComparisonSize); }
 
     static QImage expectedPauseGlyph() { return expectedGlyph(qsl(":/icons/debug-pause.svg"), uiDesign::themeTokens().mutedText); }
 
@@ -152,23 +135,24 @@ private slots:
         QVERIFY2(pAction, "the debug filter bar has no action reading 'Pause'");
 
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const QImage paused = drawnAt(pAction->icon(), QIcon::Off);
-        const QImage resuming = drawnAt(pAction->icon(), QIcon::On);
+        const QImage paused = TestPixels::drawnAt(pAction->icon(), scmComparisonSize, QIcon::Off);
+        const QImage resuming = TestPixels::drawnAt(pAction->icon(), scmComparisonSize, QIcon::On);
         const QImage expectedPaused = expectedGlyph(qsl(":/icons/debug-pause.svg"), tokens.mutedText);
         const QImage expectedResuming = expectedGlyph(qsl(":/icons/debug-resume.svg"), tokens.accentText);
-        qInfo().noquote() << qsl("  the Pause button is inked %1 unchecked and %2 checked").arg(inkOf(paused), inkOf(resuming));
+        qInfo().noquote() << qsl("  the Pause button is inked %1 unchecked and %2 checked").arg(TestPixels::inkOf(paused), TestPixels::inkOf(resuming));
 
         QVERIFY2(!paused.isNull(), "the Pause action has no picture at all");
         QVERIFY2(paused == expectedPaused, qPrintable(qsl("the Pause button is not the pause glyph in the quiet ink: %1").arg(differenceBetween(paused, expectedPaused))));
         QVERIFY2(resuming == expectedResuming, qPrintable(qsl("a checked Pause button is not the play glyph in the accent: %1").arg(differenceBetween(resuming, expectedResuming))));
 
         pAction->setChecked(true);
-        const QImage whileHolding = drawnAt(pAction->icon(), QIcon::On);
+        const QImage whileHolding = TestPixels::drawnAt(pAction->icon(), scmComparisonSize, QIcon::On);
         const QString wordingWhileHolding = pAction->text();
         pAction->setChecked(false);
 
         QVERIFY2(whileHolding != paused,
-                 qPrintable(qsl("pausing left the button showing the same picture it offered to pause with, at %1 - nothing says the console is holding messages back").arg(inkOf(whileHolding))));
+                 qPrintable(qsl("pausing left the button showing the same picture it offered to pause with, at %1 - nothing says the console is holding messages back")
+                                    .arg(TestPixels::inkOf(whileHolding))));
         QCOMPARE(wordingWhileHolding, qsl("Resume"));
     }
 
@@ -179,9 +163,9 @@ private slots:
         QAction* pAction = barAction(qsl("Clear"));
         QVERIFY2(pAction, "the debug filter bar has no action reading 'Clear'");
 
-        const QImage onTheBar = drawnAt(pAction->icon());
+        const QImage onTheBar = TestPixels::drawnAt(pAction->icon(), scmComparisonSize);
         const QImage expected = expectedGlyph(qsl(":/icons/debug-clear.svg"), uiDesign::themeTokens().mutedText);
-        qInfo().noquote() << qsl("  the Clear button is inked %1 against an expected %2").arg(inkOf(onTheBar), inkOf(expected));
+        qInfo().noquote() << qsl("  the Clear button is inked %1 against an expected %2").arg(TestPixels::inkOf(onTheBar), TestPixels::inkOf(expected));
 
         QVERIFY2(!onTheBar.isNull(), "the Clear action has no picture at all");
         QVERIFY2(onTheBar == expected, qPrintable(qsl("the Clear button is not the eraser glyph in the toolbar's ink: %1").arg(differenceBetween(onTheBar, expected))));
@@ -194,9 +178,9 @@ private slots:
         QToolButton* pButton = categoryButton();
         QVERIFY2(pButton, "the debug filter bar has no tool button reading 'Show'");
 
-        const QImage onTheBar = drawnAt(pButton->icon());
+        const QImage onTheBar = TestPixels::drawnAt(pButton->icon(), scmComparisonSize);
         const QImage expected = expectedGlyph(qsl(":/icons/editor-filter.svg"), uiDesign::themeTokens().mutedText);
-        qInfo().noquote() << qsl("  the Show button is inked %1 against an expected %2").arg(inkOf(onTheBar), inkOf(expected));
+        qInfo().noquote() << qsl("  the Show button is inked %1 against an expected %2").arg(TestPixels::inkOf(onTheBar), TestPixels::inkOf(expected));
 
         QVERIFY2(!onTheBar.isNull(), "the Show button has no picture at all");
         QVERIFY2(onTheBar == expected, qPrintable(qsl("the Show button is not the editor's funnel in the toolbar's ink: %1").arg(differenceBetween(onTheBar, expected))));
@@ -210,7 +194,7 @@ private slots:
         QAction* pAction = barAction(qsl("Pause"));
         QVERIFY2(pAction, "the debug filter bar has no action reading 'Pause'");
         const QPalette savedPalette = QApplication::palette();
-        const QImage before = drawnAt(pAction->icon());
+        const QImage before = TestPixels::drawnAt(pAction->icon(), scmComparisonSize);
 
         QPalette movedPalette(savedPalette);
         const bool wasDark = savedPalette.color(QPalette::Window).lightness() < 128;
@@ -219,17 +203,18 @@ private slots:
         QApplication::setPalette(movedPalette);
         QTest::qWait(100ms);
 
-        const QImage after = drawnAt(pAction->icon());
+        const QImage after = TestPixels::drawnAt(pAction->icon(), scmComparisonSize);
         const QImage expectedAfter = expectedPauseGlyph();
-        qInfo().noquote() << qsl("  the Pause button was inked %1 and is now %2").arg(inkOf(before), inkOf(after));
+        qInfo().noquote() << qsl("  the Pause button was inked %1 and is now %2").arg(TestPixels::inkOf(before), TestPixels::inkOf(after));
 
         QApplication::setPalette(savedPalette);
         QTest::qWait(100ms);
 
         // Checked first: a restyle that did nothing at all could leave the pair below agreeing
-        QVERIFY2(before != after, qPrintable(qsl("the palette moved and the bar's picture did not: it is still inked %1").arg(inkOf(after))));
+        QVERIFY2(before != after, qPrintable(qsl("the palette moved and the bar's picture did not: it is still inked %1").arg(TestPixels::inkOf(after))));
         QVERIFY2(after == expectedAfter,
-                 qPrintable(qsl("the bar was re-inked to %1 where the new palette's mutedText is %2, and %3").arg(inkOf(after), inkOf(expectedAfter), differenceBetween(after, expectedAfter))));
+                 qPrintable(qsl("the bar was re-inked to %1 where the new palette's mutedText is %2, and %3")
+                                    .arg(TestPixels::inkOf(after), TestPixels::inkOf(expectedAfter), differenceBetween(after, expectedAfter))));
     }
 
 private:

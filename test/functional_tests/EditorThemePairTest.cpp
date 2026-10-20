@@ -33,6 +33,7 @@
 
 #include "Host.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgProfilePreferences.h"
 #include "mudlet.h"
@@ -79,12 +80,6 @@ private:
     void setAppearance(const enums::Appearance state)
     {
         mpPreferences->comboBox_appearance->setCurrentIndex(state);
-        QCoreApplication::processEvents();
-    }
-
-    void setAppearanceDirectly(const enums::Appearance state)
-    {
-        mudlet::self()->setAppearance(state);
         QCoreApplication::processEvents();
     }
 
@@ -216,15 +211,15 @@ private slots:
         mpHost->mEditorThemeDark.clear();
         mpHost->mEditorThemeFileDark.clear();
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameLight));
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileLight));
 
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameDark));
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileDark));
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
     }
 
     // Resolved at load rather than migrated, so the theme comes back if it is
@@ -236,11 +231,11 @@ private slots:
         mpHost->mEditorThemeDark.clear();
         mpHost->mEditorThemeFileDark.clear();
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameLight));
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameDark));
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
 
         QCOMPARE(mpHost->mEditorTheme, qsl("Monokai"));
         QCOMPARE(mpHost->mEditorThemeFile, qsl("Monokai.tmTheme"));
@@ -260,14 +255,14 @@ private slots:
         mpHost->mEditorThemeDark.clear();
         mpHost->mEditorThemeFileDark.clear();
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
         QCOMPARE(mpHost->getEditorThemeFile(), mLoneThemeFile);
 
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QFile::remove(file);
     }
 
@@ -282,14 +277,14 @@ private slots:
         mpHost->mEditorThemeDark = qsl("Monokai");
         mpHost->mEditorThemeFileDark = qsl("Monokai.tmTheme");
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
 
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameDark));
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileDark));
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
         QFile::remove(file);
     }

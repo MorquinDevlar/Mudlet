@@ -51,6 +51,7 @@
 #include "FlowLayout.h"
 #include "MudletApp.h"
 #include "PairGridLayout.h"
+#include "PixelTestHelper.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
 #include "SettingsTestHelper.h"
@@ -309,9 +310,6 @@ private:
         const QImage card = pCard->grab().toImage();
         const qreal ratio = card.devicePixelRatio();
         const QColor field = uiDesign::themeTokens().field;
-        const auto near = [](const QColor& one, const QColor& other) {
-            return qAbs(one.red() - other.red()) <= 3 && qAbs(one.green() - other.green()) <= 3 && qAbs(one.blue() - other.blue()) <= 3;
-        };
         const auto pixelAt = [&card, ratio](const int x, const int y) {
             return card.pixelColor((QPointF(x, y) * ratio).toPoint());
         };
@@ -333,7 +331,7 @@ private:
             const QColor overBlack = over(0);
             const QColor overWhite = over(255);
             const auto onTheBoard = [&](const QColor& pixel) {
-                return near(pixel, overBlack) || near(pixel, overWhite);
+                return TestPixels::readsAs(pixel, overBlack, 3) || TestPixels::readsAs(pixel, overWhite, 3);
             };
             const QPoint origin = pAlpha->mapTo(pCard, QPoint(0, 0));
             // Inside the hairline
@@ -344,7 +342,7 @@ private:
                      qPrintable(qsl("the middle of the swatch in '%1' is %2, not the colour").arg(pAlpha->objectName(), pixelAt(inside.left() + side / 2, middle).name())));
             // Square: the colour runs to the swatch's far edge and the field begins just past it
             QVERIFY2(onTheBoard(pixelAt(inside.left() + side - 2, middle)), qPrintable(qsl("the swatch in '%1' ends before it is as wide as it is tall").arg(pAlpha->objectName())));
-            QVERIFY2(near(pixelAt(inside.left() + side + 2, middle), field),
+            QVERIFY2(TestPixels::readsAs(pixelAt(inside.left() + side + 2, middle), field, 3),
                      qPrintable(qsl("just past the swatch in '%1' is %2 rather than the field's %3").arg(pAlpha->objectName(), pixelAt(inside.left() + side + 2, middle).name(), field.name())));
             if (colour.alpha() == 255) {
                 continue;
@@ -354,8 +352,8 @@ private:
             bool sawWhite = false;
             for (int y = inside.top() + 2; y < inside.top() + side - 2; ++y) {
                 for (int x = inside.left() + 2; x < inside.left() + side - 2; ++x) {
-                    sawBlack |= near(pixelAt(x, y), overBlack);
-                    sawWhite |= near(pixelAt(x, y), overWhite);
+                    sawBlack |= TestPixels::readsAs(pixelAt(x, y), overBlack, 3);
+                    sawWhite |= TestPixels::readsAs(pixelAt(x, y), overWhite, 3);
                 }
             }
             QVERIFY2(sawBlack && sawWhite,

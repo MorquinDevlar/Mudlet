@@ -57,6 +57,7 @@
 #include <QVBoxLayout>
 
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
 #include "Host.h"
@@ -183,10 +184,6 @@ private:
         }
         return QColor::fromString(value);
     }
-
-    // Both surfaces are flat fills, so the nearer colour is the one painted
-    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
-
 
     static QStringList selectorsIn(const QString& styleSheet)
     {
@@ -545,7 +542,7 @@ private slots:
         // Inside the border and padding, before the text: the field holds a temporary
         // path, so a point under the words lands on a descender or not run to run
         const QColor fill = pixelOf(pField, QPoint(uiDesign::scmInputBorderWidth + 2, pField->height() / 2));
-        QVERIFY2(distanceBetween(fill, tokens.field) < distanceBetween(fill, tokens.card),
+        QVERIFY2(TestPixels::distance(fill, tokens.field) < TestPixels::distance(fill, tokens.card),
                  qPrintable(qsl("a field is painted %1, nearer the card's %2 than the field surface's %3").arg(fill.name(), tokens.card.name(), tokens.field.name())));
     }
 

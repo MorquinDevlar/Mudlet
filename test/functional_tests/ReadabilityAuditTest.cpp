@@ -46,6 +46,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "ScriptUnit.h"
 #include "TScript.h"
@@ -365,18 +366,6 @@ private:
         return QColor(commonest);
     }
 
-    // Qt gives PlaceholderText an alpha of 128, so what the reader sees is the
-    // mix rather than the colour the palette answers
-    static QColor composited(const QColor& ink, const QColor& surface)
-    {
-        if (ink.alpha() == 255) {
-            return ink;
-        }
-        const qreal weight = ink.alphaF();
-        return QColor::fromRgbF(
-                ink.redF() * weight + surface.redF() * (1.0 - weight), ink.greenF() * weight + surface.greenF() * (1.0 - weight), ink.blueF() * weight + surface.blueF() * (1.0 - weight));
-    }
-
     static QString wordsOf(const QWidget* pWidget)
     {
         if (const auto* pLabel = qobject_cast<const QLabel*>(pWidget)) {
@@ -492,7 +481,7 @@ private:
                 }
                 const QColor surface = paintedBehind(shot, painted);
                 ++audited;
-                const QColor ink = composited(reading.ink, surface);
+                const QColor ink = TestPixels::composited(reading.ink, surface);
                 const qreal ratio = uiDesign::contrastRatio(ink, surface);
                 if (ratio >= reading.floor) {
                     continue;

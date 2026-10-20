@@ -34,12 +34,12 @@
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
-#include <cstdlib>
 
 #include "EditorTreeRowMetrics.h"
 #include "Host.h"
 #include "HostDialogs.h"
 #include "LuaInterface.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TLuaInterpreter.h"
 #include "TTreeWidget.h"
@@ -162,8 +162,6 @@ private:
         }
         return hiddenCount;
     }
-
-    static QImage drawnAt(const QIcon& icon, const int size) { return icon.pixmap(QSize(size, size)).toImage(); }
 
 private slots:
     void initTestCase()
@@ -376,8 +374,7 @@ private slots:
         for (int y = row.top(); y <= row.bottom() && y < shot.height(); ++y) {
             for (int x = row.left() + (2 * row.width()) / 3; x <= row.right() && x < shot.width(); ++x) {
                 const QColor pixel = shot.pixelColor(x, y);
-                if (std::abs(pixel.red() - chrome.red()) <= scmInkTolerance && std::abs(pixel.green() - chrome.green()) <= scmInkTolerance
-                    && std::abs(pixel.blue() - chrome.blue()) <= scmInkTolerance) {
+                if (TestPixels::readsAs(pixel, chrome, scmInkTolerance)) {
                     ++inked;
                 }
             }
@@ -537,8 +534,8 @@ private slots:
         QCOMPARE(option.decorationSize, QSize(scmMarkSize, scmMarkSize));
 
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const QImage onTheHeading = drawnAt(option.icon, scmMarkSize);
-        const QImage wanted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-variables.svg")), tokens.mutedText)), scmMarkSize);
+        const QImage onTheHeading = TestPixels::drawnAt(option.icon, scmMarkSize);
+        const QImage wanted = TestPixels::drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-variables.svg")), tokens.mutedText)), scmMarkSize);
         QVERIFY2(!onTheHeading.isNull(), "the tree's heading row carries no picture at all");
         QVERIFY2(onTheHeading == wanted, "the tree's heading row does not carry the braces its sidebar row carries, inked in the tone the editor's chrome is");
     }

@@ -33,6 +33,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
@@ -61,8 +62,6 @@ private:
     edbee::TextEditorController* controller() const { return mpEditor->mpSourceEditorEdbee->controller(); }
 
     QRect placeOnTheStrip(const QWidget* pPiece) const { return QRect(pPiece->mapTo(heading(), QPoint(0, 0)), pPiece->size()); }
-
-    static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
 
 private slots:
     void initTestCase()
@@ -125,7 +124,8 @@ private slots:
                  qPrintable(qsl("the code pane is still reporting a byte offset, which is a debugging reading rather than one a script author uses: \"%1\"").arg(reported)));
 
         const QRect place = placeOnTheStrip(pCaret);
-        QVERIFY2(heading()->rect().contains(place), qPrintable(qsl("the caret reading is at %1, which is not on the %2 strip").arg(describe(place), describe(heading()->rect()))));
+        QVERIFY2(heading()->rect().contains(place),
+                 qPrintable(qsl("the caret reading is at %1, which is not on the %2 strip").arg(TestPixels::describe(place), TestPixels::describe(heading()->rect()))));
 
         const QString message = mpEditor->statusBar()->currentMessage();
         QVERIFY2(message.isEmpty(), qPrintable(qsl("the caret position went out as a status bar message, which is painted over the counts: \"%1\"").arg(message)));

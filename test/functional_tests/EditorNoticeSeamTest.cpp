@@ -43,6 +43,7 @@
 #include "GripSplitter.h"
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "SingleLineTextEdit.h"
 #include "dlgAliasMainArea.h"
@@ -91,13 +92,6 @@ private:
     static constexpr int scmEditorWidth = 1200;
     static constexpr int scmEditorHeight = 800;
 
-    void settle()
-    {
-        QCoreApplication::processEvents();
-        QTest::qWait(80ms);
-        QCoreApplication::processEvents();
-    }
-
     // Mapped to the editor, since each widget is nested a different number of layouts deep
     int topEdgeOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
 
@@ -120,23 +114,23 @@ private:
     void raiseTheNotice()
     {
         mpEditor->showWarning(qsl("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
-        settle();
+        TestPixels::settle();
     }
 
     void takeTheNoticeDown()
     {
         mpEditor->hideSystemMessageArea();
-        settle();
+        TestPixels::settle();
     }
 
     void openTheAlias()
     {
         QVERIFY2(mpAliasRow != nullptr, "the alias these cases edit was never made");
         mpEditor->slot_showAliases();
-        settle();
+        TestPixels::settle();
         mpEditor->treeWidget_aliases->setCurrentItem(mpAliasRow);
         mpEditor->slot_aliasSelected(mpAliasRow);
-        settle();
+        TestPixels::settle();
         takeTheNoticeDown();
     }
 
@@ -145,10 +139,10 @@ private:
     {
         QVERIFY2(mpTriggerRow != nullptr, "the trigger these cases edit was never made");
         mpEditor->slot_showTriggers();
-        settle();
+        TestPixels::settle();
         mpEditor->treeWidget_triggers->setCurrentItem(mpTriggerRow);
         mpEditor->slot_triggerSelected(mpTriggerRow);
-        settle();
+        TestPixels::settle();
     }
 
     void openTheTrigger()
@@ -161,19 +155,10 @@ private:
 
     bool patternListScrolls() const { return mpEditor->mpScrollArea->verticalScrollBar()->isVisible(); }
 
-    // grab() forces a paint: painting settles a widget's palette against the
-    // application's, and under the offscreen platform nothing paints unless asked
     void takeTheEditorTo(const enums::Appearance appearance)
     {
-        mudlet::self()->setAppearance(appearance);
-        settle();
-        mpEditor->grab();
-        settle();
-    }
-
-    static int distanceBetween(const QColor& first, const QColor& second)
-    {
-        return std::abs(first.red() - second.red()) + std::abs(first.green() - second.green()) + std::abs(first.blue() - second.blue());
+        TestPixels::setAppearanceAndWait(appearance, mpEditor);
+        TestPixels::settle();
     }
 
     // Off a grab of the window: a widget grabbed alone is drawn against its own
@@ -208,7 +193,7 @@ private:
     {
         mpEditor->treeWidget_variables->setCurrentItem(pRow);
         mpEditor->slot_variableSelected(pRow);
-        settle();
+        TestPixels::settle();
     }
 
     // QTest::mouseMove reports no button down, and a splitter follows only a held one.
@@ -223,7 +208,7 @@ private:
     void raiseANotice()
     {
         mpEditor->showError(qsl("Unable to activate this item, so the notice says so over the form"));
-        settle();
+        TestPixels::settle();
     }
 
     // Small steps, since only a real drag reaches slot_rightSplitterMoved() and records a height.
@@ -253,7 +238,7 @@ private:
             dragTo(pHandle, at);
         }
         QTest::mouseRelease(pHandle, Qt::LeftButton, Qt::NoModifier, pHandle->mapFromGlobal(at).toPoint());
-        settle();
+        TestPixels::settle();
     }
 
 private slots:
@@ -271,12 +256,12 @@ private slots:
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(scmEditorWidth, scmEditorHeight);
-        settle();
+        TestPixels::settle();
 
         // Three patterns, so one row more does not fit the room the pane was given
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
-        settle();
+        TestPixels::settle();
         mpTriggerRow = mpEditor->mpCurrentTriggerItem;
         QVERIFY2(mpTriggerRow != nullptr, "the trigger these cases edit could not be made");
         mpEditor->showPatternItems(3);
@@ -284,11 +269,11 @@ private slots:
         mpEditor->mTriggerPatternEdit.at(1)->singleLineTextEdit_pattern->setPlainText(qsl("^two$"));
         mpEditor->mTriggerPatternEdit.at(2)->singleLineTextEdit_pattern->setPlainText(qsl("^three$"));
         mpEditor->slot_saveEdits();
-        settle();
+        TestPixels::settle();
 
         mpEditor->slot_showAliases();
         mpEditor->addAlias(false);
-        settle();
+        TestPixels::settle();
         mpAliasRow = mpEditor->mpCurrentAliasItem;
         QVERIFY2(mpAliasRow != nullptr, "the alias these cases edit could not be made");
     }
@@ -356,7 +341,7 @@ private slots:
             } else {
                 mpEditor->slot_showAliases();
             }
-            settle();
+            TestPixels::settle();
 
             QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), qPrintable(qsl("the %1 root row put up no notice, so this case says nothing").arg(view)));
             QVERIFY2(!mpEditor->mpSourceEditorArea->isVisible(), qPrintable(qsl("the %1 root row left the code pane showing").arg(view)));
@@ -385,7 +370,7 @@ private slots:
         QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("seamString = \"north\"")), "the string variable this case measures against could not be made");
         QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("seamTable = { a = 1 }")), "the table variable this case edits could not be made");
         mpEditor->slot_showVariables();
-        settle();
+        TestPixels::settle();
 
         // A string has a value and so a code pane, which makes its form's top the reference
         QTreeWidgetItem* pString = variableRow(qsl("seamString"));
@@ -457,7 +442,7 @@ private slots:
         const int rowsBefore = mpEditor->mVisiblePatternCount;
 
         mpEditor->slot_addPattern();
-        settle();
+        TestPixels::settle();
 
         qInfo().noquote() << qsl("  %1 rows became %2, and Add pattern overhangs the list by %3").arg(rowsBefore).arg(mpEditor->mVisiblePatternCount).arg(addPatternButtonOverhang());
         QCOMPARE(mpEditor->mVisiblePatternCount, rowsBefore + 1);
@@ -472,7 +457,7 @@ private slots:
         const int columnBefore = mpEditor->mpNonCodeWidgets->height();
 
         mpEditor->deletePatternRow(0);
-        settle();
+        TestPixels::settle();
 
         qInfo().noquote()
                 << qsl("  the column was %1 tall with %2 rows and is %3 tall with %4").arg(columnBefore).arg(rowsBefore).arg(mpEditor->mpNonCodeWidgets->height()).arg(mpEditor->mVisiblePatternCount);
@@ -502,7 +487,7 @@ private slots:
         chooseTheTrigger();
         raiseANotice();
         mpEditor->fitFormPaneToItsContents();
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "the notice this case raised is not up, so the pane was not sized under one");
         const int noticeRoom = mpEditor->noticeRoomInFormColumn();
         const int underTheNotice = mpEditor->splitter_right->sizes().at(0);
@@ -532,11 +517,11 @@ private slots:
     void test_theHiddenVariablesCountLeavesWithTheVariablesView()
     {
         mpEditor->slot_showVariables();
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpLabel_hiddenVariablesCount->isVisible(), "nothing is hidden in this profile's variables, so the reading beside the switch was never shown and this case says nothing");
 
         mpEditor->slot_showTriggers();
-        settle();
+        TestPixels::settle();
         QVERIFY2(!mpEditor->mpLabel_hiddenVariablesCount->isVisible(), qPrintable(qsl("the Triggers view is still being told \"%1\"").arg(mpEditor->mpLabel_hiddenVariablesCount->text())));
 
         QVERIFY2(!mpEditor->checkBox_displayAllVariables->isVisible(), "the switch itself is still showing outside the Variables view");
@@ -552,7 +537,7 @@ private slots:
             mpEditor->mTriggerPatternEdit.at(row)->singleLineTextEdit_pattern->setPlainText(qsl("^row %1$").arg(row + 1));
         }
         mpEditor->slot_saveEdits();
-        settle();
+        TestPixels::settle();
         chooseTheTrigger();
         takeTheNoticeDown();
 
@@ -563,7 +548,7 @@ private slots:
         // Back to the three rows the other cases are written for
         mpEditor->showPatternItems(3);
         mpEditor->slot_saveEdits();
-        settle();
+        TestPixels::settle();
     }
 
     void test_aDragCannotTakeTheCodePaneUnderItsFloor()
@@ -585,7 +570,7 @@ private slots:
             dragTo(pHandle, at);
         }
         QTest::mouseRelease(pHandle, Qt::LeftButton, Qt::NoModifier, pHandle->mapFromGlobal(at).toPoint());
-        settle();
+        TestPixels::settle();
 
         const QList<int> after = mpEditor->splitter_right->sizes();
         qInfo().noquote() << qsl("  dragged the seam from %1 / %2 to %3 / %4").arg(before.at(0)).arg(before.at(1)).arg(after.at(0)).arg(after.at(1));
@@ -626,16 +611,16 @@ private slots:
                                          .arg(scmInsideTheBand)
                                          .arg(justInside.name(), wash.name(), behindIt.name());
 
-            if (distanceBetween(border, tokens.accent) > scmInkSlack) {
+            if (TestPixels::distance(border, tokens.accent) > scmInkSlack) {
                 misses << qsl("%1: the frame's edge is %2 against the accent %3 it is drawn in").arg(appearance.first, border.name(), tokens.accent.name());
             }
             // A 3px band reads the same at both depths, a hairline does not
-            if (distanceBetween(justInside, border) <= scmInkSlack) {
+            if (TestPixels::distance(justInside, border) <= scmInkSlack) {
                 misses << qsl("%1: the frame is %2 at its edge and %3 %4px in, so what it carries is a band rather than a hairline")
                                   .arg(appearance.first, border.name(), justInside.name())
                                   .arg(scmInsideTheBand);
             }
-            if (distanceBetween(justInside, wash) > scmInkSlack) {
+            if (TestPixels::distance(justInside, wash) > scmInkSlack) {
                 misses << qsl("%1: the notice is filled with %2 rather than the %3 the accent's wash comes to over the %4 behind it")
                                   .arg(appearance.first, justInside.name(), wash.name(), behindIt.name());
             }

@@ -35,6 +35,7 @@
 #include "EditorTreeDelegate.h"
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TAction.h"
 #include "TAlias.h"
@@ -186,20 +187,6 @@ private:
         mKeyItemId = pKey->getID();
     }
 
-    static QTreeWidgetItem* rowFor(QTreeWidgetItem* pParent, const int id)
-    {
-        for (int row = 0, rows = pParent->childCount(); row < rows; ++row) {
-            QTreeWidgetItem* pChild = pParent->child(row);
-            if (pChild->data(0, Qt::UserRole).toInt() == id) {
-                return pChild;
-            }
-            if (QTreeWidgetItem* pFound = rowFor(pChild, id)) {
-                return pFound;
-            }
-        }
-        return nullptr;
-    }
-
     QList<QPair<QString, QPair<TTreeWidget*, QList<QPair<QString, int>>>>> trees() const
     {
         return {{qsl("Triggers"),
@@ -291,25 +278,6 @@ private:
         return worst;
     }
 
-    static QString inkOf(const QImage& glyph)
-    {
-        if (glyph.isNull()) {
-            return qsl("nothing at all");
-        }
-        QColor strongestColor;
-        int strongest = -1;
-        for (int y = 0; y < glyph.height(); ++y) {
-            for (int x = 0; x < glyph.width(); ++x) {
-                const QColor pixel = glyph.pixelColor(x, y);
-                if (pixel.alpha() > strongest) {
-                    strongest = pixel.alpha();
-                    strongestColor = pixel;
-                }
-            }
-        }
-        return strongest <= 0 ? qsl("nothing at all") : qsl("%1 at alpha %2").arg(strongestColor.name(), QString::number(strongest));
-    }
-
 private slots:
     void initTestCase()
     {
@@ -359,7 +327,7 @@ private slots:
                 continue;
             }
             for (const auto& row : tree.second.second) {
-                QTreeWidgetItem* pRow = rowFor(pHeading, row.second);
+                QTreeWidgetItem* pRow = TestPixels::rowFor(pHeading, row.second);
                 if (!pRow || tree.second.first->visualItemRect(pRow).isEmpty()) {
                     missing << qsl("%1: no %2 row").arg(tree.first, row.first);
                 }
@@ -392,7 +360,7 @@ private slots:
             const int headingHeight = pTree->visualItemRect(pHeading).height();
             QStringList heights{qsl("heading %1").arg(headingHeight)};
             for (const auto& row : tree.second.second) {
-                const int height = pTree->visualItemRect(rowFor(pHeading, row.second)).height();
+                const int height = pTree->visualItemRect(TestPixels::rowFor(pHeading, row.second)).height();
                 heights << qsl("%1 %2").arg(row.first, QString::number(height));
                 if (height != headingHeight) {
                     uneven << qsl("%1: the heading row is %2px and the %3 row %4px").arg(tree.first, QString::number(headingHeight), row.first, QString::number(height));
@@ -414,21 +382,23 @@ private slots:
         QTreeWidgetItem* pTimerHeading = mpEditor->mpTimerBaseItem;
 
         const QList<QPair<QString, QPair<QImage, QImage>>> readings{
-                {qsl("a folder"), {markOf(pTriggers, rowFor(pTriggerHeading, mTriggerFolderId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-folder.svg"), tokens.mutedText)}},
-                {qsl("a filter chain"), {markOf(pTriggers, rowFor(pTriggerHeading, mFilterChainId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-filter.svg"), tokens.mutedText)}},
+                {qsl("a folder"), {markOf(pTriggers, TestPixels::rowFor(pTriggerHeading, mTriggerFolderId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-folder.svg"), tokens.mutedText)}},
+                {qsl("a filter chain"), {markOf(pTriggers, TestPixels::rowFor(pTriggerHeading, mFilterChainId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-filter.svg"), tokens.mutedText)}},
                 // Not chrome: the red of its compile note, held to a contrast
                 // floor in EditorTreeErrorMarkTest
-                {qsl("a broken item"), {markOf(pTriggers, rowFor(pTriggerHeading, mBrokenTriggerId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-errors.svg"), uiDesign::errorInk(tokens))}},
-                {qsl("an offset timer"), {markOf(pTimers, rowFor(pTimerHeading, mOffsetTimerId), false), markDrawnFrom(pTimers, qsl(":/icons/editor-offset-timer.svg"), tokens.mutedText)}}};
+                {qsl("a broken item"),
+                 {markOf(pTriggers, TestPixels::rowFor(pTriggerHeading, mBrokenTriggerId), false), markDrawnFrom(pTriggers, qsl(":/icons/editor-errors.svg"), uiDesign::errorInk(tokens))}},
+                {qsl("an offset timer"),
+                 {markOf(pTimers, TestPixels::rowFor(pTimerHeading, mOffsetTimerId), false), markDrawnFrom(pTimers, qsl(":/icons/editor-offset-timer.svg"), tokens.mutedText)}}};
 
         QStringList wrong;
         QStringList measured;
         for (const auto& reading : readings) {
             const int difference = worstDifference(reading.second.first, reading.second.second);
-            measured << qsl("%1 %2").arg(reading.first, inkOf(reading.second.first));
+            measured << qsl("%1 %2").arg(reading.first, TestPixels::inkOf(reading.second.first));
             if (difference > scmInkTolerance) {
                 wrong << qsl("%1: the row is drawn %2 where the glyph it should carry is %3, %4 apart at their worst pixel")
-                                 .arg(reading.first, inkOf(reading.second.first), inkOf(reading.second.second), QString::number(difference));
+                                 .arg(reading.first, TestPixels::inkOf(reading.second.first), TestPixels::inkOf(reading.second.second), QString::number(difference));
             }
         }
         qInfo().noquote() << qsl("  marks at %1px: %2; the muted tone is %3").arg(QString::number(scmMarkSize), measured.join(qsl(", ")), tokens.mutedText.name());
@@ -440,17 +410,18 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         TTreeWidget* pTree = mpEditor->treeWidget_triggers;
-        QTreeWidgetItem* pFolder = rowFor(mpEditor->mpTriggerBaseItem, mTriggerFolderId);
+        QTreeWidgetItem* pFolder = TestPixels::rowFor(mpEditor->mpTriggerBaseItem, mTriggerFolderId);
 
         const QImage unchosen = markOf(pTree, pFolder, false);
         const QImage chosen = markOf(pTree, pFolder, true);
         const QImage wantedChosen = markDrawnFrom(pTree, qsl(":/icons/editor-folder.svg"), tokens.accentText);
         qInfo().noquote() << qsl("  the folder's mark is %1 unchosen and %2 chosen; the muted tone is %3 and the chosen text colour %4")
-                                     .arg(inkOf(unchosen), inkOf(chosen), tokens.mutedText.name(), tokens.accentText.name());
+                                     .arg(TestPixels::inkOf(unchosen), TestPixels::inkOf(chosen), tokens.mutedText.name(), tokens.accentText.name());
 
-        QVERIFY2(worstDifference(unchosen, chosen) > scmInkTolerance, qPrintable(qsl("a chosen row's mark is inked the same as an unchosen one's: both are %1").arg(inkOf(chosen))));
+        QVERIFY2(worstDifference(unchosen, chosen) > scmInkTolerance, qPrintable(qsl("a chosen row's mark is inked the same as an unchosen one's: both are %1").arg(TestPixels::inkOf(chosen))));
         QVERIFY2(worstDifference(chosen, wantedChosen) <= scmInkTolerance,
-                 qPrintable(qsl("a chosen row's mark is not inked in the colour its name is written in: it is %1 where the name's colour would give %2").arg(inkOf(chosen), inkOf(wantedChosen))));
+                 qPrintable(qsl("a chosen row's mark is not inked in the colour its name is written in: it is %1 where the name's colour would give %2")
+                                    .arg(TestPixels::inkOf(chosen), TestPixels::inkOf(wantedChosen))));
     }
 
     void test_theHoverFillAndTheSelectionPillAreOneHeight()
@@ -460,8 +431,8 @@ private slots:
         QTreeWidgetItem* pHeading = mpEditor->mpTriggerBaseItem;
         // A row with a mark and one without, far enough apart that the two
         // shapes cannot run together and be measured as one
-        QTreeWidgetItem* pHovered = rowFor(pHeading, mTriggerFolderId);
-        QTreeWidgetItem* pChosen = rowFor(pHeading, mFilteredTriggerId);
+        QTreeWidgetItem* pHovered = TestPixels::rowFor(pHeading, mTriggerFolderId);
+        QTreeWidgetItem* pChosen = TestPixels::rowFor(pHeading, mFilteredTriggerId);
         QVERIFY2(pHovered && pChosen, "One of the two rows this case reads is not in the tree");
 
         pTree->setCurrentItem(pChosen);

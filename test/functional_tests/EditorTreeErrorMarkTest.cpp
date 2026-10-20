@@ -30,12 +30,12 @@
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
-#include <cmath>
 
 #include "EditorTreeDelegate.h"
 #include "EditorTreeRowMetrics.h"
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TScript.h"
 #include "TTreeWidget.h"
@@ -104,20 +104,6 @@ private:
         mWantedOnScriptId = pWantedOn->getID();
     }
 
-    static QTreeWidgetItem* rowFor(QTreeWidgetItem* pParent, const int id)
-    {
-        for (int row = 0, rows = pParent->childCount(); row < rows; ++row) {
-            QTreeWidgetItem* pChild = pParent->child(row);
-            if (pChild->data(0, Qt::UserRole).toInt() == id) {
-                return pChild;
-            }
-            if (QTreeWidgetItem* pFound = rowFor(pChild, id)) {
-                return pFound;
-            }
-        }
-        return nullptr;
-    }
-
     // The style is asked because the trees' stylesheet padding cannot be guessed;
     // the mark is the decoration's last square, after the depth room and the dot
     QRect markRectOf(TTreeWidget* pTree, QTreeWidgetItem* pItem) const
@@ -161,8 +147,6 @@ private:
         return hit.adjusted(slack, slack, -slack, -slack);
     }
 
-    static int distance(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
-
     static QColor pixelAt(const QImage& shot, const QPointF& point, const qreal ratio)
     {
         const QPoint inShot(static_cast<int>(point.x() * ratio), static_cast<int>(point.y() * ratio));
@@ -180,7 +164,7 @@ private:
                     continue;
                 }
                 const QColor sample = shot.pixelColor(inShot);
-                const int away = distance(sample, wanted);
+                const int away = TestPixels::distance(sample, wanted);
                 if (away < best) {
                     best = away;
                     read = sample;
@@ -213,7 +197,7 @@ private:
                     continue;
                 }
                 const QColor sample = shot.pixelColor(QPoint(x, y));
-                const int off = distance(sample, wanted);
+                const int off = TestPixels::distance(sample, wanted);
                 if (off < best) {
                     best = off;
                     read = sample;
@@ -224,13 +208,6 @@ private:
     }
 
     static QList<QPair<QString, enums::Appearance>> appearances() { return {{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}; }
-
-    void showTheAppearance(const enums::Appearance appearance) const
-    {
-        mudlet::self()->setAppearance(appearance);
-        QCoreApplication::processEvents();
-        QTest::qWait(150ms);
-    }
 
 private slots:
     void initTestCase()
@@ -266,17 +243,17 @@ private slots:
         // fault of the ink rather than of the fixture
         TScript* pBroken = mpHost->getScriptUnit()->getScript(mBrokenScriptId);
         QVERIFY2(pBroken && !pBroken->state(), "The script the fixture meant to leave broken compiles after all");
-        QVERIFY2(rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId) != nullptr, "The broken script has no row in the Scripts tree");
-        QVERIFY2(rowFor(mpEditor->mpScriptsBaseItem, mScriptFolderId) != nullptr, "The folder holding it has no row in the Scripts tree");
+        QVERIFY2(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId) != nullptr, "The broken script has no row in the Scripts tree");
+        QVERIFY2(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mScriptFolderId) != nullptr, "The folder holding it has no row in the Scripts tree");
 
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(mpEditor->treeWidget_scripts->itemDelegateForIndex(QModelIndex()));
         QVERIFY2(pDelegate != nullptr, "The Scripts tree is not drawn by an EditorTreeDelegate");
         const auto readingOf = [this, pDelegate](const int id) {
-            QTreeWidgetItem* pRow = rowFor(mpEditor->mpScriptsBaseItem, id);
+            QTreeWidgetItem* pRow = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, id);
             return pRow ? pDelegate->dotStateOf(mpEditor->treeWidget_scripts->indexAt(mpEditor->treeWidget_scripts->visualItemRect(pRow).center())) : uiDesign::EditorTreeDelegate::DotState::Off;
         };
         QCOMPARE(readingOf(mWorkingScriptId), uiDesign::EditorTreeDelegate::DotState::Running);
-        QVERIFY2(rowFor(mpEditor->mpScriptsBaseItem, mQuietFolderId) != nullptr, "The switched-off group has no row in the Scripts tree");
+        QVERIFY2(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mQuietFolderId) != nullptr, "The switched-off group has no row in the Scripts tree");
         QCOMPARE(readingOf(mWantedOnScriptId), uiDesign::EditorTreeDelegate::DotState::WantedOn);
     }
 
@@ -298,12 +275,12 @@ private slots:
         QStringList misses;
         QStringList measured;
         for (const auto& appearance : appearances()) {
-            showTheAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second);
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
             const QColor red = uiDesign::errorInk(tokens);
 
-            const QRect brokenMark = markRectOf(pTree, rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId));
-            const QRect folderMark = markRectOf(pTree, rowFor(mpEditor->mpScriptsBaseItem, mScriptFolderId));
+            const QRect brokenMark = markRectOf(pTree, TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId));
+            const QRect folderMark = markRectOf(pTree, TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mScriptFolderId));
             QVERIFY2(!brokenMark.isEmpty() && !folderMark.isEmpty(), qPrintable(qsl("%1: one of the two marks has no rectangle to sample").arg(appearance.first)));
 
             const QImage shot = pTree->viewport()->grab().toImage();
@@ -350,7 +327,7 @@ private slots:
         QStringList misses;
         QStringList measured;
         for (const auto& appearance : appearances()) {
-            showTheAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second);
             const QColor red = uiDesign::errorInk(uiDesign::themeTokens());
 
             // Below the rows, where nothing is painted over the viewport's own surface
@@ -382,13 +359,13 @@ private slots:
         QStringList misses;
         QStringList measured;
         for (const auto& appearance : appearances()) {
-            showTheAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second);
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
             const QColor red = uiDesign::errorInk(tokens);
             const QColor okTone = uiDesign::stateColor(uiDesign::scmStateHue_ok, tokens.darkPage);
 
-            const QRect brokenDot = dotSquareOf(pTree, rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId));
-            const QRect workingDot = dotSquareOf(pTree, rowFor(mpEditor->mpScriptsBaseItem, mWorkingScriptId));
+            const QRect brokenDot = dotSquareOf(pTree, TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId));
+            const QRect workingDot = dotSquareOf(pTree, TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mWorkingScriptId));
             QVERIFY2(!brokenDot.isEmpty() && !workingDot.isEmpty(), qPrintable(qsl("%1: one of the two dots has no rectangle to sample").arg(appearance.first)));
 
             const QImage shot = pTree->viewport()->grab().toImage();
@@ -438,11 +415,11 @@ private slots:
         QStringList misses;
         QStringList measured;
         for (const auto& appearance : appearances()) {
-            showTheAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second);
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
             const QColor okTone = uiDesign::stateColor(uiDesign::scmStateHue_ok, tokens.darkPage);
 
-            const QRect dot = dotSquareOf(pTree, rowFor(mpEditor->mpScriptsBaseItem, mWantedOnScriptId));
+            const QRect dot = dotSquareOf(pTree, TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mWantedOnScriptId));
             QVERIFY2(!dot.isEmpty(), qPrintable(qsl("%1: the switched-on row's dot has no rectangle to sample").arg(appearance.first)));
 
             const QImage shot = pTree->viewport()->grab().toImage();
@@ -454,8 +431,8 @@ private slots:
 
             const QColor middle = pixelAt(shot, QPointF(dot.left() + uiDesign::scmTreeDotDiameter / 2.0, dot.top() + uiDesign::scmTreeDotDiameter / 2.0), ratio);
             QVERIFY2(middle.isValid(), qPrintable(qsl("%1: the middle of the dot is outside the grab").arg(appearance.first)));
-            const int middleFromQuiet = distance(middle, tokens.mutedText);
-            const int middleFromSurface = distance(middle, surface);
+            const int middleFromQuiet = TestPixels::distance(middle, tokens.mutedText);
+            const int middleFromSurface = TestPixels::distance(middle, surface);
             const auto surfaceInTheGap = nearestInTheRingsGap(shot, dot, ratio, surface);
             const auto quietOnTheRing = nearest(shot, dot, ratio, tokens.mutedText);
             const auto okOnTheRing = nearest(shot, dot, ratio, okTone);

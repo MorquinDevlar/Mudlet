@@ -35,6 +35,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
@@ -53,13 +54,6 @@ private:
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorOptionsPanelDefault-Test-Profile");
-
-    void settle()
-    {
-        QCoreApplication::processEvents();
-        QTest::qWait(80ms);
-        QCoreApplication::processEvents();
-    }
 
     dlgTriggersMainArea* form() const { return mpEditor->mpTriggersMainArea; }
 
@@ -147,7 +141,7 @@ private slots:
     void test_withTheStripAwayThePatternsFollowTheHeadRowAtTheGridsSpacing()
     {
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
 
         auto* pGrid = qobject_cast<QGridLayout*>(form()->layout());
         QVERIFY2(pGrid != nullptr, "the trigger form is not laid out in a grid");
@@ -163,11 +157,11 @@ private slots:
     void test_theButtonOpensAndClosesTheStrip()
     {
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
         const int patternsWhenAway = topEdgeOf(form()->widget_left);
 
         QTest::mouseClick(optionsButton(), Qt::LeftButton, Qt::NoModifier, optionsButton()->rect().center());
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow->isVisible(), "clicking the Options button did not put the strip on show");
         QVERIFY2(mpEditor->mpLabel_optionsRow->isVisible(), "the strip is on show without the word leading it");
         QVERIFY2(optionsButton()->isChecked(), "the button does not say the strip it opened is open");
@@ -178,7 +172,7 @@ private slots:
                  qPrintable(qsl("the pattern list is at y=%1 with the strip on show, where it was at y=%2 without it - the strip is taking no room").arg(patternsWhenShown).arg(patternsWhenAway)));
 
         QTest::mouseClick(optionsButton(), Qt::LeftButton, Qt::NoModifier, optionsButton()->rect().center());
-        settle();
+        TestPixels::settle();
         QVERIFY2(!mpEditor->mpWidget_triggerOptionsRow->isVisible(), "clicking the Options button again did not put the strip away");
         QVERIFY2(!mpEditor->mpLabel_optionsRow->isVisible(), "the word leading the strip stayed behind after the strip went");
         QVERIFY2(!optionsButton()->isChecked(), "the button says the strip is open after it closed it");
@@ -189,21 +183,21 @@ private slots:
     void test_theChoiceIsKeptForTheSession()
     {
         mpEditor->setTriggerOptionsShown(true);
-        settle();
+        TestPixels::settle();
 
         mpEditor->addTrigger(false);
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow->isVisible(), "choosing another trigger put the options strip away");
         QVERIFY2(optionsButton()->isChecked(), "choosing another trigger left the button saying the strip is closed");
 
         mpEditor->slot_showAliases();
         mpEditor->slot_showTriggers();
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow->isVisible(), "leaving the Triggers view and coming back put the options strip away");
         QVERIFY2(optionsButton()->isChecked(), "coming back to the Triggers view left the button saying the strip is closed");
 
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
     }
 
     void test_writingSettingsLeavesNoRetiredKey()
