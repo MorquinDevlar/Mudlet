@@ -1408,7 +1408,6 @@ handles; keep them stable.
 | `settingsHeroHeadline`, `settingsHeroDetail`, `settingsHeroLink` | Hero card parts |
 | `settingsCheckBoxWrap`, `settingsWrappedLabel` | A check box whose text wraps |
 | `settingsSearchDebounce` | The search timer - tests wait on it by name |
-| `checkBox_editorFontFollowsDisplay`, `fontComboBox_editorFont`, `spinBox_editorFontSize` | The Editor page's Font card: the switch that keeps the script editor in the display font, and the family and size it reads code in otherwise |
 
 ### Dynamic properties
 
@@ -1749,12 +1748,6 @@ Available as a pattern; the editor keeps its explicit save for now.
   type list) and answers `dirty()`, `anyDirty()`, `shortcutsDirty()`,
   `pendingEdits()`, so an apply writes only what actually changed. A line edit
   being typed into is not a setting yet (`beingTypedInto()`).
-- A control that means something only while another setting is off is disabled
-  rather than hidden, and shows what the other setting gives meanwhile: the
-  Editor page's family and size pickers are greyed out holding the display font
-  for as long as "Use the main display font" is ticked, and are written in
-  `applyAll()` ahead of the switch, so a family picked straight after unticking
-  it is the one the editor leaves the display font for.
 - `guardScrollWheel()` plus the `eventFilter()` wheel branch stop a wheel passing
   over a spin box or combo box from silently changing a setting: unfocused
   controls ignore the wheel and do not take focus from it.

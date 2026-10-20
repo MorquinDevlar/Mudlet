@@ -138,7 +138,6 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorDefaultSizeTest;
     friend class EditorEventChipRowTest;
     friend class EditorFolderViewTest;
-    friend class EditorFontTest;
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
     friend class EditorKeyCaptureTest;
@@ -394,7 +393,7 @@ public:
     void showCurrentTriggerItem();
     void hideSystemMessageArea();
     void showIDLabels(const bool);
-    void setEditorFont(const QFont&);
+    void setDisplayFont(const QFont&);
 
 signals:
     void editorClosing();
