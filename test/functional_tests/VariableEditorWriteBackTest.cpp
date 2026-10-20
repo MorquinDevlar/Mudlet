@@ -1124,12 +1124,16 @@ private:
             qWarning() << "saveBoxCorner(): the Variables tree is not drawn by its delegate";
             return {};
         }
-        QRect tickArea = pDelegate->keptHitRect(mpVariablesTree->indexFromItem(pItem));
+        const auto keptSquareOf = [this, pDelegate](QTreeWidgetItem* pRow) {
+            const QModelIndex index = mpVariablesTree->indexFromItem(pRow);
+            return pDelegate->dotHitRect(pDelegate->rowOption(index), index);
+        };
+        QRect tickArea = keptSquareOf(pItem);
         // A row the profile cannot keep has no square, so the press goes where
         // a sibling's is drawn
         for (int i = 0; tickArea.isNull() && pItem->parent() && i < pItem->parent()->childCount(); ++i) {
             QTreeWidgetItem* pSibling = pItem->parent()->child(i);
-            const QRect square = pDelegate->keptHitRect(mpVariablesTree->indexFromItem(pSibling));
+            const QRect square = keptSquareOf(pSibling);
             if (!square.isNull()) {
                 const int rowOffset = mpVariablesTree->visualItemRect(pItem).top() - mpVariablesTree->visualItemRect(pSibling).top();
                 tickArea = square.translated(0, rowOffset);

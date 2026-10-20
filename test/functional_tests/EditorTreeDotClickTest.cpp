@@ -76,9 +76,17 @@ private:
 
     uiDesign::EditorTreeDelegate* dotDelegate() const { return qobject_cast<uiDesign::EditorTreeDelegate*>(tree()->itemDelegateForIndex(QModelIndex())); }
 
-    QRect dotRect(QTreeWidgetItem* pItem) const { return dotDelegate()->dotHitRect(indexOf(pItem)); }
+    QRect dotRect(QTreeWidgetItem* pItem) const
+    {
+        const QModelIndex index = indexOf(pItem);
+        return dotDelegate()->dotHitRect(dotDelegate()->rowOption(index), index);
+    }
 
-    QRect chevronRect(QTreeWidgetItem* pItem) const { return dotDelegate()->chevronHitRect(indexOf(pItem)); }
+    QRect chevronRect(QTreeWidgetItem* pItem) const
+    {
+        const QModelIndex index = indexOf(pItem);
+        return dotDelegate()->chevronHitRect(dotDelegate()->rowOption(index), index);
+    }
 
     // addTrigger() adds inside the chosen folder and then chooses the new item,
     // so the trigger lands inside the group

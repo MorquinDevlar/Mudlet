@@ -134,7 +134,8 @@ private:
     {
         mpVariablesTree->scrollToItem(pItem);
         QCoreApplication::processEvents();
-        return delegate()->keptHitRect(indexOf(pItem));
+        const QModelIndex index = indexOf(pItem);
+        return delegate()->dotHitRect(delegate()->rowOption(index), index);
     }
 
     void selectVariable(QTreeWidgetItem* pItem)
@@ -312,7 +313,7 @@ private slots:
         QTreeWidgetItem* pString = variableRow(qsl("myString"));
         QVERIFY(pFunction && pString);
 
-        QVERIFY2(delegate()->keptHitRect(indexOf(pFunction)).isNull(), "a variable the profile cannot keep still reports a square to click");
+        QVERIFY2(delegate()->dotHitRect(delegate()->rowOption(indexOf(pFunction)), indexOf(pFunction)).isNull(), "a variable the profile cannot keep still reports a square to click");
 
         const QRect square = keptRectOf(pString);
         mpVariablesTree->scrollToItem(pFunction);
@@ -524,7 +525,7 @@ private slots:
         QVERIFY(pHeading);
         QCOMPARE(pHeading->text(0), qsl("Variables"));
 
-        QVERIFY2(delegate()->keptHitRect(indexOf(pHeading)).isNull(), "the tree's own heading row reports a square the profile could keep it by");
+        QVERIFY2(delegate()->dotHitRect(delegate()->rowOption(indexOf(pHeading)), indexOf(pHeading)).isNull(), "the tree's own heading row reports a square the profile could keep it by");
         QVERIFY2(delegate()->typeGlyphFile(indexOf(pHeading)).isEmpty(), "the tree's own heading row is marked as though it held a Lua value");
 
         // Read from initStyleOption() rather than the item: the heading is the

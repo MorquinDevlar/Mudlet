@@ -29,12 +29,9 @@
 #include "TTrigger.h"
 #include "uiDesign.h"
 
-#include <QMouseEvent>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionViewItem>
-
-#include <algorithm>
 
 namespace uiDesign {
 
@@ -44,55 +41,37 @@ constexpr int scmTypeLabelMinimumCharacters = 4;
 } // namespace
 
 EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeType, Host* pHost)
-: QStyledItemDelegate(pTree)
-, mpTree(pTree)
+: EditorTreeRowDelegate(pTree)
 , mTreeType(treeType)
 , mpHost(pHost)
 {
-    if (mpTree) {
-        // The view indents nothing and the decoration draws depth and chevron: QTreeView paints its
-        // indented branch cells itself in the style's selection colour, out of any stylesheet rule's
-        // reach, so a nested row's selection could not be one pill
-        mIndentStep = mpTree->indentation() > 0 ? mpTree->indentation() : scmTreeFallbackIndentStep;
-        mpTree->setIndentation(0);
-        // QAbstractScrollArea makes the viewport in its constructor and the trees never replace it
-        mpTree->viewport()->installEventFilter(this);
-    }
     restyle();
 }
 
-void EditorTreeDelegate::restyle()
+void EditorTreeDelegate::restyleInks(const ThemeTokens& tokens)
 {
-    const ThemeTokens tokens = themeTokens();
     mRunningDot = stateColor(scmStateHue_ok, tokens.darkPage);
     mQuietDot = tokens.mutedText;
-    mChevronInk = tokens.mutedText;
     mMarkInk = tokens.mutedText;
     mErrorMarkInk = errorInk(tokens);
     // Must match the colour the trees' stylesheet writes a chosen row's name in
     mSelectedMarkInk = tokens.accentText;
-    mAccentBar = tokens.accent;
+}
+
+void EditorTreeDelegate::clearGlyphs() const
+{
     for (auto& cached : mDotGlyphs) {
-        cached = QPixmap();
-    }
-    for (auto& cached : mChevronGlyphs) {
         cached = QPixmap();
     }
     for (auto& cached : mMarkGlyphs) {
         cached = QPixmap();
     }
-    clearDecorations();
 }
 
 void EditorTreeDelegate::setNewDescriptions(const QString& item, const QString& folder)
 {
     mNewItemDescription = item;
     mNewFolderDescription = folder;
-}
-
-void EditorTreeDelegate::clearDecorations() const
-{
-    mDecorations.clear();
 }
 
 EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& index) const
@@ -215,48 +194,20 @@ int EditorTreeDelegate::rowLevelOf(const QModelIndex& index) const
     return treeRowLevelOf(index) + (mTreeType == TreeType::None ? 1 : 0);
 }
 
-// None at the top level: that row is the tree's own heading, and the trees use an undecorated root
-EditorTreeDelegate::ChevronState EditorTreeDelegate::chevronOf(const QModelIndex& index, const int level) const
+bool EditorTreeDelegate::carriesDot(const QModelIndex& index) const
 {
-    if (!mpTree || !index.isValid() || index.column() != 0 || level < 1) {
-        return ChevronState::None;
-    }
-    const QAbstractItemModel* pModel = index.model();
-    if (!pModel || pModel->rowCount(index) < 1) {
-        return ChevronState::None;
-    }
-    return mpTree->isExpanded(index) ? ChevronState::Open : ChevronState::Closed;
+    return stateOf(index).known;
 }
 
-qreal EditorTreeDelegate::glyphRatio() const
+void EditorTreeDelegate::dotPressed()
 {
-    return mpTree ? mpTree->devicePixelRatioF() : 1.0;
-}
-
-void EditorTreeDelegate::syncGlyphRatio() const
-{
-    const qreal ratio = glyphRatio();
-    if (qFuzzyCompare(ratio + 1.0, mDotGlyphRatio + 1.0)) {
-        return;
-    }
-    mDotGlyphRatio = ratio;
-    for (auto& cached : mDotGlyphs) {
-        cached = QPixmap();
-    }
-    for (auto& cached : mChevronGlyphs) {
-        cached = QPixmap();
-    }
-    for (auto& cached : mMarkGlyphs) {
-        cached = QPixmap();
-    }
-    // Clearing on a ratio change is why the decoration key can leave the ratio out
-    clearDecorations();
+    emit toggleRequested();
 }
 
 QPixmap EditorTreeDelegate::dotGlyph(const DotState state, const bool broken) const
 {
     syncGlyphRatio();
-    const qreal ratio = mDotGlyphRatio;
+    const qreal ratio = mGlyphRatio;
 
     QPixmap& glyph = mDotGlyphs[(broken ? scmDotStateCount : 0) + static_cast<int>(state)];
     if (!glyph.isNull()) {
@@ -271,17 +222,6 @@ QPixmap EditorTreeDelegate::dotGlyph(const DotState state, const bool broken) co
     }
     const QColor ink = broken ? mErrorMarkInk : (state == DotState::Running ? mRunningDot : mQuietDot);
     glyph = treeRowDotGlyph(form, ink, ratio);
-    return glyph;
-}
-
-QPixmap EditorTreeDelegate::chevronGlyph(const ChevronState state) const
-{
-    QPixmap& glyph = mChevronGlyphs[static_cast<int>(state)];
-    if (!glyph.isNull()) {
-        return glyph;
-    }
-
-    glyph = treeRowChevronGlyph(state == ChevronState::Open, mChevronInk, mDotGlyphRatio);
     return glyph;
 }
 
@@ -320,7 +260,7 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
     }
 
     const QColor ink = mark == RowMark::Error ? mErrorMarkInk : (selected ? mSelectedMarkInk : mMarkInk);
-    const qreal ratio = mDotGlyphRatio;
+    const qreal ratio = mGlyphRatio;
     glyph = tintedGlyph(uiDesign::glyphPixmap(file), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(ratio);
     return glyph;
@@ -335,37 +275,7 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
     if (const auto cached = mDecorations.constFind(key); cached != mDecorations.constEnd()) {
         return cached.value();
     }
-    if (mDecorations.size() >= scmTreeDecorationCacheLimit) {
-        mDecorations.clear();
-    }
-
-    const int lead = level * mIndentStep;
-    const int dotWidth = (state.known || state.dotSlot) ? scmTreeDotDiameter : 0;
-    const int markWidth = state.mark == RowMark::None ? 0 : scmTreeMarkSize;
-    const int gap = (dotWidth > 0 && markWidth > 0) ? scmTreeDotGap : 0;
-    const int slotWidth = std::max(lead + dotWidth + gap + markWidth, 1);
-
-    const qreal ratio = mDotGlyphRatio;
-    QPixmap composed(qRound(slotWidth * ratio), qRound(scmTreeSlotHeight * ratio));
-    composed.setDevicePixelRatio(ratio);
-    composed.fill(Qt::transparent);
-    QPainter painter(&composed);
-    if (chevron != ChevronState::None) {
-        painter.drawPixmap(QPointF(lead - mIndentStep + (mIndentStep - scmTreeChevronBox) / 2.0, (scmTreeSlotHeight - scmTreeChevronBox) / 2.0), chevronGlyph(chevron));
-    }
-    if (state.known) {
-        painter.drawPixmap(QPointF(lead, (scmTreeSlotHeight - scmTreeDotDiameter) / 2.0), dotGlyph(state.dot, state.mark == RowMark::Error));
-    }
-    if (markWidth > 0) {
-        painter.drawPixmap(QPointF(lead + dotWidth + gap, (scmTreeSlotHeight - scmTreeMarkSize) / 2.0), markGlyph(state.mark, selected));
-    }
-    painter.end();
-
-    Decoration decoration;
-    decoration.icon = QIcon(composed);
-    decoration.size = QSize(slotWidth, scmTreeSlotHeight);
-    mDecorations.insert(key, decoration);
-    return decoration;
+    return composeDecoration(key, level, chevron, state.known || state.dotSlot, state.known ? dotGlyph(state.dot, state.mark == RowMark::Error) : QPixmap(), markGlyph(state.mark, selected));
 }
 
 void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const
@@ -437,163 +347,6 @@ void EditorTreeDelegate::paintTypeLabel(QPainter* pPainter, const QStyleOptionVi
     pPainter->setPen((labelOption.state & QStyle::State_Selected) ? mSelectedMarkInk : mMarkInk);
     pPainter->drawText(QRect(textRect.right() - room + 1, textRect.top(), room, textRect.height()), Qt::AlignRight | Qt::AlignVCenter, metrics.elidedText(label, Qt::ElideRight, room));
     pPainter->restore();
-}
-
-QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
-{
-    if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || !stateOf(index).known) {
-        return {};
-    }
-
-    // Asked of the style: QStyleSheetStyle places a row's picture, and its padding cannot be guessed here
-    QStyleOptionViewItem dotOption(option);
-    initStyleOption(&dotOption, index);
-    const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &dotOption, mpTree);
-    if (decorationRect.isEmpty()) {
-        return {};
-    }
-
-    // The dot and a little slack only, so the rest of the leading edge can still start a drag
-    const int lead = rowLevelOf(index) * mIndentStep;
-    const QRect dotRect(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmTreeDotDiameter) / 2, scmTreeDotDiameter, scmTreeDotDiameter);
-    return dotRect.adjusted(-scmTreeMarkHitSlack, -scmTreeMarkHitSlack, scmTreeMarkHitSlack, scmTreeMarkHitSlack);
-}
-
-QRect EditorTreeDelegate::chevronHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
-{
-    const int level = rowLevelOf(index);
-    if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || chevronOf(index, level) == ChevronState::None) {
-        return {};
-    }
-
-    QStyleOptionViewItem chevronOption(option);
-    initStyleOption(&chevronOption, index);
-    const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &chevronOption, mpTree);
-    if (decorationRect.isEmpty()) {
-        return {};
-    }
-
-    // The whole indentation step, where the view's branch arrow stood and a reader will aim
-    return QRect(decorationRect.left() + (level - 1) * mIndentStep, option.rect.top(), mIndentStep, option.rect.height());
-}
-
-// Rebuilds what QAbstractItemView hands editorEvent(), which it makes privately from
-// initViewItemOption(), the row's rectangle and whether the row is current
-QStyleOptionViewItem EditorTreeDelegate::rowOption(const QModelIndex& index) const
-{
-    QStyleOptionViewItem option = mpTree->viewItemOption();
-    option.rect = mpTree->visualRect(index);
-    if (index == mpTree->currentIndex()) {
-        option.state |= QStyle::State_HasFocus;
-    }
-    return option;
-}
-
-QRect EditorTreeDelegate::dotHitRect(const QModelIndex& index) const
-{
-    if (!mpTree) {
-        return {};
-    }
-    return dotHitRect(rowOption(index), index);
-}
-
-QRect EditorTreeDelegate::chevronHitRect(const QModelIndex& index) const
-{
-    if (!mpTree) {
-        return {};
-    }
-    return chevronHitRect(rowOption(index), index);
-}
-
-EditorTreeDelegate::DotState EditorTreeDelegate::dotStateOf(const QModelIndex& index) const
-{
-    return stateOf(index).dot;
-}
-
-EditorTreeDelegate::RowMark EditorTreeDelegate::markOf(const QModelIndex& index) const
-{
-    return stateOf(index).mark;
-}
-
-bool EditorTreeDelegate::eventFilter(QObject* pWatched, QEvent* pEvent)
-{
-    // QStyledItemDelegate filters its own editor widgets through this, and that handling has to stand
-    if (!mpTree || pWatched != mpTree->viewport()) {
-        return QStyledItemDelegate::eventFilter(pWatched, pEvent);
-    }
-
-    switch (pEvent->type()) {
-    case QEvent::MouseButtonPress:
-        // Reset on every press in case a release never arrived; a double click's second press is
-        // MouseButtonDblClick, so mLastDotPressIndex outlives the first press of the pair
-        mPressAnswered = false;
-        mLastDotPressIndex = QPersistentModelIndex();
-        break;
-    case QEvent::MouseMove:
-        // The view recorded the press before asking the delegate, so a move handed on would
-        // drag-select out of the mark or lift the row out of the tree
-        if (mPressAnswered && (static_cast<QMouseEvent*>(pEvent)->buttons() & Qt::LeftButton)) {
-            return true;
-        }
-        break;
-    case QEvent::MouseButtonRelease:
-        // Handed on, the view would read it as a click on whichever row it ended over and reload
-        // that row, losing whatever was typed into the editor
-        if (mPressAnswered) {
-            mPressAnswered = false;
-            return true;
-        }
-        break;
-    default:
-        break;
-    }
-
-    return false;
-}
-
-bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index)
-{
-    const QEvent::Type eventType = pEvent->type();
-    if (eventType != QEvent::MouseButtonPress && eventType != QEvent::MouseButtonDblClick) {
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-    }
-
-    auto* pMouseEvent = static_cast<QMouseEvent*>(pEvent);
-    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmTreeSelectionModifiers)) {
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-    }
-    const QPoint pressedAt = pMouseEvent->position().toPoint();
-    // Chevron first: the dot's slack overlaps the chevron's cell
-    const bool onChevron = chevronHitRect(option, index).contains(pressedAt);
-    const bool onDot = !onChevron && dotHitRect(option, index).contains(pressedAt);
-
-    if (eventType == QEvent::MouseButtonDblClick) {
-        // Eaten even when it drifted off the mark: a double click is allowed a few pixels of drift,
-        // and handed on it reaches activated() and switches the row straight back
-        if (!onChevron && !onDot && !(mLastDotPressIndex.isValid() && mLastDotPressIndex == index)) {
-            return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-        }
-        mPressAnswered = true;
-        return true;
-    }
-
-    if (onChevron) {
-        mpTree->setExpanded(index, !mpTree->isExpanded(index));
-        mPressAnswered = true;
-        return true;
-    }
-
-    if (!onDot) {
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-    }
-
-    if (QTreeWidgetItem* pItem = mpTree->itemFromIndex(index)) {
-        mpTree->setCurrentItem(pItem);
-        emit toggleRequested();
-    }
-    mPressAnswered = true;
-    mLastDotPressIndex = index;
-    return true;
 }
 
 } // namespace uiDesign

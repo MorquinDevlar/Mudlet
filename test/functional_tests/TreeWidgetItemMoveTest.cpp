@@ -90,19 +90,20 @@ private:
         }
         tree->show();
         QCoreApplication::processEvents();
-        return !pDelegate->dotHitRect(tree->indexFromItem(item)).isNull();
+        const QModelIndex index = tree->indexFromItem(item);
+        return !pDelegate->dotHitRect(pDelegate->rowOption(index), index).isNull();
     }
 
     static uiDesign::EditorTreeDelegate::DotState dotStateOf(TTreeWidget* tree, QTreeWidgetItem* item)
     {
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(tree->itemDelegateForIndex(QModelIndex()));
-        return pDelegate ? pDelegate->dotStateOf(tree->indexFromItem(item)) : uiDesign::EditorTreeDelegate::DotState::Off;
+        return pDelegate ? pDelegate->stateOf(tree->indexFromItem(item)).dot : uiDesign::EditorTreeDelegate::DotState::Off;
     }
 
     static uiDesign::EditorTreeDelegate::RowMark markOf(TTreeWidget* tree, QTreeWidgetItem* item)
     {
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(tree->itemDelegateForIndex(QModelIndex()));
-        return pDelegate ? pDelegate->markOf(tree->indexFromItem(item)) : uiDesign::EditorTreeDelegate::RowMark::None;
+        return pDelegate ? pDelegate->stateOf(tree->indexFromItem(item)).mark : uiDesign::EditorTreeDelegate::RowMark::None;
     }
 
     QTreeWidgetItem* itemNamed(QTreeWidget* tree, const QString& name) const

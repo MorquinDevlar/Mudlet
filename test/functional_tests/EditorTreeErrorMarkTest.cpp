@@ -153,7 +153,8 @@ private:
         if (rowRect.isEmpty()) {
             return {};
         }
-        const QRect hit = pDelegate->dotHitRect(pTree->indexAt(rowRect.center()));
+        const QModelIndex index = pTree->indexAt(rowRect.center());
+        const QRect hit = pDelegate->dotHitRect(pDelegate->rowOption(index), index);
         if (hit.isEmpty()) {
             return {};
         }
@@ -273,7 +274,7 @@ private slots:
         QVERIFY2(pDelegate != nullptr, "The Scripts tree is not drawn by an EditorTreeDelegate");
         const auto readingOf = [this, pDelegate](const int id) {
             QTreeWidgetItem* pRow = rowFor(mpEditor->mpScriptsBaseItem, id);
-            return pRow ? pDelegate->dotStateOf(mpEditor->treeWidget_scripts->indexAt(mpEditor->treeWidget_scripts->visualItemRect(pRow).center())) : uiDesign::EditorTreeDelegate::DotState::Off;
+            return pRow ? pDelegate->stateOf(mpEditor->treeWidget_scripts->indexAt(mpEditor->treeWidget_scripts->visualItemRect(pRow).center())).dot : uiDesign::EditorTreeDelegate::DotState::Off;
         };
         QCOMPARE(readingOf(mWorkingScriptId), uiDesign::EditorTreeDelegate::DotState::Running);
         QVERIFY2(rowFor(mpEditor->mpScriptsBaseItem, mQuietFolderId) != nullptr, "The switched-off group has no row in the Scripts tree");

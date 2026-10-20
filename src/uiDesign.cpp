@@ -67,6 +67,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <tuple>
 #include <utility>
@@ -755,25 +756,37 @@ static QString glyphCacheFile(const QString& fileName)
     return cacheDir.absoluteFilePath(fileName);
 }
 
-QString gripGlyphFile(const QColor& color, const bool alongTheBar)
+// Written at 1x and, on a high-DPI screen, as an @2x twin beside it: a stylesheet loads its path through QPixmap,
+// which prefers that twin. Answers the 1x path, or nothing where the cache could not be written
+static QString cachedGlyphFile(const QString& stem, const std::function<QPixmap(qreal)>& drawnAt)
 {
-    const int columns = alongTheBar ? scmGripDotsAlong : scmGripDotsAcross;
-    const int rows = alongTheBar ? scmGripDotsAcross : scmGripDotsAlong;
-    const QString filePath = glyphCacheFile(qsl("grip-%1-%2x%3.png").arg(color.name().mid(1), QString::number(columns), QString::number(rows)));
+    const QString filePath = glyphCacheFile(stem + qsl(".png"));
     if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
         return filePath;
     }
 
-    const qreal width = (columns - 1) * scmGripDotPitch + scmGripDotDiameter;
-    const qreal height = (rows - 1) * scmGripDotPitch + scmGripDotDiameter;
-    // Also written at @2x: a stylesheet loads its path through QPixmap, which prefers the @2x file beside it on a
-    // high-DPI screen
     const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
     QList<qreal> ratios{1.0};
     if (ratio > 1.0) {
         ratios << ratio;
     }
-    for (const qreal drawnAt : std::as_const(ratios)) {
+    for (const qreal at : std::as_const(ratios)) {
+        const QPixmap glyph = drawnAt(at);
+        const QString wanted = at > 1.0 ? glyphCacheFile(qsl("%1@%2x.png").arg(stem, QString::number(qRound(at)))) : filePath;
+        if (glyph.isNull() || !glyph.save(wanted, "PNG")) {
+            return QString();
+        }
+    }
+    return filePath;
+}
+
+QString gripGlyphFile(const QColor& color, const bool alongTheBar)
+{
+    const int columns = alongTheBar ? scmGripDotsAlong : scmGripDotsAcross;
+    const int rows = alongTheBar ? scmGripDotsAcross : scmGripDotsAlong;
+    const qreal width = (columns - 1) * scmGripDotPitch + scmGripDotDiameter;
+    const qreal height = (rows - 1) * scmGripDotPitch + scmGripDotDiameter;
+    return cachedGlyphFile(qsl("grip-%1-%2x%3").arg(color.name().mid(1), QString::number(columns), QString::number(rows)), [&color, columns, rows, width, height](const qreal drawnAt) {
         QPixmap grip(qRound(width * drawnAt), qRound(height * drawnAt));
         grip.fill(Qt::transparent);
         QPainter painter(&grip);
@@ -787,13 +800,8 @@ QString gripGlyphFile(const QColor& color, const bool alongTheBar)
             }
         }
         painter.end();
-        const QString wanted =
-                drawnAt > 1.0 ? glyphCacheFile(qsl("grip-%1-%2x%3@%4x.png").arg(color.name().mid(1), QString::number(columns), QString::number(rows), QString::number(qRound(drawnAt)))) : filePath;
-        if (!grip.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+        return grip;
+    });
 }
 
 // Lucide's 24-unit box leaves a margin that an 8px control arrow would spend half its height on
@@ -824,37 +832,20 @@ static QPixmap croppedToItsInk(const QPixmap& glyph)
 static QString themedArrowFile(const QColor& color, const bool pointingUp, const int size)
 {
     // Not "arrow": caches written by earlier builds hold a stretched shape under that name
-    const QString filePath = glyphCacheFile(qsl("chevron-%1-%2-%3.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size)));
-    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
-        return filePath;
-    }
-
-    QPixmap source = croppedToItsInk(glyphPixmap(qsl(":/icons/editor-chevron-down.svg")));
-    if (source.isNull()) {
-        return QString();
-    }
-    if (pointingUp) {
-        source = source.transformed(QTransform().rotate(180));
-    }
-    source = tintedGlyph(source, color);
-
-    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
-    QList<qreal> ratios{1.0};
-    if (ratio > 1.0) {
-        ratios << ratio;
-    }
-    for (const qreal drawnAt : std::as_const(ratios)) {
+    const QString stem = qsl("chevron-%1-%2-%3").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size));
+    return cachedGlyphFile(stem, [&color, pointingUp, size](const qreal drawnAt) {
+        QPixmap source = croppedToItsInk(glyphPixmap(qsl(":/icons/editor-chevron-down.svg")));
+        if (source.isNull()) {
+            return source;
+        }
+        if (pointingUp) {
+            source = source.transformed(QTransform().rotate(180));
+        }
+        source = tintedGlyph(source, color);
         const int drawnSize = qRound(size * drawnAt);
         // KeepAspectRatio: a chevron is twice as wide as tall, and stretched to a square it reads as a heavy V
-        const QPixmap arrow = source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        const QString wanted =
-                drawnAt > 1.0 ? glyphCacheFile(qsl("chevron-%1-%2-%3@%4x.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size), QString::number(qRound(drawnAt))))
-                              : filePath;
-        if (!arrow.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+        return source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    });
 }
 
 QPixmap themedGlyphPixmap(const QString& glyphFile, const QColor& color, const int boxSize, const int glyphSize, const qreal devicePixelRatio)
@@ -890,52 +881,17 @@ QPixmap themedGlyphPixmap(const QString& glyphFile, const QColor& color, const i
 // of the 1x and 2x files the platform picked, so only a baked-in margin holds the size.
 static QString themedGlyphFile(const QString& glyphFile, const QColor& color, const int boxSize, const int glyphSize)
 {
-    const QString stem = QFileInfo(glyphFile).baseName();
-    const auto cacheName = [&stem, &color, boxSize, glyphSize](const int drawnAt) {
-        const QString suffix = drawnAt > 1 ? qsl("@%1x").arg(QString::number(drawnAt)) : QString();
-        return qsl("%1-%2-%3-%4%5.png").arg(stem, color.name().mid(1), QString::number(boxSize), QString::number(glyphSize), suffix);
-    };
-    const QString filePath = glyphCacheFile(cacheName(1));
-    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
-        return filePath;
-    }
-
-    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
-    QList<qreal> ratios{1.0};
-    if (ratio > 1.0) {
-        ratios << ratio;
-    }
-    for (const qreal drawnAt : std::as_const(ratios)) {
-        const QPixmap glyph = themedGlyphPixmap(glyphFile, color, boxSize, glyphSize, drawnAt);
-        if (glyph.isNull()) {
-            return QString();
-        }
-        const QString wanted = drawnAt > 1.0 ? glyphCacheFile(cacheName(qRound(drawnAt))) : filePath;
-        if (!glyph.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+    const QString stem = qsl("%1-%2-%3-%4").arg(QFileInfo(glyphFile).baseName(), color.name().mid(1), QString::number(boxSize), QString::number(glyphSize));
+    return cachedGlyphFile(stem, [&glyphFile, &color, boxSize, glyphSize](const qreal drawnAt) {
+        return themedGlyphPixmap(glyphFile, color, boxSize, glyphSize, drawnAt);
+    });
 }
 
 // Painted rather than a Lucide glyph: no Lucide circle survives being drawn at six pixels
 static QString dotGlyphFile(const QColor& color, const int boxSize, const int diameter)
 {
-    const auto cacheName = [&color, boxSize, diameter](const int drawnAt) {
-        const QString suffix = drawnAt > 1 ? qsl("@%1x").arg(QString::number(drawnAt)) : QString();
-        return qsl("dot-%1-%2-%3%4.png").arg(color.name().mid(1), QString::number(boxSize), QString::number(diameter), suffix);
-    };
-    const QString filePath = glyphCacheFile(cacheName(1));
-    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
-        return filePath;
-    }
-
-    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
-    QList<qreal> ratios{1.0};
-    if (ratio > 1.0) {
-        ratios << ratio;
-    }
-    for (const qreal drawnAt : std::as_const(ratios)) {
+    const QString stem = qsl("dot-%1-%2-%3").arg(color.name().mid(1), QString::number(boxSize), QString::number(diameter));
+    return cachedGlyphFile(stem, [&color, boxSize, diameter](const qreal drawnAt) {
         QPixmap dot(qRound(boxSize * drawnAt), qRound(boxSize * drawnAt));
         dot.fill(Qt::transparent);
         QPainter painter(&dot);
@@ -946,12 +902,8 @@ static QString dotGlyphFile(const QColor& color, const int boxSize, const int di
         const qreal inset = (boxSize - diameter) / 2.0;
         painter.drawEllipse(QRectF(inset, inset, diameter, diameter));
         painter.end();
-        const QString wanted = drawnAt > 1.0 ? glyphCacheFile(cacheName(qRound(drawnAt))) : filePath;
-        if (!dot.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+        return dot;
+    });
 }
 
 static QString scopedTo(const QString& selectorPrefix, const QStringList& selectors)

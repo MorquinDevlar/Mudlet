@@ -20,16 +20,13 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include "EditorTreeRowDelegate.h"
+
 #include <QColor>
 #include <QFont>
 #include <QFontMetrics>
-#include <QHash>
-#include <QIcon>
-#include <QPersistentModelIndex>
 #include <QPixmap>
-#include <QSize>
 #include <QString>
-#include <QStyledItemDelegate>
 
 class QTreeWidgetItem;
 class TTreeWidget;
@@ -43,29 +40,19 @@ inline constexpr int scmRole_variablePreview = Qt::UserRole + 1;
 inline constexpr int scmRole_variableKeyIsIndex = Qt::UserRole + 2;
 inline constexpr int scmRole_variableHidden = Qt::UserRole + 3;
 
-class VariableTreeDelegate : public QStyledItemDelegate
+class VariableTreeDelegate : public EditorTreeRowDelegate
 {
     Q_OBJECT
 
 public:
-    Q_DISABLE_COPY(VariableTreeDelegate)
     explicit VariableTreeDelegate(TTreeWidget* pTree);
 
     [[nodiscard]] static QString variablePreview(TVar* pVar);
     static void setVariableRowData(QTreeWidgetItem* pItem, TVar* pVar, const bool hidden);
 
-    void restyle();
-
     void initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const override;
     void paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
-    bool editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index) override;
-    bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
     bool helpEvent(QHelpEvent* pEvent, QAbstractItemView* pView, const QStyleOptionViewItem& option, const QModelIndex& index) override;
-
-    // Viewport coordinates. Public for the tests that aim a synthesized click;
-    // the editor's events carry their own option.
-    [[nodiscard]] QRect keptHitRect(const QModelIndex& index) const;
-    [[nodiscard]] QRect chevronHitRect(const QModelIndex& index) const;
 
     // Drawn only: the row's own text stays the bare number, since the editor
     // finds the variable by it
@@ -79,11 +66,15 @@ signals:
     // since VarUnit decides which of a table's members may be kept.
     void keptToggleRequested();
 
+protected:
+    void restyleInks(const ThemeTokens& tokens) override;
+    void clearGlyphs() const override;
+    [[nodiscard]] bool carriesDot(const QModelIndex& index) const override;
+    void dotPressed() override;
+
 private:
     enum class KeptState { None = 0, Off = 1, Some = 2, All = 3 };
     static constexpr int scmKeptStateCount = 4;
-
-    enum class ChevronState { None = 0, Closed = 1, Open = 2 };
 
     enum class TypeMark { None = 0, Table = 1, String = 2, Number = 3, Boolean = 4, Function = 5, Other = 6 };
     static constexpr int scmTypeMarkCount = 7;
@@ -94,12 +85,6 @@ private:
         KeptState kept = KeptState::None;
         TypeMark type = TypeMark::None;
         bool unavailable = false;
-    };
-
-    struct Decoration
-    {
-        QIcon icon;
-        QSize size;
     };
 
     // Shared by paint() and helpEvent(), so a tooltip names what is drawn under the pointer
@@ -113,19 +98,12 @@ private:
     };
 
     [[nodiscard]] RowState stateOf(const QModelIndex& index) const;
-    [[nodiscard]] ChevronState chevronOf(const QModelIndex& index, const int level) const;
-    [[nodiscard]] QRect keptHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const;
-    [[nodiscard]] QRect chevronHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const;
-    [[nodiscard]] QStyleOptionViewItem rowOption(const QModelIndex& index) const;
+    [[nodiscard]] static QString typeGlyphFileFor(const TypeMark type);
 
-    void syncGlyphRatio() const;
     // Checked on paint, not in restyle(): an interface font change comes without a theme change
     void syncPreviewFont() const;
-    [[nodiscard]] qreal glyphRatio() const;
-    void clearGlyphs() const;
 
     [[nodiscard]] QPixmap keptGlyph(const KeptState kept, const bool selected) const;
-    [[nodiscard]] QPixmap chevronGlyph(const ChevronState chevron) const;
     [[nodiscard]] QPixmap typeGlyph(const TypeMark type, const QColor& ink, const int cacheSlot) const;
     [[nodiscard]] QPixmap hiddenGlyph(const QColor& ink, const int cacheSlot) const;
     [[nodiscard]] int inkSlotFor(const RowState& state, const bool selected) const;
@@ -135,28 +113,19 @@ private:
     // The option must already have been through initStyleOption()
     [[nodiscard]] RowLayout layoutOf(const QStyleOptionViewItem& option, const QModelIndex& index) const;
 
-    TTreeWidget* mpTree = nullptr;
-    int mIndentStep = 0;
     QColor mChromeInk;
     QColor mSelectedInk;
     QColor mDisabledInk;
     QColor mKeptFill;
-    QColor mAccentBar;
 
     mutable QFont mPreviewFont;
     mutable QFontMetrics mPreviewMetrics{QFont()};
     mutable QFont mMeasuredFrom;
-    mutable qreal mGlyphRatio = 0.0;
 
     static constexpr int scmInkCount = 3;
     mutable QPixmap mTypeGlyphs[scmInkCount * scmTypeMarkCount];
     mutable QPixmap mHiddenGlyphs[scmInkCount];
     mutable QPixmap mKeptGlyphs[2 * scmKeptStateCount];
-    mutable QPixmap mChevronGlyphs[3];
-    mutable QHash<int, Decoration> mDecorations;
-
-    bool mPressAnswered = false;
-    QPersistentModelIndex mLastKeptPressIndex;
 };
 
 } // namespace uiDesign

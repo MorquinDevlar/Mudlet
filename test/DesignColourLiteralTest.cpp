@@ -68,6 +68,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("dlgProfilePreferences.h"),
                           QStringLiteral("EditorTreeDelegate.cpp"),
                           QStringLiteral("EditorTreeDelegate.h"),
+                          QStringLiteral("EditorTreeRowDelegate.cpp"),
+                          QStringLiteral("EditorTreeRowDelegate.h"),
                           QStringLiteral("EditorTreeRowMetrics.cpp"),
                           QStringLiteral("EditorTreeRowMetrics.h"),
                           QStringLiteral("VariableTreeDelegate.cpp"),

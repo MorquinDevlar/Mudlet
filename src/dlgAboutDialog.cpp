@@ -162,10 +162,6 @@ dlgAboutDialog::dlgAboutDialog(QWidget* parent)
 
 void dlgAboutDialog::buildShell()
 {
-    // Hidden, not removed: the pages take their titles, and so their translations, from its tabs
-    tabWidget->hide();
-    detachFromLayout(tabWidget);
-
     mpWidget_shell = new QWidget(this);
     mpWidget_shell->setObjectName(qsl("aboutShell"));
     markAsShellSurface(mpWidget_shell);
@@ -290,10 +286,20 @@ QWidget* dlgAboutDialog::buildContentColumn()
     mpStackedWidget_pages->setObjectName(qsl("aboutStack"));
     markAsShellSurface(mpStackedWidget_pages);
 
-    const QList<QPair<QString, QPair<QString, QString>>> pages{{qsl("mudlet"), {tabWidget->tabText(0), qsl(":/icons/about-mudlet.svg")}},
-                                                               {qsl("supporters"), {tabWidget->tabText(1), qsl(":/icons/about-supporters.svg")}},
-                                                               {qsl("license"), {tabWidget->tabText(2), qsl(":/icons/about-license.svg")}},
-                                                               {qsl("thirdparty"), {tabWidget->tabText(3), qsl(":/icons/about-third-party.svg")}}};
+    // Translated in the .ui file's context, which the pages' titles were tabs in until the shell took them over,
+    // so every language keeps the words it already has
+    //: Title of the About window's page about Mudlet itself
+    const QString mudletTitle = QCoreApplication::translate("about_dialog", "Mudlet");
+    //: Title of the About window's page thanking the people who fund Mudlet
+    const QString supportersTitle = QCoreApplication::translate("about_dialog", "Supporters");
+    //: Title of the About window's page showing Mudlet's own licence
+    const QString licenseTitle = QCoreApplication::translate("about_dialog", "License");
+    //: Title of the About window's page listing the third-party components Mudlet is built with and their licences
+    const QString thirdPartyTitle = QCoreApplication::translate("about_dialog", "Third Party");
+    const QList<QPair<QString, QPair<QString, QString>>> pages{{qsl("mudlet"), {mudletTitle, qsl(":/icons/about-mudlet.svg")}},
+                                                               {qsl("supporters"), {supportersTitle, qsl(":/icons/about-supporters.svg")}},
+                                                               {qsl("license"), {licenseTitle, qsl(":/icons/about-license.svg")}},
+                                                               {qsl("thirdparty"), {thirdPartyTitle, qsl(":/icons/about-third-party.svg")}}};
     for (const auto& page : pages) {
         auto* pButton = new QToolButton(pNav);
         pButton->setObjectName(qsl("aboutNavButton_%1").arg(page.first));
