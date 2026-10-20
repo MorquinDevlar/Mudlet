@@ -37,6 +37,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
@@ -64,9 +65,6 @@ private:
         const QPixmap shot = mpEditor->grab();
         return shot.toImage().pixelColor(pWidget->mapTo(mpEditor, pointInWidget));
     }
-
-    // Flat fills, so the nearer of two surfaces is the one that was painted
-    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
 
     static QString describe(const QColor& measured, const uiDesign::ThemeTokens& tokens)
     {
@@ -177,7 +175,7 @@ private slots:
         const QColor measured = pixelOfWindowUnder(pPatternList, QPoint(pPatternList->width() - 3, pPatternList->height() - 3));
         qInfo().noquote() << qsl("  the form behind the patterns is painted %1").arg(describe(measured, tokens));
 
-        QVERIFY2(distanceBetween(measured, tokens.page) < distanceBetween(measured, tokens.field),
+        QVERIFY2(TestPixels::distance(measured, tokens.page) < TestPixels::distance(measured, tokens.field),
                  qPrintable(qsl("the form behind the patterns is painted %1 - it is nearer the field colour than the page, which is the sunken box the edit column used to read as")
                                     .arg(describe(measured, tokens))));
         QCOMPARE(measured.rgb(), tokens.page.rgb());
@@ -234,7 +232,7 @@ private slots:
         QVERIFY2(panel.rgb() != form.rgb(), qPrintable(qsl("the panel of items and the column an item is edited in are both painted %1, so the window is one flat expanse").arg(panel.name())));
         QVERIFY2(panel.rgb() == tokens.pane.rgb(), qPrintable(qsl("the panel of items is painted %1").arg(describe(panel, tokens))));
         QVERIFY2(panel.lightness() > tokens.page.lightness(), qPrintable(qsl("the panel of items is not lifted off the page: it is painted %1").arg(describe(panel, tokens))));
-        QVERIFY2(distanceBetween(panel, tokens.page) < distanceBetween(panel, tokens.card),
+        QVERIFY2(TestPixels::distance(panel, tokens.page) < TestPixels::distance(panel, tokens.card),
                  qPrintable(qsl("the panel of items is nearer a card than the page it lies beside: it is painted %1").arg(describe(panel, tokens))));
     }
 

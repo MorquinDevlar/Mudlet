@@ -43,6 +43,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgProfilePreferences.h"
 #include "dlgTriggerEditor.h"
@@ -365,7 +366,7 @@ private slots:
         QVERIFY2(painted.width() > 8 && painted.height() > 4, "the heading row does not land on the shot of the window");
 
         const auto distanceFromThePane = [&tokens](const QColor& colour) {
-            return std::abs(colour.red() - tokens.pane.red()) + std::abs(colour.green() - tokens.pane.green()) + std::abs(colour.blue() - tokens.pane.blue());
+            return TestPixels::distance(colour, tokens.pane);
         };
         QColor ink = tokens.pane;
         for (int y = painted.top(); y <= painted.bottom(); ++y) {

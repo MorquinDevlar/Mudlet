@@ -31,6 +31,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -55,9 +56,7 @@ private:
 
     static QString describe(const QPoint& point) { return qsl("(%1,%2)").arg(QString::number(point.x()), QString::number(point.y())); }
 
-    static QString describe(const QSize& size) { return qsl("%1x%2").arg(QString::number(size.width()), QString::number(size.height())); }
-
-    void report(const char* step) const { qInfo().noquote() << qsl("  %1: pos %2 size %3").arg(QString::fromLatin1(step), describe(mpEditor->pos()), describe(mpEditor->size())); }
+    void report(const char* step) const { qInfo().noquote() << qsl("  %1: pos %2 size %3").arg(QString::fromLatin1(step), describe(mpEditor->pos()), TestPixels::describe(mpEditor->size())); }
 
 private slots:
     void initTestCase()
@@ -84,7 +83,7 @@ private slots:
 
         QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
         mpHost = mSession.host();
-        qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), describe(mSeededSize));
+        qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), TestPixels::describe(mSeededSize));
     }
 
     void cleanupTestCase()
@@ -122,7 +121,7 @@ private slots:
         report("after hide and show");
 
         QVERIFY2(mpEditor->pos() == mDraggedPos, qPrintable(qsl("The editor was left at %1 and came back at %2 - it is moved on every show").arg(describe(mDraggedPos), describe(mpEditor->pos()))));
-        QVERIFY2(mpEditor->size() == sizeBefore, qPrintable(qsl("The editor was left at %1 and came back at %2").arg(describe(sizeBefore), describe(mpEditor->size()))));
+        QVERIFY2(mpEditor->size() == sizeBefore, qPrintable(qsl("The editor was left at %1 and came back at %2").arg(TestPixels::describe(sizeBefore), TestPixels::describe(mpEditor->size()))));
     }
 
     // positionDialogOnParentScreen() repositions any dialog that is not visible,
@@ -149,7 +148,7 @@ private slots:
 
         const QPoint storedPos = MudletApp::getQSettings()->value(qsl("script_editor_pos")).toPoint();
         const QSize storedSize = MudletApp::getQSettings()->value(qsl("script_editor_size")).toSize();
-        qInfo().noquote() << qsl("  in QSettings on close: pos %1 size %2").arg(describe(storedPos), describe(storedSize));
+        qInfo().noquote() << qsl("  in QSettings on close: pos %1 size %2").arg(describe(storedPos), TestPixels::describe(storedSize));
         QVERIFY2(storedPos == mDraggedPos, qPrintable(qsl("The editor was at %1 when it closed but stored %2").arg(describe(mDraggedPos), describe(storedPos))));
         QCOMPARE(storedSize, sizeBefore);
 

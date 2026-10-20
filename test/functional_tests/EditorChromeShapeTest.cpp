@@ -37,6 +37,7 @@
 #include "GripSplitter.h"
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
@@ -60,8 +61,6 @@ private:
     // Mirrors the actions toolbar's padding in applyEditorShellStyle(), which the
     // grip sits inside
     static constexpr int scmToolBarPadding = 6;
-
-    QImage windowShot() const { return mpEditor->grab().toImage(); }
 
     QSplitterHandle* paneSeam() const { return mpEditor->splitter_main->handle(1); }
 
@@ -150,7 +149,7 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = paneSeam();
-        const QList<QColor> row = acrossTheHandle(windowShot(), pHandle, pHandle->height() / 2);
+        const QList<QColor> row = acrossTheHandle(TestPixels::shot(mpEditor), pHandle, pHandle->height() / 2);
         const QPair<int, int> seam = runOf(row, tokens.separator);
 
         qInfo().noquote() << qsl("  across the %1px handle: %2; the seam is %3, the panel %4 and the page %5")
@@ -177,7 +176,7 @@ private slots:
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = paneSeam();
         hover(pHandle, true);
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         // Three heights rather than one: a three-pixel grip pill drawn across the
         // middle of the handle would pass a single reading taken there
         const QList<QPair<QString, QList<QColor>>> rows{{qsl("near its top"), acrossTheHandle(shot, pHandle, 4)},
@@ -200,7 +199,7 @@ private slots:
         qInfo().noquote() << qsl("  hovered: %1; the accent is %2").arg(measured.join(qsl("; ")), tokens.accent.name());
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("the hovered handle is not one lit seam from end to end: %1").arg(wrong.join(qsl(", ")))));
 
-        const QList<QColor> atRest = acrossTheHandle(windowShot(), pHandle, pHandle->height() / 2);
+        const QList<QColor> atRest = acrossTheHandle(TestPixels::shot(mpEditor), pHandle, pHandle->height() / 2);
         QVERIFY2(runOf(atRest, tokens.accent).second == 0, qPrintable(qsl("the seam stayed lit after the pointer left it: %1").arg(describe(atRest))));
     }
 
@@ -208,7 +207,7 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = codeHeading();
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         const QList<QColor> topRow = acrossTheHandle(shot, pHandle, 0);
         const QList<QColor> bottomRow = acrossTheHandle(shot, pHandle, pHandle->height() - 1);
 
@@ -227,7 +226,7 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = codeHeading();
-        const QColor middle = windowShot().pixelColor(pHandle->mapTo(mpEditor, pHandle->rect().center()));
+        const QColor middle = TestPixels::shot(mpEditor).pixelColor(pHandle->mapTo(mpEditor, pHandle->rect().center()));
         qInfo().noquote()
                 << qsl("  the middle of the %1x%2 strip is %3; the strip is %4").arg(QString::number(pHandle->width()), QString::number(pHandle->height()), middle.name(), tokens.separator.name());
         QVERIFY2(middle.rgb() == tokens.separator.rgb(),
@@ -248,13 +247,13 @@ private slots:
         };
 
         hover(pHandle, true);
-        const QImage lit = windowShot();
+        const QImage lit = TestPixels::shot(mpEditor);
         QList<QColor> band;
         for (int y = 0; y < 4; ++y) {
             band << toneAt(lit, y);
         }
         hover(pHandle, false);
-        const QColor atRest = toneAt(windowShot(), 0);
+        const QColor atRest = toneAt(TestPixels::shot(mpEditor), 0);
 
         qInfo().noquote() << qsl("  hovered, the first four rows are %1; at rest the top row is %2. The accent is %3 and the strip %4")
                                      .arg(describe(band), atRest.name(), tokens.accent.name(), tokens.separator.name());
@@ -286,13 +285,13 @@ private slots:
 
         QVERIFY2(mpEditor->splitter_right->setHandleResizes(1, false), "the code pane's heading is not a handle this can be asked of");
         hover(pHandle, true);
-        const QColor whileInert = topRow(windowShot());
+        const QColor whileInert = topRow(TestPixels::shot(mpEditor));
         hover(pHandle, false);
 
         // Control: a band that never appears would otherwise pass this case
         QVERIFY(mpEditor->splitter_right->setHandleResizes(1, true));
         hover(pHandle, true);
-        const QColor whileDragging = topRow(windowShot());
+        const QColor whileDragging = topRow(TestPixels::shot(mpEditor));
         hover(pHandle, false);
 
         qInfo().noquote() << qsl("  hovered, the top row reads %1 while the heading drags nothing and %2 while it drags; the strip is %3 and the accent %4")
@@ -314,7 +313,7 @@ private slots:
         const int extent = pToolBar->style()->pixelMetric(QStyle::PM_ToolBarHandleExtent, nullptr, pToolBar);
         const int strip = extent + scmToolBarPadding;
 
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         int inked = 0;
         qreal strongest = 0.0;
         QColor strongestColour;
@@ -371,7 +370,7 @@ private slots:
         QTest::qWait(50ms);
         QVERIFY2(pWell->isVisible() && pWell->width() > 8 && pWell->height() > 8, "The colour well is not on show, so there is nothing to measure");
 
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         const auto at = [&](const QPoint& point) {
             return shot.pixelColor(pWell->mapTo(mpEditor, point));
         };
@@ -399,7 +398,7 @@ private slots:
         // A fraction rather than a match, as a 1.5px stroke is antialiased;
         // qAbs, as on a dark page the words are lighter than the card
         const auto strongestInk = [&]() {
-            const QImage shot = windowShot();
+            const QImage shot = TestPixels::shot(mpEditor);
             qreal strongest = 0.0;
             for (int x = 0; x < pClear->width(); ++x) {
                 for (int y = 0; y < pClear->height(); ++y) {

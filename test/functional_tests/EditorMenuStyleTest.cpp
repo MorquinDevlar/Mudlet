@@ -37,6 +37,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -114,8 +115,6 @@ private:
         return pButton->style()->subControlRect(QStyle::CC_ToolButton, &option, QStyle::SC_ToolButtonMenu, pButton);
     }
 
-    QImage grabOfTheBar() const { return mpEditor->toolBar->grab().toImage().convertToFormat(QImage::Format_ARGB32); }
-
     // The wait lets the button take the hover state and be asked to paint
     static void pointAt(QWidget* pWidget, const QPoint& where)
     {
@@ -153,15 +152,13 @@ private:
         return QRect(QPoint(qRound(box.left() * ratio), qRound(box.top() * ratio)), QPoint(qRound((box.right() + 1) * ratio) - 1, qRound((box.bottom() + 1) * ratio) - 1)).intersected(shot.rect());
     }
 
-    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
-
     static int markedPixelsIn(const QImage& shot, const QRect& box, const QColor& fill)
     {
         const QRect inside = box.adjusted(box.width() / 4, box.height() / 4, -box.width() / 4, -box.height() / 4);
         int marked = 0;
         for (int y = inside.top(); y <= inside.bottom(); ++y) {
             for (int x = inside.left(); x <= inside.right(); ++x) {
-                if (distanceBetween(shot.pixelColor(x, y), fill) > scmMarkInkSlack) {
+                if (TestPixels::distance(shot.pixelColor(x, y), fill) > scmMarkInkSlack) {
                     ++marked;
                 }
             }
@@ -178,7 +175,7 @@ private:
         const QColor surface = shot.pixelColor(row.left(), middle);
         const int size = qRound(uiDesign::scmChoiceIndicatorSize * shot.devicePixelRatio());
         for (int x = row.left(); x < std::min(row.left() + 3 * size, row.right()); ++x) {
-            if (distanceBetween(shot.pixelColor(x, middle), surface) > scmMarkInkSlack) {
+            if (TestPixels::distance(shot.pixelColor(x, middle), surface) > scmMarkInkSlack) {
                 return QRect(x, middle - size / 2, size, size).intersected(shot.rect());
             }
         }
@@ -245,9 +242,9 @@ private slots:
         const QColor hairline = QColor::fromRgba(shot.pixel(0, middle));
         const QColor surface = QColor::fromRgba(shot.pixel(qRound(2 * ratio), middle));
         QVERIFY2(corner.alpha() == 0, qPrintable(qsl("the menu's corner is painted %1 rather than cut away, so its radius has a square window behind it").arg(corner.name(QColor::HexArgb))));
-        QVERIFY2(hairline.alpha() == 255 && distanceBetween(hairline, tokens.border) <= scmMarkInkSlack,
+        QVERIFY2(hairline.alpha() == 255 && TestPixels::distance(hairline, tokens.border) <= scmMarkInkSlack,
                  qPrintable(qsl("the menu's edge reads %1 rather than the design's hairline of %2").arg(hairline.name(QColor::HexArgb), tokens.border.name())));
-        QVERIFY2(surface.alpha() == 255 && distanceBetween(surface, tokens.card) <= scmMarkInkSlack,
+        QVERIFY2(surface.alpha() == 255 && TestPixels::distance(surface, tokens.card) <= scmMarkInkSlack,
                  qPrintable(qsl("the menu is painted %1 rather than the card surface's %2").arg(surface.name(QColor::HexArgb), tokens.card.name())));
     }
 
@@ -269,7 +266,7 @@ private slots:
 
         // Off the button first: an earlier case may have left it hovered
         pointAt(mpEditor->toolBar, QPoint(2, 2));
-        const QImage rest = grabOfTheBar();
+        const QImage rest = TestPixels::shot(mpEditor->toolBar);
         const QRect halfInGrab = inTheGrabsPixels(rest, QRect(pButton->mapTo(mpEditor->toolBar, half.topLeft()), half.size()));
         QVERIFY2(halfInGrab.width() > 4 && halfInGrab.height() > 8, "the menu half does not land inside the grab of the bar");
 
@@ -286,7 +283,7 @@ private slots:
             if (!readAs.isValid()) {
                 readAs = sample;
             }
-            if (distanceBetween(sample, tokens.border) <= scmMarkInkSlack) {
+            if (TestPixels::distance(sample, tokens.border) <= scmMarkInkSlack) {
                 ++onTheLine;
             }
         }
@@ -306,7 +303,7 @@ private slots:
                                     .arg(onTheLine)
                                     .arg(rows)
                                     .arg(tokens.border.name(), readAs.name())));
-        QVERIFY2(distanceBetween(justInside, tokens.border) > scmMarkInkSlack,
+        QVERIFY2(TestPixels::distance(justInside, tokens.border) > scmMarkInkSlack,
                  qPrintable(qsl("the half is filled with the hairline's own tone (%1 a few pixels in), so what was read at its edge is a fill rather than a seam").arg(justInside.name())));
 
         // The wash band sits clear of the seam and the chevron; the face band sits
@@ -321,21 +318,21 @@ private slots:
         // answer hitTestComplexControl for CC_ToolButton, so the button reports
         // SC_ToolButton anywhere on it and no sheet can tell the halves apart
         pointAt(pButton, half.center());
-        const QImage lit = grabOfTheBar();
+        const QImage lit = TestPixels::shot(mpEditor->toolBar);
         const QColor litHalf = averageColour(lit, wash);
         const QColor litFace = averageColour(lit, face);
 
-        const int faceToAccent = distanceBetween(litFace, tokens.accent);
-        const int halfToAccent = distanceBetween(litHalf, tokens.accent);
+        const int faceToAccent = TestPixels::distance(litFace, tokens.accent);
+        const int halfToAccent = TestPixels::distance(litHalf, tokens.accent);
         qInfo().noquote() << qsl("  the half reads %1 at rest and %2 pointed at, against the %3 of the face beside it; those two are %4 and %5 from the accent's %6")
                                      .arg(atRest.name(), litHalf.name(), litFace.name())
                                      .arg(halfToAccent)
                                      .arg(faceToAccent)
                                      .arg(tokens.accent.name());
-        QVERIFY2(distanceBetween(litHalf, atRest) > 2,
+        QVERIFY2(TestPixels::distance(litHalf, atRest) > 2,
                  qPrintable(qsl("pointing at the button changed nothing on the half (%1 against %2 at rest), so the pointer never reached it and nothing below can be read")
                                     .arg(litHalf.name(), atRest.name())));
-        QVERIFY2(distanceBetween(litHalf, litFace) > 8,
+        QVERIFY2(TestPixels::distance(litHalf, litFace) > 8,
                  qPrintable(qsl("the pointed-at half reads %1 against the %2 of the face beside it, so it is drawn as one piece with the body").arg(litHalf.name(), litFace.name())));
         QVERIFY2(halfToAccent < faceToAccent,
                  qPrintable(qsl("the pointed-at half is %1 from the accent against the %2 of the face beside it, so it does not light towards the accent").arg(halfToAccent).arg(faceToAccent)));
@@ -388,7 +385,7 @@ private slots:
         int nearest = 3 * 255;
         for (int y = emptyBox.top(); y <= emptyBox.bottom(); ++y) {
             for (int x = emptyBox.left(); x <= emptyBox.right(); ++x) {
-                nearest = std::min(nearest, distanceBetween(checked.pixelColor(x, y), markInk));
+                nearest = std::min(nearest, TestPixels::distance(checked.pixelColor(x, y), markInk));
             }
         }
 

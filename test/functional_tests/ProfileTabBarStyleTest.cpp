@@ -43,6 +43,7 @@
 #include <QtTest/QtTest>
 
 #include "DarkTheme.h"
+#include "PixelTestHelper.h"
 #include "TTabBar.h"
 #include "uiDesign.h"
 
@@ -106,24 +107,7 @@ private:
     // Mixed here rather than asked of TStyle, so the test is an independent reading of the rule
     static QColor chosenFillOnLightPage(const uiDesign::ThemeTokens& tokens) { return uiDesign::readableOn(tokens.field, tokens.accent, tokens.text, uiDesign::scmTextMinimumRatio); }
 
-    static QColor composited(const QColor& ink, const QColor& surface)
-    {
-        if (ink.alpha() == 255) {
-            return ink;
-        }
-        const qreal weight = ink.alphaF();
-        return QColor::fromRgbF(
-                ink.redF() * weight + surface.redF() * (1.0 - weight), ink.greenF() * weight + surface.greenF() * (1.0 - weight), ink.blueF() * weight + surface.blueF() * (1.0 - weight));
-    }
-
-    static bool readsAs(const QColor& read, const QColor& wanted, const int tolerance = scmInkTolerance)
-    {
-        return std::abs(read.red() - wanted.red()) <= tolerance && std::abs(read.green() - wanted.green()) <= tolerance && std::abs(read.blue() - wanted.blue()) <= tolerance;
-    }
-
     static QString saidAs(const QColor& colour) { return colour.name(QColor::HexArgb); }
-
-    static QString saidAs(const QRect& box) { return qsl("%1,%2 %3x%4").arg(QString::number(box.left()), QString::number(box.top()), QString::number(box.width()), QString::number(box.height())); }
 
     // A never-shown widget keeps its resize pending until rendered, and QTabBar lays out its tabs
     // on that event, so the chips would be measured for a top-level's default width
@@ -132,23 +116,6 @@ private:
         QResizeEvent resized(pTabBar->size(), QSize());
         QApplication::sendEvent(pTabBar, &resized);
         QCoreApplication::processEvents();
-    }
-
-    QImage grabTheBar() const
-    {
-        QCoreApplication::processEvents();
-        return mpTabBar->grab().toImage().convertToFormat(QImage::Format_ARGB32);
-    }
-
-    // A grab is in device pixels; the rectangles here are logical
-    static QColor sampled(const QImage& image, const QPoint& at)
-    {
-        const qreal ratio = image.devicePixelRatio();
-        const QPoint device(qRound(at.x() * ratio), qRound(at.y() * ratio));
-        if (!image.rect().contains(device)) {
-            return QColor();
-        }
-        return QColor(image.pixel(device));
     }
 
     static QColor commonestColour(const QImage& image)
@@ -174,17 +141,14 @@ private:
     // stronger ink as more word
     static int inkCoverage(const QImage& strip, const QRect& box, const QColor& ink)
     {
-        const auto separation = [](const QColor& from, const QColor& to) {
-            return std::abs(from.red() - to.red()) + std::abs(from.green() - to.green()) + std::abs(from.blue() - to.blue());
-        };
         const qreal ratio = strip.devicePixelRatio();
         const QRect scanned = QRect(qRound(box.left() * ratio), qRound(box.top() * ratio), qRound(box.width() * ratio), qRound(box.height() * ratio)) & strip.rect();
         const QColor behind = commonestColour(strip.copy(scanned));
-        const int reach = separation(behind, ink);
+        const int reach = TestPixels::distance(behind, ink);
         int touched = 0;
         for (int y = scanned.top(); y <= scanned.bottom(); ++y) {
             for (int x = scanned.left(); x <= scanned.right(); ++x) {
-                if (2 * separation(QColor(strip.pixel(x, y)), behind) >= reach) {
+                if (2 * TestPixels::distance(QColor(strip.pixel(x, y)), behind) >= reach) {
                     ++touched;
                 }
             }
@@ -194,18 +158,15 @@ private:
 
     static int inkedWidth(const QImage& strip, const QRect& box, const QColor& ink)
     {
-        const auto separation = [](const QColor& from, const QColor& to) {
-            return std::abs(from.red() - to.red()) + std::abs(from.green() - to.green()) + std::abs(from.blue() - to.blue());
-        };
         const qreal ratio = strip.devicePixelRatio();
         const QRect scanned = QRect(qRound(box.left() * ratio), qRound(box.top() * ratio), qRound(box.width() * ratio), qRound(box.height() * ratio)) & strip.rect();
         const QColor behind = commonestColour(strip.copy(scanned));
-        const int reach = separation(behind, ink);
+        const int reach = TestPixels::distance(behind, ink);
         int left = -1;
         int right = -1;
         for (int x = scanned.left(); x <= scanned.right(); ++x) {
             for (int y = scanned.top(); y <= scanned.bottom(); ++y) {
-                if (2 * separation(QColor(strip.pixel(x, y)), behind) >= reach) {
+                if (2 * TestPixels::distance(QColor(strip.pixel(x, y)), behind) >= reach) {
                     left = left < 0 ? x : left;
                     right = x;
                     break;
@@ -257,18 +218,19 @@ private:
 
     void theChosenChipIsWashed()
     {
-        const QImage strip = grabTheBar();
+        const QImage strip = TestPixels::shot(mpTabBar);
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QColor surface = commonestColour(strip);
 
-        const QColor resting = sampled(strip, washSpot(2));
-        QVERIFY2(readsAs(resting, surface, 0),
+        const QColor resting = TestPixels::sampled(strip, washSpot(2));
+        QVERIFY2(TestPixels::readsAs(resting, surface, 0),
                  qPrintable(qsl("a tab that is not the one on show is drawn on something other than the strip's own surface: %1 rather than %2").arg(saidAs(resting), saidAs(surface))));
-        const QColor restingEdge = sampled(strip, barSpot(2));
-        QVERIFY2(readsAs(restingEdge, surface, 0), qPrintable(qsl("a tab that is not on show carries a bar on its leading edge: %1").arg(saidAs(restingEdge))));
+        const QColor restingEdge = TestPixels::sampled(strip, barSpot(2));
+        QVERIFY2(TestPixels::readsAs(restingEdge, surface, 0), qPrintable(qsl("a tab that is not on show carries a bar on its leading edge: %1").arg(saidAs(restingEdge))));
         const QRect restingChip = chipOf(2);
-        const QColor restingTop = sampled(strip, QPoint(restingChip.center().x(), restingChip.top()));
-        QVERIFY2(readsAs(restingTop, surface, 0), qPrintable(qsl("a tab that is not on show is outlined: %1 on its top edge rather than the strip's own %2").arg(saidAs(restingTop), saidAs(surface))));
+        const QColor restingTop = TestPixels::sampled(strip, QPoint(restingChip.center().x(), restingChip.top()));
+        QVERIFY2(TestPixels::readsAs(restingTop, surface, 0),
+                 qPrintable(qsl("a tab that is not on show is outlined: %1 on its top edge rather than the strip's own %2").arg(saidAs(restingTop), saidAs(surface))));
 
         const QRect chosenChip = chipOf(0);
         if (!tokens.darkPage) {
@@ -281,24 +243,27 @@ private:
             };
             const Spot spots[]{{"inside its leading padding", washSpot(0)}, {"where a bar would stand", barSpot(0)}, {"on its top edge", QPoint(chosenChip.center().x(), chosenChip.top())}};
             for (const Spot& spot : spots) {
-                const QColor read = sampled(strip, spot.at);
-                QVERIFY2(readsAs(read, fill),
+                const QColor read = TestPixels::sampled(strip, spot.at);
+                QVERIFY2(TestPixels::readsAs(read, fill, scmInkTolerance),
                          qPrintable(qsl("the tab on show is not filled with %1, the accent %2 walked until the field's white reads on it: %3 it is %4")
                                             .arg(saidAs(fill), saidAs(tokens.accent), QString::fromUtf8(spot.where), saidAs(read))));
             }
             return;
         }
 
-        const QColor chosen = sampled(strip, washSpot(0));
-        const QColor wanted = composited(tokens.accentWash, surface);
-        QVERIFY2(readsAs(chosen, wanted), qPrintable(qsl("the tab on show is not washed in the accent: %1 where the accent wash over %2 is %3").arg(saidAs(chosen), saidAs(surface), saidAs(wanted))));
+        const QColor chosen = TestPixels::sampled(strip, washSpot(0));
+        const QColor wanted = TestPixels::composited(tokens.accentWash, surface);
+        QVERIFY2(TestPixels::readsAs(chosen, wanted, scmInkTolerance),
+                 qPrintable(qsl("the tab on show is not washed in the accent: %1 where the accent wash over %2 is %3").arg(saidAs(chosen), saidAs(surface), saidAs(wanted))));
 
         // On a dark page the wash alone does not say which profile is on show
-        const QColor bar = sampled(strip, barSpot(0));
-        QVERIFY2(readsAs(bar, tokens.accent), qPrintable(qsl("the tab on show has no accent bar on its leading edge: %1 where the accent is %2").arg(saidAs(bar), saidAs(tokens.accent))));
+        const QColor bar = TestPixels::sampled(strip, barSpot(0));
+        QVERIFY2(TestPixels::readsAs(bar, tokens.accent, scmInkTolerance),
+                 qPrintable(qsl("the tab on show has no accent bar on its leading edge: %1 where the accent is %2").arg(saidAs(bar), saidAs(tokens.accent))));
 
-        const QColor edge = sampled(strip, QPoint(chosenChip.center().x(), chosenChip.top()));
-        QVERIFY2(readsAs(edge, tokens.accent), qPrintable(qsl("the tab on show has no accent outline: %1 on its top edge where the accent is %2").arg(saidAs(edge), saidAs(tokens.accent))));
+        const QColor edge = TestPixels::sampled(strip, QPoint(chosenChip.center().x(), chosenChip.top()));
+        QVERIFY2(TestPixels::readsAs(edge, tokens.accent, scmInkTolerance),
+                 qPrintable(qsl("the tab on show has no accent outline: %1 on its top edge where the accent is %2").arg(saidAs(edge), saidAs(tokens.accent))));
     }
 
     // The accent ink at the design's floor was mixed against the deepest wash and fades into this
@@ -306,9 +271,9 @@ private:
     // only the glyph's stems are at full ink.
     void theChosenWordIsStrong()
     {
-        const QImage strip = grabTheBar();
+        const QImage strip = TestPixels::shot(mpTabBar);
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const QColor behind = tokens.darkPage ? composited(tokens.accentWash, commonestColour(strip)) : chosenFillOnLightPage(tokens);
+        const QColor behind = tokens.darkPage ? TestPixels::composited(tokens.accentWash, commonestColour(strip)) : chosenFillOnLightPage(tokens);
 
         QStyleOptionTab option;
         mpTabBar->initStyleOption(&option, 0);
@@ -332,7 +297,7 @@ private:
 
         if (!tokens.darkPage) {
             const qreal inkReads = uiDesign::contrastRatio(tokens.field, behind);
-            const bool atFullInk = readsAs(strongestInk, tokens.field);
+            const bool atFullInk = TestPixels::readsAs(strongestInk, tokens.field, scmInkTolerance);
             if (!atFullInk) {
                 qDebug("no pixel of the word is at the field's own white, so it is read by how far it reaches instead");
             }
@@ -361,16 +326,18 @@ private:
 
         // Tab 2 rests on the page; the chosen chip's light-page fill is checked separately below
         mpTabBar->setTabConnectionIndicator(2, TabConnectionIndicator::Connected);
-        QImage strip = grabTheBar();
-        const QColor dot = sampled(strip, indicatorOf(2).center());
+        QImage strip = TestPixels::shot(mpTabBar);
+        const QColor dot = TestPixels::sampled(strip, indicatorOf(2).center());
         const QColor wantedDot = uiDesign::readableOn(tokens.page, uiDesign::stateColor(uiDesign::scmStateHue_ok, tokens.darkPage), tokens.text, uiDesign::scmQuietMinimumRatio);
-        QVERIFY2(readsAs(dot, wantedDot), qPrintable(qsl("a connected profile's dot is not the state colour for something working: %1 rather than %2").arg(saidAs(dot), saidAs(wantedDot))));
+        QVERIFY2(TestPixels::readsAs(dot, wantedDot, scmInkTolerance),
+                 qPrintable(qsl("a connected profile's dot is not the state colour for something working: %1 rather than %2").arg(saidAs(dot), saidAs(wantedDot))));
 
         mpTabBar->setTabConnectionIndicator(2, TabConnectionIndicator::Disconnected);
-        strip = grabTheBar();
+        strip = TestPixels::shot(mpTabBar);
         const QRect box = indicatorOf(2);
-        const QColor ring = sampled(strip, QPoint(box.left(), box.center().y()));
-        QVERIFY2(readsAs(ring, tokens.mutedText), qPrintable(qsl("a disconnected profile's ring is not drawn in the chrome tone: %1 rather than %2").arg(saidAs(ring), saidAs(tokens.mutedText))));
+        const QColor ring = TestPixels::sampled(strip, QPoint(box.left(), box.center().y()));
+        QVERIFY2(TestPixels::readsAs(ring, tokens.mutedText, scmInkTolerance),
+                 qPrintable(qsl("a disconnected profile's ring is not drawn in the chrome tone: %1 rather than %2").arg(saidAs(ring), saidAs(tokens.mutedText))));
 
         mpTabBar->setTabConnectionIndicator(2, TabConnectionIndicator::None);
         QCoreApplication::processEvents();
@@ -382,18 +349,18 @@ private:
         // A dot walked for the page, or a ring in the chrome tone, would be swallowed by a light page's fill
         const QColor fill = chosenFillOnLightPage(tokens);
         mpTabBar->setTabConnectionIndicator(0, TabConnectionIndicator::Connected);
-        strip = grabTheBar();
-        const QColor chosenDot = sampled(strip, indicatorOf(0).center());
+        strip = TestPixels::shot(mpTabBar);
+        const QColor chosenDot = TestPixels::sampled(strip, indicatorOf(0).center());
         const QColor wantedChosenDot = uiDesign::readableOn(fill, uiDesign::stateColor(uiDesign::scmStateHue_ok, tokens.darkPage), tokens.text, uiDesign::scmQuietMinimumRatio);
-        QVERIFY2(readsAs(chosenDot, wantedChosenDot),
+        QVERIFY2(TestPixels::readsAs(chosenDot, wantedChosenDot, scmInkTolerance),
                  qPrintable(qsl("the dot on the tab on show is not the state colour walked against the fill %1 it stands on: %2 rather than %3")
                                     .arg(saidAs(fill), saidAs(chosenDot), saidAs(wantedChosenDot))));
 
         mpTabBar->setTabConnectionIndicator(0, TabConnectionIndicator::Disconnected);
-        strip = grabTheBar();
+        strip = TestPixels::shot(mpTabBar);
         const QRect chosenBox = indicatorOf(0);
-        const QColor chosenRing = sampled(strip, QPoint(chosenBox.left(), chosenBox.center().y()));
-        QVERIFY2(readsAs(chosenRing, tokens.field),
+        const QColor chosenRing = TestPixels::sampled(strip, QPoint(chosenBox.left(), chosenBox.center().y()));
+        QVERIFY2(TestPixels::readsAs(chosenRing, tokens.field, scmInkTolerance),
                  qPrintable(qsl("the ring on the tab on show is not drawn in the field's white its word is: %1 rather than %2").arg(saidAs(chosenRing), saidAs(tokens.field))));
 
         mpTabBar->setTabConnectionIndicator(0, TabConnectionIndicator::None);
@@ -528,7 +495,7 @@ private slots:
         for (int i = 0; i < bar.count(); ++i) {
             QVERIFY2(bar.tabRect(i) == before.at(i),
                      qPrintable(qsl("chip %1 stood at %2 and moved to %3 when the choice moved to the chip beside it, so the whole strip steps sideways on every switch")
-                                        .arg(QString::number(i), saidAs(before.at(i)), saidAs(bar.tabRect(i)))));
+                                        .arg(QString::number(i), TestPixels::describe(before.at(i)), TestPixels::describe(bar.tabRect(i)))));
         }
     }
 
@@ -608,7 +575,8 @@ private slots:
         QVERIFY2(bar.tabBold(index), "the mark for new output did not go on");
         QCoreApplication::processEvents();
         QVERIFY2(bar.tabRect(index) == before,
-                 qPrintable(qsl("the tab stood at %1 and moved to %2 when its mark went on, so the strip steps sideways whenever output arrives").arg(saidAs(before), saidAs(bar.tabRect(index)))));
+                 qPrintable(qsl("the tab stood at %1 and moved to %2 when its mark went on, so the strip steps sideways whenever output arrives")
+                                    .arg(TestPixels::describe(before), TestPixels::describe(bar.tabRect(index)))));
 
         const QImage strip = bar.grab().toImage().convertToFormat(QImage::Format_ARGB32);
         const int inked = inkedWidth(strip, bar.tabRect(index), uiDesign::themeTokens().mutedText);
@@ -658,7 +626,7 @@ private slots:
         mpTabBar->setCurrentIndex(0);
         mpTabBar->setTabConnectionIndicator(1, TabConnectionIndicator::Connected);
         hoverOver(2);
-        grabTheBar();
+        TestPixels::shot(mpTabBar);
         mpTabBar->setTabConnectionIndicator(1, TabConnectionIndicator::None);
         QVERIFY2(pTrap->mPainted.isEmpty(), qPrintable(qsl("drawing the strip painted through the bare native style: %1").arg(pTrap->mPainted.join(qsl(", ")))));
 
@@ -689,10 +657,7 @@ private slots:
         const QImage drawn = pCross->grab().toImage().convertToFormat(QImage::Format_ARGB32);
         const QColor surface = commonestColour(drawn);
 
-        const auto distance = [](const QColor& from, const QColor& to) {
-            return std::abs(from.red() - to.red()) + std::abs(from.green() - to.green()) + std::abs(from.blue() - to.blue());
-        };
-        const int chromeReach = distance(surface, tokens.mutedText);
+        const int chromeReach = TestPixels::distance(surface, tokens.mutedText);
         QVERIFY2(chromeReach > 0, "the chrome tone is the surface itself here, so nothing could be told from a drawn mark");
 
         int furthest = 0;
@@ -702,11 +667,11 @@ private slots:
         for (int y = 0; y < drawn.height(); ++y) {
             for (int x = 0; x < drawn.width(); ++x) {
                 const QColor pixel(drawn.pixel(x, y));
-                if (distance(surface, pixel) > furthest) {
-                    furthest = distance(surface, pixel);
+                if (TestPixels::distance(surface, pixel) > furthest) {
+                    furthest = TestPixels::distance(surface, pixel);
                     furthestInk = pixel;
                 }
-                if (distance(surface, pixel) > 3 * scmInkTolerance) {
+                if (TestPixels::distance(surface, pixel) > 3 * scmInkTolerance) {
                     marked |= QRect(x, y, 1, 1);
                 }
             }
@@ -739,7 +704,7 @@ private slots:
         // own grab paints the page behind its mark rather than the chip under it.
         QAbstractButton* pChosenCross = crossOf(0);
         QVERIFY(pChosenCross);
-        const QImage strip = grabTheBar();
+        const QImage strip = TestPixels::shot(mpTabBar);
         const qreal stripRatio = strip.devicePixelRatio();
         const QRect box = pChosenCross->geometry();
         const QRect scanned = QRect(qRound(box.left() * stripRatio), qRound(box.top() * stripRatio), qRound(box.width() * stripRatio), qRound(box.height() * stripRatio)) & strip.rect();
@@ -747,9 +712,10 @@ private slots:
 
         const QColor fill = chosenFillOnLightPage(tokens);
         const QColor filled = commonestColour(strip.copy(scanned));
-        QVERIFY2(readsAs(filled, fill), qPrintable(qsl("the cross on the tab on show is not standing on the fill: what is behind it is %1 rather than %2").arg(saidAs(filled), saidAs(fill))));
+        QVERIFY2(TestPixels::readsAs(filled, fill, scmInkTolerance),
+                 qPrintable(qsl("the cross on the tab on show is not standing on the fill: what is behind it is %1 rather than %2").arg(saidAs(filled), saidAs(fill))));
 
-        const int inkReach = distance(fill, tokens.field);
+        const int inkReach = TestPixels::distance(fill, tokens.field);
         QVERIFY2(inkReach > 0, "the field's white is the fill itself here, so nothing could be told from a drawn mark");
 
         int chosenFurthest = 0;
@@ -757,8 +723,8 @@ private slots:
         for (int y = scanned.top(); y <= scanned.bottom(); ++y) {
             for (int x = scanned.left(); x <= scanned.right(); ++x) {
                 const QColor pixel(strip.pixel(x, y));
-                if (distance(fill, pixel) > chosenFurthest) {
-                    chosenFurthest = distance(fill, pixel);
+                if (TestPixels::distance(fill, pixel) > chosenFurthest) {
+                    chosenFurthest = TestPixels::distance(fill, pixel);
                     chosenFurthestInk = pixel;
                 }
             }
@@ -769,7 +735,7 @@ private slots:
                                     .arg(saidAs(fill), saidAs(chosenFurthestInk), QString::number(chosenFurthest), QString::number(inkReach), saidAs(tokens.field))));
         // Past what the chrome tone reaches on the fill even at full coverage, which tells a cross
         // written for the fill from one still in the page's grey
-        const int chromeOnTheFill = distance(fill, tokens.mutedText);
+        const int chromeOnTheFill = TestPixels::distance(fill, tokens.mutedText);
         QVERIFY2(chosenFurthest > chromeOnTheFill + scmInkTolerance,
                  qPrintable(qsl("the cross on the tab on show is still inked in the chrome tone %1 rather than in the field's white %2: its furthest pixel %3 gets %4 from the fill, where the "
                                 "chrome tone itself gets %5")
@@ -782,13 +748,14 @@ private slots:
     void test_theHoveredChipIsWashed()
     {
         hoverOver(1);
-        const QImage strip = grabTheBar();
+        const QImage strip = TestPixels::shot(mpTabBar);
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QColor surface = commonestColour(strip);
 
-        const QColor hovered = sampled(strip, washSpot(1));
-        const QColor wanted = composited(tokens.hoverWash, surface);
-        QVERIFY2(readsAs(hovered, wanted), qPrintable(qsl("the chip under the pointer is not washed: %1 where the hover wash over %2 is %3").arg(saidAs(hovered), saidAs(surface), saidAs(wanted))));
+        const QColor hovered = TestPixels::sampled(strip, washSpot(1));
+        const QColor wanted = TestPixels::composited(tokens.hoverWash, surface);
+        QVERIFY2(TestPixels::readsAs(hovered, wanted, scmInkTolerance),
+                 qPrintable(qsl("the chip under the pointer is not washed: %1 where the hover wash over %2 is %3").arg(saidAs(hovered), saidAs(surface), saidAs(wanted))));
     }
 
     void test_bothAppearances()
