@@ -37,6 +37,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TTreeWidget.h"
 #include "dlgTriggerEditor.h"
@@ -71,10 +72,6 @@ private:
 
     TTreeWidget* tree() const { return mpEditor->treeWidget_triggers; }
 
-    // The whole window, not the tree: a widget grabbed on its own comes back
-    // without the pane that shows through it
-    QImage windowShot() const { return mpEditor->grab().toImage(); }
-
     QPoint inViewport(const QPoint& point) const { return tree()->viewport()->mapTo(mpEditor, point); }
 
     // The viewport's full width: an indented row's visualItemRect starts past
@@ -84,9 +81,6 @@ private:
         const QRect rowRect = tree()->visualItemRect(pItem);
         return QRect(0, rowRect.top(), tree()->viewport()->width(), rowRect.height());
     }
-
-    // Both surfaces are flat fills, so at a blended pixel the nearer one was painted
-    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
 
     static QString describe(const QColor& measured, const uiDesign::ThemeTokens& tokens)
     {
@@ -152,7 +146,7 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QRect band = rowBand(mpInnerGroup);
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         const int y = band.top() + 1;
 
         // The second indentation step: this row's chevron, and the innermost
@@ -182,7 +176,7 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QRect band = rowBand(mpInnerGroup);
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
 
         const QColor fill = shot.pixelColor(inViewport(QPoint(band.center().x(), band.top() + 1)));
         const QColor topMiddle = shot.pixelColor(inViewport(QPoint(band.center().x(), band.top())));
@@ -209,8 +203,8 @@ private slots:
                      qPrintable(qsl("the chosen row's %1 corner is not cut away to the panel: it is painted %2, %3 off the panel and %4 off the row's own fill of %5")
                                         .arg(corner.first,
                                              describe(corner.second, tokens),
-                                             QString::number(distanceBetween(corner.second, tokens.pane)),
-                                             QString::number(distanceBetween(corner.second, fill)),
+                                             QString::number(TestPixels::distance(corner.second, tokens.pane)),
+                                             QString::number(TestPixels::distance(corner.second, fill)),
                                              fill.name())));
         }
     }
@@ -226,7 +220,7 @@ private slots:
         // selection's rather than every row's
         const QRect plainBand = rowBand(mpOuterGroup);
         QVERIFY2(plainBand.top() < chosenBand.top(), "The row read as the unchosen one is not above the chosen one");
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
 
         // The corner radius exceeds the bar's width, so the arc clears the whole
         // bar on the row's first and last line
@@ -277,7 +271,7 @@ private slots:
         QCoreApplication::sendEvent(tree()->viewport(), &move);
         QTest::qWait(50ms);
 
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         const QRect chosenBand = rowBand(mpInnerGroup);
         auto at = [&shot, this](const QPoint& point) {
             return shot.pixelColor(inViewport(point));
@@ -336,7 +330,7 @@ private slots:
 
         const QRect rowRect = pSidebar->visualItemRect(pChosen);
         QVERIFY2(!rowRect.isEmpty(), "The chosen sidebar row is not laid out");
-        const QImage shot = windowShot();
+        const QImage shot = TestPixels::shot(mpEditor);
         auto at = [&](const QPoint& point) {
             return shot.pixelColor(pSidebar->viewport()->mapTo(mpEditor, point));
         };
@@ -353,7 +347,7 @@ private slots:
         QVERIFY2(fill.rgb() != tokens.page.rgb(), qPrintable(qsl("the sidebar's chosen row is not painted at all: its middle is %1").arg(fill.name())));
         for (const auto& corner : corners) {
             const QColor cornerColor = at(corner.second);
-            QVERIFY2(distanceBetween(cornerColor, tokens.page) < distanceBetween(cornerColor, fill),
+            QVERIFY2(TestPixels::distance(cornerColor, tokens.page) < TestPixels::distance(cornerColor, fill),
                      qPrintable(qsl("the sidebar's %1 corner is not cut away: it is painted %2 against a page of %3 and a fill of %4")
                                         .arg(corner.first, cornerColor.name(), tokens.page.name(), fill.name())));
         }
@@ -365,7 +359,7 @@ private slots:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QRect band = rowBand(mpInnerGroup);
-        const QColor measured = windowShot().pixelColor(inViewport(QPoint(band.center().x(), band.top() + 1)));
+        const QColor measured = TestPixels::shot(mpEditor).pixelColor(inViewport(QPoint(band.center().x(), band.top() + 1)));
         const QColor wanted = uiDesign::blend(tokens.pane, tokens.accent, uiDesign::scmAccentWashStrength);
 
         qInfo().noquote() << qsl("  the chosen row is painted %1 against the %2 the design mixes at %3 of the way from the pane to the accent")

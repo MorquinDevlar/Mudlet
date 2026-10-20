@@ -33,6 +33,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TConsole.h"
 #include "TMainConsole.h"
@@ -60,8 +61,6 @@ private:
     // held to a figure rather than to whatever the editor answers
     static constexpr int scmCompanionWidth = 1300;
     static constexpr int scmCompanionHeight = 690;
-
-    static QString describe(const QSize& size) { return qsl("%1x%2").arg(size.width()).arg(size.height()); }
 
 private slots:
     void initTestCase()
@@ -107,14 +106,20 @@ private slots:
         const QSize expected = companion.boundedTo(available).expandedTo(mpEditor->minimumSizeHint().boundedTo(available));
 
         qInfo().noquote() << qsl("  the profile window is %1 on a %2 desktop, and the editor opened at %3 against the %4 it defaults to, floored at %5 - so %6 is what it should come to")
-                                     .arg(describe(profileWindow), describe(available), describe(mpEditor->size()), describe(companion), describe(mpEditor->minimumSizeHint()), describe(expected));
+                                     .arg(TestPixels::describe(profileWindow),
+                                          TestPixels::describe(available),
+                                          TestPixels::describe(mpEditor->size()),
+                                          TestPixels::describe(companion),
+                                          TestPixels::describe(mpEditor->minimumSizeHint()),
+                                          TestPixels::describe(expected));
 
         QVERIFY2(profileWindow.width() > companion.width() && profileWindow.height() > companion.height(),
                  qPrintable(qsl("the profile window is %1, which is not larger than the %2 the editor opens at - a default scaled off it would come out smaller rather than bigger, so nothing "
                                 "here would catch one")
-                                    .arg(describe(profileWindow), describe(companion))));
+                                    .arg(TestPixels::describe(profileWindow), TestPixels::describe(companion))));
         QCOMPARE(mpEditor->defaultEditorSize(), companion);
-        QVERIFY2(mpEditor->size() == expected, qPrintable(qsl("the editor opened at %1 rather than at the %2 it defaults to").arg(describe(mpEditor->size()), describe(expected))));
+        QVERIFY2(mpEditor->size() == expected,
+                 qPrintable(qsl("the editor opened at %1 rather than at the %2 it defaults to").arg(TestPixels::describe(mpEditor->size()), TestPixels::describe(expected))));
     }
 };
 

@@ -31,6 +31,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -54,8 +55,6 @@ private:
     QPoint mDraggedPos;
 
     static QString describe(const QPoint& point) { return qsl("(%1,%2)").arg(QString::number(point.x()), QString::number(point.y())); }
-
-    static QString describe(const QSize& size) { return qsl("%1x%2").arg(QString::number(size.width()), QString::number(size.height())); }
 
     static QPoint storedPos() { return MudletApp::getQSettings()->value(qsl("script_editor_pos")).toPoint(); }
 
@@ -82,7 +81,7 @@ private slots:
 
         MudletApp::getQSettings()->setValue(qsl("script_editor_pos"), mSeededPos);
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), mSeededSize);
-        qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), describe(mSeededSize));
+        qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), TestPixels::describe(mSeededSize));
 
         QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
         mpHost = mSession.host();
@@ -100,13 +99,14 @@ private slots:
     void test_anEditorNobodyOpenedLeavesThePlacementAlone()
     {
         QVERIFY2(!mpEditor->isVisible(), "The editor was shown, so this is no longer the case being covered");
-        qInfo().noquote() << qsl("  the unshown editor holds: pos %1 size %2").arg(describe(mpEditor->pos()), describe(mpEditor->size()));
+        qInfo().noquote() << qsl("  the unshown editor holds: pos %1 size %2").arg(describe(mpEditor->pos()), TestPixels::describe(mpEditor->size()));
 
         mpEditor->close();
         QCoreApplication::processEvents();
-        qInfo().noquote() << qsl("  in QSettings after its close: pos %1 size %2").arg(describe(storedPos()), describe(storedSize()));
+        qInfo().noquote() << qsl("  in QSettings after its close: pos %1 size %2").arg(describe(storedPos()), TestPixels::describe(storedSize()));
 
-        QVERIFY2(storedSize() == mSeededSize, qPrintable(qsl("An editor nobody opened overwrote the stored size %1 with %2").arg(describe(mSeededSize), describe(storedSize()))));
+        QVERIFY2(storedSize() == mSeededSize,
+                 qPrintable(qsl("An editor nobody opened overwrote the stored size %1 with %2").arg(TestPixels::describe(mSeededSize), TestPixels::describe(storedSize()))));
         QVERIFY2(storedPos() == mSeededPos, qPrintable(qsl("An editor nobody opened overwrote the stored position %1 with %2").arg(describe(mSeededPos), describe(storedPos()))));
     }
 
@@ -119,11 +119,11 @@ private slots:
         mpEditor->move(mDraggedPos);
         QCoreApplication::processEvents();
         const QSize sizeBefore = mpEditor->size();
-        qInfo().noquote() << qsl("  the shown editor was left at: pos %1 size %2").arg(describe(mpEditor->pos()), describe(sizeBefore));
+        qInfo().noquote() << qsl("  the shown editor was left at: pos %1 size %2").arg(describe(mpEditor->pos()), TestPixels::describe(sizeBefore));
 
         mpEditor->close();
         QCoreApplication::processEvents();
-        qInfo().noquote() << qsl("  in QSettings after its close: pos %1 size %2").arg(describe(storedPos()), describe(storedSize()));
+        qInfo().noquote() << qsl("  in QSettings after its close: pos %1 size %2").arg(describe(storedPos()), TestPixels::describe(storedSize()));
 
         QVERIFY2(storedPos() == mDraggedPos, qPrintable(qsl("The editor was left at %1 and stored %2").arg(describe(mDraggedPos), describe(storedPos()))));
         QCOMPARE(storedSize(), sizeBefore);

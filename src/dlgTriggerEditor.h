@@ -130,8 +130,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorAddItemTest;
     friend class EditorBannerViewSwitchTest;
     friend class EditorCaretReadingTest;
-    friend class EditorChromeInkTest;
-    friend class EditorChromeShapeTest;
+    friend class EditorChromeTest;
     friend class EditorClipboardXmlTest;
     friend class EditorCodeHeadingTest;
     friend class EditorColumnAlignmentTest;
@@ -144,16 +143,13 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorIconScaleTest;
     friend class EditorKeyCaptureTest;
     friend class EditorKeyGrabShortcutsTest;
-    friend class EditorMenuStyleTest;
     friend class EditorMinimumSizeTest;
     friend class EditorNoticeGlyphTest;
     friend class EditorNoticeSeamTest;
     friend class EditorOptionsPanelDefaultTest;
     friend class EditorSearchTest;
-    friend class EditorSidebarCollapseTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorStatusBarTest;
-    friend class EditorSurfaceToneTest;
     friend class EditorTabAtStartTest;
     friend class EditorTimerIntervalTest;
     friend class EditorToolBarOverflowTest;
@@ -168,6 +164,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class HostWidgetDecouplingTest;
     friend class ReadabilityAuditTest;
     friend class ScriptEventHandlerLifetimeTest;
+    friend class SidebarToggleTest;
     friend class TreeWidgetItemMoveTest;
     friend class TriggerEditorDisclosureTest;
     friend class TriggerEditorTest;

@@ -35,6 +35,7 @@
 #include "EditorCommand.h"
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -83,24 +84,6 @@ private:
         return nullptr;
     }
 
-    static QImage drawnAt(const QIcon& icon, const int size) { return icon.pixmap(QSize(size, size)).toImage(); }
-
-    static QString inkOf(const QImage& glyph)
-    {
-        QColor darkest;
-        int strongest = -1;
-        for (int y = 0; y < glyph.height(); ++y) {
-            for (int x = 0; x < glyph.width(); ++x) {
-                const QColor pixel = glyph.pixelColor(x, y);
-                if (pixel.alpha() > strongest) {
-                    strongest = pixel.alpha();
-                    darkest = pixel;
-                }
-            }
-        }
-        return strongest <= 0 ? qsl("nothing at all") : qsl("%1 at alpha %2").arg(darkest.name(), QString::number(strongest));
-    }
-
 private slots:
     void initTestCase()
     {
@@ -140,15 +123,15 @@ private slots:
         QStringList mismatched;
         QStringList measured;
         for (const auto& heading : headings()) {
-            const QImage onTheHeading = drawnAt(heading.second.first->icon(0), scmComparisonSize);
-            const QImage inTheSidebar = drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
-            measured << qsl("%1 %2").arg(heading.first, inkOf(onTheHeading));
+            const QImage onTheHeading = TestPixels::drawnAt(heading.second.first->icon(0), scmComparisonSize);
+            const QImage inTheSidebar = TestPixels::drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
+            measured << qsl("%1 %2").arg(heading.first, TestPixels::inkOf(onTheHeading));
             if (onTheHeading.isNull() || inTheSidebar.isNull()) {
                 mismatched << qsl("%1: one of the two has no picture at all").arg(heading.first);
                 continue;
             }
             if (onTheHeading != inTheSidebar) {
-                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, inkOf(onTheHeading), inkOf(inTheSidebar));
+                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, TestPixels::inkOf(onTheHeading), TestPixels::inkOf(inTheSidebar));
             }
         }
         qInfo().noquote() << qsl("  headings at %1px: %2").arg(QString::number(scmComparisonSize), measured.join(qsl(", ")));
@@ -161,7 +144,7 @@ private slots:
     void test_aThemeChangeRetintsTheHeadingsWithTheSidebar()
     {
         const QPalette savedPalette = QApplication::palette();
-        const QImage before = drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
+        const QImage before = TestPixels::drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
 
         QPalette movedPalette(savedPalette);
         movedPalette.setColor(QPalette::Window, savedPalette.color(QPalette::Window).lightness() < 128 ? QColor(0xec, 0xec, 0xec) : QColor(0x2c, 0x2c, 0x2e));
@@ -169,15 +152,15 @@ private slots:
         QApplication::setPalette(movedPalette);
         QTest::qWait(100ms);
 
-        const QImage after = drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
-        qInfo().noquote() << qsl("  the Triggers heading was inked %1 and is now %2").arg(inkOf(before), inkOf(after));
+        const QImage after = TestPixels::drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
+        qInfo().noquote() << qsl("  the Triggers heading was inked %1 and is now %2").arg(TestPixels::inkOf(before), TestPixels::inkOf(after));
 
         QStringList mismatched;
         for (const auto& heading : headings()) {
-            const QImage onTheHeading = drawnAt(heading.second.first->icon(0), scmComparisonSize);
-            const QImage inTheSidebar = drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
+            const QImage onTheHeading = TestPixels::drawnAt(heading.second.first->icon(0), scmComparisonSize);
+            const QImage inTheSidebar = TestPixels::drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
             if (onTheHeading != inTheSidebar) {
-                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, inkOf(onTheHeading), inkOf(inTheSidebar));
+                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, TestPixels::inkOf(onTheHeading), TestPixels::inkOf(inTheSidebar));
             }
         }
 
@@ -186,7 +169,7 @@ private slots:
 
         // Checked before the pair: a restyle that did nothing would leave the
         // two agreeing
-        QVERIFY2(before != after, qPrintable(qsl("the theme moved and the heading's picture did not: it is still inked %1").arg(inkOf(after))));
+        QVERIFY2(before != after, qPrintable(qsl("the theme moved and the heading's picture did not: it is still inked %1").arg(TestPixels::inkOf(after))));
         QVERIFY2(mismatched.isEmpty(), qPrintable(qsl("a theme change reached the sidebar and left a heading behind: %1").arg(mismatched.join(qsl("; ")))));
     }
 };

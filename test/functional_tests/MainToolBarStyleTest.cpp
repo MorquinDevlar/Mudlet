@@ -34,14 +34,13 @@
 #include <QtTest/QtTest>
 
 #include "Host.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TDetachedWindow.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
 #include "GroupedTest.h"
-
-using namespace std::chrono_literals;
 
 class MainToolBarStyleTest : public QObject
 {
@@ -64,41 +63,7 @@ private:
 
     static QString saidAs(const QColor& colour) { return colour.name(QColor::HexArgb); }
 
-    static QString saidAs(const QRect& box) { return qsl("%1,%2 %3x%4").arg(QString::number(box.left()), QString::number(box.top()), QString::number(box.width()), QString::number(box.height())); }
-
     static QString saidAs(const QPoint& at) { return qsl("%1,%2").arg(QString::number(at.x()), QString::number(at.y())); }
-
-    static QColor composited(const QColor& ink, const QColor& surface)
-    {
-        if (ink.alpha() == 255) {
-            return ink;
-        }
-        const qreal weight = ink.alphaF();
-        return QColor::fromRgbF(
-                ink.redF() * weight + surface.redF() * (1.0 - weight), ink.greenF() * weight + surface.greenF() * (1.0 - weight), ink.blueF() * weight + surface.blueF() * (1.0 - weight));
-    }
-
-    static bool readsAs(const QColor& read, const QColor& wanted, const int tolerance = scmInkTolerance)
-    {
-        return std::abs(read.red() - wanted.red()) <= tolerance && std::abs(read.green() - wanted.green()) <= tolerance && std::abs(read.blue() - wanted.blue()) <= tolerance;
-    }
-
-    static QImage grabTheBar()
-    {
-        QCoreApplication::processEvents();
-        return theBar()->grab().toImage().convertToFormat(QImage::Format_ARGB32);
-    }
-
-    // A grab is in device pixels; the rectangles here are logical
-    static QColor sampled(const QImage& image, const QPoint& at)
-    {
-        const qreal ratio = image.devicePixelRatio();
-        const QPoint device(qRound(at.x() * ratio), qRound(at.y() * ratio));
-        if (!image.rect().contains(device)) {
-            return QColor();
-        }
-        return QColor(image.pixel(device));
-    }
 
     // Past the rounded corner and above the glyph and the word, where only the fill is drawn
     static QPoint washSpotIn(const QRect& button) { return QPoint(button.left() + uiDesign::scmToolBarButtonRadius + 2, button.top() + 2); }
@@ -132,14 +97,6 @@ private:
         QCoreApplication::processEvents();
     }
 
-    static void setAppearance(const enums::Appearance appearance)
-    {
-        mudlet::self()->setAppearance(appearance);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
-        QCoreApplication::processEvents();
-    }
-
     static QString appearanceSaidAs(const enums::Appearance appearance) { return appearance == enums::Appearance::dark ? qsl("dark") : qsl("light"); }
 
     void aHoveredButtonIsWashed(const QString& appearance)
@@ -150,22 +107,22 @@ private:
         QVERIFY2(pHovered->isVisible() && pResting->isVisible(), "the window is too narrow for the bar, so the buttons this case reads are in the overflow menu rather than on it");
 
         hoverOver(pHovered, true);
-        const QImage bar = grabTheBar();
+        const QImage bar = TestPixels::shot(theBar());
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
-        const QColor washed = sampled(bar, washSpotIn(pHovered->geometry()));
-        const QColor wanted = composited(tokens.hoverWash, tokens.page);
-        const QColor resting = sampled(bar, washSpotIn(pResting->geometry()));
+        const QColor washed = TestPixels::sampled(bar, washSpotIn(pHovered->geometry()));
+        const QColor wanted = TestPixels::composited(tokens.hoverWash, tokens.page);
+        const QColor resting = TestPixels::sampled(bar, washSpotIn(pResting->geometry()));
         hoverOver(pHovered, false);
 
         qInfo().noquote() << qsl("  %1: the hovered button reads %2 against an expected %3, and one at rest %4 against the bar's %5")
                                      .arg(appearance, saidAs(washed), saidAs(wanted), saidAs(resting), saidAs(tokens.page));
 
-        QVERIFY2(readsAs(washed, wanted),
+        QVERIFY2(TestPixels::readsAs(washed, wanted, scmInkTolerance),
                  qPrintable(qsl("%1: a button under the pointer is not washed in the hover tone: %2 at %3 where the wash over the bar's own surface is %4")
                                     .arg(appearance, saidAs(washed), saidAs(washSpotIn(pHovered->geometry())), saidAs(wanted))));
         QVERIFY2(
-                readsAs(resting, tokens.page),
+                TestPixels::readsAs(resting, tokens.page, scmInkTolerance),
                 qPrintable(qsl("%1: a button nothing is pointing at is drawn on something other than the bar's own surface: %2 rather than %3").arg(appearance, saidAs(resting), saidAs(tokens.page))));
     }
 
@@ -181,12 +138,12 @@ private:
         QCoreApplication::processEvents();
         QVERIFY2(pButton->isChecked(), "checking the mute action did not switch the button it is the default action of on");
 
-        const QImage bar = grabTheBar();
+        const QImage bar = TestPixels::shot(theBar());
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QRect box = pButton->geometry();
 
-        const QColor body = sampled(bar, washSpotIn(box));
-        const QColor wantedBody = composited(tokens.accentWash, tokens.page);
+        const QColor body = TestPixels::sampled(bar, washSpotIn(box));
+        const QColor wantedBody = TestPixels::composited(tokens.accentWash, tokens.page);
 
         // The seam is one pixel wide and rounding the sub-control's box can move it a pixel
         const int seamAt = seamColumnOf(box);
@@ -194,9 +151,9 @@ private:
         int seamFoundAt = -1;
         QStringList aroundTheSeam;
         for (int x = seamAt - 1; x <= seamAt + 1; ++x) {
-            const QColor read = sampled(bar, QPoint(x, box.center().y()));
+            const QColor read = TestPixels::sampled(bar, QPoint(x, box.center().y()));
             aroundTheSeam << qsl("%1:%2").arg(QString::number(x), saidAs(read));
-            if (seamFoundAt < 0 && readsAs(read, tokens.border)) {
+            if (seamFoundAt < 0 && TestPixels::readsAs(read, tokens.border, scmInkTolerance)) {
                 seam = read;
                 seamFoundAt = x;
             }
@@ -208,14 +165,14 @@ private:
         qInfo().noquote() << qsl("  %1: the switched-on Sound button reads %2 against an expected %3, with the seam wanted at x=%4 in %5 and the columns around it %6")
                                      .arg(appearance, saidAs(body), saidAs(wantedBody), QString::number(seamAt), saidAs(tokens.border), aroundTheSeam.join(qsl(", ")));
 
-        QVERIFY2(readsAs(body, wantedBody),
+        QVERIFY2(TestPixels::readsAs(body, wantedBody, scmInkTolerance),
                  qPrintable(qsl("%1: a switched-on button on the bar is not washed in the accent: %2 at %3 where the accent's wash over the bar's surface is %4")
                                     .arg(appearance, saidAs(body), saidAs(washSpotIn(box)), saidAs(wantedBody))));
         QVERIFY2(seamFoundAt >= 0,
                  qPrintable(qsl("%1: the Sound button's menu half is not told from its body at all - the seam the recipe draws in %2 is nowhere within a pixel of x=%3 on a button at %4; the "
                                 "columns there read %5")
-                                    .arg(appearance, saidAs(tokens.border), QString::number(seamAt), saidAs(box), aroundTheSeam.join(qsl(", ")))));
-        QVERIFY2(!readsAs(seam, wantedBody),
+                                    .arg(appearance, saidAs(tokens.border), QString::number(seamAt), TestPixels::describe(box), aroundTheSeam.join(qsl(", ")))));
+        QVERIFY2(!TestPixels::readsAs(seam, wantedBody, scmInkTolerance),
                  qPrintable(qsl("%1: the seam on the Sound button's menu half is the same wash its body is, %2, so the two halves read as one target").arg(appearance, saidAs(seam))));
     }
 
@@ -281,7 +238,7 @@ private slots:
     void test_bothAppearances()
     {
         for (const enums::Appearance appearance : {enums::Appearance::dark, enums::Appearance::light}) {
-            setAppearance(appearance);
+            TestPixels::setAppearanceAndWait(appearance);
             aHoveredButtonIsWashed(appearanceSaidAs(appearance));
             if (QTest::currentTestFailed()) {
                 break;
@@ -291,7 +248,7 @@ private slots:
                 break;
             }
         }
-        setAppearance(enums::Appearance::systemSetting);
+        TestPixels::setAppearanceAndWait(enums::Appearance::systemSetting);
     }
 
     void test_aDetachedWindowsBarCarriesTheRecipe()

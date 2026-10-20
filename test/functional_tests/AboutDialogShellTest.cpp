@@ -43,6 +43,7 @@
 #include "AboutSupporterBanner.h"
 #include "Host.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgAboutDialog.h"
 #include "mudlet.h"
@@ -248,7 +249,7 @@ private slots:
                 ++read;
                 const QColor was = plain.pixelColor(x, y);
                 const QColor now = drawn.pixelColor(x, y);
-                if (qAbs(was.red() - now.red()) > 8 || qAbs(was.green() - now.green()) > 8 || qAbs(was.blue() - now.blue()) > 8) {
+                if (!TestPixels::readsAs(was, now, 8)) {
                     ++differing;
                 }
             }

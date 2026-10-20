@@ -28,6 +28,7 @@
 #include <QtTest/QtTest>
 
 #include "Host.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TCommandLine.h"
 #include "TMainConsole.h"
@@ -35,8 +36,6 @@
 #include "uiDesign.h"
 
 #include "GroupedTest.h"
-
-using namespace std::chrono_literals;
 
 class ConsoleFootSeamTest : public QObject
 {
@@ -67,8 +66,6 @@ private:
 
     bool runLua(const QString& script) { return mpHost->mLuaInterpreter.compileAndExecuteScript(script); }
 
-    static void settle() { QTest::qWait(50ms); }
-
 private slots:
     void initTestCase()
     {
@@ -84,7 +81,7 @@ private slots:
         mudlet::self()->resize(1200, 800);
         mudlet::self()->show();
         QVERIFY2(QTest::qWaitForWindowExposed(mudlet::self()), "the main window never came up");
-        settle();
+        TestPixels::settle();
     }
 
     void cleanupTestCase()
@@ -168,7 +165,7 @@ private slots:
             mpHost->deleteMiniConsole(mColourMiniConsoleName);
         });
         QVERIFY(runLua(qsl("enableCommandLine('%1')").arg(mColourMiniConsoleName)));
-        settle();
+        TestPixels::settle();
         QWidget* pMiniSeam = seamOf(pMiniConsole);
         QVERIFY(pMiniSeam);
         QVERIFY(pMiniSeam->isVisible());
@@ -184,7 +181,7 @@ private slots:
         mpHost->mCommandLineBgColor = QColor(250, 240, 220);
         mpHost->mCommandLineFgColor = QColor(20, 40, 120);
         mpHost->applyMainConsoleColors();
-        settle();
+        TestPixels::settle();
 
         const QColor expected = expectedSeamColour();
         QVERIFY2(expected != before, "the new colours mix to the old seam colour, so nothing is tested");
@@ -207,7 +204,7 @@ private slots:
             mpHost->deleteMiniConsole(mMiniConsoleName);
         });
         QVERIFY(runLua(qsl("enableCommandLine('%1')").arg(mMiniConsoleName)));
-        settle();
+        TestPixels::settle();
         QVERIFY(pMiniConsole->mpCommandLine);
         QCOMPARE(pMiniConsole->mpCommandLine->frameShape(), QFrame::NoFrame);
 
@@ -227,13 +224,13 @@ private slots:
         });
         mpHost->commandLineMinimumHeight = 60;
         pMiniConsole->mpCommandLine->adjustHeight();
-        settle();
+        TestPixels::settle();
         QCOMPARE(pMiniConsole->mpCommandLine->height(), 60);
         QCOMPARE(pMiniConsole->layerCommandLine->height(), 61);
         QCOMPARE(pSeam->palette().color(QPalette::Window), expectedSeamColour());
 
         QVERIFY(runLua(qsl("disableCommandLine('%1')").arg(mMiniConsoleName)));
-        settle();
+        TestPixels::settle();
         QVERIFY2(!pSeam->isVisible(), "the miniconsole's seam stayed on show with its command line disabled");
     }
 
@@ -248,7 +245,7 @@ private slots:
         });
 
         QVERIFY(runLua(qsl("setCmdLineStyleSheet('main', [[QPlainTextEdit { border: 2px solid #ff0000; }]])")));
-        settle();
+        TestPixels::settle();
 
         const QRgb red = qRgb(255, 0, 0);
         const QRgb edge = pixelAt(pConsole, pCommandLine, QPoint(0, pCommandLine->height() / 2));

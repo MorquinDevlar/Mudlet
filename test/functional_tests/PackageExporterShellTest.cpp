@@ -49,6 +49,7 @@
 #include "ChipRow.h"
 #include "Host.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TTrigger.h"
 #include "TriggerUnit.h"
@@ -84,36 +85,6 @@ private:
     // A styled fill is composited, and the 3px bar has an antialiased corner at
     // each end, so the other style tests' slack applies
     static constexpr int scmFillTolerance = 24;
-
-    void settle() const
-    {
-        QCoreApplication::processEvents();
-        QTest::qWait(30ms);
-        QCoreApplication::processEvents();
-    }
-
-    // The one path an appearance change takes while a window is open
-    void setAppearance(const enums::Appearance appearance)
-    {
-        mudlet::self()->setAppearance(appearance);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
-        QCoreApplication::processEvents();
-        mpDialog->grab();
-    }
-
-    static bool readsAs(const QColor& read, const QColor& wanted)
-    {
-        return std::abs(read.red() - wanted.red()) <= scmFillTolerance && std::abs(read.green() - wanted.green()) <= scmFillTolerance && std::abs(read.blue() - wanted.blue()) <= scmFillTolerance;
-    }
-
-    // A grab is taken at the screen's pixel ratio, so widget coordinates are
-    // scaled before sampling
-    static QColor sampled(const QImage& shot, const QPoint& at)
-    {
-        const qreal ratio = shot.devicePixelRatio() > 0.0 ? shot.devicePixelRatio() : 1.0;
-        return shot.pixelColor(qBound(0, qRound(at.x() * ratio), shot.width() - 1), qBound(0, qRound(at.y() * ratio), shot.height() - 1));
-    }
 
     QTreeWidget* tree() const { return mpDialog->findChild<QTreeWidget*>(qsl("treeWidget_exportSelection")); }
     QLabel* infoLabel() const { return mpDialog->findChild<QLabel*>(qsl("infoLabel")); }
@@ -151,7 +122,7 @@ private:
         mpDialog = new dlgPackageExporter(nullptr, mpHost);
         mpDialog->show();
         QVERIFY(QTest::qWaitForWindowExposed(mpDialog));
-        settle();
+        TestPixels::settle();
     }
 
     // QMessageBox::exec() spins its own event loop, so the answer comes from a
@@ -392,7 +363,7 @@ private slots:
         QVERIFY2(notice()->isHidden(), "the notice is on show before the window has anything to report");
 
         mpDialog->slot_exportPackage();
-        settle();
+        TestPixels::settle();
 
         QVERIFY2(!notice()->isHidden(), "exporting with no package name said nothing in the notice");
         QVERIFY2(!notice()->notificationAreaIconLabelError->isHidden(), "the notice is showing, but not in its error reading - nothing says the export was refused");
@@ -402,7 +373,7 @@ private slots:
         QVERIFY2(!infoLabel()->text().contains(QChar('#')), qPrintable(qsl("the refusal still carries a colour written into it: \"%1\"").arg(infoLabel()->text())));
 
         notice()->messageAreaCloseButton->click();
-        settle();
+        TestPixels::settle();
         QVERIFY2(notice()->isHidden(), "the cross on the notice does not close it");
     }
 
@@ -419,7 +390,7 @@ private slots:
         // Through the hidden picker and its +, which every other exporter test presses
         pAvailable->setCurrentIndex(pAvailable->findText(qsl("exporter-shell-dep-two")));
         buttonNamed(qsl("pushButton_addDependency"))->click();
-        settle();
+        TestPixels::settle();
         qInfo().noquote() << qsl("  after the hidden + the row shows %1").arg(chips()->items().join(qsl(", ")));
         QCOMPARE(pRequired->count(), 1);
         QCOMPARE(chips()->items(), QStringList{qsl("exporter-shell-dep-two")});
@@ -427,7 +398,7 @@ private slots:
         // Emptied the way a chip's own cross does
         chips()->setItems({});
         emit chips() -> itemsChanged();
-        settle();
+        TestPixels::settle();
         qInfo().noquote() << qsl("  after the row was emptied the hidden combo holds %1").arg(QString::number(pRequired->count()));
         QCOMPARE(pRequired->count(), 0);
         QVERIFY2(pAvailable->findText(qsl("exporter-shell-dep-two")) > 0, "a package taken off the row is no longer offered back");
@@ -437,26 +408,26 @@ private slots:
     {
         openExporter();
         tree()->setCurrentItem(tree()->topLevelItem(0));
-        settle();
+        TestPixels::settle();
 
         const QRect row = tree()->visualItemRect(tree()->topLevelItem(0));
         QVERIFY2(!row.isEmpty(), "the chosen row has no rectangle on the viewport, so there is nothing to read");
         const QImage shot = tree()->viewport()->grab().toImage();
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
-        const QColor wash = sampled(shot, QPoint(row.right() - 3, row.center().y()));
+        const QColor wash = TestPixels::sampled(shot, QPoint(row.right() - 3, row.center().y()));
         const QColor wanted = uiDesign::blend(tokens.pane, tokens.accent, uiDesign::scmAccentWashStrength);
         qInfo().noquote() << qsl("  the chosen row reads %1 against a wash of %2, and its gutter %3 against an accent of %4")
-                                     .arg(wash.name(), wanted.name(), sampled(shot, QPoint(row.left() + 1, row.center().y())).name(), tokens.accent.name());
-        QVERIFY2(readsAs(wash, wanted), qPrintable(qsl("the chosen row reads %1 where the design fills it with %2").arg(wash.name(), wanted.name())));
+                                     .arg(wash.name(), wanted.name(), TestPixels::sampled(shot, QPoint(row.left() + 1, row.center().y())).name(), tokens.accent.name());
+        QVERIFY2(TestPixels::readsAs(wash, wanted, scmFillTolerance), qPrintable(qsl("the chosen row reads %1 where the design fills it with %2").arg(wash.name(), wanted.name())));
 
-        const QColor bar = sampled(shot, QPoint(row.left() + 1, row.center().y()));
-        QVERIFY2(readsAs(bar, tokens.accent),
+        const QColor bar = TestPixels::sampled(shot, QPoint(row.left() + 1, row.center().y()));
+        QVERIFY2(TestPixels::readsAs(bar, tokens.accent, scmFillTolerance),
                  qPrintable(qsl("the chosen row's leading gutter reads %1 where the accent is %2 - the bar that says which row is chosen is not being painted").arg(bar.name(), tokens.accent.name())));
 
         const QRect plain = tree()->visualItemRect(tree()->topLevelItem(1));
-        const QColor pane = sampled(shot, QPoint(plain.right() - 3, plain.center().y()));
-        QVERIFY2(readsAs(pane, tokens.pane), qPrintable(qsl("an unchosen row reads %1 where the column it is on is %2").arg(pane.name(), tokens.pane.name())));
+        const QColor pane = TestPixels::sampled(shot, QPoint(plain.right() - 3, plain.center().y()));
+        QVERIFY2(TestPixels::readsAs(pane, tokens.pane, scmFillTolerance), qPrintable(qsl("an unchosen row reads %1 where the column it is on is %2").arg(pane.name(), tokens.pane.name())));
     }
 
     void test_theExportButtonIsThePrimaryOne()
@@ -472,10 +443,10 @@ private slots:
         QVERIFY2(pName->text().isEmpty(), "SETUP: the name field is not empty");
         QVERIFY2(!exportButton()->isEnabled(), "Export is offered with no package name to export under");
         pName->setText(qsl("exporter-shell-named"));
-        settle();
+        TestPixels::settle();
         QVERIFY2(exportButton()->isEnabled(), "Export stayed unavailable after the package was named");
         pName->clear();
-        settle();
+        TestPixels::settle();
     }
 
     void test_moduleModeSwapsTheWords()
@@ -486,7 +457,7 @@ private slots:
         QCOMPARE(mpDialog->findChild<QLabel*>(qsl("exporterSaveCaption"))->text(), qsl("Saves to"));
 
         mpDialog->setModuleCreationMode(true);
-        settle();
+        TestPixels::settle();
         QCOMPARE(mpDialog->findChild<QLabel*>(qsl("exporterSelectionHeading"))->text(), qsl("Select items to include in module"));
         QCOMPARE(mpDialog->findChild<QLabel*>(qsl("exporterDetailsHeading"))->text(), qsl("About the module"));
         QCOMPARE(mpDialog->findChild<QLabel*>(qsl("exporterSaveCaption"))->text(), qsl("Saves into the profile as"));
@@ -501,7 +472,7 @@ private slots:
         openExporter();
         QMap<QString, QString> sheets;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
-            setAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second, mpDialog);
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
             qInfo().noquote() << qsl("  %1: pane %2, page %3").arg(appearance.first, tokens.pane.name(), tokens.page.name());
             QVERIFY2(selectionColumn()->styleSheet().contains(tokens.pane.name()),
@@ -552,7 +523,7 @@ private slots:
         openExporter();
         auto* pName = fieldNamed(qsl("lineEdit_packageName"));
         pName->setText(mFolderName);
-        settle();
+        TestPixels::settle();
 
         folderRow()->setCheckState(0, Qt::Checked);
         QVERIFY2(countChipReads(qsl("2")), qPrintable(qsl("the count chip reads \"%1\" where only the two triggers inside the folder named after the package go in").arg(countChip()->text())));
@@ -568,7 +539,7 @@ private slots:
 
         // Unnamed, it is an ordinary folder whose own tick was never set
         pName->clear();
-        settle();
+        TestPixels::settle();
         QVERIFY2(folderReads(Qt::PartiallyChecked), qPrintable(qsl("as an ordinary folder with one thing ticked inside it the folder reads %1").arg(static_cast<int>(folderRow()->checkState(0)))));
 
         pName->setText(mFolderName);
@@ -594,7 +565,7 @@ private slots:
 
         folderRow()->setCheckState(0, Qt::Unchecked);
         pName->clear();
-        settle();
+        TestPixels::settle();
     }
 
     // Disabled rather than hidden, so the row does not change shape on the first keystroke
@@ -607,11 +578,11 @@ private slots:
 
         auto* pName = fieldNamed(qsl("lineEdit_packageName"));
         pName->setText(qsl("exporter-shell-named"));
-        settle();
+        TestPixels::settle();
         QVERIFY2(startOverButton()->isEnabled(), "naming the package left the clear button unavailable, so there is no way back off a form that now has something on it");
 
         pName->clear();
-        settle();
+        TestPixels::settle();
         QVERIFY2(!startOverButton()->isEnabled(), "clearing the name by hand left the clear button available with nothing left to clear");
 
         // A tick reaches the button through the debounced recount, not textChanged
@@ -646,7 +617,7 @@ private slots:
         const int at = rowOfThePackage();
         QVERIFY2(at > 0, "SETUP: the installed package this walks never reached the picker");
         comboNamed(qsl("packageList"))->setCurrentIndex(at);
-        settle();
+        TestPixels::settle();
 
         // Otherwise every check below would pass on a form that was empty all along
         QCOMPARE(fieldNamed(qsl("lineEdit_packageName"))->text(), mPackageName);
@@ -668,7 +639,7 @@ private slots:
         // path is written where the picker would have written it
         mpDialog->mPackageIconPath = qsl(":/icons/aardwolf_mud.png");
         mpDialog->showChosenIcon();
-        settle();
+        TestPixels::settle();
         QVERIFY2(!buttonNamed(qsl("pushButton_removeIcon"))->isHidden(), "SETUP: the picture never took, so clearing it cannot be read");
         QVERIFY2(startOverButton()->isEnabled(), "SETUP: the clear button is unavailable on a form an installed package filled in");
 
@@ -676,7 +647,7 @@ private slots:
         // armed anyway, or a prompt appearing would hang the case
         answerNextMessageBox(QMessageBox::Yes);
         startOverButton()->click();
-        settle();
+        TestPixels::settle();
         stopAnsweringMessageBoxes();
         QCOMPARE(mBoxesAnswered, 0);
 
@@ -694,13 +665,13 @@ private slots:
         const int at = rowOfThePackage();
         QVERIFY2(at > 0, "SETUP: the installed package this walks never reached the picker");
         pList->setCurrentIndex(at);
-        settle();
+        TestPixels::settle();
         QCOMPARE(fieldNamed(qsl("lineEdit_author"))->text(), mPackageAuthor);
         QCOMPARE(chips()->count(), 1);
 
         answerNextMessageBox(QMessageBox::Yes);
         pList->setCurrentIndex(0);
-        settle();
+        TestPixels::settle();
         stopAnsweringMessageBoxes();
         QVERIFY2(mBoxesAnswered == 0, "the reader was asked before a form they never typed into was cleared");
 
@@ -712,12 +683,12 @@ private slots:
         openExporter();
         const QString typedTitle = qsl("Written here and nowhere else");
         fieldNamed(qsl("lineEdit_title"))->setText(typedTitle);
-        settle();
+        TestPixels::settle();
         QVERIFY2(startOverButton()->isEnabled(), "SETUP: the clear button is unavailable after a summary was typed");
 
         answerNextMessageBox(QMessageBox::No);
         startOverButton()->click();
-        settle();
+        TestPixels::settle();
         stopAnsweringMessageBoxes();
         QVERIFY2(mBoxesAnswered == 1, "Start over cleared the typed summary without asking");
         QCOMPARE(fieldNamed(qsl("lineEdit_title"))->text(), typedTitle);
@@ -725,7 +696,7 @@ private slots:
 
         answerNextMessageBox(QMessageBox::Yes);
         startOverButton()->click();
-        settle();
+        TestPixels::settle();
         stopAnsweringMessageBoxes();
         QCOMPARE(mBoxesAnswered, 1);
         QVERIFY2(fieldNamed(qsl("lineEdit_title"))->text().isEmpty(), "answering the prompt left the typed summary standing");
@@ -734,15 +705,15 @@ private slots:
         auto* pList = comboNamed(qsl("packageList"));
         const int at = rowOfThePackage();
         pList->setCurrentIndex(at);
-        settle();
+        TestPixels::settle();
         auto* pDescription = descriptionField();
         const QString typedNotes = qsl("Paragraphs nobody else has a copy of");
         pDescription->setPlainText(qsl("%1\n\n%2").arg(pDescription->toPlainText(), typedNotes));
-        settle();
+        TestPixels::settle();
 
         answerNextMessageBox(QMessageBox::No);
         pList->setCurrentIndex(0);
-        settle();
+        TestPixels::settle();
         stopAnsweringMessageBoxes();
         QVERIFY2(mBoxesAnswered == 1, "choosing the first entry discarded the typed notes without asking");
         QCOMPARE(pList->currentIndex(), at);
@@ -758,7 +729,7 @@ private slots:
         QVERIFY(pFiles && pDescription);
         // The fit is deferred: wait for the first real layout pass rather than
         // read the .ui file's heights
-        settle();
+        TestPixels::settle();
         QVERIFY(QTest::qWaitFor(
                 [pFiles]() {
                     return pFiles->height() > 0;
@@ -779,8 +750,8 @@ private slots:
         // setFixedHeight() resizes the list at once, but the column round it is
         // laid out afterwards, so a height is read only once the rows above moved
         const auto layoutSettles = [this]() {
-            settle();
-            settle();
+            TestPixels::settle();
+            TestPixels::settle();
         };
         const auto heightSettlesAt = [pFiles, layoutSettles](const int wanted) {
             const bool reached = QTest::qWaitFor(
@@ -799,7 +770,7 @@ private slots:
 
         // The zone's floor is two lines, so one file still fits the empty zone's room
         addAFile();
-        settle();
+        TestPixels::settle();
         const int rowHeight = pFiles->sizeHintForRow(0);
         QVERIFY2(rowHeight > 0, "SETUP: a row of the list has no height, so nothing below can be counted in rows");
         QVERIFY(heightSettlesAt(listHeight0));

@@ -55,6 +55,7 @@
 #include <cmath>
 
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
 #include "SettingsTestHelper.h"
@@ -148,7 +149,7 @@ static int markedPixelsIn(const QImage& shot, const QRect& box, const QColor& fi
     for (int y = inside.top(); y <= inside.bottom(); ++y) {
         for (int x = inside.left(); x <= inside.right(); ++x) {
             const QColor sample = shot.pixelColor(x, y);
-            if (std::abs(sample.red() - fill.red()) + std::abs(sample.green() - fill.green()) + std::abs(sample.blue() - fill.blue()) > scmMarkInkSlack) {
+            if (TestPixels::distance(sample, fill) > scmMarkInkSlack) {
                 ++marked;
             }
         }
@@ -822,7 +823,7 @@ private slots:
             QColor read = border;
             for (int row = 0; row < ratio; ++row) {
                 const QColor sample = shot.pixelColor(shot.width() / 2, row);
-                const int distance = std::abs(sample.red() - border.red()) + std::abs(sample.green() - border.green()) + std::abs(sample.blue() - border.blue());
+                const int distance = TestPixels::distance(sample, border);
                 if (distance < nearest) {
                     nearest = distance;
                     read = sample;

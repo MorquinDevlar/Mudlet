@@ -26,6 +26,7 @@
  */
 
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgConnectionProfiles.h"
 #include "mudlet.h"
@@ -81,11 +82,6 @@ private:
     // that doubles its pixels draws the one line over two rows
     static constexpr int scmHairlineInkSlack = 24;
 
-    static int accentDistance(const QColor& sample, const QColor& accent)
-    {
-        return std::abs(sample.red() - accent.red()) + std::abs(sample.green() - accent.green()) + std::abs(sample.blue() - accent.blue());
-    }
-
     // A screen that doubles its pixels draws one logical row over two device
     // rows, and an antialiased edge splits its ink between them
     static int nearestToAccent(const QImage& shot, const QPoint& inDialog, const QColor& accent, QColor* pRead)
@@ -98,7 +94,7 @@ private:
                 continue;
             }
             const QColor sample = shot.pixelColor(inShot);
-            const int distance = accentDistance(sample, accent);
+            const int distance = TestPixels::distance(sample, accent);
             if (distance < nearest) {
                 nearest = distance;
                 *pRead = sample;
@@ -204,13 +200,10 @@ private slots:
         };
         const QColor edge = readAt(QPoint(pField->width() / 2, 0));
         const QColor corner = readAt(QPoint(0, 0));
-        const auto distance = [](const QColor& a, const QColor& b) {
-            return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
-        };
         qInfo().noquote() << qsl("  the description field's top edge reads %1 and its corner pixel %2, against a hairline of %3").arg(edge.name(), corner.name(), tokens.border.name());
-        QVERIFY2(distance(edge, tokens.border) <= scmHairlineInkSlack,
+        QVERIFY2(TestPixels::distance(edge, tokens.border) <= scmHairlineInkSlack,
                  qPrintable(qsl("the description field's top edge reads %1 rather than the design's hairline %2").arg(edge.name(), tokens.border.name())));
-        QVERIFY2(distance(corner, edge) > scmHairlineInkSlack,
+        QVERIFY2(TestPixels::distance(corner, edge) > scmHairlineInkSlack,
                  qPrintable(qsl("the description field's corner pixel reads %1, the same as its edge, so the corner is square rather than cut to the field's radius").arg(corner.name())));
     }
 
@@ -282,7 +275,7 @@ private slots:
                 continue;
             }
             const QColor sample = shot.pixelColor(inShot);
-            const int distance = std::abs(sample.red() - border.red()) + std::abs(sample.green() - border.green()) + std::abs(sample.blue() - border.blue());
+            const int distance = TestPixels::distance(sample, border);
             if (distance < nearest) {
                 nearest = distance;
                 read = sample;
@@ -342,13 +335,13 @@ private slots:
             if (!readAs.isValid()) {
                 readAs = sample;
             }
-            const int distance = std::abs(sample.red() - border.red()) + std::abs(sample.green() - border.green()) + std::abs(sample.blue() - border.blue());
+            const int distance = TestPixels::distance(sample, border);
             if (distance <= scmHairlineInkSlack) {
                 ++onTheLine;
             }
         }
         const QColor justInside = shot.pixelColor(seamAt + qMax(3, qRound(3 * ratio)), top + height / 3);
-        const int insideDistance = std::abs(justInside.red() - border.red()) + std::abs(justInside.green() - border.green()) + std::abs(justInside.blue() - border.blue());
+        const int insideDistance = TestPixels::distance(justInside, border);
         qInfo().noquote() << qsl("  the Copy button's menu half starts at x %1; its leading edge reads %2 against the hairline's %3 on %4 of %5 rows, and %6 a few pixels in")
                                      .arg(half.left())
                                      .arg(readAs.name(), border.name())
@@ -436,7 +429,7 @@ private slots:
         const QColor corner = QColor::fromRgba(shot.pixel(0, 0));
         const QColor surface = QColor::fromRgba(shot.pixel(qRound(2 * shot.devicePixelRatio()), shot.height() / 2));
         QVERIFY2(corner.alpha() == 0, qPrintable(qsl("the Copy menu's corner is painted %1 rather than cut away, so its radius has a square window behind it").arg(corner.name(QColor::HexArgb))));
-        const int distance = std::abs(surface.red() - tokens.card.red()) + std::abs(surface.green() - tokens.card.green()) + std::abs(surface.blue() - tokens.card.blue());
+        const int distance = TestPixels::distance(surface, tokens.card);
         QVERIFY2(surface.alpha() == 255 && distance <= scmHairlineInkSlack,
                  qPrintable(qsl("the Copy menu is painted %1 rather than the card surface's %2").arg(surface.name(QColor::HexArgb), tokens.card.name())));
     }
@@ -496,7 +489,7 @@ private slots:
                 continue;
             }
             const QColor sample = shot.pixelColor(inShot);
-            const int distance = std::abs(sample.red() - accent.red()) + std::abs(sample.green() - accent.green()) + std::abs(sample.blue() - accent.blue());
+            const int distance = TestPixels::distance(sample, accent);
             if (distance < nearest) {
                 nearest = distance;
                 read = sample;
@@ -787,17 +780,13 @@ private slots:
         const bool wasDark = MudletApp::darkMode();
         const QString before = pDialog->tab_connection_info->styleSheet();
 
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::light : enums::Appearance::dark);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::light : enums::Appearance::dark);
 
         const QString after = pDialog->tab_connection_info->styleSheet();
         QVERIFY2(after != before, "the appearance moved and the tab's sheet did not, so nothing re-ran the style pass");
         QVERIFY2(after.contains(uiDesign::themeTokens().field.name()), "the tab's sheet was rebuilt without the field surface of the appearance it was rebuilt in");
 
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::dark : enums::Appearance::light);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::dark : enums::Appearance::light);
     }
 
     // setupUi() polishes the Connect-to page before its sheet is set and the
@@ -837,13 +826,9 @@ private slots:
 
         // A new appearance sets the pages' sheets again, which re-polishes their labels and checkboxes
         const bool wasDark = MudletApp::darkMode();
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::light : enums::Appearance::dark);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::light : enums::Appearance::dark);
         mismatch = tabFontMismatch(pDialog);
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::dark : enums::Appearance::light);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::dark : enums::Appearance::light);
         QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("in the other appearance: %1").arg(mismatch)));
     }
 

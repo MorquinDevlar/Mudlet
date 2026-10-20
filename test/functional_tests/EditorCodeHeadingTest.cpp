@@ -35,6 +35,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "TScript.h"
 #include "dlgSystemMessageArea.h"
@@ -81,20 +82,6 @@ private:
 
     QString bannerReads() const { return mpEditor->mpSystemMessageArea->notificationAreaMessageBox->text(); }
 
-    static QTreeWidgetItem* rowFor(QTreeWidgetItem* pParent, const int id)
-    {
-        for (int row = 0, rows = pParent->childCount(); row < rows; ++row) {
-            QTreeWidgetItem* pChild = pParent->child(row);
-            if (pChild->data(0, Qt::UserRole).toInt() == id) {
-                return pChild;
-            }
-            if (QTreeWidgetItem* pFound = rowFor(pChild, id)) {
-                return pFound;
-            }
-        }
-        return nullptr;
-    }
-
     edbee::TextEditorController* controller() const { return mpEditor->mpSourceEditorEdbee->controller(); }
 
     int caretLine() const
@@ -117,8 +104,6 @@ private:
     }
 
     QRect placeOnTheStrip(const QWidget* pPiece) const { return QRect(pPiece->mapTo(heading(), QPoint(0, 0)), pPiece->size()); }
-
-    static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
 
     static QString describeSizes(const QList<int>& sizes)
     {
@@ -206,7 +191,8 @@ private slots:
                  qPrintable(qsl("the code pane is still reporting a byte offset, which is a debugging reading rather than one a script author uses: \"%1\"").arg(reported)));
 
         const QRect place = placeOnTheStrip(pCaret);
-        QVERIFY2(heading()->rect().contains(place), qPrintable(qsl("the caret reading is at %1, which is not on the %2 strip").arg(describe(place), describe(heading()->rect()))));
+        QVERIFY2(heading()->rect().contains(place),
+                 qPrintable(qsl("the caret reading is at %1, which is not on the %2 strip").arg(TestPixels::describe(place), TestPixels::describe(heading()->rect()))));
 
         const QString message = mpEditor->statusBar()->currentMessage();
         QVERIFY2(message.isEmpty(), qPrintable(qsl("the caret position went out as a status bar message, which is painted over the counts: \"%1\"").arg(message)));
@@ -264,8 +250,9 @@ private slots:
         QLabel* pCaret = caretReading();
         QVERIFY2(pCaret != nullptr, "the code pane's heading has no label named editorCodeCaret on it");
         const QRect place = placeOnTheStrip(pCaret);
-        QVERIFY2(place.right() >= heading()->width() - scmTrailingEdgeSlack,
-                 qPrintable(qsl("with no note on it the caret reading is at %1 on a %2px strip, which is not its trailing edge").arg(describe(place), QString::number(heading()->width()))));
+        QVERIFY2(
+                place.right() >= heading()->width() - scmTrailingEdgeSlack,
+                qPrintable(qsl("with no note on it the caret reading is at %1 on a %2px strip, which is not its trailing edge").arg(TestPixels::describe(place), QString::number(heading()->width()))));
     }
 
     // The chunk name only repeats the item the reader is looking at, so it goes to the tooltip
@@ -355,7 +342,7 @@ private slots:
 
         const QRect caret = placeOnTheStrip(pCaret);
         const QRect note = placeOnTheStrip(pMessage);
-        QVERIFY2(!caret.intersects(note), qPrintable(qsl("the note is at %1 and the caret reading at %2, which is the same place").arg(describe(note), describe(caret))));
+        QVERIFY2(!caret.intersects(note), qPrintable(qsl("the note is at %1 and the caret reading at %2, which is the same place").arg(TestPixels::describe(note), TestPixels::describe(caret))));
     }
 
     // The strip itself is not resized, so eliding only on resize leaves the tail clipped mid-letter
@@ -566,7 +553,7 @@ private slots:
         QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(),
                  qPrintable(qsl("building the rows raised the notice over the form for a broken item nobody had opened, reading \"%1\"").arg(bannerReads())));
 
-        QTreeWidgetItem* pRow = rowFor(mpEditor->mpScriptsBaseItem, pBroken->getID());
+        QTreeWidgetItem* pRow = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, pBroken->getID());
         QVERIFY2(pRow != nullptr, "the broken script has no row in the Scripts tree");
         mpEditor->slot_scriptsSelected(pRow);
 
@@ -598,9 +585,7 @@ private slots:
         QStringList misses;
         QStringList measured;
         for (const auto& appearance : appearances) {
-            mudlet::self()->setAppearance(appearance.second);
-            QCoreApplication::processEvents();
-            QTest::qWait(150ms);
+            TestPixels::setAppearanceAndWait(appearance.second);
 
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
             const QColor red = uiDesign::errorInk(tokens);

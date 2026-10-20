@@ -45,6 +45,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "dlgNotepad.h"
 #include "mudlet.h"
@@ -135,21 +136,6 @@ private:
         QCoreApplication::processEvents();
         QTest::qWait(50ms);
         QCoreApplication::processEvents();
-    }
-
-    // The one path an appearance change takes while a window is open
-    void setAppearance(const enums::Appearance appearance)
-    {
-        mudlet::self()->setAppearance(appearance);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
-        QCoreApplication::processEvents();
-        mpNotepad->grab();
-    }
-
-    static bool readsAs(const QColor& read, const QColor& wanted)
-    {
-        return std::abs(read.red() - wanted.red()) <= scmFillTolerance && std::abs(read.green() - wanted.green()) <= scmFillTolerance && std::abs(read.blue() - wanted.blue()) <= scmFillTolerance;
     }
 
     void theCrossOnTabIsTheRecipes(const int index) const
@@ -578,7 +564,7 @@ private slots:
         clearTheSelection();
 
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
-            setAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second, mpNotepad);
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
             QVERIFY2(pDot->styleSheet().contains(tokens.accent.name()),
@@ -593,7 +579,7 @@ private slots:
         }
 
         // The cases after this one read pixels against the machine's appearance
-        setAppearance(enums::Appearance::systemSetting);
+        TestPixels::setAppearanceAndWait(enums::Appearance::systemSetting, mpNotepad);
     }
 
     void test_everyPictureInTheWindowComesFromTheGlyphs()
@@ -634,8 +620,9 @@ private slots:
         const QColor other = shot.pixelColor(insideTab(1));
         qInfo().noquote() << qsl("  chosen tab %1, the other %2; the accent wash on the page is %3 and the page is %4").arg(chosen.name(), other.name(), lit.name(), tokens.page.name());
 
-        QVERIFY2(readsAs(chosen, lit), qPrintable(qsl("the chosen tab reads %1 rather than the accent wash %2 - it is not drawn as a lit chip").arg(chosen.name(), lit.name())));
-        QVERIFY2(readsAs(other, tokens.page),
+        QVERIFY2(TestPixels::readsAs(chosen, lit, scmFillTolerance),
+                 qPrintable(qsl("the chosen tab reads %1 rather than the accent wash %2 - it is not drawn as a lit chip").arg(chosen.name(), lit.name())));
+        QVERIFY2(TestPixels::readsAs(other, tokens.page, scmFillTolerance),
                  qPrintable(qsl("the tab that is not chosen reads %1 rather than the page %2 - the strip is still drawing folder tabs").arg(other.name(), tokens.page.name())));
     }
 
@@ -645,7 +632,7 @@ private slots:
     {
         QMap<QString, QPair<QString, QString>> sheets;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
-            setAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second, mpNotepad);
             const QString field = uiDesign::themeTokens().field.name();
             QVERIFY2(centralSheet().contains(field),
                      qPrintable(qsl("on the %1 appearance the field tone is %2, which the central widget's sheet does not name - the shell did not restyle").arg(appearance.first, field)));
@@ -796,7 +783,7 @@ private slots:
         // The dark appearance's base style is Fusion, which answers a different
         // size for a tab's cross than the platform style; a new tab is caught by
         // the filter on the bar
-        setAppearance(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark, mpNotepad);
         const int third = mpNotepad->addTab(qsl("Third"));
         QCoreApplication::processEvents();
         theCrossOnTabIsTheRecipes(third);
