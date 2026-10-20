@@ -6099,6 +6099,18 @@ void Host::setEnableClosedCaption(const bool state)
     changeSetting(mEnableClosedCaption, state, qsl("enableClosedCaption"));
 }
 
+void Host::setAccessibleLabels(const bool state)
+{
+    if (mAccessibleLabels == state) {
+        return;
+    }
+    mAccessibleLabels = state;
+    for (const TLabelModel* pModel : mWindowRegistry.labelModels()) {
+        pModel->accessibilityChanged(TLabelModel::AccessibilityChange::KeyboardAccess);
+    }
+    raiseSettingChangedEvent(qsl("accessibleLabels"), state);
+}
+
 void Host::setAdvertiseScreenReader(const bool state)
 {
     if (mAdvertiseScreenReader == state) {
@@ -6646,6 +6658,48 @@ bool Host::setLabelClickCallback(const QString& name, const int func)
     return false;
 }
 
+bool Host::setLabelLiveRegion(const QString& name, TLabelLiveRegion liveRegion)
+{
+    if (!hasConsoleView()) {
+        return false;
+    }
+
+    auto* pModel = mWindowRegistry.labelModel(name);
+    if (pModel) {
+        pModel->setLiveRegion(liveRegion);
+        return true;
+    }
+    return false;
+}
+
+bool Host::setLabelAccessibleName(const QString& name, const QString& accessibleName)
+{
+    if (!hasConsoleView()) {
+        return false;
+    }
+
+    auto* pModel = mWindowRegistry.labelModel(name);
+    if (pModel) {
+        pModel->setAccessibleName(accessibleName);
+        return true;
+    }
+    return false;
+}
+
+bool Host::setLabelAccessibleButton(const QString& name, std::optional<bool> button)
+{
+    if (!hasConsoleView()) {
+        return false;
+    }
+
+    auto* pModel = mWindowRegistry.labelModel(name);
+    if (pModel) {
+        pModel->setAccessibleButton(button);
+        return true;
+    }
+    return false;
+}
+
 bool Host::setLabelDoubleClickCallback(const QString& name, const int func)
 {
     auto* pModel = mWindowRegistry.labelModel(name);
@@ -7103,6 +7157,51 @@ std::optional<QString> Host::labelToolTip(const QString& name) const
     return {};
 }
 
+std::optional<QString> Host::labelAccessibleName(const QString& name) const
+{
+    if (!hasConsoleView()) {
+        return {};
+    }
+    if (const TLabelModel* pLabel = mWindowRegistry.labelModel(name)) {
+        return pLabel->effectiveAccessibleName();
+    }
+    return {};
+}
+
+std::optional<TLabelLiveRegion> Host::labelLiveRegion(const QString& name) const
+{
+    if (!hasConsoleView()) {
+        return {};
+    }
+    if (const TLabelModel* pLabel = mWindowRegistry.labelModel(name)) {
+        return pLabel->mLiveRegion;
+    }
+    return {};
+}
+
+std::optional<QString> Host::labelAccessibleRole(const QString& name) const
+{
+    if (!hasConsoleView()) {
+        return {};
+    }
+    const TLabelModel* pLabel = mWindowRegistry.labelModel(name);
+    if (!pLabel) {
+        return {};
+    }
+    if (pLabel->actsAsButton()) {
+        return qsl("button");
+    }
+    switch (pLabel->mShownContent) {
+    case TLabelModel::ShownContent::Graphic:
+        return qsl("graphic");
+    case TLabelModel::ShownContent::Animation:
+        return qsl("animation");
+    case TLabelModel::ShownContent::Text:
+        break;
+    }
+    return qsl("text");
+}
+
 std::optional<QFont> Host::labelFont(const QString& name) const
 {
     if (const TLabelModel* pLabel = mWindowRegistry.labelModel(name)) {
@@ -7507,6 +7606,13 @@ void Host::setRemoteEchoingActive(bool active)
     mPasswordEntryOpensWithThePrompt = active;
     recomputePasswordEntryWanted();
     mPasswordEntryOpensWithThePrompt = false;
+}
+
+void Host::gameReleasedRemoteEcho()
+{
+    mPasswordEntryClosedByTheGame = true;
+    setRemoteEchoingActive(false);
+    mPasswordEntryClosedByTheGame = false;
 }
 
 void Host::recomputePasswordEntryWanted()

@@ -56,6 +56,7 @@ set(WINDOW_GROUP_TEST_SOURCES
     DetachedWindowTabActivityTest.cpp
     AboutDialogLicencesTest.cpp
     AboutDialogShellTest.cpp
+    LabelAccessibleInterfaceTest.cpp
     LabelAnchorInteractionTest.cpp
     MainWindowTitleTest.cpp
     LabelMovieRefusalTest.cpp
@@ -245,6 +246,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     PackageExporterTest.cpp
     EditorWindowPositionTest.cpp
     EventNamesTest.cpp
+    LuaFunctionListLoadTest.cpp
     MissingEditorThemeTest.cpp
     ReadabilityAuditTest.cpp
     ScriptEventHandlerLifetimeTest.cpp
@@ -387,6 +389,8 @@ set(MEDIA_GROUP_TEST_SOURCES
     TDiscordModeTest.cpp
     VideoOutputHideTest.cpp
     TMediaLoopTest.cpp
+    TAudioMixerTest.cpp
+    TMediaPanTest.cpp
     TtsInterruptingSpeakTest.cpp
     HeadlessMediaDebugTest.cpp
 )
@@ -730,20 +734,18 @@ endif()
 # and each clip has to be waited out in real time, so it needs a longer timeout.
 # VideoOutputHideTest boots one profile for the whole class and waits two of its three endings
 # out in real time, and takes the same headroom.
-# No test binary runs src/main.cpp, so pin QT_MEDIA_BACKEND for both, and for HeadlessMediaDebugTest,
+# No test binary runs src/main.cpp, so pin QT_MEDIA_BACKEND for both, and for HeadlessMediaDebugTest, TAudioMixerTest and TMediaPanTest,
 # to what main.cpp picks for the shipped application - otherwise the tests silently exercise Qt's default backend for
 # the platform rather than the one users actually get. It is empty, and so a no-op, on Linux.
-if(APPLE)
-    set(mediaLoopTestBackend "darwin")
-elseif(WIN32)
+if(APPLE OR WIN32)
     set(mediaLoopTestBackend "ffmpeg")
 else()
     set(mediaLoopTestBackend "")
 endif()
-set_tests_properties(TMediaLoopTest VideoOutputHideTest PROPERTIES TIMEOUT 300)
+set_tests_properties(TMediaLoopTest VideoOutputHideTest TAudioMixerTest TMediaPanTest PROPERTIES TIMEOUT 300)
 if(mediaLoopTestBackend)
     # APPEND, so the environment set by the loop above stays in force rather than being replaced
-    set_property(TEST TMediaLoopTest VideoOutputHideTest HeadlessMediaDebugTest APPEND PROPERTY ENVIRONMENT "QT_MEDIA_BACKEND=${mediaLoopTestBackend}")
+    set_property(TEST TMediaLoopTest VideoOutputHideTest HeadlessMediaDebugTest TAudioMixerTest TMediaPanTest APPEND PROPERTY ENVIRONMENT "QT_MEDIA_BACKEND=${mediaLoopTestBackend}")
 endif()
 
 # StarterUiSectionsTest creates a fresh profile per test method and one of them

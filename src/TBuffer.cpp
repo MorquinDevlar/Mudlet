@@ -1212,7 +1212,7 @@ void TBuffer::noteRemovedLinks(const std::vector<TChar>& line, const qint64 line
       elements at the end can be omitted.
  */
 
-void TBuffer::resetSequenceParserState()
+void TBuffer::clearSequenceLatches()
 {
     mGotESC = false;
     mGotEscCharset = false;
@@ -1220,6 +1220,11 @@ void TBuffer::resetSequenceParserState()
     mGotOSC = false;
     mGotString = false;
     mIncompleteSequenceBytes.clear();
+}
+
+void TBuffer::resetSequenceParserState()
+{
+    clearSequenceLatches();
     mPendingLead = 0;
     mLocalGotESC = false;
     mLocalGotEscCharset = false;
@@ -1259,6 +1264,20 @@ void TBuffer::swapParserSequenceState()
     std::swap(mPendingLeadFormat, mLocalPendingLeadFormat);
 }
 
+void TBuffer::endLocalFeedSequences()
+{
+    // A local feed arrives whole, so a sequence it left open was never going to
+    // be finished - carried over, it would swallow the start of the next feed:
+    if (Q_UNLIKELY(mPendingLead)) {
+        flushPendingLead();
+    }
+    if (mGotOSC) {
+        // mIncompleteSequenceBytes holds the payload so far:
+        warnAboutDiscardedStringSequence(qsl("was not terminated before the end of the locally fed text"), mIncompleteSequenceBytes, 0, mIncompleteSequenceBytes.size());
+    }
+    clearSequenceLatches();
+}
+
 void TBuffer::translateToPlainText(std::string& incoming, const bool isFromServer)
 {
     // The mGot... latches and mIncompleteSequenceBytes persist between calls so
@@ -1267,22 +1286,43 @@ void TBuffer::translateToPlainText(std::string& incoming, const bool isFromServe
     // insertions) runs through the same parser, so swap in a separate set of
     // that state for the duration of such a feed - otherwise local text
     // arriving between two packets would consume or clear a latch that the
-    // server stream is still relying on (and vice versa). The flag keeps a
-    // nested local feed (e.g. an MXP <HR> inside locally fed text) from
-    // swapping the server state back in part way through:
-    if (isFromServer || mProcessingLocalFeed) {
-        translateToPlainTextInner(incoming, isFromServer);
-        if (!isFromServer) {
-            // The outer feed scans on through its own text, so bytes held from this nested one would
-            // be prepended to whichever local feed comes next, inside an unrelated sequence
-            mIncompleteSequenceBytes.clear();
-        }
+    // server stream is still relying on. The flag keeps a nested local feed
+    // (e.g. an MXP <HR> inside locally fed text) from swapping the server
+    // state back in part way through:
+    if (isFromServer) {
+        translateToPlainTextInner(incoming, true);
+        return;
+    }
+
+    if (mProcessingLocalFeed) {
+        // Text a trigger or an MXP tag feeds while the enclosing feed is still
+        // being read is whole too, so it gets a clean state and leaves the
+        // enclosing feed's own as it found it:
+        const bool enclosingGotESC = std::exchange(mGotESC, false);
+        const bool enclosingGotEscCharset = std::exchange(mGotEscCharset, false);
+        const bool enclosingGotCSI = std::exchange(mGotCSI, false);
+        const bool enclosingGotOSC = std::exchange(mGotOSC, false);
+        const bool enclosingGotString = std::exchange(mGotString, false);
+        std::string enclosingIncompleteSequenceBytes = std::exchange(mIncompleteSequenceBytes, {});
+        const char enclosingPendingLead = std::exchange(mPendingLead, 0);
+        const TChar enclosingPendingLeadFormat = mPendingLeadFormat;
+        translateToPlainTextInner(incoming, false);
+        endLocalFeedSequences();
+        mGotESC = enclosingGotESC;
+        mGotEscCharset = enclosingGotEscCharset;
+        mGotCSI = enclosingGotCSI;
+        mGotOSC = enclosingGotOSC;
+        mGotString = enclosingGotString;
+        mIncompleteSequenceBytes = std::move(enclosingIncompleteSequenceBytes);
+        mPendingLead = enclosingPendingLead;
+        mPendingLeadFormat = enclosingPendingLeadFormat;
         return;
     }
 
     mProcessingLocalFeed = true;
     swapParserSequenceState();
     translateToPlainTextInner(incoming, false);
+    endLocalFeedSequences();
     swapParserSequenceState();
     mProcessingLocalFeed = false;
 }
@@ -1720,8 +1760,11 @@ void TBuffer::translateToPlainTextInner(std::string& incoming, const bool isFrom
             // the sequence started earlier in this buffer, so the byte behind
             // is its introducer (or, after a trip round the length cap below,
             // more of its payload), or spanStart is 0 and the spanEnd > 0
-            // guard keeps the read in bounds.
-            while (spanEnd < localBufferLength && (spanEnd - spanStart) < MAX_OSC_SEQUENCE_LENGTH && localBuffer[spanEnd] != '\x07' && !endsStringSequence(localBuffer[spanEnd])
+            // guard keeps the read in bounds. The scan stops short of a flush
+            // marker (decodableLength()): counted as payload, it would take a
+            // sequence one byte under the cap over it, and the line it came to
+            // flush would not be committed.
+            while (spanEnd < localBufferDecodableLength && (spanEnd - spanStart) < MAX_OSC_SEQUENCE_LENGTH && localBuffer[spanEnd] != '\x07' && !endsStringSequence(localBuffer[spanEnd])
                    && !((spanEnd > 0 && localBuffer[spanEnd - 1] == '\033') && localBuffer[spanEnd] == '\\')) {
                 ++spanEnd;
             }
@@ -1793,6 +1836,13 @@ void TBuffer::translateToPlainTextInner(std::string& incoming, const bool isFrom
             // backslash of a String Terminator would hide that terminator:
             mIncompleteSequenceBytes.clear();
             std::remove_copy(localBuffer.cbegin() + spanStart, localBuffer.cend(), std::back_inserter(mIncompleteSequenceBytes), CHAR_CARRIAGE_RETURN);
+            // As for a split CSI, the flush marker still has to commit the text ahead of the sequence - but not
+            // inside an open link: this may be its closing OSC 8, and a link split across lines loses its
+            // visibility settings (finaliseActiveHyperlink()):
+            if (localBufferDecodableLength < localBufferLength && !mHyperlinkActive) {
+                size_t markerPosition = localBufferDecodableLength;
+                commitLine(CHAR_CARRIAGE_RETURN, markerPosition, isFromServer, false);
+            }
             return;
         }
 

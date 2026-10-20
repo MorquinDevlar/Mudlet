@@ -544,6 +544,12 @@ public:
     static int deleteScrollBox(lua_State*);
     static int setLabelToolTip(lua_State*);
     static int getLabelToolTip(lua_State*);
+    static int setLabelAccessibleName(lua_State*);
+    static int getLabelAccessibleName(lua_State*);
+    static int setLabelAccessibleRole(lua_State*);
+    static int getLabelAccessibleRole(lua_State*);
+    static int setLabelLiveRegion(lua_State*);
+    static int getLabelLiveRegion(lua_State*);
     static int setLabelCursor(lua_State*);
     static int setLabelCustomCursor(lua_State*);
     static int moveWindow(lua_State*);
@@ -627,6 +633,9 @@ public:
     static int pauseSounds(lua_State*);
     static int pauseMusic(lua_State*);
     static int pauseVideos(lua_State*);
+    static int updateSounds(lua_State*);
+    static int setMediaListener(lua_State*);
+    static int getMediaListener(lua_State*);
     static int purgeMediaCache(lua_State*);
     static int setBorderSizes(lua_State*);
     static int setBorderTop(lua_State*);
