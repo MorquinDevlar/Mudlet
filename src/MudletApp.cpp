@@ -448,13 +448,8 @@ QString MudletApp::getMudletPath(const enums::mudletPathType mode, const QString
         // map is loaded:
         return qsl("%1/profiles/%2/log/errors.txt").arg(confPath, extra1);
     case enums::editorWidgetThemePathFile:
-        // Takes one extra argument (theme file name) and returns the
-        // pathFileName of the theme file used by the edbee editor. Every theme
-        // but Mudlet's own two is downloaded into the cache; those two are
-        // carried internally in the resource file. The light one also answers
-        // to the file name it had while it was the only theme Mudlet shipped,
-        // so a profile saved by one of those versions still finds it whether or
-        // not its stored value has been brought forward yet.
+        // Takes one extra argument (theme file name). The legacy file name resolves too, for
+        // a profile whose stored value has not been migrated yet.
         if (!extra1.compare(scmEditorThemeFileLight, Qt::CaseSensitive) || !extra1.compare(scmEditorThemeFileLegacy, Qt::CaseSensitive)) {
             return qsl(":/edbee_defaults/%1").arg(scmEditorThemeFileLight);
         }
@@ -562,12 +557,8 @@ QString MudletApp::getMudletPath(const enums::mudletPathType mode, const QString
     return QString();
 }
 
-// The theme Mudlet ships was called "Mudlet" until a dark one joined it and the
-// two became a light/dark pair, and a profile saved before then still asks for
-// it by that name and file name. The file still resolves either way, but the
-// name no longer matches an entry in the theme list - which would leave the
-// preferences showing no theme at all - so a profile's stored choice is brought
-// forward once, on the way in, rather than translated at every read.
+// The legacy name matches no entry in the theme list, which would leave the preferences
+// showing no theme at all
 void MudletApp::migrateBundledEditorTheme(QString& themeName, QString& themeFile)
 {
     if (!themeName.compare(scmEditorThemeNameLegacy, Qt::CaseSensitive)) {

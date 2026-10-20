@@ -18,12 +18,6 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-/***************************************************************************
- *   The profile strip: the design's chips, drawn by a style of its own     *
- *   because a stylesheet rule would take the tab away from it and with     *
- *   the tab the per-tab font emphasis and the connection indicator.        *
- ***************************************************************************/
-
 #include "TTabBar.h"
 
 #include "uiDesign.h"
@@ -47,36 +41,27 @@
 static const int VERTICAL_MOVEMENT_RATIO_THRESHOLD = 60; // Percentage of movement that must be vertical
 static const int TAB_REORDER_DELAY_MS = 150;             // Delay before allowing tab detachment
 
-// A wash is composited rather than blitted, so what a word on one is actually
-// read against is the mix rather than the wash's own colour
+// Contrast is read against a wash as blended over the page, not against the wash's own colour
 static QColor composited(const QColor& ink, const QColor& surface)
 {
     const qreal weight = ink.alphaF();
     return QColor::fromRgbF(ink.redF() * weight + surface.redF() * (1.0 - weight), ink.greenF() * weight + surface.greenF() * (1.0 - weight), ink.blueF() * weight + surface.blueF() * (1.0 - weight));
 }
 
-// What a chip the reader chose is filled with on a light page: the accent taken
-// towards black until the field's own white - what Qt writes on every well in
-// the window - reads on it at the floor every word of the design clears. The
-// walk ends at black, which white clears many times over, so it always lands on
-// a colour rather than falling back on the page's words.
+// The walk towards black always reaches a fill white clears, so tokens.text is never the answer
 static QColor chosenFillOnLightPage(const uiDesign::ThemeTokens& tokens)
 {
     return uiDesign::readableOn(tokens.field, tokens.accent, tokens.text, uiDesign::scmTextMinimumRatio);
 }
 
-// A script's application stylesheet that names the tab bar keeps the last word
-// over the chips, so the tabs are measured and painted by the style carrying it;
-// a sheet about other widgets leaves the chips alone
+// A script's setAppStyleSheet() that names QTabBar keeps the last word over the chips
 static bool applicationSheetTakesTheTabs()
 {
     return qApp->styleSheet().contains(qsl("QTabBar"));
 }
 
-// Which tab an option describes. The pixmap Qt drags a reordered tab around as
-// is painted from an option whose rect has been moved to the origin, so tabAt()
-// on that rect names the wrong tab or none; tabIndex carries the answer and has
-// since Qt 6.8.
+// Qt paints a reordered tab's drag pixmap with the rect moved to the origin, so tabAt() on it
+// names the wrong tab or none; tabIndex is set since Qt 6.8
 int TStyle::tabIndexOf(const QStyleOptionTab* tabOption) const
 {
     if (!tabOption) {
@@ -96,8 +81,7 @@ TStyle::ChipLayout TStyle::layoutChip(const QStyleOptionTab* tabOption) const
     }
 
     const QRect bounds = tabOption->rect;
-    // The gap between two chips comes off the trailing side, which is what the
-    // sheet's margin-right does for the strips drawn by a rule
+    // The gap trails, as tabBarStyleSheet()'s margin-right puts it on a rule-drawn strip
     const QRect chip = bounds.adjusted(0, 0, -uiDesign::scmTabGap, 0);
     const int horizontalInset = uiDesign::scmInputBorderWidth + uiDesign::scmTabPaddingHorizontal;
     const int verticalInset = uiDesign::scmInputBorderWidth + uiDesign::scmTabPaddingVertical;
@@ -128,16 +112,7 @@ TStyle::ChipLayout TStyle::layoutChip(const QStyleOptionTab* tabOption) const
     return layout;
 }
 
-// The two appearances take two treatments of the chip the reader chose, and the
-// reason is the page under it. On a light page the platform's own chosen tab is
-// a filled one written on in white, and this chip follows it: the wash was too
-// pale against the grey page to say which profile is on show, so the accent is
-// darkened until that white reads on it and the word, the cross and a ring are
-// written in it. On a fill there is nothing left for a bar or an outline to say,
-// both being the accent on the accent. On a dark page a solid fill would be the
-// loudest thing in the window, so the chip keeps the wash, the bar the settings
-// sidebar draws down its chosen row and the outline, and its word is walked
-// against the wash as that is really composited.
+// Filled on a light page, where a wash is too pale on the grey; on a dark page a fill would shout
 TStyle::ChipFace TStyle::chipFace(const QStyleOptionTab* tabOption, const uiDesign::ThemeTokens& tokens) const
 {
     ChipFace face;
@@ -159,10 +134,6 @@ TStyle::ChipFace TStyle::chipFace(const QStyleOptionTab* tabOption, const uiDesi
         }
         face.fill = tokens.accentWash;
         face.surface = composited(tokens.accentWash, tokens.page);
-        // accentText is walked only to the floor every word of the design
-        // clears, and on this strip's grey page the accent at that floor fades
-        // into its own wash - so the word naming the profile on show is walked
-        // on again against the wash as it is really composited
         face.word = uiDesign::readableOn(face.surface, tokens.accentText, tokens.text, sChosenWordMinimumRatio);
         face.bar = true;
         face.outline = true;
@@ -189,14 +160,12 @@ void TStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
         return;
     }
 
-    // Everything this style does not draw goes to the application style
-    // (DarkTheme) rather than to our proxy base, which resolves to a separate
-    // Fusion instance that doesn't have dark palette colors on Windows 10
+    // Delegate to the application style (DarkTheme) rather than our proxy base
+    // style, which resolves to a separate Fusion instance that doesn't have
+    // dark palette colors on Windows 10
     qApp->style()->drawControl(element, option, painter, widget);
 }
 
-// The sheet draws the tab, but the marks for new output still reach it through
-// the painter's font and the connection indicator is still drawn over it
 void TStyle::paintThroughApplicationSheet(const ControlElement element, const QStyleOptionTab* tabOption, QPainter* painter, const QWidget* widget) const
 {
     const int index = tabIndexOf(tabOption);
@@ -240,12 +209,7 @@ void TStyle::paintChip(QPainter* painter, const QStyleOptionTab* tabOption, cons
         if (face.bar) {
             uiDesign::paintAccentBar(painter, layout.chip, tokens.accent, uiDesign::scmRadiusChip);
         }
-        // A border elsewhere in the design says where the keyboard is; this bar
-        // takes none, so on it a border can only mean chosen. Last, so the bar's
-        // outer edge is this outline rather than the other way about, and half a
-        // pixel in on every side, so a one-pixel line lands on whole pixels
-        // rather than across two. Its width was always in the metrics, so
-        // nothing moved to make room.
+        // Stroked last so it is the bar's outer edge, and half a pixel in so the line lands on whole pixels
         if (face.outline) {
             QPainterPath outline;
             outline.addRoundedRect(QRectF(layout.chip).adjusted(0.5, 0.5, -0.5, -0.5), uiDesign::scmRadiusChip, uiDesign::scmRadiusChip);
@@ -256,9 +220,7 @@ void TStyle::paintChip(QPainter* painter, const QStyleOptionTab* tabOption, cons
     if (label) {
         const QString tabName = mpTabBar ? mpTabBar->tabData(tabIndexOf(tabOption)).toString() : QString();
         QFont font = widget ? widget->font() : painter->font();
-        // Bold on a tab that is not the one on show says it has new output; on
-        // the chosen one it says it is the one on show, the way the settings
-        // sidebar draws its chosen row, and the wash tells the two apart
+        // Bold also marks new output; the wash is what tells that apart from the chosen tab
         font.setBold(chosen || mBoldTabsSet.contains(tabName));
         font.setItalic(mItalicTabsSet.contains(tabName));
         font.setUnderline(mUnderlineTabsSet.contains(tabName));
@@ -285,15 +247,11 @@ void TStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option,
     }
 
     if (element == PE_IndicatorTabClose && option) {
-        // Only the option, never the widget: with a profile stylesheet on the
-        // bar this call arrives through QStyleSheetStyle, which hands its base
-        // the tab bar in place of the button that asked
+        // Only the option: through QStyleSheetStyle (a profile sheet on the bar) the widget
+        // is the tab bar, not the close button that asked
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const bool lit = option->state & (State_Raised | State_Sunken);
-        // The cross on the chip the reader chose stands on that chip's fill
-        // wherever it has one, so there it is written in the white the word
-        // beside it is, lit or not: a filled chip has no wash to light up, and
-        // the chrome tone would be swallowed by the fill
+        // A filled chip has no wash to light up, and the chrome tone would vanish into the fill
         const bool onAFill = (option->state & State_Selected) && !tokens.darkPage;
         const QColor ink = !(option->state & State_Enabled) ? tokens.disabledText : (onAFill ? tokens.field : (lit ? tokens.accentText : tokens.mutedText));
         const qreal ratio = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
@@ -306,8 +264,6 @@ void TStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option,
     }
 
     if (element == PE_FrameTabBarBase) {
-        // The band a platform fills the whole strip with behind the tabs is
-        // neither the page the chips lie on nor anything the design asked for
         return;
     }
 
@@ -327,7 +283,6 @@ QRect TStyle::subElementRect(SubElement element, const QStyleOption* option, con
         case SE_TabBarTabRightButton:
             return layoutChip(tabOption).close;
         case SE_TabBarTabLeftButton:
-            // Nothing is ever put on the leading edge: the cross trails the word
             return QRect();
         default:
             break;
@@ -337,12 +292,8 @@ QRect TStyle::subElementRect(SubElement element, const QStyleOption* option, con
     return QProxyStyle::subElementRect(element, option, widget);
 }
 
-// The tab is drawn here rather than by any other style, so its measurements are
-// this style's too - what QTabBar adds round a tab's text is the chip's padding
-// and its border, and the gap that tells two chips apart. The rest still goes to
-// the application style (DarkTheme) rather than to our proxy base, which
-// resolves to a separate instance of the platform's native style and would
-// answer for a look nothing here draws.
+// Sizes must come from the style that paints. The rest goes to qApp->style(): our proxy base is a
+// separate instance of the platform's native style and would size a look nothing here draws
 QSize TStyle::sizeFromContents(ContentsType type, const QStyleOption* option, const QSize& contentsSize, const QWidget* widget) const
 {
     if (type == CT_TabBarTab && !applicationSheetTakesTheTabs()) {
@@ -366,8 +317,6 @@ int TStyle::pixelMetric(PixelMetric metric, const QStyleOption* option, const QW
     case PM_TabCloseIndicatorWidth:
     case PM_TabCloseIndicatorHeight:
         return uiDesign::scmTabCloseBoxSize;
-    // Chips lie side by side on the page: none of them overlaps its neighbour,
-    // none of them steps sideways when it is chosen, and there is no base
     case PM_TabBarTabOverlap:
     case PM_TabBarTabShiftHorizontal:
     case PM_TabBarTabShiftVertical:
@@ -383,23 +332,16 @@ int TStyle::styleHint(StyleHint hint, const QStyleOption* option, const QWidget*
 {
     switch (hint) {
     case SH_TabBar_CloseButtonPosition:
-        // The cross trails the word on every platform, as it does on the
-        // notepad's strip - macOS alone would otherwise put it in front
+        // macOS alone would put the cross in front of the word
         return QTabBar::RightSide;
     case SH_TabBar_Alignment:
-        // The chips share the width of the bar between them, so this only
-        // decides where a strip too narrow to fill one starts - and that is the
-        // leading edge, as every other row in the design begins there
         return Qt::AlignLeft;
     default:
         return QProxyStyle::styleHint(hint, option, widget, returnData);
     }
 }
 
-// Read against what the chip is actually filled with rather than against the
-// page: on an accent fill a dot walked only off the page disappears into it, and
-// the ring the chrome tone draws goes with it - so the ring is written in the
-// same ink as the word beside it.
+// Walked against the chip's own surface: a dot walked off the page vanishes into an accent fill
 void TStyle::paintConnectionIndicator(QPainter* painter, const QRect& box, TabConnectionIndicator state, const uiDesign::ThemeTokens& tokens, const QColor& surface, const QColor& ringInk) const
 {
     const auto stateInk = [&tokens, &surface](const qreal hue) {
@@ -555,16 +497,8 @@ QSize TTabBar::tabSizeHint(int index) const
 {
     QSize s = QTabBar::tabSizeHint(index);
 
-    // Every tab is measured bold, whether or not it is drawn that way: the tab
-    // on show is bold as well as one carrying new output, so a strip measured
-    // only for the tabs that are drawn bold would step sideways every time the
-    // reader chose another profile. The same reason uiDesign::sidebarRowWidth()
-    // measures every sidebar row bold. Italic and underline stay per tab, since
-    // nothing but that profile's own state ever puts them on.
-    //
-    // Note that this method must use (because it is associated with sizing the
-    // text to show) the (possibly Qt modified to include an accelarator) actual
-    // tabText and not the profile name that we have stored in the tabData:
+    // Every tab is measured bold so the strip does not shift when the chosen (bold) tab changes.
+    // Sizing uses tabText(), which Qt may have given an accelerator, not the name in tabData.
     const QFontMetrics fm(font());
     const int w = fm.horizontalAdvance(tabText(index));
 
@@ -598,11 +532,8 @@ bool TTabBar::adoptCloseButton(const int index)
     return true;
 }
 
-// Qt builds the cross as a child of the bar and sizes it from the application
-// style before anything here can reach it - QTabBar::insertTab() lays the tabs
-// out with that size and only then calls this. Handing the button our style
-// gives it the design's box, and the refresh is what makes the bar measure the
-// tabs again against it, since it reads the widgets' current size().
+// QTabBar::insertTab() sizes the cross from the application style and lays out before calling
+// this; the refresh re-measures the tabs, which reads the adopted button's current size()
 void TTabBar::tabInserted(int index)
 {
     if (adoptCloseButton(index)) {
@@ -617,13 +548,10 @@ void TTabBar::tabInserted(int index)
 // we hand it the event it was skipped for.
 void TTabBar::refreshAfterApplicationStyleChange()
 {
-    // Also the moment a cross that was never handed our style gets it: a caller
-    // that turned closable tabs on after adding its tabs got its buttons from
-    // QTabBar::setTabsClosable(), which never calls tabInserted()
+    // QTabBar::setTabsClosable() makes crosses without calling tabInserted()
     for (int i = 0, total = count(); i < total; ++i) {
         adoptCloseButton(i);
-        // ...and the moment its box is measured again, by the design or by an
-        // application sheet that has just taken the tabs or let them go
+        // An application sheet may just have taken the tabs or let them go
         if (auto* pClose = tabButton(i, QTabBar::RightSide)) {
             pClose->resize(pClose->sizeHint());
         }

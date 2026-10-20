@@ -68,24 +68,13 @@
 
 using namespace std::chrono_literals;
 
-// What the validator has to say about one of the connection fields, which the
-// page's stylesheet draws the wash on it from. Absent while the field is fine.
 static constexpr char scmProp_fieldState[] = "connectionFieldState";
 
-// The picture standing for a profile in the games list: either generated from
-// the profile's name or a picture the user supplied. Both are the same size,
-// and both are cut to the same corner below.
 static constexpr int scmProfileChipWidth = 120;
 static constexpr int scmProfileChipHeight = 30;
 
-// A chip in the games list is a word in a box, so it takes the corner every
-// other one in these two windows does. Both kinds go through here: a square
-// user picture beside a rounded generated one would read as two kinds of thing
-// in the one column.
-//
-// Built at the screen's pixel ratio rather than at 120x30 flat, or the rounded
-// edge and the text on it are drawn at half the resolution the rest of the row
-// is and come back soft.
+// User pictures are rounded too: a square one beside rounded generated chips reads as another kind of thing.
+// Built at the screen's pixel ratio, or the rounded edge and its text come back soft on a HiDPI screen.
 static QPixmap roundedChip(const QPixmap& face, const qreal ratio)
 {
     QPixmap chip(QSize(scmProfileChipWidth, scmProfileChipHeight) * ratio);
@@ -101,9 +90,6 @@ static QPixmap roundedChip(const QPixmap& face, const qreal ratio)
     return chip;
 }
 
-// A picture of whatever size it was drawn at - a game's banner from the
-// resources, a profile's own from disk - brought to the chip: scaled to it at
-// the screen's pixel ratio, then cut to its corner
 static QIcon chipIcon(const QPixmap& source, const qreal ratio)
 {
     const QPixmap face = source.scaled(QSize(scmProfileChipWidth, scmProfileChipHeight) * ratio, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
@@ -118,11 +104,8 @@ ProfileChipDelegate::ProfileChipDelegate(QObject* parent)
 
 void ProfileChipDelegate::restyle(const uiDesign::ThemeTokens& tokens)
 {
-    // The pointer is on it, or it is the one chosen, so it is the accent's -
-    // the same ink every other lit thing in these windows is drawn with. Walked
-    // to the quiet floor against the list's surface the way the profile strip
-    // walks its chosen chip: on the light appearance the platform's accent is
-    // the pale highlight of a selection, which on a white list is no ring at all.
+    // Walked to the quiet floor: on the light appearance the platform's accent is a pale
+    // selection highlight, which on a white list is no ring at all
     mHaloInk = uiDesign::readableOn(tokens.field, tokens.accent, tokens.text, uiDesign::scmQuietMinimumRatio);
 }
 
@@ -131,14 +114,10 @@ QColor ProfileChipDelegate::haloInk() const
     return mHaloInk;
 }
 
-// How far the halo reaches past the picture: the gap it stands off by plus its
-// own width, on every side. What the item's rectangle has to carry over the
-// picture, and what paint() centres the picture inside.
 static constexpr int scmChipHaloRoom = ProfileChipDelegate::scmChipHaloGap + ProfileChipDelegate::scmChipHaloWidth;
 
-// The picture's own rectangle inside an item's. The style is not asked for it:
-// its decoration rectangle lays the picture against the top of a taller row,
-// which leaves no room under it for the halo.
+// Not the style's decoration rectangle: that lays the picture against the top of a
+// taller row, leaving no room under it for the halo
 static QRect chipRectIn(const QRect& item)
 {
     if (item.width() < scmProfileChipWidth || item.height() < scmProfileChipHeight) {
@@ -176,11 +155,8 @@ void ProfileChipDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
     painter->setBrush(Qt::NoBrush);
 
     if (chosen) {
-        // The gap filled in as well: one solid band of the accent from the
-        // picture's edge out to where the ring ends. Under the picture rather
-        // than over it, so the band's antialiased inner edge never lands on the
-        // picture's own pixels. A stroke is drawn centred on the path, so the
-        // path is half the band's width out.
+        // Under the picture, so the band's antialiased inner edge never lands on its pixels.
+        // A stroke is centred on its path, so the path is half the band's width out.
         constexpr qreal frameWidth = scmChipHaloRoom;
         painter->setPen(QPen(mHaloInk, frameWidth));
         const qreal outward = frameWidth / 2.0;
@@ -189,17 +165,12 @@ void ProfileChipDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
 
     const auto icon = index.data(Qt::DecorationRole).value<QIcon>();
     if (!icon.isNull()) {
-        // A row the typed search does not match has its enabled flag cleared,
-        // and the greying that goes with it is the list's answer to the search.
-        // Painting the picture here rather than through the base delegate means
-        // carrying that over.
+        // The typed search clears a non-matching row's enabled flag; the base delegate's
+        // greying for that has to be carried over here
         icon.paint(painter, chip, Qt::AlignCenter, (option.state & QStyle::State_Enabled) ? QIcon::Normal : QIcon::Disabled);
     }
 
     if (!chosen && (option.state & QStyle::State_MouseOver)) {
-        // Standing off the picture: nothing over the gap, the accent over the
-        // ring's own width. The list's surface showing through the gap is what
-        // keeps the ring legible on a bright banner.
         constexpr qreal standOff = scmChipHaloGap + scmChipHaloWidth / 2.0;
         painter->setPen(QPen(mHaloInk, scmChipHaloWidth));
         painter->drawRoundedRect(QRectF(chip).adjusted(-standOff, -standOff, standOff, standOff), uiDesign::scmRadiusChip + standOff, uiDesign::scmRadiusChip + standOff);
@@ -289,29 +260,18 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
             mDateTimeFormat.remove(QLatin1Char('t'), Qt::CaseSensitive);
         }
     }
-    // The notice under the games list is the editor's banner: a wash of the
-    // accent with a hairline round it and one line glyph beside the words. What
-    // the .ui file pinned for the old 3px box round 64px bitmaps is undone here
-    // rather than in the file, so every object name and connection on it stays
-    // where the rest of this window expects it.
+    // Undoes the sizing the .ui pins for 64px bitmaps; done here rather than in the file so
+    // its object names and connections stay where the rest of this window expects them
     if (QLayout* pNoticeLayout = notificationArea->layout()) {
         pNoticeLayout->setContentsMargins(uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical, uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical);
         pNoticeLayout->setSpacing(uiDesign::scmNoticeSpacing);
     }
-    // 70px was the height a stack of 64px pictures needed; a notice is as tall
-    // as the line or two of words in it
     notificationArea->setMinimumHeight(0);
-    // The frame was set at 16pt and the words inside it at 8pt, which is two
-    // sizes nothing else on this dialog is read at. A default-constructed font
-    // is the one a widget inherits from what holds it.
+    // A default-constructed QFont is inherited from the parent, undoing the .ui's 16pt and 8pt
     notificationArea->setFont(QFont());
     notificationAreaMessageBox->setFont(QFont());
-    // ...and the 5px each label kept round itself, which the layout's own
-    // padding now provides
     notificationAreaMessageBox->setMargin(0);
-    // The wash is painted by the sheet. A widget filling itself with the
-    // palette's window colour first would paint a square of it over the frame's
-    // rounded corner, so neither the frame nor the labels on it do.
+    // Auto-fill would paint a square of the palette's window colour over the sheet's rounded corner
     notificationArea->setAutoFillBackground(false);
     for (QLabel* pLabel : {notificationAreaIconLabelWarning, notificationAreaIconLabelError, notificationAreaIconLabelInformation, notificationAreaMessageBox}) {
         pLabel->setAutoFillBackground(false);
@@ -322,15 +282,10 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
     // and certain architectures.
 
     listWidget_profiles->setSelectionMode(QAbstractItemView::SingleSelection);
-    // The list's own surface is still the platform's: the delegate draws the
-    // chips themselves, with the accent halo round the one under the pointer
-    // and the solid accent frame round the one chosen
     mpProfileChipDelegate = new ProfileChipDelegate(listWidget_profiles);
     listWidget_profiles->setItemDelegate(mpProfileChipDelegate);
-    // A view takes what the pointer is over off hover events, and those are
-    // only sent to a widget that asks for them. Measured rather than assumed:
-    // this viewport carries neither the attribute nor mouse tracking of its
-    // own, so without this the delegate is never painted a hovered row.
+    // Hover events reach only a widget that asks for them, and this viewport has neither
+    // WA_Hover nor mouse tracking: without this the delegate never sees State_MouseOver
     listWidget_profiles->viewport()->setAttribute(Qt::WA_Hover, true);
     listWidget_profiles->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(listWidget_profiles, &QWidget::customContextMenuRequested, this, &dlgConnectionProfiles::slot_profileContextMenu);
@@ -433,18 +388,13 @@ dlgConnectionProfiles::dlgConnectionProfiles(QWidget* parent)
     copy_profile_toolbutton->addAction(mpCopyProfile);
     copy_profile_toolbutton->addAction(copyProfileSettings);
     copy_profile_toolbutton->setDefaultAction(mpCopyProfile);
-    // A menu of its own rather than the one Qt builds out of the button's
-    // actions on every press: a menu that exists between presses is one the
-    // style pass can reach, and the actions stay on the button so the
-    // accessible names below still find a widget to be set on
+    // Owned, because the menu QToolButton builds from its actions on each press is out of the
+    // style pass's reach. The actions stay on the button for the accessible names below.
     auto* pMenu_copyProfile = new QMenu(copy_profile_toolbutton);
     pMenu_copyProfile->setObjectName(qsl("connectionCopyMenu"));
     pMenu_copyProfile->addAction(mpCopyProfile);
     pMenu_copyProfile->addAction(copyProfileSettings);
     copy_profile_toolbutton->setMenu(pMenu_copyProfile);
-    // Copy keeps its split - the body copies, the trailing half asks which kind
-    // of copy - so it stays a tool button and says it is one standing on a form
-    // as a button, which is what the shared recipe draws
     copy_profile_toolbutton->setProperty(uiDesign::scmProp_menuButton, true);
 
     auto objectList = mpCopyProfile->associatedObjects();
@@ -623,122 +573,74 @@ void dlgConnectionProfiles::slot_applyAppearance()
     applyConnectionShellStyle();
 }
 
-// The two tab pages, every button on the window and the notice under the games
-// list, plus the ink of the ring the chip delegate draws: the games list's own
-// selection and the information box beside it are still drawn by the platform.
-// The sheet goes on each page rather than on the tab widget,
-// which would take the tab bar with it, and rather than on the dialog, whose
-// stylesheet a profile's Lua one is assigned to on every show.
+// Sheets go on the pages and button containers, not the tab widget, which would take the tab bar
+// with it, nor the dialog, whose stylesheet a profile's Lua one is assigned to on every show
 void dlgConnectionProfiles::applyConnectionShellStyle()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    // The one red anything broken is drawn in, so a refused field here is edged
-    // in the value the editor's compile note is written in
     const QColor errorColour = uiDesign::errorInk(tokens);
 
-    // Unscoped, the way the editor sets these on each of its forms: the page is
-    // the scope, and nothing outside these two tabs is reached.
+    // Unscoped: the page the sheet is set on is the scope
     const QString sheet = uiDesign::inputStyleSheet(tokens)
                           + uiDesign::choiceStyleSheet(tokens)
-                          // The words leading the fields are chrome; what is typed into them
-                          // is the value, and keeps the full ink inputStyleSheet() writes
+                          // Labels are chrome; typed values keep the full ink inputStyleSheet() writes
                           + qsl("QLabel, QCheckBox { color: %1; }"
                                 "QLabel:disabled, QCheckBox:disabled { color: %2; }")
                                     .arg(tokens.mutedText.name(), tokens.disabledText.name())
-                          // Written after the shared rules so they win the specificity tie
-                          // against QLineEdit:focus, and in the same border shorthand that
-                          // rule writes - a border-color alone would leave the focus frame's
-                          // width and style in place.
+                          // After the shared rules to win the specificity tie with QLineEdit:focus, and as a
+                          // full border shorthand: border-color alone keeps the focus frame's width and style
                           + qsl("QLineEdit[%1=\"error\"] { border: %2px solid %3; background-color: %4; }")
                                     .arg(QString::fromLatin1(scmProp_fieldState),
                                          QString::number(uiDesign::scmInputBorderWidth),
                                          errorColour.name(),
                                          uiDesign::blend(tokens.field, errorColour, uiDesign::scmSoftWashStrength).name())
-                          // A field holding a value that cannot be changed takes the surface
-                          // and the hairline of an unavailable one, but not its ink: the
-                          // value in it is real and is there to be read
                           + qsl("QLineEdit:read-only { background-color: %1; border: %2px solid %3; }")
                                     .arg(uiDesign::disabledFieldColour(tokens).name(), QString::number(uiDesign::scmInputBorderWidth), uiDesign::disabledBorderColour(tokens).name());
 
     tab_connection_info->setStyleSheet(sheet);
     tab_options->setStyleSheet(sheet);
 
-    // The information box: the game's description, or the player's own notes
-    // on a profile, is a field the way the notepad's notes are one - the field
-    // surface, the hairline and the field's corner - rather than the square
-    // platform frame the .ui file leaves it with. The group box round it and
-    // the links above it stay as they are.
     informationArea->setStyleSheet(uiDesign::inputStyleSheet(tokens, qsl("#informationArea")) + uiDesign::scrollBarStyleSheet(qsl("#informationArea QPlainTextEdit"), tokens, tokens.field));
 
-    // Everything on this dialog that is a button: Remove, Copy and New over the
-    // games list, and the skip button and the button box under it. The sheet
-    // goes on the two containers rather than on the dialog, for the same reason
-    // the one above goes on the tab pages.
     const QString buttonSheet = uiDesign::buttonStyleSheet(tokens)
-                                // Connect, the one button on the row that is what the reader came
-                                // here to press. The About dialog's primary fill, ink, hover and
-                                // focus, at this row's own height and weight - a dialog's button
-                                // row keeps one rhythm, so no bold and no larger padding. The
-                                // :enabled is what keeps a Connect the validator has switched off
-                                // from sitting lit: without it an unavailable button would keep the
-                                // invitation's fill instead of falling back to the shared
-                                // disabled look.
+                                // :enabled, or a Connect the validator switched off would stay lit
                                 + qsl("QPushButton:default:enabled { background-color: %1; color: %2; border: %3px solid transparent; }"
                                       "QPushButton:default:enabled:hover { background-color: %4; }"
                                       "QPushButton:default:enabled:focus { border: %3px solid %5; }")
                                           .arg(tokens.accentSoft, tokens.accentText.name(), QString::number(uiDesign::scmInputBorderWidth), tokens.hoverSoft, tokens.accent.name());
-    // The menu Copy drops lives under that row, so the row's own sheet is what
-    // draws it
+    // The Copy menu is parented under this row, so the row's sheet reaches it
     profileAdminArea->setStyleSheet(buttonSheet + uiDesign::menuStyleSheet(tokens));
     widget_bottom->setStyleSheet(buttonSheet);
     uiDesign::letPopupsTakeTheFieldsCorner(profileAdminArea);
 
     uiDesign::keepClickFocusOffControls(tabWidget_connectionInfo);
     uiDesign::letPopupsTakeTheFieldsCorner(tabWidget_connectionInfo);
-    // The accent a button takes on focus is the keyboard's, not what was
-    // clicked last. Focus policy only, so the Return key still reaches the
-    // default button.
     uiDesign::keepClickFocusOffControls(profileAdminArea);
     uiDesign::keepClickFocusOffControls(widget_bottom);
 
-    // The halo round the hovered and the chosen chip is painted rather than
-    // written into a sheet, so nothing about a new appearance reaches it on its
-    // own
+    // Painted rather than a sheet, so a new appearance reaches the halo only through here
     if (mpProfileChipDelegate) {
         mpProfileChipDelegate->restyle(tokens);
         listWidget_profiles->viewport()->update();
     }
 
-    // What the window has to say about the profile being edited, drawn as the
-    // editor's banner is - one recipe for the control kind, in both windows
     notificationArea->setStyleSheet(uiDesign::noticeStyleSheet(qsl("QFrame#notificationArea"), tokens));
-    // The words of the notice are named on the label itself rather than left to
-    // the descendant rule above, which does not reach them: the area is hidden
-    // while the window round it is styled and is polished only when a notice
-    // brings it out, and that polish writes the application's own ink into the
-    // label's palette. A sheet the label carries survives it.
+    // On the label, not left to the rule above: the hidden area is polished only when a notice
+    // shows, which writes the application's ink into the label's palette; the label's own sheet survives
     notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(tokens.mutedText.name()));
-    // Which of the three is showing is the callers' business - the validator
-    // and the profile-loaded check show and hide these themselves - so all
-    // three carry their picture from here
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelInformation, uiDesign::NoticeKind::Information, tokens);
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelWarning, uiDesign::NoticeKind::Warning, tokens);
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelError, uiDesign::NoticeKind::Error, tokens);
 
     resolveTabFonts();
 
-    // Measured rather than named: the .ui pinned this field to 40-50px for the
-    // 9pt font it also set, and the field is at the dialog's own font now. Five
-    // digits is the widest port there is, plus what the recipe leaves either
-    // side of them and one digit of slack for the cursor.
+    // Measured: the .ui's 40-50px suits only the 9pt font it pins; one digit of slack for the cursor.
     const QFontMetrics fm(port_entry->font());
     port_entry->setFixedWidth(fm.horizontalAdvance(qsl("65535")) + 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth) + fm.horizontalAdvance(QLatin1Char('0')));
 }
 
-// A widget with a class font - a label or a checkbox on macOS - is resolved at
-// its polish against that font rather than its parent's once a sheet is above
-// it. setupUi() polishes the Connect-to page before its sheet is set and the
-// Options page is polished with the dialog, after, so each read in another face.
+// Under a sheet, a widget with a class font (a label or checkbox on macOS) resolves against that font
+// at polish, not its parent's; one page is polished before its sheet is set and the other after.
 void dlgConnectionProfiles::resolveTabFonts()
 {
     tabWidget_connectionInfo->ensurePolished();
@@ -746,9 +648,8 @@ void dlgConnectionProfiles::resolveTabFonts()
     uiDesign::resolveFontsUnderStyleSheets(tab_options);
 }
 
-// A new interface font reaches each widget under a sheet by an event of its own,
-// and there it takes the application's face rather than the dialog's: the tabs
-// are resolved again once that round is over.
+// A widget under a sheet takes the application's face from its own font change event, so the tabs
+// are resolved again, queued, once that round is over
 bool dlgConnectionProfiles::event(QEvent* event)
 {
     if (event->type() == QEvent::ApplicationFontChange || event->type() == QEvent::FontChange) {
@@ -757,9 +658,7 @@ bool dlgConnectionProfiles::event(QEvent* event)
     return QDialog::event(event);
 }
 
-// validateProfile() runs on every keystroke, so the property is compared before
-// it is written: a re-polish that changes nothing still rebuilds the widget's
-// style
+// validateProfile() runs on every keystroke, and a re-polish rebuilds the style even when nothing changed
 void dlgConnectionProfiles::setFieldState(QLineEdit* pField, const QString& state)
 {
     if (pField->property(scmProp_fieldState).toString() == state) {
@@ -2400,8 +2299,7 @@ void dlgConnectionProfiles::slot_profileContextMenu(QPoint pos)
                        &dlgConnectionProfiles::slot_setCustomColor);
     }
 
-    // Built here rather than in the style pass, so it is handed the design's
-    // menu and its corner here as well
+    // Built per call, out of the style pass's reach
     menu.setStyleSheet(uiDesign::menuStyleSheet(uiDesign::themeTokens()));
     uiDesign::letPopupsTakeTheFieldsCorner(&menu);
 
@@ -2938,9 +2836,8 @@ bool dlgConnectionProfiles::validateProfile()
     }
 
     validName = true, validPort = true, validUrl = true;
-    // Gathered rather than written to the fields as they are found: the field
-    // whose text this function corrects re-enters it, and the pass that started
-    // is the one whose reading has to be the one left showing
+    // Written once at the end: setText() on a corrected field re-enters this function, and the
+    // outer pass's reading has to be the one left showing
     QString portState;
     QString hostState;
 

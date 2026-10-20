@@ -1820,7 +1820,6 @@ void Host::reportDisplayFontChangeToEditor()
     }
 }
 
-// Shaped as the "main window font" one above
 void Host::raiseEditorFontChange()
 {
     // As in raiseSettingChangedEvent(): a value read from the profile's own file is not a change
@@ -3214,8 +3213,7 @@ void Host::raiseEvent(const TEvent& pE)
         return;
     }
 
-    // Before the handlers rather than after them: an event nobody is listening
-    // for is exactly the one the editor has no other way of knowing about
+    // Handled or not: one nobody listens for is the one the editor has no other way to learn of
     mEventNamesSeen.insert(pE.mArgumentList.at(0));
 
     static const QString star = qsl("*");
@@ -7449,8 +7447,6 @@ void Host::setCommandLineHistorySaveSize(const int lines)
                                    << mCommandLineHistorySaveSize << " instead.";
 }
 
-// The pair the profile recorded for the appearance in force, whether or not this
-// machine has it
 void Host::storedEditorTheme(QString& themeName, QString& themeFile) const
 {
     if (MudletApp::darkMode() && !mEditorThemeDark.isEmpty() && !mEditorThemeFileDark.isEmpty()) {
@@ -7656,7 +7652,7 @@ void Host::setEditorFont(const QFont& font)
 {
     int pointSize = font.pointSize();
     if (pointSize <= 0) {
-        // Given in pixels, so the size Qt shows it at
+        // pointSize() is -1 for a font sized in pixels
         pointSize = QFontInfo(font).pointSize();
     }
 
@@ -7815,7 +7811,6 @@ QList<eventNames::Entry> Host::knownEventNames()
     };
 
     add(eventNames::systemEvents());
-    // A script says outright what it listens for, which no other item does
     for (TScript* pScript : mScriptUnit.getScriptList()) {
         add(pScript->getEventHandlerList());
         add(eventNames::namesInCode(pScript->getScript()));
@@ -7835,16 +7830,12 @@ QList<eventNames::Entry> Host::knownEventNames()
     for (TAction* pAction : mActionUnit.getActionList()) {
         add(eventNames::namesInCode(pAction->getScript()));
     }
-    // What the profile has actually seen go past, which is the only place the
-    // names a game sends are come by
     for (const QString& name : mEventNamesSeen) {
         if (!name.isEmpty()) {
             found.insert(name);
         }
     }
 
-    // The hand-kept list as a set, built once, since every name found is looked
-    // up in it
     static const QSet<QString> raisedByMudlet = []() {
         const QStringList system = eventNames::systemEvents();
         return QSet<QString>(system.constBegin(), system.constEnd());

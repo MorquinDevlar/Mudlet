@@ -9665,8 +9665,8 @@ int TLuaInterpreter::setConfig(lua_State* L)
         host.mEditorAutoComplete = getVerifiedBool(L, __func__, 2, "value");
         return success();
     }
-    // A family or size asked for is one of the editor's own, so the editor stops following the display
-    // font - unless it is the one in use already, so that a getConfig() table handed back changes nothing
+    // Only on a real change, so handing back a getConfig() value does not stop the editor following
+    // the display font
     if (key == qsl("editorFont")) {
         const QString fontName = getVerifiedString(L, __func__, 2, "value");
         if (fontName.trimmed().isEmpty()) {

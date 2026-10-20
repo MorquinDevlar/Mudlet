@@ -39,9 +39,7 @@
 namespace uiDesign {
 
 namespace {
-// Between a row's name and the item type the Folders view writes after it
 constexpr int scmTypeLabelGap = 12;
-// Less room than this and the type is left off rather than cut to an ellipsis
 constexpr int scmTypeLabelMinimumCharacters = 4;
 } // namespace
 
@@ -52,16 +50,12 @@ EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeTy
 , mpHost(pHost)
 {
     if (mpTree) {
-        // The room a row's depth holds it in, and the chevron standing in the
-        // last step of that room, are drawn here from now on - so the view is
-        // asked for none of its own. What it was using is what they are drawn
-        // to, so nothing moves; what changes is that the row is one rectangle
-        // rather than a column of branch cells with the row stuck to them, and
-        // the pill a selected row is drawn as can be a single unbroken shape.
+        // The view indents nothing and the decoration draws depth and chevron: QTreeView paints its
+        // indented branch cells itself in the style's selection colour, out of any stylesheet rule's
+        // reach, so a nested row's selection could not be one pill
         mIndentStep = mpTree->indentation() > 0 ? mpTree->indentation() : scmTreeFallbackIndentStep;
         mpTree->setIndentation(0);
-        // The viewport is made by QAbstractScrollArea's constructor and never
-        // replaced, so it is here to be watched from the moment the tree exists
+        // QAbstractScrollArea makes the viewport in its constructor and the trees never replace it
         mpTree->viewport()->installEventFilter(this);
     }
     restyle();
@@ -70,19 +64,12 @@ EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeTy
 void EditorTreeDelegate::restyle()
 {
     const ThemeTokens tokens = themeTokens();
-    // The blue that "on" is read as everywhere else in the editor
     mRunningDot = stateColor(scmStateHue_ok, tokens.darkPage);
     mQuietDot = tokens.mutedText;
-    // Chrome the reader reaches for rather than reads, so it is drawn in the
-    // tone the rest of the editor's chrome is
     mChevronInk = tokens.mutedText;
     mMarkInk = tokens.mutedText;
-    // What reports rather than labels, so it is the one red the note over the
-    // code pane is written in rather than the chrome's grey. Both marks a broken
-    // row carries take it - the errors glyph and the dot beside it - since an
-    // item that will not compile is not running whatever its switch says.
     mErrorMarkInk = errorInk(tokens);
-    // The colour the trees' stylesheet writes a chosen row's name in
+    // Must match the colour the trees' stylesheet writes a chosen row's name in
     mSelectedMarkInk = tokens.accentText;
     mAccentBar = tokens.accent;
     for (auto& cached : mDotGlyphs) {
@@ -108,9 +95,6 @@ void EditorTreeDelegate::clearDecorations() const
     mDecorations.clear();
 }
 
-// The row's own picture is not asked what state it is in - the item the row
-// stands for is, by the id the row carries. A row with no id is one of the tree's
-// own headings, which is nothing to switch on or off.
 EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& index) const
 {
     ItemState state;
@@ -128,20 +112,11 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
     }
     const int id = idData.toInt();
 
-    // An item the editor has made but nobody has saved yet is marked as such,
-    // and the description the add sites wrote is what says which those are.
-    // TTrigger, TAlias and TScript have a checkIfNew() of their own, but it
-    // answers the wrong question here: mIsNew starts true and is only ever
-    // cleared by a save made from this editor, so an item read back out of the
-    // profile - which is every item, every time the editor is opened - reports
-    // itself as new for the whole session. Reading the description instead is
-    // also what the other three types already do.
+    // Not checkIfNew(): mIsNew is cleared only by a save from this editor, so every item loaded
+    // from the profile reports itself as new for the whole session
     const QString description = index.data(Qt::AccessibleDescriptionRole).toString();
     const bool newByDescription = !description.isEmpty() && (description == mNewItemDescription || description == mNewFolderDescription);
 
-    // One reading per row, in the order the pictures they replace took
-    // precedence: a broken item says so before anything else, then one nobody
-    // has saved, then whatever the item is
     const auto markFor = [this, newByDescription](const bool compiles, const bool folder, const QString& packageName, const QString& name, const RowMark kind) {
         if (!compiles) {
             return RowMark::Error;
@@ -152,9 +127,7 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         if (kind != RowMark::None) {
             return kind;
         }
-        // A package's top folder is a folder whose own name is the package's -
-        // the test the Lua ancestors API makes. A module's master folder is left
-        // reading as a folder: it is not a package.
+        // The Lua ancestors API's test for a package's top folder; a module's master folder is not a package
         if (folder && !packageName.isEmpty() && packageName == name && !mpHost->mInstalledModules.contains(packageName)) {
             return RowMark::Package;
         }
@@ -172,8 +145,6 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
         }
         wantedOn = pT->shouldBeActive();
         running = pT->isActive() && pT->ancestorsActive();
-        // A filter chain is a trigger that other triggers are matched inside of,
-        // and the mark is the only thing that says so
         mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), pT->isFilterChain() ? RowMark::Filter : RowMark::None);
         break;
     }
@@ -193,15 +164,9 @@ EditorTreeDelegate::ItemState EditorTreeDelegate::stateOf(const QModelIndex& ind
             return state;
         }
         wantedOn = pT->shouldBeActive();
-        // An offset timer is armed by the timer above it firing and disarms
-        // itself once it has fired, so isActive() is false for most of the life
-        // of a working one - and ancestorsActive() walks the same flag up a
-        // chain that is offset timers all the way. TTimer::shouldAncestorsBeActive()
-        // exists for exactly that, and is what TLuaInterpreter's isActive()
-        // reads for an offset timer.
+        // An offset timer's isActive() is false between firings, and ancestorsActive() walks that same
+        // flag; shouldAncestorsBeActive() is what TLuaInterpreter's isActive() reads for one
         running = pT->isOffsetTimer() ? (pT->shouldBeActive() && pT->shouldAncestorsBeActive()) : (pT->isActive() && pT->ancestorsActive());
-        // An offset timer runs from another timer firing rather than from a
-        // clock, which the mark is what tells the reader
         mark = markFor(pT->state(), pT->isFolder(), pT->mPackageName, pT->getName(), pT->isOffsetTimer() ? RowMark::OffsetTimer : RowMark::None);
         break;
     }
@@ -250,10 +215,7 @@ int EditorTreeDelegate::rowLevelOf(const QModelIndex& index) const
     return treeRowLevelOf(index) + (mTreeType == TreeType::None ? 1 : 0);
 }
 
-// A row at the top of a tree is given no chevron: the trees are asked for an
-// undecorated root, so the view drew no arrow beside those either, and the one
-// row at that depth is the tree's own heading rather than anything a profile
-// holds.
+// None at the top level: that row is the tree's own heading, and the trees use an undecorated root
 EditorTreeDelegate::ChevronState EditorTreeDelegate::chevronOf(const QModelIndex& index, const int level) const
 {
     if (!mpTree || !index.isValid() || index.column() != 0 || level < 1) {
@@ -287,7 +249,7 @@ void EditorTreeDelegate::syncGlyphRatio() const
     for (auto& cached : mMarkGlyphs) {
         cached = QPixmap();
     }
-    // Which is also what the ratio is kept out of the decoration key by
+    // Clearing on a ratio change is why the decoration key can leave the ratio out
     clearDecorations();
 }
 
@@ -301,11 +263,6 @@ QPixmap EditorTreeDelegate::dotGlyph(const DotState state, const bool broken) co
         return glyph;
     }
 
-    // Switched off is a bare ring; switched on inside a switched-off group is
-    // that ring round a point, since it is still switched on but it is not
-    // running; and running is the ring filled in. The shape carries the reading
-    // on its own, so the ink is free to say something else on top of it: a row
-    // whose item will not compile takes the red its errors mark is drawn in.
     TreeDotForm form = TreeDotForm::Ring;
     if (state == DotState::Running) {
         form = TreeDotForm::Filled;
@@ -347,8 +304,6 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
         file = qsl(":/icons/editor-offset-timer.svg");
         break;
     case RowMark::Error:
-        // The glyph the Errors view carries in the sidebar, so the row and the
-        // place it sends the reader are the one picture
         file = qsl(":/icons/editor-errors.svg");
         break;
     case RowMark::NewFolder:
@@ -358,17 +313,12 @@ QPixmap EditorTreeDelegate::markGlyph(const RowMark mark, const bool selected) c
         file = qsl(":/icons/editor-new-item.svg");
         break;
     case RowMark::Package:
-        // The glyph the package manager draws a package with, so a package's top
-        // folder here and its row over there are the one picture
         file = qsl(":/icons/packages-package.svg");
         break;
     case RowMark::None:
         return glyph;
     }
 
-    // A broken item on a chosen row is still broken, so the red holds there
-    // too: the wash a chosen row is filled with is light enough for the walked
-    // tone to be read on
     const QColor ink = mark == RowMark::Error ? mErrorMarkInk : (selected ? mSelectedMarkInk : mMarkInk);
     const qreal ratio = mDotGlyphRatio;
     glyph = tintedGlyph(uiDesign::glyphPixmap(file), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -380,9 +330,6 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
 {
     syncGlyphRatio();
 
-    // Everything the leading edge is composed from, in one number: what the dot
-    // is reading, which way the chevron points, which mark the row carries,
-    // whether the row is chosen, and how far in it is held
     const int key = (state.known ? 1 + static_cast<int>(state.dot) : 0) | (static_cast<int>(chevron) << 2) | (static_cast<int>(state.mark) << 4) | ((selected ? 1 : 0) << 7)
                     | ((state.dotSlot ? 1 : 0) << 8) | (level << 9);
     if (const auto cached = mDecorations.constFind(key); cached != mDecorations.constEnd()) {
@@ -392,11 +339,6 @@ EditorTreeDelegate::Decoration EditorTreeDelegate::decorationFor(const ItemState
         mDecorations.clear();
     }
 
-    // The room the row's depth holds it in comes first, with the chevron
-    // standing in the last step of it - where the view used to draw its branch
-    // arrow. Then the dot, then the mark. The slot is the same height whichever
-    // of those the row has, which is what makes every row in the tree one
-    // height; only its width follows what is actually in it.
     const int lead = level * mIndentStep;
     const int dotWidth = (state.known || state.dotSlot) ? scmTreeDotDiameter : 0;
     const int markWidth = state.mark == RowMark::None ? 0 : scmTreeMarkSize;
@@ -433,11 +375,8 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
     const ItemState state = stateOf(index);
     const int level = rowLevelOf(index);
     const ChevronState chevron = chevronOf(index, level);
-    // Nothing to lead the row with: no dot, no room to hold it in and nothing
-    // folded inside it, which is what a tree's own heading row is. It keeps the
-    // glyph restyleEditorTreeHeadingIcons() put on it - the same one the row
-    // beside it in the sidebar carries - drawn at the size every mark under it
-    // is drawn at, so the heading is exactly as tall as the rows it heads.
+    // A tree's heading keeps the glyph restyleEditorTreeHeadingIcons() put on it, at the mark size
+    // so it is as tall as the rows it heads
     if (!state.known && level < 1 && chevron == ChevronState::None) {
         pOption->decorationSize = QSize(scmTreeMarkSize, scmTreeMarkSize);
         return;
@@ -445,15 +384,11 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
 
     const Decoration decoration = decorationFor(state, level, chevron, pOption->state & QStyle::State_Selected);
 
-    // The decoration is the whole of the row's leading edge: the view lays room
-    // out for it and the style draws it, so nothing here has to work out where a
-    // row's text begins
     pOption->decorationSize = decoration.size;
     pOption->icon = decoration.icon;
     pOption->features |= QStyleOptionViewItem::HasDecoration;
 
-    // The tree's stylesheet names no colour for an unselected row, which leaves
-    // one for this to quieten
+    // Effective only because the trees' stylesheet names no colour for an unselected row
     if (state.known && state.dot != DotState::Running && !(pOption->state & QStyle::State_Selected)) {
         pOption->palette.setColor(QPalette::Text, mQuietDot);
         pOption->palette.setColor(QPalette::WindowText, mQuietDot);
@@ -474,11 +409,7 @@ void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& o
         return;
     }
 
-    // Over the pill the style has just drawn, as the leading edge of that pill:
-    // full width down the row and cut to the pill's corner at both ends, the way
-    // the sidebar's is. A border-left would follow the radius inward until it
-    // read as a bracket, and a plain rectangle would stand square past the
-    // corners the pill is cut to.
+    // Painted rather than a border-left, which the pill's corner radius bends into a bracket
     paintAccentBar(pPainter, option.rect, mAccentBar);
 }
 
@@ -514,9 +445,7 @@ QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const Q
         return {};
     }
 
-    // Asked of the style rather than worked out here: the trees carry a
-    // stylesheet, so it is QStyleSheetStyle that decides where a row's picture
-    // lands, and its padding is nothing this could guess at
+    // Asked of the style: QStyleSheetStyle places a row's picture, and its padding cannot be guessed here
     QStyleOptionViewItem dotOption(option);
     initStyleOption(&dotOption, index);
     const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &dotOption, mpTree);
@@ -524,9 +453,7 @@ QRect EditorTreeDelegate::dotHitRect(const QStyleOptionViewItem& option, const Q
         return {};
     }
 
-    // The decoration leads with the room the row's depth holds it in, and the
-    // dot is the square that follows it - then the row's mark, if it has one.
-    // The rest of the row's leading edge is left to start a drag from.
+    // The dot and a little slack only, so the rest of the leading edge can still start a drag
     const int lead = rowLevelOf(index) * mIndentStep;
     const QRect dotRect(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmTreeDotDiameter) / 2, scmTreeDotDiameter, scmTreeDotDiameter);
     return dotRect.adjusted(-scmTreeMarkHitSlack, -scmTreeMarkHitSlack, scmTreeMarkHitSlack, scmTreeMarkHitSlack);
@@ -546,16 +473,12 @@ QRect EditorTreeDelegate::chevronHitRect(const QStyleOptionViewItem& option, con
         return {};
     }
 
-    // The last step of the room the row is held in, over the whole height of the
-    // row - which is the cell the view used to draw its branch arrow in, and
-    // what a reader who has used a tree before will aim at
+    // The whole indentation step, where the view's branch arrow stood and a reader will aim
     return QRect(decorationRect.left() + (level - 1) * mIndentStep, option.rect.top(), mIndentStep, option.rect.height());
 }
 
-// The option the view would hand editorEvent() for a mouse event on this row,
-// rebuilt: QAbstractItemView makes one out of initViewItemOption(), the row's
-// rectangle and whether the row is the current one, and keeps all three to
-// itself
+// Rebuilds what QAbstractItemView hands editorEvent(), which it makes privately from
+// initViewItemOption(), the row's rectangle and whether the row is current
 QStyleOptionViewItem EditorTreeDelegate::rowOption(const QModelIndex& index) const
 {
     QStyleOptionViewItem option = mpTree->viewItemOption();
@@ -594,35 +517,28 @@ EditorTreeDelegate::RowMark EditorTreeDelegate::markOf(const QModelIndex& index)
 
 bool EditorTreeDelegate::eventFilter(QObject* pWatched, QEvent* pEvent)
 {
-    // Anything else being watched is an editor widget that QStyledItemDelegate
-    // put this filter on itself, and its own handling of those has to stand
+    // QStyledItemDelegate filters its own editor widgets through this, and that handling has to stand
     if (!mpTree || pWatched != mpTree->viewport()) {
         return QStyledItemDelegate::eventFilter(pWatched, pEvent);
     }
 
     switch (pEvent->type()) {
     case QEvent::MouseButtonPress:
-        // Every press starts a new one of these, and the second press of a
-        // double click is not a press but its own event type - which is what
-        // lets the breadcrumb below outlive the first press of the pair
+        // Reset on every press in case a release never arrived; a double click's second press is
+        // MouseButtonDblClick, so mLastDotPressIndex outlives the first press of the pair
         mPressAnswered = false;
         mLastDotPressIndex = QPersistentModelIndex();
         break;
     case QEvent::MouseMove:
-        // The view records what was pressed before it consults a delegate, and
-        // consults one about a row rather than about the blank space past the
-        // last one - so a move handed on here would drag-select out of the mark
-        // that was pressed, or lift the row it is on out of the tree the moment
-        // it left them both
+        // The view recorded the press before asking the delegate, so a move handed on would
+        // drag-select out of the mark or lift the row out of the tree
         if (mPressAnswered && (static_cast<QMouseEvent*>(pEvent)->buttons() & Qt::LeftButton)) {
             return true;
         }
         break;
     case QEvent::MouseButtonRelease:
-        // The press did the switching or the folding, so its release is eaten
-        // wherever it lands: handed on, the view would read it as a click on
-        // whichever row it ended over and reload that row, losing whatever was
-        // typed into the editor
+        // Handed on, the view would read it as a click on whichever row it ended over and reload
+        // that row, losing whatever was typed into the editor
         if (mPressAnswered) {
             mPressAnswered = false;
             return true;
@@ -647,30 +563,21 @@ bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel,
         return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
     }
     const QPoint pressedAt = pMouseEvent->position().toPoint();
-    // The chevron is asked first, and the dot's couple of pixels of slack are
-    // what the two would otherwise argue over: the view used to hand the whole
-    // of that cell to the branch arrow before a delegate saw the press at all
+    // Chevron first: the dot's slack overlaps the chevron's cell
     const bool onChevron = chevronHitRect(option, index).contains(pressedAt);
     const bool onDot = !onChevron && dotHitRect(option, index).contains(pressedAt);
 
     if (eventType == QEvent::MouseButtonDblClick) {
-        // The pair's first press has already folded or switched the row, so the
-        // second is eaten whether or not it landed on the same mark: the
-        // platform allows a double click a few pixels of drift, which is most of
-        // the way out of a target the size of the dot, and a drifted one handed
-        // on reaches the view's activated() and switches the row straight back
+        // Eaten even when it drifted off the mark: a double click is allowed a few pixels of drift,
+        // and handed on it reaches activated() and switches the row straight back
         if (!onChevron && !onDot && !(mLastDotPressIndex.isValid() && mLastDotPressIndex == index)) {
             return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
         }
-        // Set for the release that closes the double click, which the filter
-        // swallows for the same reason it swallows a single click's
         mPressAnswered = true;
         return true;
     }
 
     if (onChevron) {
-        // Nothing else about the row is touched: the selection stays where it
-        // was, which is what the view did while it owned this cell
         mpTree->setExpanded(index, !mpTree->isExpanded(index));
         mPressAnswered = true;
         return true;
@@ -680,8 +587,6 @@ bool EditorTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel,
         return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
     }
 
-    // The toggle reads the tree's current item rather than being handed one, so
-    // the row is chosen first and asked for after - one toggle, one path
     if (QTreeWidgetItem* pItem = mpTree->itemFromIndex(index)) {
         mpTree->setCurrentItem(pItem);
         emit toggleRequested();

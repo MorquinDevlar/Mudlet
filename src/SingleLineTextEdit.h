@@ -29,18 +29,12 @@ class SingleLineTextEdit : public QPlainTextEdit
 
 public:
     explicit SingleLineTextEdit(QWidget* parent = nullptr);
-    // What the document leaves round its one line. QPlainTextEdit's default of
-    // four is a page's margin; in a field one control tall it is what pushed
-    // the descenders under the frame. The row that sizes the field adds it to
-    // the frame and padding the stylesheet gives every input.
+    // QPlainTextEdit's default of 4 pushed the descenders under the frame of a one-line field.
+    // Whatever sizes the field adds this to the frame and padding the stylesheet gives inputs.
     static constexpr int scmDocumentMargin = 1;
     void setHighlightingEnabled(bool enabled);
-    // The syntax theme the highlighter takes its token colours from. It says
-    // nothing about what the field is drawn in - see setFieldColors() - since a
-    // pattern row is one of the form's inputs rather than a slice of code pane.
+    // Token colours only: a pattern row is a form input, so its fill comes from setFieldColors()
     void setTheme(const QString&);
-    // What the field itself is filled with and what plain text in it is written
-    // in, both from the window's own palette
     void setFieldColors(const QColor& background, const QColor& text);
     void rehighlight();
 

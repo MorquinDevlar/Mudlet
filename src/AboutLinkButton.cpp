@@ -28,19 +28,14 @@
 #include <QUrl>
 
 namespace {
-// What the card leaves round what it holds, and how far the two lines of words
-// are held off the glyph beside them
 constexpr int scmPaddingVertical = 10;
 constexpr int scmPaddingHorizontal = 12;
 constexpr int scmGlyphSize = 18;
 constexpr int scmGlyphGap = 11;
-// The host is the quieter half of the pair, in the type a URL is set in
 constexpr qreal scmHostFontScale = 0.85;
-// A wash of the words over the card, the same strength the shell's hover is
-// mixed at - opaque here, since a painter has a surface to mix it over
+// Kept equal to the shell's hover mix strength
 constexpr qreal scmHoverStrength = 0.07;
-// The narrowest a card is asked for, in characters of its own type: enough to
-// tell one place from another once both lines are elided
+// In average characters: enough to tell two places apart once both lines elide
 constexpr int scmLeastWordsWidth = 9;
 } // namespace
 
@@ -67,16 +62,14 @@ AboutLinkButton::AboutLinkButton(const QString& glyphFile, const QString& name, 
 void AboutLinkButton::applyTokens(const uiDesign::ThemeTokens& tokens)
 {
     mTokens = tokens;
-    // Scaled to the slot it is drawn in before it is inked, so that the paint
-    // is a 1:1 blit rather than a nearest-neighbour downsample of a 128px
-    // picture on every repaint
+    // Scaled before inking so the paint is a 1:1 blit, not a nearest-neighbour
+    // downsample of the 128px raster on every repaint
     const qreal ratio = devicePixelRatioF();
     QPixmap glyph = QPixmap(mGlyphFile).scaled(qRound(scmGlyphSize * ratio), qRound(scmGlyphSize * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(ratio);
     mGlyph = uiDesign::tintedGlyph(glyph, tokens.accentText);
-    // The name is painted in the words' own tone, and the palette is the only
-    // place anything outside this widget can read that off - the readability
-    // audit among them
+    // Anything outside this widget, the readability audit included, can only
+    // read the painted ink off the palette
     QPalette inks = palette();
     inks.setColor(QPalette::ButtonText, tokens.text);
     inks.setColor(QPalette::WindowText, tokens.text);
@@ -119,8 +112,7 @@ void AboutLinkButton::paintEvent(QPaintEvent* pEvent)
 
     const bool lit = underMouse() || hasFocus();
     const QColor surface = lit ? uiDesign::blend(mTokens.card, mTokens.text, scmHoverStrength) : mTokens.card;
-    // Half a pen inside the widget, so the hairline lands on it rather than
-    // half of it off the edge
+    // Half a pen inset, or half the antialiased hairline falls off the edge
     const QRectF frame = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setPen(QPen(lit ? mTokens.accent : mTokens.border, 1.0));
     painter.setBrush(surface);
@@ -150,8 +142,7 @@ void AboutLinkButton::paintEvent(QPaintEvent* pEvent)
             QRect(wordsLeft, wordsTop + nameMetrics.height(), wordsWidth, theHostMetrics.height()), Qt::AlignLeft | Qt::AlignVCenter, theHostMetrics.elidedText(mHost, Qt::ElideRight, wordsWidth));
 
     if (hasFocus()) {
-        // The keyboard has to say where it is on a card that is otherwise only
-        // told apart from its neighbours by the pointer being on it
+        // Focus needs a mark of its own, or it reads the same as hover
         painter.setPen(QPen(mTokens.accent, 1.0));
         painter.setBrush(Qt::NoBrush);
         painter.drawRoundedRect(frame.adjusted(1.5, 1.5, -1.5, -1.5), uiDesign::scmRadiusPanel - 2, uiDesign::scmRadiusPanel - 2);

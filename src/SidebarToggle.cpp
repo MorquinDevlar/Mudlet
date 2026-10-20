@@ -28,16 +28,15 @@
 namespace uiDesign {
 
 namespace {
-// A tall pill rather than a circle: it has to read as a handle on the line it
-// sits on, and a circle that size reads as a bullet dropped onto it
+// A tall pill rather than a circle: a circle this size reads as a bullet, not
+// a handle on the line
 constexpr int scmToggleWidth = 20;
 constexpr int scmToggleHeight = 28;
-// The chevron inside it, drawn at the weight the trees' own chevrons are
+// The weight the trees' own chevrons are drawn at
 constexpr qreal scmChevronArm = 3.5;
 constexpr qreal scmChevronPenWidth = 1.5;
-// The wash the rest of the window tints a hovered control with. Mixed into the
-// pill's own fill rather than laid over it, since this is painted rather than
-// styled and there is nothing behind it to show through.
+// The window's hover wash, mixed into the fill rather than laid over it since
+// this is painted rather than styled
 constexpr qreal scmHoverWeight = 0.07;
 } // namespace
 
@@ -72,14 +71,11 @@ void SidebarToggle::reposition()
     if (!mpSeam || !pParent) {
         return;
     }
-    // Measured through the parent rather than read off the pane's geometry, so
-    // that a pane nested a layout or two deep is still found where it is drawn
+    // mapTo() rather than geometry(): the pane may sit a layout or two deeper
+    // than the parent's own children
     const QPoint paneTopLeft = mpSeam->mapTo(pParent, QPoint(0, 0));
-    // The seam is the line the pane's trailing edge is drawn on, so the pill is
-    // centred on the boundary between the two widgets rather than inside either
     move(paneTopLeft.x() + mpSeam->width() - width() / 2, paneTopLeft.y() + (mpSeam->height() - height()) / 2);
-    // Over both of its neighbours: it belongs to neither, and either would
-    // otherwise clip the half of it that overlaps the other
+    // A neighbour stacked above the pill would hide the half that overlaps it
     raise();
 }
 
@@ -117,8 +113,8 @@ void SidebarToggle::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // Half a pixel in, so the hairline is drawn inside the pill rather than
-    // half of it falling outside the widget
+    // Half a pixel in: a pen is centred on the path, so half the hairline would
+    // fall outside the widget
     const QRectF pill = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     const qreal radius = pill.width() / 2.0;
     const QColor frame = hasFocus() ? tokens.accent : tokens.border;
@@ -140,8 +136,8 @@ void SidebarToggle::paintEvent(QPaintEvent*)
     painter.setBrush(Qt::NoBrush);
 
     const QPointF centre = pill.center();
-    // The arm across the point is shortened, the way the trees' chevrons are,
-    // so the mark stays inside its square whichever way round it is drawn
+    // Shortened like the trees' chevrons, so the mark stays inside its square
+    // whichever way round it is drawn
     const qreal reach = scmChevronArm / 1.6;
     QPolygonF stroke;
     if (mPointingLeft) {

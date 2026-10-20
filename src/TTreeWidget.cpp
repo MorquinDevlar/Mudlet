@@ -326,17 +326,12 @@ void TTreeWidget::addVariableRows(VarUnit* pVarUnit, QTreeWidgetItem* pParent, T
             pItem->setCheckState(0, Qt::Checked);
         }
         if (!pVarUnit->shouldSave(child)) {
-            // The row is drawn in the tone an unavailable word is written in
-            // by VariableTreeDelegate, which reads that off this flag - a
-            // brush set here would be a colour rather than a role, and would
-            // keep the tone of whichever theme the tree was built under
+            // VariableTreeDelegate greys the row off this flag; a brush set here would keep the colour
+            // of whichever theme the tree was built under
             pItem->setFlags(pItem->flags() & ~(Qt::ItemIsDropEnabled | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable));
             const QString reason = pVarUnit->getUnsaveableReason(child);
             pItem->setToolTip(0, reason.isEmpty() ? QString() : utils::richText(reason));
         }
-        // What the row is drawn from: its type, the preview of its value,
-        // whether its key is a place in a list and whether it is hidden. A
-        // row carries no picture of its own - the delegate draws the marks.
         uiDesign::VariableTreeDelegate::setVariableRowData(pItem, child, pVarUnit->isHidden(child));
         mVariableForRow.insert(pItem, child);
         cList.append(pItem);

@@ -44,21 +44,16 @@ constexpr int scmChipGap = 8;
 constexpr int scmChipPaddingH = 6;
 constexpr int scmChipPaddingV = 1;
 constexpr int scmMarkerRadius = 3;
-// The marker is drawn a hair wider than the letters it is under, so the query
-// does not read as ending flush against the character after it
+// So the marked query does not read as ending flush against the next letter
 constexpr int scmMarkerBleed = 1;
-// The "where" of a match is a short label out of a small set, so the ones on
-// screen together line up rather than each starting where the last one ended
+// A fixed column, so the short "where" labels on screen line up
 constexpr int scmWhereColumnChars = 11;
 constexpr int scmWhereGap = 8;
-// A match a long way into a long line is shown with the start of the line
-// dropped rather than with the match itself off the end of the row
 constexpr int scmSnippetLeadContext = 12;
 constexpr qreal scmItemFontScale = 1.05;
 constexpr qreal scmChipFontScale = 0.82;
-// How far the words on the marker are taken towards the far end of the page it
-// is drawn on - the marker is a light yellow on a light page and a dark one on a
-// dark page, so what reads on it is the opposite of the page either way
+// The marker is light on a light page and dark on a dark one, so its text leans
+// the other way
 constexpr qreal scmMarkerTextStrength = 0.9;
 
 QString glyphFileFor(const EditorViewType viewType)
@@ -94,9 +89,7 @@ SearchResultDelegate::SearchResultDelegate(QTreeWidget* pTree)
 void SearchResultDelegate::restyle()
 {
     const ThemeTokens tokens = themeTokens();
-    // A found item's name is chrome like every other word in the editor that is
-    // not inside a field, so it takes the one quiet tone; what tells it apart
-    // from the line under it is its weight and its size, not its ink
+    // The editor's chrome has one ink; weight and size set the name apart
     mTitleColor = tokens.mutedText;
     mMutedColor = tokens.mutedText;
     mChipBorder = tokens.border;
@@ -104,8 +97,7 @@ void SearchResultDelegate::restyle()
     mMarkerColor = tokens.marker;
     mMarkerText = blend(mMarkerColor, tokens.darkPage ? QColor(Qt::white) : QColor(Qt::black), scmMarkerTextStrength);
 
-    // Every row of a long list asks for its height, and a heading is drawn in a
-    // font of its own - so both are worked out here rather than per row
+    // Cached here: every row asks for its height, which only moves with the tree's font
     const QFont baseFont = mpTree ? mpTree->font() : QApplication::font();
     mNameFont = scaledFont(baseFont, scmItemFontScale);
     mNameFont.setBold(true);
@@ -119,8 +111,7 @@ void SearchResultDelegate::restyle()
 QFont SearchResultDelegate::scaledFont(const QFont& base, const qreal factor)
 {
     QFont scaled(base);
-    // Which of the two a font carries is the platform's business, so both are
-    // moved by the same fraction rather than either being written out in points
+    // Whether a font carries a point or a pixel size is up to the platform
     if (base.pointSizeF() > 0.0) {
         scaled.setPointSizeF(base.pointSizeF() * factor);
     } else if (base.pixelSize() > 0) {
@@ -157,9 +148,7 @@ void SearchResultDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem&
     QStyleOptionViewItem viewOption = option;
     initStyleOption(&viewOption, index);
 
-    // The row's pill - its hover and its selection - is the tree's stylesheet's
-    // to draw, and everything inside the pill is drawn here. So the style is
-    // handed a row with nothing in it.
+    // The stylesheet draws only the pill; everything inside it is painted here
     QStyleOptionViewItem backgroundOption = viewOption;
     backgroundOption.text.clear();
     backgroundOption.icon = QIcon();
@@ -199,8 +188,7 @@ void SearchResultDelegate::paintItemRow(QPainter* pPainter, const QStyleOptionVi
         rect.setLeft(glyphRect.right() + 1 + scmGlyphGap);
     }
 
-    // The chip is measured and set aside first: what is left is what the name is
-    // given, so a long name is cut rather than run underneath the chip
+    // Chip first, so a long name is elided before it rather than run under it
     const QString typeLabel = index.data(TypeLabelRole).toString();
     QRect chipRect;
     if (!typeLabel.isEmpty()) {
@@ -253,8 +241,7 @@ void SearchResultDelegate::paintMatchRow(QPainter* pPainter, const QStyleOptionV
     int matchStart = index.data(MatchStartRole).toInt();
     int matchLength = index.data(MatchLengthRole).toInt();
 
-    // A match past the right-hand edge of a line that does not fit is worth more
-    // than the start of that line, so the start is what gives way
+    // The match is worth more than the start of the line, so the start gives way
     if (matchStart > scmSnippetLeadContext && metrics.horizontalAdvance(snippet) > rect.width()) {
         const int trimmed = matchStart - scmSnippetLeadContext;
         snippet = QChar(0x2026) + snippet.mid(trimmed);
@@ -262,18 +249,14 @@ void SearchResultDelegate::paintMatchRow(QPainter* pPainter, const QStyleOptionV
     }
 
     const QString shown = metrics.elidedText(snippet, Qt::ElideRight, rect.width());
-    // Cutting the line to fit keeps a run of it from the start and puts an
-    // ellipsis where the rest was, so those kept letters are the only ones a
-    // marker can go under: a match beginning past them has nothing of itself on
-    // screen, and measuring the ellipsis instead would put the marker under
-    // letters the query is not in
+    // Only the letters elidedText() kept can carry the marker; measuring past the
+    // ellipsis would mark letters the query is not in
     int shownChars = 0;
     const int comparableChars = std::min<int>(shown.length(), snippet.length());
     while (shownChars < comparableChars && shown.at(shownChars) == snippet.at(shownChars)) {
         ++shownChars;
     }
-    // A line break in what is drawn would put letters outside the row, so the
-    // line is drawn as one line however the value it came from was written
+    // A line break in the value would draw letters outside the row
     const int textFlags = Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine;
 
     QRect markerRect;
@@ -296,9 +279,8 @@ void SearchResultDelegate::paintMatchRow(QPainter* pPainter, const QStyleOptionV
     if (markerRect.isEmpty()) {
         return;
     }
-    // The same line a second time rather than the matched piece on its own: laid
-    // out from the same origin, so the letters land exactly where the first pass
-    // put them however the font kerns them
+    // The whole line again, clipped, not the matched piece alone: from the same
+    // origin the letters land where the first pass kerned them
     pPainter->save();
     pPainter->setClipRect(markerRect);
     pPainter->setPen(mMarkerText);
@@ -314,8 +296,7 @@ void SearchResultDelegate::paintNoticeRow(QPainter* pPainter, const QStyleOption
     pPainter->drawText(contentRect, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine, metrics.elidedText(index.data(TitleRole).toString(), Qt::ElideRight, contentRect.width()));
 }
 
-// Asked for every row of the list, so it reads the one thing that says which of
-// the two heights this row is rather than building a style option to find out
+// Asked for every row, so no style option is built
 QSize SearchResultDelegate::sizeHint(const QStyleOptionViewItem&, const QModelIndex& index) const
 {
     return {scmGlyphSize, index.data(RowKindRole).toInt() == ItemRow ? mItemRowHeight : mMatchRowHeight};

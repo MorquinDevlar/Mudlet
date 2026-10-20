@@ -45,36 +45,21 @@
 
 namespace uiDesign {
 
-// A shade smaller than the words around it, which is what makes a chip read as
-// a label on something rather than as a line of the form
 static constexpr qreal scmChipFontScale = 0.85;
-// What a chip leaves round its word. More on the leading edge than the trailing
-// one, because the cross that takes the chip away stands in the trailing gap.
+// Less on the trailing edge, where the cross stands in the gap
 static constexpr int scmChipPaddingVertical = 3;
 static constexpr int scmChipPaddingLeading = 9;
 static constexpr int scmChipPaddingTrailing = 5;
-// Between the word and that cross
 static constexpr int scmChipGap = 4;
-// The cross itself, and the plus on the button that opens the field: measured
-// off the chip's own type, so a larger interface font gets a larger glyph
 static constexpr qreal scmChipGlyphScale = 0.75;
-// What is left between two chips, and between two lines of them
 static constexpr int scmChipSpacingAcross = 6;
 static constexpr int scmChipSpacingDown = 6;
-// How long the "already listed" note stands before it takes itself away
 static constexpr int scmChipNoteMilliseconds = 2000;
-// Mudlet's own events all start with this, and a script's own read stronger
-// than the ones it is only listening for
 static constexpr char scmSystemEventPrefix[] = "sys";
-// What the list of offered names is held off its own edges by, and how much
-// room past the longest of them the popup asks for
 static constexpr int scmSuggestionPaddingVertical = 2;
 static constexpr int scmSuggestionPaddingHorizontal = 6;
 static constexpr int scmSuggestionSlack = 32;
-// The least that stands between a name and the word saying where it is from,
-// which is what keeps the two reading as two things rather than as one phrase
 static constexpr int scmSuggestionNoteGap = 16;
-// Which role of the model the word beside a name is kept in
 static constexpr int scmSuggestionNoteRole = Qt::UserRole;
 
 QFont chipFont(const QWidget* pOn)
@@ -89,7 +74,6 @@ QFont chipFont(const QWidget* pOn)
     return font;
 }
 
-// The height one chip comes to, which is also what a line of them is tall
 static int chipHeightOn(const QWidget* pOn)
 {
     return QFontMetrics(chipFont(pOn)).height() + 2 * (scmChipPaddingVertical + scmInputBorderWidth);
@@ -105,22 +89,17 @@ Chip::Chip(const QString& name, QWidget* pParent)
 {
     setObjectName(qsl("editorChip"));
     setFrameShape(QFrame::NoFrame);
-    // A rule naming this widget only paints once it is told that its background
-    // is the stylesheet's business rather than the palette's
+    // An #id rule paints this widget's background only with WA_StyledBackground set
     setAttribute(Qt::WA_StyledBackground, true);
     setFocusPolicy(Qt::StrongFocus);
 
     auto* pRow = new QHBoxLayout(this);
-    // The frame's padding is left to the layout rather than written into the
-    // sheet: a plain QFrame's stylesheet padding moves what is drawn without
-    // moving what the layout puts there, so the two would disagree
+    // Not in the sheet: a plain QFrame's stylesheet padding moves what is drawn
+    // without moving what the layout places
     pRow->setContentsMargins(scmChipPaddingLeading, scmChipPaddingVertical, scmChipPaddingTrailing, scmChipPaddingVertical);
     pRow->setSpacing(scmChipGap);
 
     mpLabel = new QLabel(this);
-    // Named so that a walk over the window can say which chip it is talking
-    // about; the rules below select it through the chip, whose property says
-    // whether the name is one of Mudlet's own
     mpLabel->setObjectName(qsl("editorChipLabel"));
     mpLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     pRow->addWidget(mpLabel);
@@ -128,8 +107,7 @@ Chip::Chip(const QString& name, QWidget* pParent)
     mpRemove = new QToolButton(this);
     mpRemove->setObjectName(qsl("editorChipRemove"));
     mpRemove->setAutoRaise(true);
-    // Tab walks the chips themselves; the cross is reached with Delete instead,
-    // which is one stop per chip rather than two
+    // Delete removes a focused chip, so Tab stops once per chip rather than twice
     mpRemove->setFocusPolicy(Qt::NoFocus);
     connect(mpRemove, &QAbstractButton::clicked, this, &Chip::removeRequested);
     pRow->addWidget(mpRemove);
@@ -138,10 +116,8 @@ Chip::Chip(const QString& name, QWidget* pParent)
     setName(name);
 }
 
-// Measured off the row rather than off the chip's own font: a stylesheet rule
-// naming the chip stops it inheriting anything from what it lies on, so its own
-// font answers with the application's rather than with the row's - and the row's
-// is what "a shade smaller than the words around it" is a shade smaller than.
+// Measured off the row: a stylesheet rule naming the chip stops it inheriting the
+// row's font, so the chip's own font() answers with the application's
 void Chip::remeasure()
 {
     const QWidget* pOn = parentWidget() ? parentWidget() : this;
@@ -149,8 +125,7 @@ void Chip::remeasure()
     const int glyphSize = chipGlyphSizeOn(pOn);
     mpRemove->setIconSize(QSize(glyphSize, glyphSize));
     mpRemove->setFixedSize(glyphSize, glyphSize);
-    // The row's line rather than the chip's own recipe: the field the row
-    // types into stands on the same line, and is the taller of the two
+    // The row's line: the field shares it and can be taller than a chip
     const auto* pRow = qobject_cast<const ChipRow*>(pOn);
     setFixedHeight(pRow ? pRow->lineHeight() : chipHeightOn(pOn));
     updateGeometry();
@@ -217,11 +192,6 @@ ChipRow::ChipRow(QWidget* pParent)
     mpFlow->setContentsMargins(0, 0, 0, 0);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
 
-    // The place the next chip goes, drawn as the outline of one: the same fine
-    // dashed frame the trigger form's Add pattern button is read as a
-    // placeholder by, painted by the button itself rather than asked of a
-    // stylesheet - see PlaceholderButton for why - and rounded to a chip's
-    // corner rather than a control's
     mpAdd = new PlaceholderButton(this);
     mpAdd->setObjectName(qsl("editorChipAdd"));
     //: Button at the end of a script's row of event chips that opens a field for a new event name
@@ -229,8 +199,7 @@ ChipRow::ChipRow(QWidget* pParent)
     //: Tooltip on the button that opens the field for another event a script should listen for
     mpAdd->setToolTip(utils::richText(tr("Listen for another event")));
     mpAdd->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    // The button paints its own frame, and auto-raise would have the style
-    // draw a second one over it under the mouse
+    // Auto-raise would have the style draw a second frame over the button's own under the mouse
     mpAdd->setAutoRaise(false);
     mpAdd->setFrameRadius(scmRadiusChip);
     connect(mpAdd, &QAbstractButton::clicked, this, &ChipRow::beginAdd);
@@ -243,8 +212,6 @@ ChipRow::ChipRow(QWidget* pParent)
     mpField->hide();
     remeasure();
     connect(mpField, &QLineEdit::textEdited, this, [this](const QString& text) {
-        // A comma is how a list is written out, so typing one says the name
-        // before it is finished
         const int comma = text.indexOf(QLatin1Char(','));
         if (comma < 0) {
             return;
@@ -288,9 +255,7 @@ void ChipRow::setItems(const QStringList& items)
     mChips.clear();
     QStringList taken;
     for (const QString& name : items) {
-        // A name with nothing in it is not a chip, and one that is already
-        // there would be a second box saying the same word - neither of which
-        // the user could have typed here, but a profile file can carry either
+        // The user cannot type an empty or repeated name here, but a profile file can carry either
         const QString shown = cleaned(name);
         if (shown.isEmpty() || taken.contains(shown)) {
             continue;
@@ -313,8 +278,6 @@ QWidget* ChipRow::chipAt(const int index) const
 
 int ChipRow::indexOf(const QString& name) const
 {
-    // What was handed to setItems() is not what a chip ended up showing, so the
-    // name looked for is put through the same trim the chips were
     const QString wanted = cleaned(name);
     for (int i = 0; i < mChips.size(); ++i) {
         if (mChips.at(i)->name() == wanted) {
@@ -336,9 +299,6 @@ void ChipRow::beginAdd()
     openField(-1);
 }
 
-// What the row is adding to is the caller's business: the component only knows
-// that a name goes in a box. The button is re-measured, since its word is what
-// it is as wide as.
 void ChipRow::setAddWords(const QString& button, const QString& tooltip, const QString& fieldPrompt)
 {
     mpAdd->setText(button);
@@ -349,9 +309,6 @@ void ChipRow::setAddWords(const QString& button, const QString& tooltip, const Q
 
 int ChipRow::lineHeight() const
 {
-    // A chip's own height, or the field's if the form's rule for a field makes
-    // that the taller: the chips and the add button grow to meet the field
-    // rather than the field being cut down to them
     const int fieldHeight = mpField ? mpField->sizeHint().height() : 0;
     return std::max(chipHeightOn(this), fieldHeight);
 }
@@ -359,10 +316,8 @@ int ChipRow::lineHeight() const
 QSize ChipRow::sizeHint() const
 {
     const QSize hint = QWidget::sizeHint();
-    // The height the chips have actually wrapped to at the width the row was
-    // last given. Whatever holds the row reads its hint rather than asking for
-    // a height at a width, so the wrap has to be in the hint or a second line
-    // of chips is drawn over whatever is under it.
+    // Whatever holds the row reads its hint rather than heightForWidth(), so without the
+    // wrapped height here a second line of chips is drawn over whatever is under it
     if (width() <= 0) {
         return hint;
     }
@@ -384,7 +339,6 @@ void ChipRow::remeasure()
     mpAdd->setFont(chipFont(this));
     const int line = lineHeight();
     mpAdd->setFixedHeight(line);
-    // Never shorter than the sheet makes it, since the line is at least that
     mpField->setFixedHeight(line);
     const int glyphSize = chipGlyphSizeOn(this);
     mpAdd->setIconSize(QSize(glyphSize, glyphSize));
@@ -398,8 +352,7 @@ void ChipRow::remeasure()
 void ChipRow::changeEvent(QEvent* pEvent)
 {
     QWidget::changeEvent(pEvent);
-    // A sheet landing on the form changes what the field comes to, and the
-    // line with it
+    // A sheet landing on the form changes the field's height, and the line with it
     if (pEvent->type() == QEvent::FontChange || pEvent->type() == QEvent::StyleChange) {
         remeasure();
     }
@@ -409,8 +362,7 @@ void ChipRow::resizeEvent(QResizeEvent* pEvent)
 {
     QWidget::resizeEvent(pEvent);
     if (pEvent->oldSize().width() != pEvent->size().width()) {
-        // A different width is a different number of lines, and the hint above
-        // only changes once whatever holds the row has been told to ask again
+        // A new width can wrap to a new number of lines, and the holder only re-reads the hint when told
         updateGeometry();
     }
 }
@@ -418,14 +370,9 @@ void ChipRow::resizeEvent(QResizeEvent* pEvent)
 bool ChipRow::eventFilter(QObject* pWatched, QEvent* pEvent)
 {
     if (mpCompleter && pWatched == mpCompleter->popup()) {
-        // While the list is up the keys go to it, and QCompleter passes on what
-        // it does not want with a direct widget->event() call - which goes round
-        // every event filter, so the field's own branch below never hears this
-        // Return. Nothing highlighted means the user typed a name rather than
-        // arrowing into the list, and the typed name is what wins: a name nobody
-        // has used before is then still one Return away. Everything else, the
-        // arrows and Escape included, is left to QCompleter - and so is a Return
-        // on a highlighted row, which comes back through its activated().
+        // QCompleter forwards keys it does not want by calling widget->event() directly, which
+        // bypasses the field's filter below. With nothing highlighted Return commits the typed
+        // name, so an unlisted one is still one Return away; a highlighted row comes via activated().
         if (pEvent->type() == QEvent::KeyPress) {
             auto* pKey = static_cast<QKeyEvent*>(pEvent);
             const bool returning = pKey->key() == Qt::Key_Return || pKey->key() == Qt::Key_Enter;
@@ -454,8 +401,6 @@ bool ChipRow::eventFilter(QObject* pWatched, QEvent* pEvent)
             break;
         }
     } else if (pEvent->type() == QEvent::FocusOut && mFieldOpen && !mCommitting) {
-        // Clicking away from a name that was typed keeps it; clicking away from
-        // an empty field is the user giving up on it
         if (cleaned(mpField->text()).isEmpty()) {
             closeField();
         } else {
@@ -492,8 +437,6 @@ void ChipRow::rebuild()
             mpFlow->addWidget(mpField);
             fieldPlaced = true;
         }
-        // The chip being renamed stays in the layout and is skipped there,
-        // rather than being taken out and put back
         pChip->setVisible(!standingIn);
         mpFlow->addWidget(pChip);
     }
@@ -506,8 +449,6 @@ void ChipRow::rebuild()
     mpField->setVisible(mFieldOpen);
     mpAdd->setVisible(!mFieldOpen);
 
-    // Tab walks the names in the order they are read in and ends on the button
-    // that adds another, which is where the chips themselves end
     QWidget* pPrevious = nullptr;
     for (Chip* pChip : mChips) {
         if (pPrevious) {
@@ -519,8 +460,6 @@ void ChipRow::rebuild()
         setTabOrder(pPrevious, mpAdd);
     }
 
-    // The row is a different set of things at a different height, and neither
-    // the layout nor anything above it knows that until it is told
     mpFlow->invalidate();
     updateGeometry();
 }
@@ -546,8 +485,7 @@ void ChipRow::closeField(const bool keepNote)
     mFieldOpen = false;
     mEditingIndex = -1;
     mpField->clear();
-    // The list of names stands in a window of its own, so it does not go with
-    // the field it was opened over unless it is told to
+    // The popup is a window of its own and stays up when the field hides
     if (mpCompleter) {
         mpCompleter->popup()->hide();
     }
@@ -557,9 +495,7 @@ void ChipRow::closeField(const bool keepNote)
     rebuild();
 }
 
-// stillTyping says which way the commit came: Return and a typed comma leave the
-// user in the field, while losing the focus means they have gone somewhere else
-// to do something else - and only the first of those keeps the field open.
+// stillTyping is Return or a typed comma, which keep the field open; false is a focus-out
 void ChipRow::commitField(const bool stillTyping)
 {
     if (!mFieldOpen || mCommitting) {
@@ -574,7 +510,6 @@ void ChipRow::commitField(const bool stillTyping)
         return;
     }
     if (pEdited && pEdited->name() == name) {
-        // The name came back unchanged, so there is nothing to tell anyone
         closeField();
         return;
     }
@@ -583,10 +518,8 @@ void ChipRow::commitField(const bool stillTyping)
             showNote(name);
             emit duplicateRefused(name);
             if (!stillTyping) {
-                // The user has gone elsewhere, so there is nobody left to type
-                // the name over: leaving the field open would leave it standing
-                // unfocused with the add button hidden behind it. The note keeps
-                // its two seconds, which is what says why nothing was added.
+                // Left open after a focus-out, the field would stand unfocused with the add button
+                // hidden behind it. The note stays, as it is what says why nothing was added.
                 closeField(true);
             }
             return;
@@ -604,14 +537,8 @@ void ChipRow::commitField(const bool stillTyping)
 
     mChips.append(makeChip(name));
     if (stillTyping) {
-        // The field stays open on the name it just took: a script listening for
-        // one event usually listens for a second, and reaching for the button
-        // again between each is the whole of what made the old pair of controls
-        // tedious
         mpField->clear();
-        // The name just taken is a chip now, so it goes off the offer with the
-        // rest of them rather than waiting for the field to be opened again -
-        // and the list goes with it, since it was answering the old name
+        // The new chip leaves the offer now, and the popup was answering the old text
         if (mpCompleter) {
             mpCompleter->popup()->hide();
         }
@@ -633,13 +560,8 @@ void ChipRow::removeAt(const int index)
     if (index < 0 || index >= mChips.size()) {
         return;
     }
-    // The cross is not focusable, so an open field still holds the keyboard -
-    // and the focus move below would take its FocusOut with it, committing what
-    // was typed as a side effect of a click that asked for a removal. The field
-    // is settled here instead, by the rule focus-out goes by: a name that was
-    // typed is kept, an empty field is given up on. A rename settled this way
-    // renames the chip it stands in for, which is not the one going away: the
-    // commit leaves the list the same length, so the index below still holds.
+    // The cross takes no focus, so an open field still holds the keyboard and the focus move below would commit through its FocusOut.
+    // Settled first; a rename keeps the list's length, so index still holds.
     if (mFieldOpen) {
         if (cleaned(mpField->text()).isEmpty()) {
             closeField();
@@ -648,16 +570,13 @@ void ChipRow::removeAt(const int index)
         }
     }
 
-    // The cross that asked for this is a child of the chip, and its own signal
-    // is still on the stack - so the chip is taken out of the row now and freed
-    // once that has unwound
+    // The cross that asked for this is the chip's child and its signal is still on the stack
     Chip* pGoing = mChips.takeAt(index);
     pGoing->hide();
     pGoing->deleteLater();
     rebuild();
 
-    // Something has to hold the keyboard afterwards, or a run of Delete presses
-    // stops after the first one
+    // Something must hold the keyboard, or a run of Delete presses stops after the first
     mCommitting = true;
     if (!mChips.isEmpty()) {
         mChips.at(std::min(static_cast<qsizetype>(index), mChips.size() - 1))->setFocus(Qt::OtherFocusReason);
@@ -675,7 +594,6 @@ void ChipRow::showNote(const QString& name)
     mpNote->show();
     mpNoteTimer->start();
     rebuild();
-    // The field stays open on what was refused, ready to be typed over
     mpField->selectAll();
 }
 
@@ -697,10 +615,8 @@ QString ChipRow::cleaned(const QString& name)
     return trimmed.trimmed();
 }
 
-// One row of the list is two things read together: the name on the left and, on
-// the right, the quiet word saying where it is from. A stylesheet cannot draw
-// that - a row of a list is one string - so the row is painted here, the
-// background and the wash on the chosen row still being the style's work.
+// A stylesheet draws a list row as one string, so the name and its note are painted here
+// over the background and selection wash the style still draws
 class SuggestionDelegate final : public QStyledItemDelegate
 {
 public:
@@ -721,8 +637,7 @@ public:
         QStyleOptionViewItem opt = option;
         initStyleOption(&opt, index);
         const QString name = opt.text;
-        // Taken off the option so that the style paints the row it stands on and
-        // nothing else, both words being drawn below in their own inks
+        // Cleared so the style paints only the row; both words are drawn below in their own inks
         opt.text.clear();
         const QWidget* pOn = opt.widget;
         QStyle* pStyle = pOn ? pOn->style() : QApplication::style();
@@ -768,13 +683,9 @@ private:
     QColor mNoteChosen;
 };
 
-// Attached to the field here rather than in the constructor, and that order is
-// the whole point: QCompleter puts an event filter of its own on the widget in
-// setWidget(), Qt runs the filter installed last first, and QCompleter's is what
-// swallows the FocusOut the field takes while the popup stands over it. Were the
-// row's own filter reached first it would read that focus-out as the user going
-// elsewhere and commit the half-typed name out from under the list they were
-// reading.
+// Not in the constructor: Qt runs the filter installed last first, and the filter QCompleter
+// installs in setWidget() must swallow the FocusOut the popup causes before the row's own
+// filter commits the half-typed name on it
 void ChipRow::makeCompleter()
 {
     if (mpCompleter) {
@@ -784,13 +695,10 @@ void ChipRow::makeCompleter()
     mpSuggestionModel = new QStandardItemModel(mpCompleter);
     mpCompleter->setModel(mpSuggestionModel);
     mpCompleter->setCompletionMode(QCompleter::PopupCompletion);
-    // A name is looked for wherever it stands in the word, since what the user
-    // remembers of an event is as often its end as its beginning
+    // What the user remembers of an event is as often its end as its beginning
     mpCompleter->setFilterMode(Qt::MatchContains);
     mpCompleter->setCaseSensitivity(Qt::CaseInsensitive);
-    // Said outright rather than left at the default, since a row now carries a
-    // second string: what is matched against, and what is put into the field
-    // when a row is chosen, is the name alone
+    // Explicit because each row also carries its note in another role
     mpCompleter->setCompletionRole(Qt::DisplayRole);
     mpField->setCompleter(mpCompleter);
 
@@ -799,17 +707,13 @@ void ChipRow::makeCompleter()
     if (!mSuggestionSheet.isEmpty()) {
         pPopup->setStyleSheet(mSuggestionSheet);
     }
-    // After setCompleter(), which is what makes the popup - and QCompleter puts
-    // a delegate of its own on it as it does, which this has to come after
+    // After setCompleter(), which creates the popup and puts QCompleter's own delegate on it
     mpSuggestionDelegate = new SuggestionDelegate(pPopup);
     pPopup->setItemDelegate(mpSuggestionDelegate);
     inkSuggestionNotes();
 
-    // Choosing a name off the list is the same as having typed it: the chip is
-    // taken and the field is left open for the next one. Queued, because
-    // QLineEdit connects to this signal itself to put the chosen name in the
-    // field, and that connection is direct - so anything reading the field has
-    // to come after it.
+    // Queued: QLineEdit's own direct connection to this signal puts the chosen name in the
+    // field, and anything reading the field has to come after it
     connect(
             mpCompleter,
             qOverload<const QString&>(&QCompleter::activated),
@@ -832,7 +736,7 @@ void ChipRow::refreshSuggestionModel()
     QStringList taken;
     taken.reserve(mChips.size());
     for (int i = 0; i < mChips.size(); ++i) {
-        // The chip being renamed is not in its own way
+        // So a rename can keep or re-pick its own name
         if (i != mEditingIndex) {
             taken << mChips.at(i)->name();
         }
@@ -862,17 +766,11 @@ void ChipRow::measureSuggestions()
     if (!mpCompleter) {
         return;
     }
-    // The offered names are set in the type the chips they will become are, so
-    // a font change re-measures the list along with them
     const QFont font = chipFont(this);
     mpCompleter->popup()->setFont(font);
 
-    // The field is only as wide as the gap the next chip goes in, and the popup
-    // takes the field's width unless it is told a wider one. QCompleter's
-    // showPopup() gives the list a geometry that respects a minimum width, and
-    // holds that within the screen itself.
-    // A row is the name, the gap and the word beside it, so the widest of each
-    // rather than the widest row: the two are rarely on the same row
+    // The popup takes the narrow field's width unless given a minimum, which QCompleter's
+    // showPopup() respects and keeps on screen. Widest name plus widest note, as the two are rarely on one row.
     const QFontMetrics metrics(font);
     int widestName = 0;
     int widestNote = 0;
@@ -893,15 +791,11 @@ void ChipRow::inkSuggestionNotes()
 
 void ChipRow::restyleSuggestions(const ThemeTokens& tokens)
 {
-    // No padding on the item: the delegate holds both words off the row's edges
-    // itself, and a sheet that said so as well would move the background it is
-    // drawn on without moving them
+    // No item padding: the delegate pads the words itself, and sheet padding would move the
+    // background without moving them
     mSuggestionSheet = qsl("QListView { background-color: %1; color: %2; border: 1px solid %3;"
                            " selection-background-color: %4; selection-color: %5; outline: none; }")
                                .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), tokens.accentSoft, tokens.accentText.name());
-    // The chosen row is washed in the accent and its name set in the ink mixed
-    // to be read on that wash, so the word beside it is held to the same ink
-    // rather than to the quiet one it is set in on every other row
     mSuggestionNote = tokens.mutedText;
     mSuggestionNoteChosen = tokens.accentText;
     if (mpCompleter) {
@@ -917,34 +811,22 @@ void ChipRow::restyleGlyphs(const ThemeTokens& tokens)
         pChip->setRemoveGlyph(mRemoveGlyph);
     }
     mpAdd->setIcon(tintedIcon(qsl(":/icons/editor-add.svg"), tokens));
-    // The frame is the only thing saying that one more chip goes there, so it
-    // is held to what a control needs rather than to the hairline the chips
-    // beside it are edged with - the same three mixes the Add pattern button
-    // is framed in, so the two placeholders read as one kind of thing
+    // A control's contrast rather than a chip's hairline, matching the Add pattern button's frame
     mpAdd->setFrameColors(blend(tokens.card, tokens.text, 0.45), tokens.accent, blend(tokens.card, tokens.text, 0.22));
 }
 
 QString ChipRow::styleSheetFor(const ThemeTokens& tokens)
 {
-    // A refusal is the one red anything broken is written in. Walked on from
-    // there, because the page a form is on is lighter than the strip that red
-    // was measured against and a light ink reads worse the lighter its surface
-    // gets - a no-op wherever it already clears the floor
+    // The error red was measured on a darker strip than the page, so it is walked to the floor here
     const QColor noteColor = readableOn(tokens.page, errorInk(tokens), tokens.text, scmTextMinimumRatio);
     return qsl("#editorChip { background-color: %1; border: 1px solid %2; border-radius: %3px; }"
-               // What the user typed, at full strength...
                "#editorChip QLabel { background: transparent; color: %4; }"
-               // ...and Mudlet's own events quieter than that, so a script's own
-               // names read stronger than the ones it is only listening for
                "#editorChip[editorChipSystem=\"true\"] QLabel { color: %5; }"
                "#editorChip:focus { border: 1px solid %6; }"
                "#editorChipRemove { border: none; border-radius: %3px; background: transparent; padding: 0px; }"
                "#editorChipRemove:hover { background-color: %7; }"
-               // Nothing is written in this one yet, which is what its dashed
-               // edge says - the button's own painting, see PlaceholderButton,
-               // so no border is drawn here. The pixel a chip's hairline takes
-               // is padding on this one, so the dashes land where that line
-               // does and the two boxes come out the same size.
+               // PlaceholderButton paints the dashes. The extra padding pixel stands in for a
+               // chip's hairline, so the dashes land on it and both boxes come out one size.
                "#editorChipAdd { border: none; border-radius: %3px; background: transparent; color: %5;"
                " padding: %8px %9px %8px %10px; }"
                "#editorChipAdd:hover { color: %4; }"

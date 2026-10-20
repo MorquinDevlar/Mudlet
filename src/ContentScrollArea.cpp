@@ -30,10 +30,8 @@ ContentScrollArea::ContentScrollArea(QWidget* pParent)
 
 QSize ContentScrollArea::sizeHint() const
 {
-    // What QScrollArea::sizeHint() works out, without the cache it keeps the
-    // widget's answer in: the frame round the widget's own hint, capped at the
-    // same multiple of the font Qt caps it at, so that a long list does not
-    // ask the window to be as tall as every one of its rows
+    // QScrollArea::sizeHint() without its cache, keeping Qt's cap so a long list
+    // does not ask for every row's height
     const int frame = 2 * frameWidth();
     const int fontHeight = fontMetrics().height();
     QSize hint(frame, frame);
@@ -47,9 +45,8 @@ QSize ContentScrollArea::sizeHint() const
 
 QSize ContentScrollArea::minimumSizeHint() const
 {
-    // Only the height is this class's own: the width Qt answers with is made
-    // of scroll bar metrics too, but it is a few dozen pixels under anything a
-    // column of fields is ever laid out at, so it is left as it was
+    // Qt's width also counts scroll bars, but stays under any column of fields
+    // this holds, so only the height is replaced
     return QSize(QScrollArea::minimumSizeHint().width(), 2 * frameWidth());
 }
 

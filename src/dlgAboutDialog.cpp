@@ -60,84 +60,61 @@
 using namespace uiDesign;
 
 namespace {
-// The column the arch stands in, and what it narrows to once the window has no
-// room for it. The two thresholds are deliberately different numbers: held
-// equal, a one-pixel drag across the boundary would flip the column back and
-// forth - the same reason the settings sidebar has a pair of its own.
+// The two thresholds differ on purpose: held equal, a one-pixel drag across the
+// boundary would flip the column back and forth
 constexpr int scmArtColumnWidth = 304;
 constexpr int scmArtColumnPadding = 20;
 constexpr int scmNarrowArtColumnWidth = 238;
 constexpr int scmNarrowArtColumnPadding = 14;
 constexpr int scmNarrowBelowWidth = 1000;
 constexpr int scmWidenAboveWidth = 1060;
-// Three across while the window is wide enough for the art column beside them,
-// two once it is not
 constexpr int scmLinkColumns = 3;
 constexpr int scmNarrowLinkColumns = 2;
 
-// The window as it first opens, and the smallest it can be dragged to
 constexpr int scmMinimumWidth = 900;
 constexpr int scmMinimumHeight = 560;
 constexpr int scmPreferredWidth = 1080;
 constexpr int scmPreferredHeight = 680;
 
-// What a card leaves round what it holds, what a page leaves round its cards,
-// and how far apart two cards stand
 constexpr int scmCardPadding = 16;
 constexpr int scmPageSpacing = 16;
 constexpr int scmPageMarginTop = 18;
 constexpr int scmPageMarginSide = 20;
 constexpr int scmPageMarginBottom = 24;
 
-// The text a rich-text label was given, before any anchor in it was inked: what
-// the label itself holds is that text with a colour written into every link, so
-// the original has to be kept somewhere to be re-inked from
 inline constexpr char scmProp_aboutRichText[] = "aboutRichText";
 
-// What a wrapping row of contact chips leaves between two of them, across and
-// down alike, and the slot the glyph in one is drawn in
 constexpr int scmChipSpacing = 5;
 constexpr int scmChipGlyphSize = 18;
-// ...and the glyph beside the licence notice. Named for this window: a
-// notice elsewhere is uiDesign's shared control, drawn at its own size.
+// This window's own: a notice elsewhere is uiDesign's shared control, at its own size
 constexpr int scmAboutLicenceGlyphSize = 18;
-// The column a contributor's name and contacts stand in, beside what they did.
-// In characters rather than pixels, so a 25-character address still fits when
-// the interface font is set at 150%.
+// In characters, so a 25-character address still fits at a 150% interface font
 constexpr int scmMoreNameColumnCharacters = 30;
 
-// How long the Copy button says it copied for
 constexpr int scmCopiedMilliseconds = 1600;
 
-// The one button on this dialog that is an invitation rather than a control
 constexpr int scmPrimaryButtonHeight = 30;
 
-// A reading column is measured in characters rather than pixels, so it holds a
-// comfortable line whatever the interface font is
+// In characters rather than pixels, so a column grows with the interface font
 constexpr int scmLicenceColumnCharacters = 72;
 constexpr int scmThirdPartyIntroCharacters = 70;
 constexpr int scmThirdPartyBodyCharacters = 76;
 
-// The tiers are set in the same words at every window width, spaced a little
-// wider than the type asks for so that the capitals do not close up
+// Opened up a little so the capitals do not close up
 constexpr int scmTierLetterSpacing = 106;
 
-// What the reader is left after the label has taken its own padding
 int artworkWidth(const bool narrow)
 {
     return (narrow ? scmNarrowArtColumnWidth : scmArtColumnWidth) - 2 * (narrow ? scmNarrowArtColumnPadding : scmArtColumnPadding);
 }
 
-// The type a version string, a host name and a build fact are set in: the
-// platform's own fixed-pitch face at whatever size the application is running
-// at, so that the stylesheet's percentage means something
+// At the application's size, so the stylesheet's percentage is relative to it
 QFont fixedPitchFont()
 {
     return uiDesign::fixedPitchFont(QApplication::font());
 }
 
-// A glyph rasterised for the slot it goes in rather than for the 128px file it
-// comes from, so that nothing downsamples it again later
+// Rasterised for its slot rather than the 128px file, so nothing downsamples it later
 QPixmap glyphAt(const QString& file, const int size, const qreal ratio, const QColor& colour)
 {
     QPixmap glyph = uiDesign::glyphPixmap(file).scaled(qRound(size * ratio), qRound(size * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -145,8 +122,6 @@ QPixmap glyphAt(const QString& file, const int size, const qreal ratio, const QC
     return uiDesign::tintedGlyph(glyph, colour);
 }
 
-// A column of words is capped by how many characters fit on a line rather than
-// by a pixel count, so a wider interface font gets a wider column
 void capToCharacters(QWidget* pWidget, const int characters)
 {
     pWidget->setMaximumWidth(QFontMetrics(pWidget->font()).averageCharWidth() * characters);
@@ -159,14 +134,10 @@ dlgAboutDialog::dlgAboutDialog(QWidget* parent)
 {
     setupUi(this);
 
-    // Nothing is painted onto it any more: the version, the channel and the
-    // copyright are words under it rather than serif type baked into the
-    // picture, so the Easter-egg splashes keep working and the arch stays sharp
     mSplash = mudlet::getSplashScreen(MudletApp::release(), MudletApp::publicTest());
 
-    // What every anchor built below is inked with. Settled here rather than per
-    // label: themeTokens() walks four colours to their contrast floors, and the
-    // shell asks for eighty labels.
+    // Settled once rather than per label: themeTokens() walks four colours to their
+    // contrast floors, and the shell builds eighty labels
     mInkedLinkColour = themeTokens().accentText;
 
     mpTimer_copyFeedback = new QTimer(this);
@@ -191,8 +162,7 @@ dlgAboutDialog::dlgAboutDialog(QWidget* parent)
 
 void dlgAboutDialog::buildShell()
 {
-    // The four tab titles stay in the .ui file so that the translations of them
-    // carry over to the pages below; nothing shows the tabs themselves any more
+    // Hidden, not removed: the pages take their titles, and so their translations, from its tabs
     tabWidget->hide();
     detachFromLayout(tabWidget);
 
@@ -320,8 +290,6 @@ QWidget* dlgAboutDialog::buildContentColumn()
     mpStackedWidget_pages->setObjectName(qsl("aboutStack"));
     markAsShellSurface(mpStackedWidget_pages);
 
-    // The four names are the .ui file's own tab titles, so no translation of
-    // them churns for the sake of the pages replacing the tabs
     const QList<QPair<QString, QPair<QString, QString>>> pages{{qsl("mudlet"), {tabWidget->tabText(0), qsl(":/icons/about-mudlet.svg")}},
                                                                {qsl("supporters"), {tabWidget->tabText(1), qsl(":/icons/about-supporters.svg")}},
                                                                {qsl("license"), {tabWidget->tabText(2), qsl(":/icons/about-license.svg")}},
@@ -369,8 +337,7 @@ QScrollArea* dlgAboutDialog::createScrollPage(const QString& key)
     pColumnLayout->setSpacing(scmPageSpacing);
 
     pScrollArea->setWidget(pColumn);
-    // setWidget() turns the column into an opaque one filled from its own
-    // palette; the page's surface belongs to the content area behind it
+    // setWidget() turns autoFillBackground on, which would paint over the page's surface
     pColumn->setAutoFillBackground(false);
     pScrollArea->viewport()->setAutoFillBackground(false);
     markAsShellSurface(pColumn);
@@ -429,16 +396,9 @@ QLabel* dlgAboutDialog::createParagraph(const QString& text, QWidget* pParent)
 void dlgAboutDialog::setRichText(QLabel* pLabel, const QString& text)
 {
     pLabel->setTextFormat(Qt::RichText);
-    // What the old text browsers offered and these labels replaced: the words
-    // can be selected and copied, and a link can be followed by mouse or by
-    // keyboard
     pLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    // Kept because the label's own text() is this with a colour written into
-    // every anchor, which an appearance change has to be able to do again
+    // text() will carry a colour in every anchor; the original is kept to re-ink from
     pLabel->setProperty(scmProp_aboutRichText, text);
-    // The ink is settled once per appearance rather than mixed per label:
-    // themeTokens() walks four colours to their contrast floors, and this runs
-    // eighty times while the dialog is being built
     pLabel->setText(uiDesign::withLinkColour(text, mInkedLinkColour));
 }
 
@@ -471,15 +431,12 @@ QWidget* dlgAboutDialog::createContactChips(const aboutMaker& maker, QWidget* pP
     auto* pRow = new QWidget(pParent);
     pRow->setObjectName(qsl("aboutContacts"));
     markAsShellSurface(pRow);
-    // A row of chips wraps rather than growing sideways: a QHBoxLayout's
-    // minimum is the sum of what is in it, which made a maker with three
-    // contacts 450px wide and pushed the card beside it off the page
+    // Wraps: a QHBoxLayout's minimum is the sum of its items, which pushed the card
+    // beside it off the page
     auto* pLayout = new uiDesign::FlowLayout(pRow, scmChipSpacing, scmChipSpacing);
-    // A card in a column is never widened by how many chips it happens to hold
     pLayout->setWidthPolicy(uiDesign::FlowLayout::Width::WidestItem);
     pLayout->setContentsMargins(0, 0, 0, 0);
-    // A layout whose height depends on its width is only asked for one if the
-    // widget carrying it says so
+    // Qt only asks a layout for heightForWidth when its widget's size policy says so
     QSizePolicy rowPolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     rowPolicy.setHeightForWidth(true);
     pRow->setSizePolicy(rowPolicy);
@@ -524,9 +481,8 @@ QWidget* dlgAboutDialog::createMoreRow(const aboutMaker& maker, QWidget* pParent
     auto* pRow = new QWidget(pParent);
     pRow->setObjectName(qsl("aboutMoreRow"));
     markAsShellSurface(pRow);
-    // Two columns in a box rather than cells of a grid: a grid spreads a
-    // word-wrapping description over the rows it spans and comes out far taller
-    // than the words, where a box asks it for its height at its own width
+    // A box, not a grid: a grid spreads a wrapping description over the rows it
+    // spans and comes out far taller than the words
     auto* pRowLayout = new QHBoxLayout(pRow);
     pRowLayout->setContentsMargins(0, 9, 0, 9);
     pRowLayout->setSpacing(14);
@@ -581,9 +537,6 @@ QWidget* dlgAboutDialog::buildMudletPage()
         pButton->setObjectName(qsl("aboutLinkButton"));
         mLinkButtons.append(pButton);
     }
-    // Laid out here at the wide count rather than only in updateArtColumnWidth():
-    // that one runs when the mode *changes*, and a window that opens wide never
-    // changes it
     layOutLinkButtons(scmLinkColumns);
     pColumnLayout->addWidget(pLinks);
 
@@ -717,7 +670,6 @@ QWidget* dlgAboutDialog::buildSupportersPage()
     QScrollArea* pPage = createScrollPage(qsl("supporters"));
     QWidget* pColumn = pPage->widget();
     auto* pColumnLayout = qobject_cast<QVBoxLayout*>(pColumn->layout());
-    // Pennants stand closer together than cards do
     pColumnLayout->setSpacing(10);
 
     // see https://www.patreon.com/mudlet if you'd like to be added!
@@ -736,10 +688,8 @@ QWidget* dlgAboutDialog::buildSupportersPage()
     pIntro->setAlignment(Qt::AlignHCenter);
     pIntro->setOpenExternalLinks(true);
     setRichText(pIntro, introText);
-    // Laid out at the full column width and centred by the label rather than by
-    // the layout: an alignment flag has the box measure the height at the column
-    // width while the label is drawn at its cap, which clipped this to two
-    // lines. The string's own <br> is what breaks it.
+    // No layout alignment flag: with one, the box measures the height at the column
+    // width while the label draws at its cap, which clipped it to two lines
     pColumnLayout->addWidget(pIntro);
 
     struct Tier
@@ -761,8 +711,7 @@ QWidget* dlgAboutDialog::buildSupportersPage()
         auto* pTier = new QLabel(tier.heading, pColumn);
         pTier->setObjectName(qsl("aboutTier"));
         pTier->setAlignment(Qt::AlignHCenter);
-        // Set as a property of the type rather than by changing the words, so
-        // that a language whose letters have no case is left alone
+        // Uppercased by the font rather than the words, so a caseless script is left alone
         QFont tierFont = pTier->font();
         tierFont.setCapitalization(QFont::AllUppercase);
         tierFont.setLetterSpacing(QFont::PercentageSpacing, scmTierLetterSpacing);
@@ -797,8 +746,7 @@ QWidget* dlgAboutDialog::buildSupportersPage()
 
 QWidget* dlgAboutDialog::buildLicensePage()
 {
-    // Not a scrolling column: the licence text browser under the notice scrolls
-    // itself, and a scroll area inside a scroll area scrolls neither well
+    // Not a scroll page: the browser scrolls itself, and nested scroll areas scroll neither well
     auto* pPage = new QWidget(mpStackedWidget_pages);
     pPage->setObjectName(qsl("aboutPage_license"));
     markAsShellSurface(pPage);
@@ -848,11 +796,8 @@ QWidget* dlgAboutDialog::buildLicensePage()
     textBrowser_license->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     markAsShellSurface(textBrowser_license->viewport());
 
-    // Centred by a stretch either side rather than by an alignment flag, which
-    // would leave the browser at its own 256px size hint. The stretches carry no
-    // stretch factor of their own, so everything up to the reading column's cap
-    // goes to the browser and only what it cannot take is shared between them -
-    // which also means a window too narrow for the cap gives it all it has.
+    // Centred by stretches, not an alignment flag, which would hold the browser at its
+    // 256px size hint; zero-factor stretches only get what its width cap leaves
     auto* pReadingRow = new QWidget(pPage);
     pReadingRow->setObjectName(qsl("aboutLicenseReadingRow"));
     markAsShellSurface(pReadingRow);
@@ -875,8 +820,6 @@ QWidget* dlgAboutDialog::buildThirdPartyPage()
     auto* pIntro = new QLabel(pColumn);
     pIntro->setObjectName(qsl("aboutThirdPartyIntro"));
     pIntro->setWordWrap(true);
-    // Only the introductory text at the top is translated - the licences
-    // themselves MUST NOT be, as only the English form of one is definitive
     setRichText(
             pIntro,
             qsl("%1 %2").arg(
@@ -943,9 +886,6 @@ QWidget* dlgAboutDialog::buildThirdPartyPage()
         pBody->setOpenExternalLinks(true);
         setRichText(pBody, component.body);
         pBody->setContentsMargins(40, 2, 14, 14);
-        // The reading width is capped in applyShellStyle() rather than here:
-        // the rule that sets this label at 92% is only in force once the sheet
-        // has been assigned, and a cap measured at 100% is the wrong number
         pBody->hide();
         connect(pToggle, &QToolButton::toggled, pBody, &QLabel::setVisible);
         pRowLayout->addWidget(pBody);
@@ -1021,8 +961,6 @@ void dlgAboutDialog::slot_copyBuildInformation()
     if (!pButton) {
         return;
     }
-    // A second button pressed while the first is still saying it copied puts
-    // that one back before this one takes over
     slot_restoreCopyButton();
 
     mpButton_showingCopied = pButton;
@@ -1061,9 +999,8 @@ void dlgAboutDialog::resizeEvent(QResizeEvent* pEvent)
 
 bool dlgAboutDialog::event(QEvent* pEvent)
 {
-    // The artwork and every glyph are rasterised for the ratio of the screen
-    // the dialog was on, so a drag to a screen with another one has to redo
-    // them - nothing else re-derives a pixmap once it has been set
+    // Glyphs and artwork are rasterised for the old ratio, and nothing else re-derives a
+    // pixmap once it has been set
     if (pEvent->type() == QEvent::DevicePixelRatioChange) {
         applyShellStyle();
     }
@@ -1088,12 +1025,9 @@ void dlgAboutDialog::updateArtColumnWidth()
     if (!mpWidget_artColumn) {
         return;
     }
-    // Two thresholds rather than one, so that a drag across the boundary cannot
-    // set the column oscillating between its two widths
     const bool narrow = mNarrow ? width() < scmWidenAboveWidth : width() < scmNarrowBelowWidth;
-    // Whether the column has ever been laid out, rather than whether the label
-    // happens to hold a picture: a splash that failed to load would leave the
-    // second condition true for ever and re-grid the cards on every resize
+    // A flag rather than testing the label for a picture: a splash that failed to
+    // load would re-grid the cards on every resize
     if (narrow == mNarrow && mArtColumnPlaced) {
         return;
     }
@@ -1105,7 +1039,6 @@ void dlgAboutDialog::updateArtColumnWidth()
     mpWidget_artColumn->layout()->setContentsMargins(padding, padding, padding, padding);
     restyleArtwork(themeTokens());
 
-    // The six link cards need a wider window than two of them do
     layOutLinkButtons(narrow ? scmNarrowLinkColumns : scmLinkColumns);
 }
 
@@ -1143,10 +1076,8 @@ void dlgAboutDialog::restyleArtwork(const ThemeTokens& tokens)
 
 void dlgAboutDialog::restyleContactChips(const ThemeTokens& tokens)
 {
-    // Forty-nine chips are drawn from three files in one colour, and each one
-    // costs a load, a tint, a PNG encode and a base64 - so the picture is made
-    // once per file and handed to every chip that wants it. It is also
-    // rasterised at the size the chip draws it rather than at the file's 128px.
+    // Made once per file: 49 chips share three glyphs, and each would cost a load, a
+    // tint, a PNG encode and a base64
     QHash<QString, QString> inlined;
     const qreal ratio = devicePixelRatioF();
     for (const ContactChip& chip : mContactChips) {
@@ -1171,8 +1102,7 @@ void dlgAboutDialog::applyShellStyle()
     if (!mpWidget_shell) {
         return;
     }
-    // Mixed from the application's palette rather than this dialog's - see
-    // themeTokens() for why assigning a stylesheet freezes the latter
+    // From the application palette: assigning a stylesheet freezes this dialog's (see themeTokens())
     const ThemeTokens tokens = themeTokens();
 
     const QString cardIndicatorRules = cardIndicatorStyleSheet(scmProp_aboutCard, tokens);
@@ -1180,18 +1110,13 @@ void dlgAboutDialog::applyShellStyle()
     const CardMetrics cardMetrics{
             .cardProperty = scmProp_aboutCard, .plainProperty = scmProp_aboutCardPlain, .padding = scmCardPadding, .titleHeight = cardTitleHeight, .flattenNestedGroupBoxes = false};
 
-    // The two steps of the type scale this window names, in the points a
-    // stylesheet is the only thing that reads
     const QString captionSize = QString::number(typeSize(TypeStep::Caption));
     const QString titleSize = QString::number(typeSize(TypeStep::Title));
 
     mpWidget_shell->setStyleSheet(
             qsl("#aboutShell, #aboutContent { background-color: %1; }"
-                // The arch stands in a column of its own, the smallest step off
-                // the page the design has, with the seam down its trailing edge
                 "#aboutArtColumn { background-color: %2; border-right: 1px solid %3; }"
-                // The shell's own scaffolding keeps the page colour even when a
-                // profile's Lua stylesheet paints every QWidget it can reach
+                // So a profile's Lua stylesheet painting every QWidget cannot colour the scaffolding
                 "QWidget[settingsSurface=\"true\"] { background-color: transparent; border: none; }"
                 "#aboutName { font-size: %5pt; font-weight: bold; }"
                 "#aboutVersion { font-size: %6pt; color: %4; }"
@@ -1199,16 +1124,13 @@ void dlgAboutDialog::applyShellStyle()
                 "#aboutFooter { font-size: %6pt; color: %4; }"
                 "#textBrowser_license { background-color: %1; border: none; }")
                     .arg(tokens.page.name(), tokens.pane.name(), tokens.separator.name(), tokens.mutedText.name(), titleSize, captionSize)
-            + qsl( // A word in a box, and the same box filled when it is lit
-                      "QLabel[aboutChip=\"true\"] { border: 1px solid %1; border-radius: %2px; padding: 1px 7px; font-size: %9pt; color: %3; }"
-                      "QLabel[aboutChipLit=\"true\"] { background-color: %4; color: %5; border: 1px solid transparent; }"
-                      // The row of places this window can go, drawn as the sidebar's
-                      // rows are: quiet until one is chosen or under the pointer
-                      "#aboutNav { border-bottom: 1px solid %1; }"
-                      "#aboutNav QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; color: %3; background-color: transparent; }"
-                      "#aboutNav QToolButton:hover { background-color: %6; color: %7; }"
-                      "#aboutNav QToolButton:checked { background-color: %4; color: %5; font-weight: bold; }"
-                      "#aboutNav QToolButton:focus { border: 1px solid %8; }")
+            + qsl("QLabel[aboutChip=\"true\"] { border: 1px solid %1; border-radius: %2px; padding: 1px 7px; font-size: %9pt; color: %3; }"
+                  "QLabel[aboutChipLit=\"true\"] { background-color: %4; color: %5; border: 1px solid transparent; }"
+                  "#aboutNav { border-bottom: 1px solid %1; }"
+                  "#aboutNav QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; color: %3; background-color: transparent; }"
+                  "#aboutNav QToolButton:hover { background-color: %6; color: %7; }"
+                  "#aboutNav QToolButton:checked { background-color: %4; color: %5; font-weight: bold; }"
+                  "#aboutNav QToolButton:focus { border: 1px solid %8; }")
                       .arg(tokens.border.name(),
                            QString::number(scmRadiusChip),
                            tokens.mutedText.name(),
@@ -1222,10 +1144,6 @@ void dlgAboutDialog::applyShellStyle()
             + qsl("#aboutSectionTitle { font-size: %6pt; font-weight: bold; }"
                   "#aboutSectionNote { font-size: %7pt; color: %1; }"
                   "#aboutCardDescription { font-size: %7pt; color: %1; }"
-                  // A maker's description and the thanks paragraph are read at
-                  // the size of everything else on the page: they were a
-                  // fraction quieter, which is a step nobody sees and a fifth
-                  // size the scale would have to carry
                   "#aboutPersonDescription { color: %1; }"
                   "#aboutMoreName { font-weight: bold; }"
                   "#aboutMoreDescription { color: %1; }"
@@ -1238,37 +1156,23 @@ void dlgAboutDialog::applyShellStyle()
                   "#aboutLicenseOrigin { font-size: %7pt; color: %1; }"
                   "#aboutBuildKey { font-size: %7pt; color: %1; }"
                   "#aboutBuildValue { font-size: %7pt; color: %2; }"
-                  // A line between two rows rather than a surface of its own
                   "#aboutSeparatorLine { background-color: %3; }"
-                  // A row of the third-party list, clickable across the name it
-                  // carries and inked as the rest of this window's chrome is
                   "#aboutThirdPartyToggle { border: 1px solid transparent; padding: 9px 14px; text-align: left; background-color: transparent; color: %2; font-weight: bold; }"
                   "#aboutThirdPartyToggle:hover { background-color: %4; }"
                   "#aboutThirdPartyToggle:focus { border: 1px solid %5; }")
                       .arg(tokens.mutedText.name(), tokens.text.name(), tokens.border.name(), tokens.hoverSoft, tokens.accent.name(), titleSize, captionSize)
-            // The ordinary button of the other two windows. The links down the
-            // side are not push buttons at all - AboutLinkButton paints itself
-            // - so nothing here reaches them.
-            + buttonStyleSheet(tokens)
-            + qsl( // ...and the one thing this window's buttons do that no
-                      // other window's do: say that they have just copied
-                      "QPushButton[aboutButton=\"true\"][aboutCopied=\"true\"] { color: %1; border: 1px solid %2; }")
-                      .arg(tokens.accentText.name(), tokens.accent.name())
-            + qsl( // ...and the one button that is an invitation rather than a control
-                      "QPushButton[aboutPrimaryButton=\"true\"] { background-color: %1; color: %2; border: 1px solid transparent; border-radius: %3px; padding: 5px 16px;"
-                      " min-height: %4px; font-weight: bold; }"
-                      "QPushButton[aboutPrimaryButton=\"true\"]:hover { background-color: %5; }"
-                      "QPushButton[aboutPrimaryButton=\"true\"]:focus { border: 1px solid %6; }")
+            + buttonStyleSheet(tokens) + qsl("QPushButton[aboutButton=\"true\"][aboutCopied=\"true\"] { color: %1; border: 1px solid %2; }").arg(tokens.accentText.name(), tokens.accent.name())
+            + qsl("QPushButton[aboutPrimaryButton=\"true\"] { background-color: %1; color: %2; border: 1px solid transparent; border-radius: %3px; padding: 5px 16px;"
+                  " min-height: %4px; font-weight: bold; }"
+                  "QPushButton[aboutPrimaryButton=\"true\"]:hover { background-color: %5; }"
+                  "QPushButton[aboutPrimaryButton=\"true\"]:focus { border: 1px solid %6; }")
                       .arg(tokens.accentSoft, tokens.accentText.name(), QString::number(scmRadiusInput), QString::number(scmPrimaryButtonHeight), tokens.hoverSoft, tokens.accent.name())
             + scrollBarStyleSheet(qsl("QScrollArea[settingsSurface=\"true\"]"), tokens) + scrollBarStyleSheet(qsl("#textBrowser_license"), tokens));
 
-    // The accent this window's buttons take on focus is the keyboard's, the
-    // same way it is on the other two
     keepClickFocusOffControls(mpWidget_shell);
 
-    // Everything a rule cannot reach, and after the sheet rather than before
-    // it: assigning a stylesheet re-polishes the subtree back to the palette it
-    // was first polished with, which threw away an ink written here beforehand.
+    // After the sheet: assigning a stylesheet re-polishes the subtree back to the
+    // palette it was first polished with, discarding any ink written before it
     for (QToolButton* pButton : std::as_const(mNavButtons)) {
         pButton->setIcon(tintedIcon(pButton->property("aboutNavGlyph").toString(), tokens));
     }
@@ -1293,26 +1197,19 @@ void dlgAboutDialog::applyShellStyle()
         pPatreon->setIcon(QIcon(tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/about-patreon.png")), tokens.accentText)));
     }
 
-    // ...and every anchor is re-inked from the text the label was given, since
-    // the colour is written into the link rather than answered by a palette.
-    // Only when it actually moved: the constructor styles the shell straight
-    // after building it, and re-parsing eighty labels for the colour they
-    // already carry is the most expensive thing on that path.
+    // Only when it moved: re-parsing eighty labels for the colour they already
+    // carry is the costliest step of construction
     if (tokens.accentText != mInkedLinkColour) {
         restyleRichText(tokens);
     }
 
-    // A third-party licence is capped at a number of characters of the type it
-    // is set in, and the rule that shrinks that type to 92% is only in force
-    // once the sheet above has been assigned - so the cap is taken here rather
-    // than where the label is built, where it would be measured at 100%
+    // Capped here, not where the label is built: its 92% rule only applies once the
+    // sheet is assigned, and a cap measured at 100% is the wrong number
     for (QLabel* pBody : mpWidget_shell->findChildren<QLabel*>(qsl("aboutThirdPartyBody"))) {
         capToCharacters(pBody, scmThirdPartyBodyCharacters);
     }
 
-    // The licence is half a megabyte of rich text; re-setting it costs a full
-    // re-parse, so it is only re-set when one of the three inks in its head has
-    // actually changed
+    // Half a megabyte of rich text: only re-parsed when one of its head's three inks changed
     const QString licenceInk = qsl("%1/%2/%3").arg(tokens.text.name(), tokens.mutedText.name(), tokens.accentText.name());
     if (licenceInk != mLicenceInkKey) {
         mLicenceInkKey = licenceInk;
@@ -1323,14 +1220,8 @@ void dlgAboutDialog::applyShellStyle()
 
 void dlgAboutDialog::setLicenseText(const ThemeTokens& tokens)
 {
-    // The head is written from the tokens rather than naming a serif family, so
-    // the licence is set in the interface font at the sizes the rest of the
-    // dialog uses
-    // Sized off the same scale the window's own sheet is, so that the licence
-    // reads as a page of this dialog rather than as a document in it. The three
-    // lesser headings still name the body size outright, unlike a rule in a
-    // stylesheet: Qt's rich text engine gives an h2 or an h3 a size of its own,
-    // and what says they are not larger than the paragraph under them is this.
+    // h2 to h4 name the body size outright: Qt's rich text engine otherwise gives each
+    // heading a larger size of its own
     const QString htmlHead = qsl("<head><style type=\"text/css\">"
                                  "body { margin: 0; }"
                                  "h1 { text-align: center; font-size: %4pt; font-weight: bold; color: %1; }"
@@ -1857,11 +1748,9 @@ void dlgAboutDialog::setLicenseText(const ThemeTokens& tokens)
                           "&lt;<a href=\"https://www.gnu.org/licenses/why-not-lgpl.html\">https://www.gnu.org/licenses/why-not-lgpl.html</a>&gt;.</p>"));
     // clang-format on
 
-    // A theme change while somebody is reading has no business taking them back
-    // to the top of the licence
+    // A theme change must not throw the reader back to the top
     const int wasAt = textBrowser_license->verticalScrollBar()->value();
-    // The head's "a { color }" rule is not what a QTextDocument inks an anchor
-    // with, so the colour travels on each anchor here as well
+    // A QTextDocument ignores the head's "a { color }" rule when inking anchors
     textBrowser_license->setHtml(qsl("<html>%1<body>%2</body></html>").arg(htmlHead, uiDesign::withLinkColour(gplText, tokens.accentText)));
     textBrowser_license->verticalScrollBar()->setValue(wasAt);
     textBrowser_license->setMaximumWidth(QFontMetrics(textBrowser_license->font()).averageCharWidth() * scmLicenceColumnCharacters + textBrowser_license->verticalScrollBar()->sizeHint().width());
@@ -2000,8 +1889,7 @@ QVector<aboutMaker> dlgAboutDialog::makers()
 QVector<aboutThirdParty> dlgAboutDialog::thirdPartyComponents()
 {
     // clang-format off
-    // Only the names and the copyright lines are translated - the Licences
-    // themselves MUST NOT be translated:
+    // The Licences themselves MUST NOT be translated: only the English form is legally definitive
     // This one needs something about the name of the original copyright holder
     // and possible contributors as it includes a %1 placeholder in the text
     // to represent something that varies between different products using it:
@@ -2385,10 +2273,7 @@ QVector<aboutThirdParty> dlgAboutDialog::thirdPartyComponents()
 
     QVector<aboutThirdParty> components;
 
-    // A component's own name is not translated - it is what its authors call it
-    // - while the line under it, which says what the thing is and whose it is,
-    // is. The chip is the licence's SPDX identifier, which is not translated
-    // either; the one row whose licence has none says so in words.
+    // Names and SPDX identifiers are not translated: a name is what its authors call it
     components.append({qsl("Communi IRC Library"),
                        //: about:third-party Communi
                        tr("IRC support. Copyright © 2008-2020 The Communi Project"),
@@ -2490,8 +2375,7 @@ QVector<aboutThirdParty> dlgAboutDialog::thirdPartyComponents()
                        //: about:third-party Discord RPC
                        tr("The RPC library that tells Discord what you are playing. Copyright © 2017 Discord, Inc."),
                        qsl("MIT"),
-                       // The brand mark, as the old page showed it above this entry. A
-                       // picture rather than chrome, so no colour of the design applies.
+                       // A picture rather than chrome, so no colour of the design applies
                        qsl(R"(<p><img src=":/icons/Discord-Logo+Wordmark-Color_438x120px.png" width="219" height="60"></p>)") + MIT_Body});
 
     components.append({qsl("QtKeyChain"),

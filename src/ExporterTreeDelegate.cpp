@@ -42,8 +42,5 @@ void ExporterTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem&
         return;
     }
 
-    // Over the pill the style has just drawn, as the leading edge of that pill:
-    // full width down the row and cut to the pill's corner at both ends, the way
-    // the editor's trees and the package manager's list draw theirs
     uiDesign::paintAccentBar(pPainter, option.rect, mAccentBar);
 }

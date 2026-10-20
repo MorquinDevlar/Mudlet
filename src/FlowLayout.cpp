@@ -96,8 +96,6 @@ QLayoutItem* FlowLayout::takeAt(int index)
     return pItem;
 }
 
-// Neither way: a row of chips is as wide as its chips and as tall as the lines
-// they came to, and room given to it beyond that is room nothing fills
 Qt::Orientations FlowLayout::expandingDirections() const
 {
     return {};
@@ -113,16 +111,11 @@ int FlowLayout::heightForWidth(int width) const
     if (width == mCachedWidth) {
         return mCachedHeight;
     }
-    // Where the rectangle sits has nothing to do with how tall the lines come
-    // to, so a walk that places nothing can start anywhere
     mCachedWidth = width;
     mCachedHeight = runItems(QRect(0, 0, width, 0), false);
     return mCachedHeight;
 }
 
-// What the items come to on one line, which is the width the row would rather
-// have. Whatever holds it is free to give it less, and the wrap answers for the
-// height that costs.
 QSize FlowLayout::sizeHint() const
 {
     if (mWidthPolicy == Width::WidestItem) {
@@ -145,8 +138,7 @@ QSize FlowLayout::sizeHint() const
     return QSize(width + margins.left() + margins.right(), height + margins.top() + margins.bottom());
 }
 
-// One item wide: anything narrower cannot show a chip at all, and anything
-// wider would stop the column the row is in from being dragged smaller
+// One item wide: any wider would stop the column holding the row from being dragged smaller
 QSize FlowLayout::minimumSize() const
 {
     const QMargins margins = contentsMargins();
@@ -155,10 +147,8 @@ QSize FlowLayout::minimumSize() const
         if (pItem->isEmpty()) {
             continue;
         }
-        // Under WidestItem the hint rather than the minimum, because the hint
-        // is what runItems() actually gives each item: a minimum read off the
-        // smaller of the two would promise a width the row is then drawn wider
-        // than, and this policy's whole job is to be that promise.
+        // Under WidestItem the hint, which is what runItems() gives each item: a smaller
+        // minimum would promise a width the row is then drawn wider than
         smallest = smallest.expandedTo(mWidthPolicy == Width::WidestItem ? pItem->sizeHint() : pItem->minimumSize());
     }
     return QSize(smallest.width() + margins.left() + margins.right(), smallest.height() + margins.top() + margins.bottom());
@@ -189,8 +179,7 @@ int FlowLayout::runItems(const QRect& rect, const bool place) const
     int x = content.x();
     int y = content.y();
     int lineHeight = 0;
-    // An item is centred on a line whose height is only known once the line
-    // is full, so what is on it waits until then to be placed
+    // Placing waits for a full line: centring needs the line's final height
     QList<QPair<QLayoutItem*, QRect>> line;
     const auto placeLine = [this, &line, &y, &lineHeight, &content]() {
         const int spare = line.isEmpty() ? 0 : std::max(0, content.right() - line.constLast().second.right());
@@ -214,8 +203,7 @@ int FlowLayout::runItems(const QRect& rect, const bool place) const
             continue;
         }
         const QSize hint = pItem->sizeHint();
-        // A line with nothing on it yet takes the item however wide it is: a
-        // chip wider than the row is drawn over the edge rather than dropped
+        // An empty line takes an item of any width, so one wider than the row overflows its edge
         if (lineHeight > 0 && x + hint.width() > content.right() + 1) {
             if (place) {
                 placeLine();
@@ -243,8 +231,7 @@ int FlowLayout::styleSpacing(const QStyle::PixelMetric metric) const
     if (!pParent) {
         return 0;
     }
-    // QCommonStyle answers -1 for "whatever the layout says", and this layout's
-    // answer is the thing being asked for
+    // QCommonStyle answers -1 ("ask the layout") for these, and this is the layout
     return std::max(0, pParent->style()->pixelMetric(metric, nullptr, pParent));
 }
 

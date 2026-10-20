@@ -41,7 +41,7 @@
 #include <QDebug>
 
 namespace {
-// The pill the hover wash is drawn as - the radius the trigger form's cards use
+// Must match the trigger form's card radius
 constexpr int scmRowRadius = 6;
 } // namespace
 
@@ -103,10 +103,8 @@ void dlgTriggerPatternEdit::paintEvent(QPaintEvent*)
     QPainter painter(this);
     style()->drawPrimitive(QStyle::PE_Widget, &styleOption, &painter, this);
 
-    // The wash that says the mouse is on this row. Painted rather than left to a
-    // stylesheet rule on a property, since a property is only read on a
-    // re-polish - which runs the form's whole sheet over the row's controls
-    // every time the pointer crosses one.
+    // Painted, not a stylesheet rule on a property: a property is only read on a re-polish, which
+    // would rerun the form's whole sheet over the row's controls every time the pointer crosses one
     if (!mRowHovered || !mHoverTint.isValid()) {
         return;
     }

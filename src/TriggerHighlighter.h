@@ -33,10 +33,7 @@ public:
     explicit TriggerHighlighter(QTextDocument* parent = nullptr);
     void setHighlightingEnabled(bool enabled);
     void setTheme(const QString&);
-    // The field the tokens are read on. A syntax theme picks its colours against
-    // its own background, which is not the one a pattern row is drawn with, so
-    // each of them is brought over before it is used - and none of them brings
-    // that background along.
+    // The pattern row's own colours: tokens are made readable on them and paint no background
     void setFieldColors(const QColor& background, const QColor& text);
 
 protected:

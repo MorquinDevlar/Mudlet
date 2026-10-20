@@ -63,9 +63,7 @@ public:
     bool dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData* data, Qt::DropAction action) override;
     void rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end) override;
     void rowsInserted(const QModelIndex& parent, int start, int end) override;
-    // The option the view lays a row out from. QAbstractItemView keeps
-    // initViewItemOption() to itself, and measuring a row against the style from
-    // outside the view needs the same starting point the view uses.
+    // QAbstractItemView::initViewItemOption() is protected, and the delegates measure rows from outside the view
     [[nodiscard]] QStyleOptionViewItem viewItemOption() const;
     void setHost(Host* pH);
     void setTreeType(TreeType type);

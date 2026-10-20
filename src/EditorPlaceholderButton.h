@@ -26,30 +26,17 @@
 
 namespace uiDesign {
 
-// A button that reads as the place one more of something goes, rather than as a
-// control: a fine dashed frame with the action named inside it.
-//
-// The frame is painted rather than asked of a stylesheet, because Qt strokes a
-// "1px dashed" border as a run of squares as long as the gaps between them -
-// coarse enough beside the rest of the editor to read as a different drawing.
-// Everything else about the button is still the stylesheet's, so the margins the
-// sheet holds it away from its neighbours by are handed over rather than guessed
-// at: they are what the widget's own rectangle is inset by before the frame is
-// drawn in it.
+// The frame is painted because Qt strokes a stylesheet "1px dashed" border as
+// squares as long as the gaps. The rest is still the stylesheet's, so
+// setFrameMargins() takes the margins the sheet gives the button.
 class PlaceholderButton : public QToolButton
 {
 public:
     Q_DISABLE_COPY(PlaceholderButton)
     explicit PlaceholderButton(QWidget* pParent);
 
-    // In the order a QAbstractButton is drawn by: the resting frame, the one
-    // under the pointer or the keyboard, and the one for a button there is no
-    // longer anything to add
     void setFrameColors(const QColor& resting, const QColor& active, const QColor& disabled);
     void setFrameMargins(const QMargins& margins);
-    // The corner the frame is rounded to: a control's unless told otherwise,
-    // and a chip's for the button that stands at the end of a row of chips as
-    // the outline of the next one
     void setFrameRadius(const qreal radius);
 
 protected:

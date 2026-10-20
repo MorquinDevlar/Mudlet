@@ -28,73 +28,37 @@ class QColor;
 class QModelIndex;
 class QPixmap;
 
-// What a row of one of the editor's trees is measured and drawn to. Two
-// delegates draw those rows - EditorTreeDelegate for the six trees a profile's
-// own items live in, VariableTreeDelegate for the seventh - and a row of one has
-// to be the same height, held in by the same room and led by marks of the same
-// size as a row of the other, or the panel reads as two lists that happen to be
-// stacked. So the numbers live here rather than once per delegate.
+// Shared by EditorTreeDelegate and VariableTreeDelegate so a row in any of the seven trees measures alike
 namespace uiDesign {
 
-// The dot at the head of an item row, and the square at the head of a variable
-// row, are drawn in a slot of this size
 inline constexpr int scmTreeDotDiameter = 9;
-// Between that mark and the one that follows it
 inline constexpr int scmTreeDotGap = 6;
-// A stroked shape is drawn centred on its path, so a hollow mark is pulled in by
-// half a pen to end up the same size as a filled one
 inline constexpr qreal scmTreeHollowPenWidth = 1.5;
-// The point standing in the middle of a ring, which is what says the item is
-// switched on while something above it is not
 inline constexpr qreal scmTreeDotCentreDiameter = 3.0;
-// How far past its square a click still counts as one on the mark - a 9px target
-// is not one to ask for accuracy on
+// A 9px target is not one to ask for accuracy on
 inline constexpr int scmTreeMarkHitSlack = 2;
-// The square the chevron is drawn in, centred in the indentation step it stands
-// in - the same square the dot is drawn in, so the two read as one row of marks
+// The dot's square, so the chevron and the dot read as one row of marks
 inline constexpr int scmTreeChevronBox = 9;
-// Half the height of the chevron's stroke inside that square
 inline constexpr qreal scmTreeChevronArm = 2.6;
 inline constexpr qreal scmTreeChevronPenWidth = 1.4;
-// The square every mark is drawn in - a folder's, an error's, a tree's own
-// heading, a variable's type - which is the size the panel's other list draws
-// its glyphs at (scmGlyphSize in SearchResultDelegate.cpp)
+// Matches scmGlyphSize in SearchResultDelegate.cpp, the panel's other list
 inline constexpr int scmTreeMarkSize = 16;
-// ...and the room every row leaves for the mark, which is the same room whether
-// the row has one or not. That is what makes the hover fill on a tree's heading
-// and the selection pill on an item under it the one height.
+// Left whether or not a row has a mark, so every row of a tree is one height
 inline constexpr int scmTreeSlotHeight = std::max({scmTreeMarkSize, scmTreeDotDiameter, scmTreeChevronBox});
-// What each level is held in by if the view had none to report, which it always
-// does have - a style with no metric for it is what this stands in for
 inline constexpr int scmTreeFallbackIndentStep = 20;
-// A tree indented deeply enough would otherwise grow a decoration cache a depth
-// at a time
+// The decoration key holds the depth, so a deep enough tree would otherwise grow the cache a level at a time
 inline constexpr int scmTreeDecorationCacheLimit = 256;
-// A click carrying one of these is the selection being worked on rather than a
-// row being switched on or off
 inline constexpr Qt::KeyboardModifiers scmTreeSelectionModifiers = Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier;
 
-// How deep in the tree a row is. The view counts the same thing to work out how
-// far to indent a row, and keeps the answer to itself.
+// QTreeView counts this to indent a row but does not expose it
 int treeRowLevelOf(const QModelIndex& index);
 
-// The handle that folds a row away, pointing the way the row will open: along
-// the list while it is folded, down into it once it is not. Drawn rather than
-// taken from a file, since it is two strokes and both delegates want it in
-// whatever ink the tree's chrome is currently in.
+// Drawn rather than loaded from a file: two strokes, in whatever ink the tree's chrome is currently in
 QPixmap treeRowChevronGlyph(const bool open, const QColor& ink, const qreal ratio);
 
-// The three shapes a row's state dot is drawn as. Each reading is told by its
-// shape as well as by its ink, so a reader who cannot separate the inks still
-// has all three.
+// Each form differs in shape as well as ink, for a reader who cannot separate the inks
 enum class TreeDotForm { Filled, Ring, RingWithCentre };
 
-// The dot that says whether the thing a row stands for is running: filled where
-// it is, a bare ring where it is switched off, and a ring round a point where it
-// is switched on but something above it is not. Drawn here rather than in a
-// delegate because more than one list carries it - the editor's six item trees
-// and the package manager's list of installed packages - and the two have to be
-// one picture rather than two that were measured to match.
 QPixmap treeRowDotGlyph(const TreeDotForm form, const QColor& ink, const qreal ratio);
 
 } // namespace uiDesign

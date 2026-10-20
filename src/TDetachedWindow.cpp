@@ -212,8 +212,7 @@ void TDetachedWindow::setupUI()
         mpTabBar->setTabData(0, mCurrentProfileName);
     }
 
-    // QTabBar starts its first tab at x = 0 and ignores its own contents
-    // margins, so the inset the row of chips begins at is the layout's to give
+    // QTabBar lays its first tab out at x = 0 and ignores its own contents margins
     auto pTabStrip = new QHBoxLayout;
     pTabStrip->setContentsMargins(uiDesign::scmTabStripInset, 0, 0, 0);
     pTabStrip->setSpacing(0);
@@ -1077,9 +1076,6 @@ void TDetachedWindow::createToolBar()
     mpActionFullScreenView->setObjectName(qsl("fullscreen_action"));
     mpToolBar->addAction(mpActionFullScreenView);
 
-    // The same ledger the main window keeps, for the same reason: every picture
-    // on this bar is a monochrome glyph inked from the palette, and
-    // restyleToolBarIcons() redoes all of them when the theme moves
     mToolBarGlyphs = {{mpActionConnect, qsl(":/icons/toolbar-connect.svg"), QString()},
                       {mpActionTriggers, qsl(":/icons/editor-triggers.svg"), QString()},
                       {mpActionAliases, qsl(":/icons/editor-aliases.svg"), QString()},
@@ -3218,17 +3214,12 @@ void TDetachedWindow::slot_muteGame()
     });
 }
 
-// The size the glyphs are drawn at is QToolBar's business, taken from the 128px
-// source: this is only ever about the colour they are inked in - and about the
-// bar under them, mixed from the same palette and redrawn whenever it moves
 void TDetachedWindow::restyleToolBarIcons()
 {
     uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
 
     if (mpToolBar) {
-        // The main window's bar, down to the split buttons the popup mode picks
-        // out: this one is built from copies of the same actions. No profile
-        // stylesheet is assigned to it, so there is nothing to compose after.
+        // Unlike the main bar, no profile stylesheet is assigned here to compose after
         const QString sheet = mudlet::toolBarShellStyleSheet(qsl("QToolBar#detachedMainToolBar"));
         if (mpToolBar->styleSheet() != sheet) {
             mpToolBar->setStyleSheet(sheet);

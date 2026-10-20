@@ -51,8 +51,7 @@ QPixmap treeRowChevronGlyph(const bool open, const QColor& ink, const qreal rati
     painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
     const qreal centre = scmTreeChevronBox / 2.0;
-    // The arm across the point is shortened, so that the mark stays inside its
-    // square whichever way round it is drawn
+    // Shortened so the chevron stays inside its square whichever way round it is drawn
     const qreal reach = scmTreeChevronArm / 1.6;
     QPolygonF stroke;
     if (open) {
@@ -61,8 +60,7 @@ QPixmap treeRowChevronGlyph(const bool open, const QColor& ink, const qreal rati
         stroke << QPointF(centre - reach, centre - scmTreeChevronArm) << QPointF(centre + reach, centre) << QPointF(centre - reach, centre + scmTreeChevronArm);
     }
     painter.drawPolyline(stroke);
-    // Before the pixmap is handed out: a copy taken while a painter is still
-    // active on the original is a copy of something being written to
+    // Before returning: a copy taken while a painter is still active copies a pixmap mid-write
     painter.end();
     return glyph;
 }
@@ -76,8 +74,7 @@ QPixmap treeRowDotGlyph(const TreeDotForm form, const QColor& ink, const qreal r
     QPainter painter(&glyph);
     painter.setRenderHint(QPainter::Antialiasing, true);
     const bool filled = form == TreeDotForm::Filled;
-    // A stroked circle is drawn centred on its path, so a hollow dot is pulled in
-    // by half a pen to end up the same size as a filled one
+    // A stroke is centred on its path, so a hollow dot is inset by half a pen to match a filled one
     const qreal inset = filled ? 0.0 : scmTreeHollowPenWidth / 2.0;
     const QRectF circle(inset, inset, scmTreeDotDiameter - 2.0 * inset, scmTreeDotDiameter - 2.0 * inset);
     if (filled) {

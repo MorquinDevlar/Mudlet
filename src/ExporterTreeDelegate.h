@@ -25,14 +25,7 @@
 #include <QColor>
 #include <QStyledItemDelegate>
 
-// The rows of the package exporter's tree of things to export. The surface under
-// them - the pill's corner, the hover wash and the accent wash a chosen row is
-// filled with - is the shared row recipe (uiDesign::itemRowStyleSheet()), which
-// the tree carries as a stylesheet; the tick on each row is the shared choice
-// mark (uiDesign::itemCheckMarkStyleSheet()). What is left for a delegate is the
-// one thing no rule can be the shape of: the accent bar down the leading edge of
-// the chosen row, which a border-left would bend into a bracket at the pill's
-// two corners.
+// Paints only the accent bar; see uiDesign::paintAccentBar() for why it is not a border-left
 class ExporterTreeDelegate : public QStyledItemDelegate
 {
     Q_OBJECT
@@ -41,8 +34,6 @@ public:
     Q_DISABLE_COPY(ExporterTreeDelegate)
     explicit ExporterTreeDelegate(QObject* pParent = nullptr);
 
-    // The one ink this draws, taken again whenever the appearance moves. The
-    // dialog's own style pass is what calls it.
     void restyle(const uiDesign::ThemeTokens& tokens);
 
     void paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;

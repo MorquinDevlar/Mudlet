@@ -32,20 +32,13 @@
 namespace uiDesign {
 
 namespace {
-// What a handle carrying content is at least as tall as: room enough to read a
-// line of words in without them being up against either pane
 constexpr int scmHeaderThickness = 32;
-// Room left around that content, so a larger font is not up against either pane
 constexpr int scmHeaderPadding = 2;
-// The seam a plain handle draws down its middle, and what that line widens to
-// while the pointer is on it - the way a split view says which of its edges is
-// about to be dragged
 constexpr int scmSeamThickness = 1;
 constexpr int scmSeamHoveredThickness = 3;
 
-// What a pane was painted with. A stylesheet is what fills a window's columns
-// and a palette knows nothing about one, so the pane is asked rather than
-// guessed at - and one that never said is taken for a piece of the page.
+// A stylesheet fills the panes and the palette cannot see it, so each pane
+// names its tone in scmProp_paneTone
 QColor paneTone(const QWidget* pPane, const QColor& fallback)
 {
     if (!pPane) {
@@ -59,9 +52,8 @@ QColor paneTone(const QWidget* pPane, const QColor& fallback)
 GripSplitterHandle::GripSplitterHandle(const Qt::Orientation orientation, QSplitter* pParent)
 : QSplitterHandle(orientation, pParent)
 {
-    // QSplitterHandle acts on the hover events but leaves asking for them to
-    // the style, and a handle that has to know where on itself the pointer is
-    // cannot wait to be asked
+    // QSplitterHandle leaves WA_Hover to the style, and the cursor needs the
+    // hover positions whatever the style
     setAttribute(Qt::WA_Hover);
 }
 
@@ -82,8 +74,8 @@ void GripSplitterHandle::setContent(QWidget* pContent)
     }
 
     mpContent->setParent(this);
-    // Every piece of it, not just the strip: the attribute speaks for one widget
-    // alone, and a label left out of it would swallow the press that starts a drag
+    // WA_TransparentForMouseEvents is not inherited, and a child left without it
+    // swallows the press that starts a drag
     mpContent->setAttribute(Qt::WA_TransparentForMouseEvents);
     for (QWidget* pChild : mpContent->findChildren<QWidget*>()) {
         pChild->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -100,9 +92,8 @@ void GripSplitterHandle::setResizes(const bool resizes)
         return;
     }
     mResizes = resizes;
-    // Through placeCursor() rather than set here: a pointer resting on the
-    // piece that hears clicks is over a link whether or not the panes either
-    // side of the handle can be dragged apart
+    // Through placeCursor(): over the clickable piece the cursor stays a link
+    // even when the handle resizes nothing
     placeCursor(underMouse() ? mapFromGlobal(QCursor::pos()) : QPoint(-1, -1));
     update();
 }
@@ -131,9 +122,6 @@ bool GripSplitterHandle::overClickable(const QPoint& point) const
 
 void GripSplitterHandle::placeCursor(const QPoint& point)
 {
-    // Over the piece the strip is a link. Everywhere else it is the edge the two
-    // panes are dragged apart by - unless this handle drags nothing, where the
-    // pointer must not offer a drag that will not happen.
     const Qt::CursorShape edge = mResizes ? (orientation() == Qt::Vertical ? Qt::SplitVCursor : Qt::SplitHCursor) : Qt::ArrowCursor;
     const Qt::CursorShape wanted = overClickable(point) ? Qt::PointingHandCursor : edge;
     if (cursor().shape() != wanted) {
@@ -143,9 +131,8 @@ void GripSplitterHandle::placeCursor(const QPoint& point)
 
 bool GripSplitterHandle::event(QEvent* event)
 {
-    // The movement that first crosses into the handle arrives as a HoverEnter
-    // and only what follows it as a HoverMove, so a pointer that comes to rest
-    // on the piece in one movement is answered by the first of the two
+    // A pointer that comes to rest on the piece in one movement sends a
+    // HoverEnter and no HoverMove
     if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove) {
         placeCursor(static_cast<QHoverEvent*>(event)->position().toPoint());
     }
@@ -154,26 +141,22 @@ bool GripSplitterHandle::event(QEvent* event)
 
 bool GripSplitterHandle::eventFilter(QObject* watched, QEvent* event)
 {
-    // A piece that is shown or taken away under a pointer that is not moving
-    // leaves the cursor saying what used to be there
+    // The cursor is only placed as the pointer moves, so a piece shown or hidden
+    // under a still pointer would leave it stale
     if (watched == mpClickable && (event->type() == QEvent::Show || event->type() == QEvent::Hide) && underMouse()) {
         placeCursor(mapFromGlobal(QCursor::pos()));
     }
     return QSplitterHandle::eventFilter(watched, event);
 }
 
-// An inert handle answers the mouse with no drag at all rather than one that
-// goes nowhere: the base class would still start one, move the panes and have
-// the fit put them back, which reads as a heading that fights back. The click
-// test below runs either way - the piece the strip carries is a link whether or
-// not the panes either side of it can be dragged apart.
+// An inert handle skips the base class: it would still move the panes and the
+// fit would snap them back, a heading that fights back
 void GripSplitterHandle::mousePressEvent(QMouseEvent* event)
 {
     if (mResizes) {
         QSplitterHandle::mousePressEvent(event);
     }
-    // Only the button a drag and a click are made with: another button's press
-    // must not be paired with a later release of this one
+    // Another button's press must not pair with a later left release
     if (event->button() == Qt::LeftButton) {
         mPressedAt = event->globalPosition().toPoint();
         mDragged = false;
@@ -185,8 +168,8 @@ void GripSplitterHandle::mouseMoveEvent(QMouseEvent* event)
     if (mResizes) {
         QSplitterHandle::mouseMoveEvent(event);
     }
-    // Measured on the screen: the handle has just followed the pointer, so
-    // against itself the pointer is where it was pressed
+    // Global coordinates: the handle follows the pointer during a drag, so in
+    // its own the pointer never moves
     if ((event->buttons() & Qt::LeftButton) && (event->globalPosition().toPoint() - mPressedAt).manhattanLength() >= QApplication::startDragDistance()) {
         mDragged = true;
     }
@@ -212,8 +195,8 @@ QSize GripSplitterHandle::sizeHint() const
         return hint;
     }
 
-    // The splitter asks the handle how thick it is, so one handle can be thicker
-    // than the rest without the others hearing about it
+    // QSplitter sizes each handle from its own sizeHint(), so one can be
+    // thicker than the rest
     const QSize contentHint = mpContent->sizeHint();
     if (orientation() == Qt::Vertical) {
         hint.setHeight(std::max(scmHeaderThickness, contentHint.height() + 2 * scmHeaderPadding));
@@ -247,12 +230,8 @@ void GripSplitterHandle::leaveEvent(QEvent* event)
 
 void GripSplitterHandle::paintSeam(QPainter& painter, const ThemeTokens& tokens) const
 {
-    // A handle carrying nothing is a line rather than a band: the two panes are
-    // drawn up to a one pixel seam and the rest of the width the mouse needs is
-    // each pane's own tone carried on to it, so that what has to be nine pixels
-    // wide to be draggable reads as no gap at all. Hovered, the seam widens to
-    // three and takes the accent, which is the whole of what says it can be
-    // dragged - a grip pill on a line this thin would be the only thing on it.
+    // Each pane's tone is carried up to the seam, so nine pixels the mouse needs
+    // read as no gap
     QSplitter* pSplitter = splitter();
     const int index = pSplitter ? pSplitter->indexOf(const_cast<GripSplitterHandle*>(this)) : -1;
     const QColor before = paneTone(index > 0 ? pSplitter->widget(index - 1) : nullptr, tokens.page);
@@ -260,8 +239,6 @@ void GripSplitterHandle::paintSeam(QPainter& painter, const ThemeTokens& tokens)
 
     const QColor seamColor = mHovered ? tokens.accent : tokens.separator;
     const int thickness = mHovered ? scmSeamHoveredThickness : scmSeamThickness;
-    // The seam is centred on the handle, so an odd width grows either side of
-    // the middle pixel the resting line is drawn on
     if (orientation() == Qt::Vertical) {
         const int middle = (height() - scmSeamThickness) / 2;
         painter.fillRect(QRect(0, 0, width(), middle), before);
@@ -287,13 +264,8 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
         return;
     }
 
-    // A handle given a heading to carry is the top of the pane under it, so it
-    // is drawn with that pane's own corner: the page shows through outside the
-    // arc and the strip fills everything inside it. Only the top is cut - what
-    // is under the pane is the next pane down or the window's own edge, neither
-    // of which the heading has anything to say about - so the rounded rectangle
-    // is drawn a corner's worth taller than the handle and its bottom two
-    // corners fall outside what is painted.
+    // Drawn a corner's worth taller than the handle so only the top corners are
+    // rounded
     painter.fillRect(rect(), tokens.page);
     painter.setPen(Qt::NoPen);
     painter.setBrush(tokens.separator);
@@ -305,15 +277,9 @@ void GripSplitterHandle::paintEvent(QPaintEvent*)
     }
     painter.drawRoundedRect(strip, scmRadiusPanel, scmRadiusPanel);
 
-    // The band is the whole of what says the strip can be dragged, so a handle
-    // that resizes nothing is left without one
     if (!mResizes || !mHovered) {
         return;
     }
-    // What a plain seam says with the accent, said along the edge this handle is
-    // dragged by - and clipped to the strip, so the band follows the cut corners
-    // instead of crossing them. The strip already carries words, which is why
-    // there is nothing else on it to say the same thing twice.
     QPainterPath stripPath;
     stripPath.addRoundedRect(strip, scmRadiusPanel, scmRadiusPanel);
     painter.setClipPath(stripPath);
@@ -348,8 +314,8 @@ void GripSplitter::setHeaderHandle(const int index, QWidget* pContent)
         return;
     }
     pHandle->setContent(pContent);
-    // The splitter took the handle's thickness when it last laid itself out, and
-    // that answer has just changed
+    // QSplitter keeps the handle thickness from its last layout, and the
+    // sizeHint() has just changed
     refresh();
 }
 

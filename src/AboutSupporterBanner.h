@@ -28,12 +28,8 @@
 
 namespace uiDesign {
 
-// A supporter's pennant, drawn rather than lettered onto a picture: the two
-// raster frames it replaces could not be translated, could not be selected, and
-// were a 1x asset on a HiDPI screen.
-//
-// Two tiers, which the swords flag tells apart - the higher one carries a blade
-// at each end, the plaque is the same shape a little shorter and bare.
+// Painted rather than lettered onto a raster frame, which cannot be translated
+// and is a 1x asset on a HiDPI screen.
 class AboutSupporterBanner : public QWidget
 {
     Q_OBJECT
