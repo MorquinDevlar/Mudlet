@@ -64,6 +64,8 @@ class dlgProfilePreferences : public QDialog, public Ui::profile_preferences
 
     // Allow QTest-based test classes to access private members
     friend class SettingsAppearanceTest;
+    friend class SettingsPageFlowTest;
+    friend class SettingsShellNavigationTest;
 
 public:
     Q_DISABLE_COPY(dlgProfilePreferences)
@@ -351,18 +353,22 @@ private:
     void retitleCards();
     void reflowWideCards();
     void reflowMapperCards();
+    void reflowColourCards();
+    void reflowGeneralCards();
+    void reflowPrivacyCards();
     void reflowDisplayOptionsCard();
     void reflowCompatibilityCard();
-    void capColumnWidth(QScrollArea* pScrollArea);
+    void fitColumn(QScrollArea* pScrollArea);
     // Rerun once a profile has filled the controls, which decide the widest card, and after a language change
-    void updateColumnWidthCaps();
+    void fitColumns();
     // A checkbox never wraps its text, so a long translation makes the page scroll sideways. Offenders
     // get a wrapping label beside them, one at a time and only while that measurably narrows the column.
     void fitCheckBoxesToColumn(QWidget* pColumn);
     void wrapCheckBox(QCheckBox* pCheckBox);
     void unwrapCheckBox(QCheckBox* pCheckBox);
-    // Window widths: below collapseBelow the sidebar becomes an icon rail; past fullyExpanded the dialog
-    // gains only empty space; below narrowest even the rail leaves the widest page too little room
+    // Window widths: below collapseBelow the sidebar becomes an icon rail; fullyExpanded has the names beside
+    // the widest page's column, the most a window with no remembered size opens at; below narrowest even the
+    // rail leaves the widest page too little room
     struct SidebarWidths
     {
         int collapseBelow = 0;

@@ -22,6 +22,7 @@
 
 #include <QLayout>
 #include <QList>
+#include <QPointer>
 #include <QStyle>
 
 namespace uiDesign {
@@ -75,6 +76,10 @@ public:
 
     void setWidthPolicy(const Width policy);
     void setLineAlignment(const LineAlignment alignment);
+    // The one item given whatever room is left at the end of the line it lands
+    // on, and what follows it on that line moved along by as much. It is still
+    // wrapped by its own width, and never drawn narrower than that.
+    void setStretchWidget(QWidget* pWidget);
 
     [[nodiscard]] int horizontalSpacing() const;
     [[nodiscard]] int verticalSpacing() const;
@@ -91,6 +96,7 @@ private:
     int mVerticalSpacing = -1;
     Width mWidthPolicy = Width::OneLine;
     LineAlignment mLineAlignment = LineAlignment::Top;
+    QPointer<QWidget> mpStretchWidget;
     // The last width heightForWidth() was asked about and what it answered: a
     // single layout pass asks two or three times running with the same number.
     mutable int mCachedWidth = -1;

@@ -70,6 +70,12 @@ void FlowLayout::setLineAlignment(const LineAlignment alignment)
     invalidate();
 }
 
+void FlowLayout::setStretchWidget(QWidget* pWidget)
+{
+    mpStretchWidget = pWidget;
+    invalidate();
+}
+
 int FlowLayout::count() const
 {
     return mItems.count();
@@ -186,8 +192,15 @@ int FlowLayout::runItems(const QRect& rect, const bool place) const
     // An item is centred on a line whose height is only known once the line
     // is full, so what is on it waits until then to be placed
     QList<QPair<QLayoutItem*, QRect>> line;
-    const auto placeLine = [this, &line, &y, &lineHeight]() {
+    const auto placeLine = [this, &line, &y, &lineHeight, &content]() {
+        const int spare = line.isEmpty() ? 0 : std::max(0, content.right() - line.constLast().second.right());
+        int shift = 0;
         for (auto& [pItem, geometry] : line) {
+            geometry.translate(shift, 0);
+            if (spare && mpStretchWidget && pItem->widget() == mpStretchWidget) {
+                geometry.setWidth(geometry.width() + spare);
+                shift = spare;
+            }
             if (mLineAlignment == LineAlignment::Centre) {
                 geometry.moveTop(y + (lineHeight - geometry.height()) / 2);
             }

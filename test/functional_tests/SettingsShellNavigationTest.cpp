@@ -225,6 +225,15 @@ private:
         themes.close();
     }
 
+    // The size and family macOS sets its interface in. Elsewhere the family
+    // falls back to the platform's own, at that size, which is no narrower.
+    static QFont interfaceFontAt13pt()
+    {
+        QFont font(qsl(".AppleSystemUIFont"));
+        font.setPointSize(13);
+        return font;
+    }
+
     QListWidget* sidebar() const { return TestSettings::sidebar(mpPreferences); }
 
     QStackedWidget* stack() const { return TestSettings::stack(mpPreferences); }
@@ -289,11 +298,12 @@ private:
         auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
         auto* pContent = mpPreferences->findChild<QWidget*>(qsl("settingsContent"));
         QVERIFY2(pSidebar && pContent && pContent->layout(), "the settings shell has no sidebar or no content pane");
-        mpPreferences->resize(mpPreferences->maximumWidth(), 760);
+        // Well past the width the names and the widest page's column need, as the window has no widest
+        mpPreferences->resize(mpPreferences->sidebarWidths().fullyExpanded + 400, 760);
         qApp->processEvents();
         const int widest = mpPreferences->width();
         const int fullSidebar = pSidebar->width();
-        QVERIFY2(fullSidebar > 100, qPrintable(qsl("the sidebar is only %1px wide at the widest the window goes, so this case cannot tell a fold from where it started").arg(fullSidebar)));
+        QVERIFY2(fullSidebar > 100, qPrintable(qsl("the sidebar is only %1px wide at %2px, so this case cannot tell a fold from where it started").arg(fullSidebar).arg(widest)));
 
         int widestPageMinimum = 0;
         QString widestPage;
@@ -1330,7 +1340,8 @@ private slots:
         QCOMPARE(pLabel->text(), pBox->accessibleName());
         QVERIFY2(pLabel->wordWrap(), "the label the checkbox's words moved to does not wrap, which is the whole point of moving them");
         // ...and the page is back inside the reading column because of it
-        QCOMPARE(pageOf(qsl("accessibility"))->widget()->maximumWidth(), 640);
+        QVERIFY2(pageOf(qsl("accessibility"))->widget()->minimumSizeHint().width() <= 640,
+                 qPrintable(qsl("the German Accessibility page still needs %1px with the screen reader checkbox wrapped").arg(pageOf(qsl("accessibility"))->widget()->minimumSizeHint().width())));
         // ...while the checkboxes that fit it are still checkboxes
         QVERIFY2(!mpPreferences->checkBox_enableBlinkText->text().isEmpty(), "a German checkbox that fits the reading column was wrapped with the one that does not");
 
@@ -1433,7 +1444,7 @@ private slots:
     // not what pays for it first: they are kept while the page still gets a
     // whole reading column to draw in, and given up only below that. Holding
     // them to the widest page instead left them standing at exactly one window
-    // width - see test_narrowingAwayTheWhitespaceKeepsTheSidebarsNames().
+    // width - see test_theNamesShowAtEveryWidthFromTheThresholdUp().
     void test_aPageWiderThanTheReadingColumnKeepsOneBeforeTheSidebarGoes()
     {
         delete mpPreferences;
@@ -1441,7 +1452,11 @@ private slots:
         auto* pGerman = new QTranslator(qApp);
         QVERIFY2(pGerman->load(qsl("mudlet_de_DE"), qsl(":/lang")), "no German translation in the binary's resources, so no page is wider than the reading column to measure against");
         QVERIFY(qApp->installTranslator(pGerman));
-        auto removeTranslator = qScopeGuard([pGerman]() {
+        // ...at the 13pt macOS reads the interface at: at the offscreen platform's own size every German page fits
+        const QFont priorFont = QApplication::font();
+        QApplication::setFont(interfaceFontAt13pt());
+        auto removeTranslator = qScopeGuard([pGerman, priorFont]() {
+            QApplication::setFont(priorFont);
             qApp->removeTranslator(pGerman);
             delete pGerman;
         });
@@ -1460,11 +1475,11 @@ private slots:
         for (const QString& key : specOrderedCategories()) {
             selectCategory(key);
             qApp->processEvents();
-            if (pageOf(key)->widget()->maximumWidth() > 640) {
+            if (pageOf(key)->widget()->minimumSizeHint().width() > 640) {
                 wide.append(key);
             }
         }
-        QVERIFY2(!wide.isEmpty(), "no German page is capped wider than the 640px reading column, so the breakpoint cannot be wrong in the way this case describes");
+        QVERIFY2(!wide.isEmpty(), "no German page needs more than the 640px reading column, so the breakpoint cannot be wrong in the way this case describes");
 
         bool sawACollapse = false;
         for (const QString& key : wide) {
@@ -1539,102 +1554,113 @@ private slots:
         QVERIFY2(pCheckBox->checkState() != before, qPrintable(qsl("clicking the words of the '%1' checkbox left it where it was").arg(pCheckBox->accessibleName())));
     }
 
-    // Every control on a page stops at the reading column, so a window dragged
-    // wider than the shell needs would show that width as blank strip beside
-    // the settings and nothing else. It refuses to take it.
-    void test_theWindowWillNotGrowWiderThanTheShellNeeds()
+    // A window dragged wider than the names and the widest page's column need
+    // gives the room to the page: its column and every card on it widen with
+    // the window, and none of it is left as empty strip beside them
+    void test_aWindowWiderThanTheShellNeedsWidensThePage()
     {
-        // Above the 780x560 minimum and below any width the shell could need,
-        // so a window that took this one proves a resize is honoured at all -
-        // without which the case below would pass on a window that ignores
-        // every resize it is given
-        mpPreferences->resize(850, 700);
-        qApp->processEvents();
-        QCOMPARE(mpPreferences->width(), 850);
-
-        mpPreferences->resize(2000, 700);
-        qApp->processEvents();
-
-        // The defect this stops. Measured off the page rather than the stack
-        // holding it: the stack fills the content pane whatever the window is
-        // doing, and it is the capped page inside it that the strip opens up
-        // beside.
-        QWidget* pPageShown = stack()->currentWidget();
-        const int strip = mpPreferences->width() - pPageShown->mapTo(mpPreferences, QPoint(pPageShown->width(), 0)).x();
-        QVERIFY2(strip <= 48, qPrintable(qsl("%1px of the %2px window is empty to the right of the page").arg(strip).arg(mpPreferences->width())));
-        QVERIFY2(mpPreferences->width() < 2000, "the window grew to the whole 2000px it was offered");
-        QCOMPARE(mpPreferences->width(), mpPreferences->maximumWidth());
-
-        // ...and that it is a width the shell is whole at: the sidebar has its
-        // names, and the page is not scrolling sideways to fit
-        auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
-        QVERIFY2(pSidebar && pSidebar->width() > 100, "the widest the window may go is a width the sidebar is still collapsed at");
+        selectCategory(qsl("general"));
+        const int fullyExpanded = mpPreferences->sidebarWidths().fullyExpanded;
         QScrollArea* pPage = pageOf(qsl("general"));
-        QVERIFY2(pPage->widget()->width() <= pPage->viewport()->width(),
-                 qPrintable(qsl("the General page needs %1px and got a %2px viewport at the widest the window may go").arg(pPage->widget()->width()).arg(pPage->viewport()->width())));
+        QWidget* pColumn = pPage->widget();
+        const QList<QGroupBox*> cards = pColumn->findChildren<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly);
+        QVERIFY2(!cards.isEmpty(), "the General page has no cards to watch widen");
+
+        mpPreferences->resize(fullyExpanded, 760);
+        qApp->processEvents();
+        QCOMPARE(mpPreferences->width(), fullyExpanded);
+        const int columnBefore = pColumn->width();
+
+        const int wider = fullyExpanded + 400;
+        mpPreferences->resize(wider, 760);
+        qApp->processEvents();
+        QVERIFY2(mpPreferences->width() == wider, qPrintable(qsl("the window was offered %1px and took %2px").arg(wider).arg(mpPreferences->width())));
+        auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
+        QVERIFY2(pSidebar && !sidebar()->property(uiDesign::scmProp_rail).toBool(), "the names are not on show in a window wider than they and the widest page need");
+
+        // A scrollbar the shorter page no longer needs hands its width back as well
+        QVERIFY2(pColumn->width() >= columnBefore + 400, qPrintable(qsl("the window grew by 400px and the General page's column only from %1px to %2px").arg(columnBefore).arg(pColumn->width())));
+        QCOMPARE(pColumn->width(), pPage->viewport()->width());
+        for (auto* pCard : cards) {
+            if (!pCard->isVisible()) {
+                continue;
+            }
+            QVERIFY2(pCard->width() == pColumn->width(), qPrintable(qsl("the '%1' card is %2px wide in a %3px column").arg(pCard->objectName()).arg(pCard->width()).arg(pColumn->width())));
+        }
+        QVERIFY(!pPage->horizontalScrollBar()->isVisible());
+
+        // Nothing right of the page but the pane's own margin
+        auto* pContent = mpPreferences->findChild<QWidget*>(qsl("settingsContent"));
+        const int pageRight = pPage->mapTo(mpPreferences, QPoint(pPage->width(), 0)).x();
+        const int margin = pContent->layout()->contentsMargins().right();
+        QVERIFY2(mpPreferences->width() - pageRight <= margin,
+                 qPrintable(qsl("%1px of the %2px window is empty to the right of the page, where only the %3px margin should be")
+                                    .arg(mpPreferences->width() - pageRight)
+                                    .arg(mpPreferences->width())
+                                    .arg(margin)));
+        mpPreferences->resize(1060, 760);
     }
 
-    // Reported against the redesign: the strip of empty window beside a page
-    // narrower than the widest one could not be taken back, because the first
-    // pixel in from the widest the window would go collapsed the sidebar.
-    void test_narrowingAwayTheWhitespaceKeepsTheSidebarsNames()
+    // Reported against the redesign: narrowing a window from the widest it
+    // would go collapsed the sidebar at the first pixel, on a page narrower than
+    // the widest. The window has no widest now, and the rule is the one
+    // threshold: the names show at every width from it up, on a page narrower
+    // than the reading column and on one a translation has pushed past it, and
+    // the rail below it.
+    void test_theNamesShowAtEveryWidthFromTheThresholdUp()
     {
         delete mpPreferences;
         mpPreferences = nullptr;
-        // German for the whitespace: the widest the window may go answers to
-        // the widest page there is, so a strip only opens up beside the others
-        // once a translation has pushed one of them past the reading column
+        // German at the 13pt macOS reads the interface at, where some pages are
+        // still wider than the reading column
         auto* pGerman = new QTranslator(qApp);
-        QVERIFY2(pGerman->load(qsl("mudlet_de_DE"), qsl(":/lang")), "no German translation in the binary's resources, so no page is wider than the reading column to leave a strip beside the rest");
+        QVERIFY2(pGerman->load(qsl("mudlet_de_DE"), qsl(":/lang")), "no German translation in the binary's resources, so no page is wider than the reading column");
         QVERIFY(qApp->installTranslator(pGerman));
-        auto removeTranslator = qScopeGuard([pGerman]() {
+        const QFont priorFont = QApplication::font();
+        QApplication::setFont(interfaceFontAt13pt());
+        auto removeTranslator = qScopeGuard([pGerman, priorFont]() {
+            QApplication::setFont(priorFont);
             qApp->removeTranslator(pGerman);
             delete pGerman;
         });
         openPreferences();
 
-        auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
-        QVERIFY2(pSidebar, "the settings shell has no sidebar to collapse");
-        mpPreferences->resize(mpPreferences->maximumWidth(), 760);
-        qApp->processEvents();
-        const int widest = mpPreferences->width();
-        QCOMPARE(widest, mpPreferences->maximumWidth());
-        const int fullSidebar = pSidebar->width();
-        QVERIFY2(fullSidebar > 100, qPrintable(qsl("the sidebar is only %1px wide at the widest the window goes, so this case cannot tell a collapse from where it started").arg(fullSidebar)));
-
-        // What the strip beside a page is: the widest the window may go answers
-        // to the widest page there is, and every narrower page is left with the
-        // difference. Taken from the caps rather than off the screen, because
-        // the gap on screen also holds the pane's margin and the room a page
-        // keeps for a scrollbar it is not showing - neither of which is the
-        // window's to give back.
-        int widestCap = 0;
         QString narrowPage;
+        QString widePage;
         for (const QString& key : specOrderedCategories()) {
-            selectCategory(key);
-            qApp->processEvents();
-            const int cap = pageOf(key)->widget()->maximumWidth();
-            widestCap = std::max(widestCap, cap);
-            if (cap == 640 && narrowPage.isEmpty()) {
+            const int minimum = pageOf(key)->widget()->minimumSizeHint().width();
+            if (minimum <= 640 && narrowPage.isEmpty()) {
                 narrowPage = key;
             }
+            if (minimum > 640 && widePage.isEmpty()) {
+                widePage = key;
+            }
         }
-        QVERIFY2(!narrowPage.isEmpty(), "every German page is capped wider than the reading column, so none of them shows the strip this case is about");
-        const int strip = widestCap - 640;
-        QVERIFY2(strip > 0, "no German page is capped wider than the reading column, so there is no strip beside the others to take back");
+        QVERIFY2(!narrowPage.isEmpty() && !widePage.isEmpty(),
+                 qPrintable(qsl("this case needs a German page within the reading column and one wider than it, and found '%1' and '%2'").arg(narrowPage, widePage)));
 
-        selectCategory(narrowPage);
-        qApp->processEvents();
-        mpPreferences->resize(widest - strip, 760);
-        qApp->processEvents();
-        QCOMPARE(mpPreferences->width(), widest - strip);
-        QVERIFY2(pSidebar->width() == fullSidebar,
-                 qPrintable(qsl("taking back the %1px the '%2' page is left over - from %3px to %4px - collapsed the sidebar to %5px")
-                                    .arg(strip)
-                                    .arg(narrowPage)
-                                    .arg(widest)
-                                    .arg(widest - strip)
-                                    .arg(pSidebar->width())));
+        for (const QString& page : {narrowPage, widePage}) {
+            selectCategory(page);
+            qApp->processEvents();
+            mpPreferences->resize(mpPreferences->sidebarWidths().fullyExpanded + 400, 760);
+            qApp->processEvents();
+            // Read once the page has been shown and laid out: its check boxes are wrapped again after its first show
+            const auto widths = mpPreferences->sidebarWidths();
+            for (int width = widths.fullyExpanded + 400; width >= widths.collapseBelow; width -= 16) {
+                mpPreferences->resize(width, 760);
+                qApp->processEvents();
+                QVERIFY2(!sidebar()->property(uiDesign::scmProp_rail).toBool(),
+                         qPrintable(qsl("the names folded in a %1px window on the '%2' page, which holds the %3px they need").arg(mpPreferences->width()).arg(page).arg(widths.collapseBelow)));
+            }
+            mpPreferences->resize(widths.collapseBelow, 760);
+            qApp->processEvents();
+            QVERIFY2(!sidebar()->property(uiDesign::scmProp_rail).toBool(), qPrintable(qsl("the names folded at the very width they need on the '%1' page").arg(page)));
+            if (widths.collapseBelow - 1 >= mpPreferences->minimumWidth()) {
+                mpPreferences->resize(widths.collapseBelow - 1, 760);
+                qApp->processEvents();
+                QVERIFY2(sidebar()->property(uiDesign::scmProp_rail).toBool(), qPrintable(qsl("the names stayed one pixel short of the width they need on the '%1' page").arg(page)));
+            }
+        }
         mpPreferences->resize(1060, 760);
     }
 
@@ -1647,7 +1673,7 @@ private slots:
     {
         auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
         QVERIFY2(pSidebar, "the settings shell has no sidebar to collapse");
-        mpPreferences->resize(mpPreferences->maximumWidth(), 760);
+        mpPreferences->resize(mpPreferences->sidebarWidths().fullyExpanded, 760);
         qApp->processEvents();
         const int widthBefore = mpPreferences->width();
         const int fullSidebar = pSidebar->width();

@@ -115,6 +115,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("ChipRow.h"),
                           QStringLiteral("FlowLayout.cpp"),
                           QStringLiteral("FlowLayout.h"),
+                          QStringLiteral("PairGridLayout.cpp"),
+                          QStringLiteral("PairGridLayout.h"),
                           QStringLiteral("SidebarToggle.cpp"),
                           QStringLiteral("SidebarToggle.h"),
                           QStringLiteral("EditorPlaceholderButton.cpp"),

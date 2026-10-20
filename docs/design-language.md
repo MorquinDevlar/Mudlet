@@ -759,12 +759,15 @@ Content is grouped into cards: a `QGroupBox` carrying the `settingsCard` dynamic
 property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
 16px padding. Pages are a single column of cards with 16px spacing
 (`createScrollPage()`, `buildPage()`). The script editor has no cards: its forms
-are rows. On the Mapper page every row of every card is a `uiDesign::FlowLayout`
-with its items centred on the line (`reflowMapperCards()`), so a label and its
-controls keep their own widths and the row wraps where it runs out of room
-rather than widening the column, each map colour is its word and its well as one
-piece that wraps whole, and the six map view check boxes are two columns of
-three that stand side by side while both fit and stack whole when they do not.
+are rows. On the Mapper, General and Privacy pages every label-and-control row
+is a `uiDesign::FlowLayout` with its items centred on the line
+(`reflowMapperCards()`, `reflowGeneralCards()`, `reflowPrivacyCards()`), so a
+label and its controls keep their own widths and the row wraps where it runs out
+of room rather than widening the column, check boxes that stood side by side are
+columns as wide as their own words that stack whole when they do not fit, and
+the two colour cards - the Main display's and the map's - are one
+`uiDesign::PairGridLayout` (`reflowColourCards()`): label, well, label, well
+with every well one width, one pair to a row where two do not fit.
 
 The card is one component for both windows, the way the sidebar is.
 `cardStyleSheet(metrics, tokens)` draws the frame and the title inside it, and
@@ -804,14 +807,15 @@ is `sidebarWidths()` / `updateSidebarMode()` in
 `src/dlgProfilePreferences.cpp`:
 
 - Widths are measured off font metrics, `sizeHint()`s and the actual scrollbar
-  width, over every page rather than the one on show, so a page switch moves
-  neither the window's maximum nor the collapse point - unless the page on show
-  is wider than the reading column, when the collapse point follows that page
-  and the names fold rather than the page scrolling sideways. The window's
-  minimum is where even the rail leaves the widest page too little room.
-- `fullyExpanded` caps the window's maximum width; `collapseBelow` is a
-  deliberately *different*, smaller number, so the sidebar cannot oscillate
-  between its expanded and rail modes on a one-pixel drag.
+  width, over every page rather than the one on show, so a page switch does
+  not move the collapse point - unless the page on show is wider than the
+  reading column, when the collapse point follows that page and the names fold
+  rather than the page scrolling sideways. The window's minimum is where even
+  the rail leaves the widest page too little room.
+- The window has no maximum: a page's column grows with the window and its
+  cards use the room, so the reading column is the floor the names fold at and
+  never a ceiling. `fullyExpanded`, the names beside the widest page's column,
+  is the most a window with no remembered size opens at.
 - The test is against the window's own width, not the space left over, so
   collapsing cannot flip the condition that caused it.
 - The measurement is the per-window half. What is done with its answer is

@@ -233,6 +233,7 @@ set(mudlet_app_SRCS
     mudlet.cpp
     MudletProxyStyle.cpp
     PackageItemDelegate.cpp
+    PairGridLayout.cpp
     PanInteractionHandler.cpp
     RoomContextMenuHandler.cpp
     RoomMoveActivationHandler.cpp
@@ -561,6 +562,7 @@ set(mudlet_app_HDRS
     mudlet.h
     MudletProxyStyle.h
     PackageItemDelegate.h
+    PairGridLayout.h
     PanInteractionHandler.h
     RoomContextMenuHandler.h
     RoomMoveActivationHandler.h

@@ -35,6 +35,7 @@
 #include "MapStyle.h"
 #include "MudletApp.h"
 #include "MudletProxyStyle.h"
+#include "PairGridLayout.h"
 #include "SidebarItemDelegate.h"
 #include "SidebarToggle.h"
 #include "TAction.h"
@@ -205,6 +206,16 @@ static uiDesign::SidebarMetrics settingsSidebarMetrics(const int expandedWidth)
 // frame the title starts as well
 static constexpr int scmCardPadding = 16;
 
+// ...which, with the property the rules select on and the two variants this
+// dialog has that the editor's column does not, is the whole of what its cards
+// differ from the editor's by; everything else about them is drawn by
+// uiDesign::cardStyleSheet(). The height of the title's own line is measured
+// under the font the dialog is running at, so it is the one runtime number here.
+static CardMetrics cardMetrics(const int titleHeight)
+{
+    return {.cardProperty = scmProp_settingsCard, .plainProperty = scmProp_settingsCardPlain, .padding = scmCardPadding, .titleHeight = titleHeight, .flattenNestedGroupBoxes = true};
+}
+
 // Between a label and the control it names on a row that flows, and between
 // two lines of one
 static constexpr int scmFlowRowGap = 8;
@@ -215,14 +226,47 @@ static constexpr int scmChoiceGroupGap = 40;
 // so each label is read with its own stepper
 static constexpr int scmFieldPairGap = 24;
 
-// ...which, with the property the rules select on and the two variants this
-// dialog has that the editor's column does not, is the whole of what its cards
-// differ from the editor's by; everything else about them is drawn by
-// uiDesign::cardStyleSheet(). The height of the title's own line is measured
-// under the font the dialog is running at, so it is the one runtime number here.
-static CardMetrics cardMetrics(const int titleHeight)
+// A label and the controls it names, each at its own width, on one line while
+// they fit and wrapping after the last piece that does. A grid sizes every
+// column by its longest member, so one long translation widened every row.
+static QWidget* makeFlowRow(QWidget* pParent,
+                            const QString& objectName,
+                            const QList<QWidget*>& pieces,
+                            const int gapAcross = scmFlowRowGap,
+                            const uiDesign::FlowLayout::LineAlignment alignment = uiDesign::FlowLayout::LineAlignment::Centre)
 {
-    return {.cardProperty = scmProp_settingsCard, .plainProperty = scmProp_settingsCardPlain, .padding = scmCardPadding, .titleHeight = titleHeight, .flattenNestedGroupBoxes = true};
+    auto* pRow = new QWidget(pParent);
+    pRow->setObjectName(objectName);
+    auto* pFlow = new uiDesign::FlowLayout(pRow, gapAcross, scmFlowRowGap);
+    pFlow->setContentsMargins(0, 0, 0, 0);
+    // A row in the reading column must not widen it by the length of the line
+    pFlow->setWidthPolicy(uiDesign::FlowLayout::Width::WidestItem);
+    pFlow->setLineAlignment(alignment);
+    // A layout whose height depends on its width is only asked for one if the widget carrying it says so
+    QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    policy.setHeightForWidth(true);
+    pRow->setSizePolicy(policy);
+    for (auto* pPiece : pieces) {
+        detachFromLayout(pPiece);
+        pFlow->addWidget(pPiece);
+    }
+    return pRow;
+}
+
+// Controls that belong together - a label and its stepper, a column of check
+// boxes - as one piece, which a flow moves to the next line whole
+static QWidget* makeFlowPiece(QWidget* pParent, const QString& objectName, const QBoxLayout::Direction direction, const QList<QWidget*>& controls)
+{
+    auto* pPiece = new QWidget(pParent);
+    pPiece->setObjectName(objectName);
+    auto* pLayout = new QBoxLayout(direction, pPiece);
+    pLayout->setContentsMargins(0, 0, 0, 0);
+    pLayout->setSpacing(scmFlowRowGap);
+    for (auto* pControl : controls) {
+        detachFromLayout(pControl);
+        pLayout->addWidget(pControl);
+    }
+    return pPiece;
 }
 
 // What the shortcut conflict warning is written in: the one red anything broken
@@ -584,16 +628,19 @@ dlgProfilePreferences::dlgProfilePreferences(QWidget* pParentWidget, Host* pHost
 
     applyShellStyle();
 
-    // After the stylesheet, which brings the card padding and text weight the caps must measure. It is also
-    // the first point every control is on its final card, which the wrapping waits for.
+    // After the stylesheet, which brings the card padding and text weight the wrapping must measure. It is
+    // also the first point every control is on its final card, which the wrapping waits for.
     mShellReady = true;
-    updateColumnWidthCaps();
+    fitColumns();
     rebuildTabOrder();
 
     setMinimumSize(scmMinimumWindowWidth, 560);
     const auto geometry = MudletApp::getQSettings()->value(qsl("profilePreferencesGeometry")).toByteArray();
     if (geometry.isEmpty() || !restoreGeometry(geometry)) {
-        resize(1060, 760);
+        // No wider than the names beside the widest page's column, the width the window was held to when that
+        // was as wide as it went
+        const int fullyExpanded = sidebarWidths().fullyExpanded;
+        resize(fullyExpanded ? std::min(1060, fullyExpanded) : 1060, 760);
     }
     // resize() on a never-shown dialog does not always deliver a resize event
     updateSidebarMode();
@@ -617,21 +664,17 @@ static QLabel* wrapLabelOf(const QCheckBox* pCheckBox)
     return pContainer->findChild<QLabel*>(QString(), Qt::FindDirectChildrenOnly);
 }
 
-// A column narrower than its contents clips rather than scrolls, so cap it at the reading width or the
-// widest card. The page is capped to column plus scrollbar so the bar stays beside the content.
-void dlgProfilePreferences::capColumnWidth(QScrollArea* pScrollArea)
+// The column is never capped: a page grows with the window and its cards use the room, and the reading column
+// is only the floor sidebarWidths() folds the names at. What is left to do when the cards change is the check
+// box wrapping, measured against that floor.
+void dlgProfilePreferences::fitColumn(QScrollArea* pScrollArea)
 {
     QWidget* pColumn = pScrollArea ? pScrollArea->widget() : nullptr;
     if (!pColumn || !pColumn->layout()) {
         return;
     }
-    // Lift the old cap first, so the cards are measured rather than the cap
-    pColumn->setMaximumWidth(QWIDGETSIZE_MAX);
     pColumn->layout()->activate();
     fitCheckBoxesToColumn(pColumn);
-    const int cap = std::max(scmContentColumnWidth, pColumn->minimumSizeHint().width());
-    pColumn->setMaximumWidth(cap);
-    pScrollArea->setMaximumWidth(cap + pScrollArea->verticalScrollBar()->sizeHint().width());
 }
 
 // Unwraps everything first, so the language now showing is what gets measured
@@ -860,6 +903,9 @@ void dlgProfilePreferences::buildShell()
     retitleCards();
     reflowWideCards();
     reflowMapperCards();
+    reflowColourCards();
+    reflowGeneralCards();
+    reflowPrivacyCards();
 
     auto* pCard_systemIntegration = createCard(qsl("card_systemIntegration"));
     moveIntoCard(pCard_systemIntegration, {telnetHandlerEnabled, checkBox_showIconsOnMenus});
@@ -908,12 +954,12 @@ void dlgProfilePreferences::buildShell()
     addSubpage(scmCategory_connection, qsl("protocols"), groupBox_protocols, {mpCard_protocolList});
 
     auto* pCard_passwords = createCard(qsl("card_passwords"));
-    addCardRow(pCard_passwords, label_store_passwords_in, comboBox_store_passwords_in);
+    pCard_passwords->layout()->addWidget(makeFlowRow(pCard_passwords, qsl("settingsPrivacyRow_storePasswordsIn"), {label_store_passwords_in, comboBox_store_passwords_in}));
     moveIntoCard(pCard_passwords, {label_password_migration_notification, pushButton_forgetSavedSignIn});
     auto* pCard_serverPermissions = createCard(qsl("card_serverPermissions"));
     moveIntoCard(pCard_serverPermissions, {acceptServerGUI, acceptServerMedia});
     auto* pCard_crashReports = createCard(qsl("card_crashReports"));
-    addCardRow(pCard_crashReports, label_crashReportPolicy, comboBox_crashReportPolicy);
+    pCard_crashReports->layout()->addWidget(makeFlowRow(pCard_crashReports, qsl("settingsPrivacyRow_crashReportPolicy"), {label_crashReportPolicy, comboBox_crashReportPolicy}));
     // Not inside groupBox_ssl: a checkable group box disables its children when unchecked, and this
     // reminder matters most with TLS off
     auto* pCard_secureReminder = createCard(qsl("card_secureConnectionReminder"));
@@ -1455,7 +1501,7 @@ QScrollArea* dlgProfilePreferences::buildPage(const QString& objectSuffix, const
         pColumnLayout->addWidget(pCard);
     }
     pColumnLayout->addStretch(1);
-    capColumnWidth(pScrollArea);
+    fitColumn(pScrollArea);
     return pScrollArea;
 }
 
@@ -1505,11 +1551,11 @@ void dlgProfilePreferences::showSubpage(const QString& categoryKey, const QStrin
 
     auto* pPage = qobject_cast<QScrollArea*>(mpStackedWidget_categories->widget(mSubpageIndexes.value(key)));
     mpStackedWidget_categories->setCurrentWidget(pPage);
-    capColumnWidth(pPage);
-    // As on a category page, the cap above measured cards without their padding
+    fitColumn(pPage);
+    // As on a category page, the fit above measured cards without their padding
     QTimer::singleShot(0ms, this, [this, pPage]() {
         if (pPage && mpStackedWidget_categories->currentWidget() == pPage) {
-            capColumnWidth(pPage);
+            fitColumn(pPage);
             updateSidebarMode();
         }
     });
@@ -2098,49 +2144,6 @@ static void takeOutOfLayout(QLayout* pLayout, const QList<QWidget*>& widgets)
     }
 }
 
-// A label and the controls it names, each at its own width, on one line while
-// they fit and wrapping after the last piece that does. A grid sizes every
-// column by its longest member, so one long translation widened every row.
-static QWidget* makeFlowRow(QWidget* pParent,
-                            const QString& objectName,
-                            const QList<QWidget*>& pieces,
-                            const int gapAcross = scmFlowRowGap,
-                            const uiDesign::FlowLayout::LineAlignment alignment = uiDesign::FlowLayout::LineAlignment::Centre)
-{
-    auto* pRow = new QWidget(pParent);
-    pRow->setObjectName(objectName);
-    auto* pFlow = new uiDesign::FlowLayout(pRow, gapAcross, scmFlowRowGap);
-    pFlow->setContentsMargins(0, 0, 0, 0);
-    // A row in the reading column must not widen it by the length of the line
-    pFlow->setWidthPolicy(uiDesign::FlowLayout::Width::WidestItem);
-    pFlow->setLineAlignment(alignment);
-    // A layout whose height depends on its width is only asked for one if the widget carrying it says so
-    QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    policy.setHeightForWidth(true);
-    pRow->setSizePolicy(policy);
-    for (auto* pPiece : pieces) {
-        detachFromLayout(pPiece);
-        pFlow->addWidget(pPiece);
-    }
-    return pRow;
-}
-
-// Controls that belong together - a label and its stepper, a column of check
-// boxes - as one piece, which a flow moves to the next line whole
-static QWidget* makeFlowPiece(QWidget* pParent, const QString& objectName, const QBoxLayout::Direction direction, const QList<QWidget*>& controls)
-{
-    auto* pPiece = new QWidget(pParent);
-    pPiece->setObjectName(objectName);
-    auto* pLayout = new QBoxLayout(direction, pPiece);
-    pLayout->setContentsMargins(0, 0, 0, 0);
-    pLayout->setSpacing(scmFlowRowGap);
-    for (auto* pControl : controls) {
-        detachFromLayout(pControl);
-        pLayout->addWidget(pControl);
-    }
-    return pPiece;
-}
-
 // The .ui laid these grids across a tab's full width, in rows of three or four cells too wide for the reading column
 void dlgProfilePreferences::reflowWideCards()
 {
@@ -2191,31 +2194,6 @@ void dlgProfilePreferences::reflowWideCards()
 
     // Framed like an input in the .ui, but it only shows a name, and with no Discord user is an empty box
     label_data_discordCurrentUser->setFrameShape(QFrame::NoFrame);
-
-    // Side by side these overran the reading column by 200px in German
-    const QList<QWidget*> logOptionRows{mIsToLogInHtml,
-                                        mIsLoggingTimestamps,
-                                        label_whereToLog,
-                                        lineEdit_logFileFolder,
-                                        pushButton_whereToLog,
-                                        pushButton_resetLogDir,
-                                        label_logFileNameFormat,
-                                        comboBox_logFileNameFormat,
-                                        label_logFileName,
-                                        lineEdit_logFileName,
-                                        label_logFileNameExtension};
-    takeOutOfLayout(gridLayout_groupBox_logOptions, logOptionRows);
-    gridLayout_groupBox_logOptions->addWidget(mIsToLogInHtml, 0, 0, 1, 4);
-    gridLayout_groupBox_logOptions->addWidget(mIsLoggingTimestamps, 1, 0, 1, 4);
-    gridLayout_groupBox_logOptions->addWidget(label_whereToLog, 2, 0, Qt::AlignRight);
-    gridLayout_groupBox_logOptions->addWidget(lineEdit_logFileFolder, 2, 1);
-    gridLayout_groupBox_logOptions->addWidget(pushButton_whereToLog, 2, 2);
-    gridLayout_groupBox_logOptions->addWidget(pushButton_resetLogDir, 2, 3);
-    gridLayout_groupBox_logOptions->addWidget(label_logFileNameFormat, 3, 0, Qt::AlignRight);
-    gridLayout_groupBox_logOptions->addWidget(comboBox_logFileNameFormat, 3, 1, 1, 3);
-    gridLayout_groupBox_logOptions->addWidget(label_logFileName, 4, 0, Qt::AlignRight);
-    gridLayout_groupBox_logOptions->addWidget(lineEdit_logFileName, 4, 1, 1, 2);
-    gridLayout_groupBox_logOptions->addWidget(label_logFileNameExtension, 4, 3);
 
     // Two label-and-control pairs per row do not fit German labels, so each pair gets a row
     const QList<QPair<QWidget*, QWidget*>> iconRows{
@@ -2297,45 +2275,6 @@ void dlgProfilePreferences::reflowMapperCards()
     gridLayout_groupBox_mapSymbols->addWidget(checkBox_isOnlyMapSymbolFontToBeUsed, 1, 0);
     gridLayout_groupBox_mapSymbols->setVerticalSpacing(scmFlowRowGap);
 
-    // Each colour glued to the word naming it, as many pairs to a line as fit, in the order the grid read them
-    const QList<std::pair<QLabel*, QPushButton*>> mapColours{{label_39, pushButton_foreground_color_2},
-                                                             {label_40, pushButton_background_color_2},
-                                                             {label_4, pushButton_roomBorderColor},
-                                                             {label_mapInfoBg, pushButton_mapInfoBg},
-                                                             {label_lowerLevelColor, pushButton_lowerLevelColor},
-                                                             {label_upperLevelColor, pushButton_upperLevelColor},
-                                                             {label_pushButton_roomCollisionBorderColor, pushButton_roomCollisionBorderColor},
-                                                             {label_mapGridColor, pushButton_mapGridColor}};
-    const QList<std::pair<QLabel*, QPushButton*>> ansiColours{{label_17, pushButton_black_2},
-                                                              {label_49, pushButton_Lblack_2},
-                                                              {label_42, pushButton_red_2},
-                                                              {label_50, pushButton_Lred_2},
-                                                              {label_43, pushButton_green_2},
-                                                              {label_51, pushButton_Lgreen_2},
-                                                              {label_48, pushButton_yellow_2},
-                                                              {label_52, pushButton_Lyellow_2},
-                                                              {label_44, pushButton_blue_2},
-                                                              {label_53, pushButton_Lblue_2},
-                                                              {label_45, pushButton_magenta_2},
-                                                              {label_54, pushButton_Lmagenta_2},
-                                                              {label_46, pushButton_cyan_2},
-                                                              {label_55, pushButton_Lcyan_2},
-                                                              {label_47, pushButton_white_2},
-                                                              {label_56, pushButton_Lwhite_2}};
-    const auto colourPairs = [this](const QList<std::pair<QLabel*, QPushButton*>>& pairs) {
-        QList<QWidget*> pieces;
-        for (const auto& [pLabel, pWell] : pairs) {
-            pieces.append(makeFlowPiece(groupBox_mapperColors, qsl("settingsMapColour_%1").arg(pWell->objectName()), QBoxLayout::LeftToRight, {pLabel, pWell}));
-        }
-        return pieces;
-    };
-    takeOutOfLayout(gridLayout_groupBox_mapperColors, {line_mapperColorsSeparator, reset_colors_button_2});
-    gridLayout_groupBox_mapperColors->addWidget(makeFlowRow(groupBox_mapperColors, qsl("settingsMapColours"), colourPairs(mapColours), scmFieldPairGap), 0, 0);
-    gridLayout_groupBox_mapperColors->addWidget(line_mapperColorsSeparator, 1, 0);
-    gridLayout_groupBox_mapperColors->addWidget(makeFlowRow(groupBox_mapperColors, qsl("settingsMapAnsiColours"), colourPairs(ansiColours), scmFieldPairGap), 2, 0);
-    gridLayout_groupBox_mapperColors->addWidget(reset_colors_button_2, 3, 0, Qt::AlignRight);
-    gridLayout_groupBox_mapperColors->setVerticalSpacing(scmFlowRowGap);
-
     // A row like the Map files rows, so the list can drop under its label: glued into one piece, the two were
     // wider than the reading column in German
     gridLayout_groupBox_playerRoomStyle->addWidget(makeFlowRow(groupBox_playerRoomStyle, qsl("settingsMapperRow_playerRoomStyle"), {label_playerRoomStyle, comboBox_playerRoomStyle}), 0, 0);
@@ -2347,6 +2286,154 @@ void dlgProfilePreferences::reflowMapperCards()
             1,
             0);
     gridLayout_groupBox_playerRoomStyle->setVerticalSpacing(scmFlowRowGap);
+}
+
+// The General page's rows and pairs of check boxes, laid out as the Mapper page's are: the log options' grid held
+// the page at 860px in German, its path field and format list sharing columns with everything else on the card
+void dlgProfilePreferences::reflowGeneralCards()
+{
+    takeOutOfLayout(gridLayout_groupBox_miscellaneous, {mFORCE_SAVE_ON_EXIT, mAlertOnNewData});
+    gridLayout_groupBox_miscellaneous->addWidget(
+            makeFlowRow(groupBox_miscellaneous, qsl("settingsSavingChoices"), {mFORCE_SAVE_ON_EXIT, mAlertOnNewData}, scmChoiceGroupGap, uiDesign::FlowLayout::LineAlignment::Top), 1, 0, 1, 2);
+
+    gridLayout_groupBox_encoding->addWidget(makeFlowRow(groupBox_encoding, qsl("settingsGeneralRow_guiLanguage"), {label_guiLanguage, comboBox_guiLanguage}), 0, 0, 1, 2);
+
+    takeOutOfLayout(gridLayout_groupBox_logOptions, {mIsToLogInHtml, mIsLoggingTimestamps});
+    // The extension is the end of the file name it follows, so the two never part
+    QWidget* pLogFileName = makeFlowPiece(groupBox_logOptions, qsl("settingsLogFileNameField"), QBoxLayout::LeftToRight, {lineEdit_logFileName, label_logFileNameExtension});
+    QWidget* pLogFolderRow = makeFlowRow(groupBox_logOptions, qsl("settingsGeneralRow_logFolder"), {label_whereToLog, lineEdit_logFileFolder, pushButton_whereToLog, pushButton_resetLogDir});
+    // A path is read rather than chosen, so the field showing it takes the rest of its line
+    static_cast<uiDesign::FlowLayout*>(pLogFolderRow->layout())->setStretchWidget(lineEdit_logFileFolder);
+    const QList<QWidget*> logOptionRows{mIsToLogInHtml,
+                                        mIsLoggingTimestamps,
+                                        pLogFolderRow,
+                                        makeFlowRow(groupBox_logOptions, qsl("settingsGeneralRow_logFileNameFormat"), {label_logFileNameFormat, comboBox_logFileNameFormat}),
+                                        makeFlowRow(groupBox_logOptions, qsl("settingsGeneralRow_logFileName"), {label_logFileName, pLogFileName})};
+    for (int row = 0, rows = logOptionRows.size(); row < rows; ++row) {
+        gridLayout_groupBox_logOptions->addWidget(logOptionRows.at(row), row, 0, 1, 4);
+    }
+    gridLayout_groupBox_logOptions->setVerticalSpacing(scmFlowRowGap);
+}
+
+// The Privacy page's .ui cards, laid out as the Mapper page's are; the two built by the shell take their flow rows
+// where they are made
+void dlgProfilePreferences::reflowPrivacyCards()
+{
+    // Two columns, each as wide as its own longest words, the second under the first once they no longer fit
+    QWidget* pLeadingChoices = makeFlowPiece(groupBox_ssl, qsl("settingsSslLeadingChoices"), QBoxLayout::TopToBottom, {checkBox_self_signed, checkBox_ignore_all});
+    QWidget* pTrailingChoices = makeFlowPiece(groupBox_ssl, qsl("settingsSslTrailingChoices"), QBoxLayout::TopToBottom, {checkBox_expired});
+    gridLayout_groupBox_ssl->addWidget(
+            makeFlowRow(groupBox_ssl, qsl("settingsSslChoices"), {pLeadingChoices, pTrailingChoices}, scmChoiceGroupGap, uiDesign::FlowLayout::LineAlignment::Top), 1, 0, 1, 2);
+
+    // Turned on its side here rather than by setCardDescription(), which would nest the row in a row of its own
+    hBoxLayout_groupBox_purgeMediaCache->setDirection(QBoxLayout::TopToBottom);
+    hBoxLayout_groupBox_purgeMediaCache->addWidget(makeFlowRow(groupBox_purgeMediaCache, qsl("settingsPrivacyRow_purgeMediaCache"), {label_purgeMediaCache, buttonPurgeMediaCache}));
+}
+
+// What a colour card holds: the colours of its own, a divider with whatever is said under it, the sixteen ANSI
+// colours a colour and its light twin to a row, and a footer under each half
+struct ColourCardContents
+{
+    QList<std::pair<QWidget*, QWidget*>> namedColours;
+    QList<QWidget*> divider;
+    QList<std::pair<QWidget*, QWidget*>> ansiColours;
+    QWidget* pFooterLeading = nullptr;
+    QWidget* pFooterTrailing = nullptr;
+};
+
+// The Main display's colours and the map's are one recipe: label, well, label, well, every well the one width so
+// they line up down the card, and one pair to a row once two no longer fit the column. The card keeps its .ui grid,
+// emptied, with the colours in its one cell.
+static void layOutColourCard(QGroupBox* pCard, QGridLayout* pCardGrid, const QString& objectName, const ColourCardContents& contents)
+{
+    auto* pColours = new QWidget(pCard);
+    pColours->setObjectName(objectName);
+    QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    policy.setHeightForWidth(true);
+    pColours->setSizePolicy(policy);
+    // The spacing the card's grid was drawn with, which on a style that spaces by the kinds of control is decided
+    // per pair of them and left to the layout
+    auto* pLayout = new uiDesign::PairGridLayout(pColours, pCardGrid->horizontalSpacing(), pCardGrid->verticalSpacing());
+    pLayout->setContentsMargins(0, 0, 0, 0);
+    const auto take = [](QWidget* pWidget) {
+        if (pWidget) {
+            detachFromLayout(pWidget);
+        }
+        return pWidget;
+    };
+    for (const auto& [pLabel, pWell] : contents.namedColours) {
+        pLayout->addPair(take(pLabel), take(pWell));
+    }
+    for (auto* pWidget : contents.divider) {
+        pLayout->addSpanningWidget(take(pWidget));
+    }
+    for (const auto& [pLabel, pWell] : contents.ansiColours) {
+        pLayout->addPair(take(pLabel), take(pWell));
+    }
+    pLayout->addFooter(take(contents.pFooterLeading), take(contents.pFooterTrailing));
+    pCardGrid->addWidget(pColours, 0, 0);
+}
+
+void dlgProfilePreferences::reflowColourCards()
+{
+    layOutColourCard(groupBox_displayColors,
+                     gridLayout_groupBox_displayColors,
+                     qsl("settingsDisplayColours"),
+                     {.namedColours = {{label_foreground_color, pushButton_foreground_color},
+                                       {label_background_color, pushButton_background_color},
+                                       {label_command_line_foreground_color, pushButton_command_line_foreground_color},
+                                       {label_command_line_background_color, pushButton_command_line_background_color},
+                                       {label_command_foreground_color, pushButton_command_foreground_color},
+                                       {label_command_background_color, pushButton_command_background_color}},
+                      .divider = {line_colorsSeparator, label_ANSI_color_buttons_introduction},
+                      .ansiColours = {{label_black, pushButton_black},
+                                      {label_lBlack, pushButton_lBlack},
+                                      {label_red, pushButton_red},
+                                      {label_lRed, pushButton_lRed},
+                                      {label_green, pushButton_green},
+                                      {label_lGreen, pushButton_lGreen},
+                                      {label_yellow, pushButton_yellow},
+                                      {label_lYellow, pushButton_lYellow},
+                                      {label_blue, pushButton_blue},
+                                      {label_lBlue, pushButton_lBlue},
+                                      {label_magenta, pushButton_magenta},
+                                      {label_lMagenta, pushButton_lMagenta},
+                                      {label_cyan, pushButton_cyan},
+                                      {label_lCyan, pushButton_lCyan},
+                                      {label_white, pushButton_white},
+                                      {label_lWhite, pushButton_lWhite}},
+                      .pFooterLeading = checkBox_allowServerToRedefineColors,
+                      .pFooterTrailing = pushButton_resetColors});
+
+    layOutColourCard(groupBox_mapperColors,
+                     gridLayout_groupBox_mapperColors,
+                     qsl("settingsMapColours"),
+                     {.namedColours = {{label_39, pushButton_foreground_color_2},
+                                       {label_40, pushButton_background_color_2},
+                                       {label_4, pushButton_roomBorderColor},
+                                       {label_mapInfoBg, pushButton_mapInfoBg},
+                                       {label_lowerLevelColor, pushButton_lowerLevelColor},
+                                       {label_upperLevelColor, pushButton_upperLevelColor},
+                                       {label_pushButton_roomCollisionBorderColor, pushButton_roomCollisionBorderColor},
+                                       {label_mapGridColor, pushButton_mapGridColor}},
+                      .divider = {line_mapperColorsSeparator},
+                      .ansiColours = {{label_17, pushButton_black_2},
+                                      {label_49, pushButton_Lblack_2},
+                                      {label_42, pushButton_red_2},
+                                      {label_50, pushButton_Lred_2},
+                                      {label_43, pushButton_green_2},
+                                      {label_51, pushButton_Lgreen_2},
+                                      {label_48, pushButton_yellow_2},
+                                      {label_52, pushButton_Lyellow_2},
+                                      {label_44, pushButton_blue_2},
+                                      {label_53, pushButton_Lblue_2},
+                                      {label_45, pushButton_magenta_2},
+                                      {label_54, pushButton_Lmagenta_2},
+                                      {label_46, pushButton_cyan_2},
+                                      {label_55, pushButton_Lcyan_2},
+                                      {label_47, pushButton_white_2},
+                                      {label_56, pushButton_Lwhite_2}},
+                      .pFooterTrailing = reset_colors_button_2});
 }
 
 // Other pages took three of this card's checkboxes and the double-click controls joined it, leaving the .ui
@@ -2382,15 +2469,15 @@ void dlgProfilePreferences::reflowCompatibilityCard()
     gridLayout_groupBox_specialOptions->addWidget(need_reconnect_for_specialoption, 4, 0, 1, 2);
 }
 
-void dlgProfilePreferences::updateColumnWidthCaps()
+void dlgProfilePreferences::fitColumns()
 {
     for (const auto& place : std::as_const(mCategories)) {
-        capColumnWidth(qobject_cast<QScrollArea*>(mpStackedWidget_categories->widget(place.pageIndex)));
+        fitColumn(qobject_cast<QScrollArea*>(mpStackedWidget_categories->widget(place.pageIndex)));
     }
     for (const int page : std::as_const(mSubpageIndexes)) {
-        capColumnWidth(qobject_cast<QScrollArea*>(mpStackedWidget_categories->widget(page)));
+        fitColumn(qobject_cast<QScrollArea*>(mpStackedWidget_categories->widget(page)));
     }
-    capColumnWidth(mpScrollArea_searchResults);
+    fitColumn(mpScrollArea_searchResults);
 }
 
 void dlgProfilePreferences::invalidateSidebarWidth()
@@ -2463,30 +2550,24 @@ dlgProfilePreferences::SidebarWidths dlgProfilePreferences::sidebarWidths() cons
         widestTitle = std::max(widestTitle, titleMetrics.horizontalAdvance(breadcrumbFor(it.key())));
     }
 
-    // The reading column is a floor; capColumnWidth() caps wider pages higher. Taken over every page, as a
-    // width that followed the category would resize the window on every sidebar click.
-    int contentColumn = scmContentColumnWidth;
+    // Taken over every page, as a width that followed the category would resize the window on every sidebar
+    // click
     int widestPageMinimum = 0;
     for (int page = 0, pages = mpStackedWidget_categories->count(); page < pages; ++page) {
         const auto* pStacked = qobject_cast<const QScrollArea*>(mpStackedWidget_categories->widget(page));
         const QWidget* pColumn = pStacked ? pStacked->widget() : nullptr;
-        if (!pColumn) {
-            continue;
+        if (pColumn) {
+            widestPageMinimum = std::max(widestPageMinimum, pColumn->minimumSizeHint().width());
         }
-        // QWIDGETSIZE_MAX means uncapped, not a width anything asked for
-        if (pColumn->maximumWidth() < QWIDGETSIZE_MAX) {
-            contentColumn = std::max(contentColumn, pColumn->maximumWidth());
-        }
-        widestPageMinimum = std::max(widestPageMinimum, pColumn->minimumSizeHint().width());
     }
 
     const int sidebarAndMargins = measuredSidebarWidth() + contentMargins.left() + contentMargins.right();
+    // The reading column, or the widest page where that is wider
+    const int contentColumn = std::max(scmContentColumnWidth, widestPageMinimum);
     widths.fullyExpanded = sidebarAndMargins + std::max(contentColumn + scrollBarWidth, titleRowChrome + widestTitle);
-    // Must differ from fullyExpanded, the window's maximum: if equal, the names show at that one width only.
-    // It is the widest page's minimum capped at the reading column, so a wide page moves the maximum without
-    // moving the collapse point for the others - raised to what the page on show needs, so a page wider than
-    // the column takes the names rather than scrolling sideways. Longer names move both, and
-    // updateSidebarMode() widens the window after them.
+    // The widest page's minimum held to the reading column, so a wide page does not move the collapse point for
+    // the others - raised to what the page on show needs, so a page wider than the column takes the names rather
+    // than scrolling sideways. Longer names move it, and updateSidebarMode() widens the window after them.
     const QWidget* pShownColumn = pPage ? pPage->widget() : nullptr;
     const int shownPageMinimum = pShownColumn ? pShownColumn->minimumSizeHint().width() : 0;
     widths.collapseBelow = sidebarAndMargins + std::max(std::min(scmContentColumnWidth, widestPageMinimum), shownPageMinimum) + scrollBarWidth;
@@ -2514,12 +2595,8 @@ void dlgProfilePreferences::updateSidebarMode()
         return;
     }
     // Below narrowest even the rail leaves the widest page too little, so the window stops there rather than
-    // cutting it off
+    // cutting it off. There is no widest: a page grows with the window.
     setMinimumWidth(std::max(scmMinimumWindowWidth, widths.narrowest));
-    // Pages never grow past their column, so width beyond fullyExpanded is empty strip on one side. Refused,
-    // since centring would strand the sidebar from its settings and stretching defeats the column. Set
-    // before the refit below, which may need the room it allows.
-    setMaximumWidth(std::max(minimumWidth(), widths.fullyExpanded));
 
     const int sidebarWidth = measuredSidebarWidth();
     const bool namesRemeasured = mSidebarWidthDecidedAt && sidebarWidth != mSidebarWidthDecidedAt;
@@ -2976,7 +3053,7 @@ void dlgProfilePreferences::runSearch(const QString& query)
     mpLabel_pageTitleIcon->hide();
     mpButton_searchBack->show();
     mpStackedWidget_categories->setCurrentIndex(mSearchResultsPageIndex);
-    capColumnWidth(mpScrollArea_searchResults);
+    fitColumn(mpScrollArea_searchResults);
     setUpdatesEnabled(true);
 }
 
@@ -3156,12 +3233,12 @@ void dlgProfilePreferences::slot_categorySelected(const int row)
     auto* pShownPage = qobject_cast<QScrollArea*>(mpStackedWidget_categories->currentWidget());
     // Before the width is capped, so the page is measured as it will be shown
     placeBannerOn(pShownPage ? pShownPage->widget() : nullptr);
-    capColumnWidth(pShownPage);
-    // Card padding arrives with the stylesheet when the page is first shown, after the cap above. Without a
-    // re-cap, a page needing more than the reading width is capped 34px short and clips.
+    fitColumn(pShownPage);
+    // Card padding arrives with the stylesheet when the page is first shown, after the fit above. Without a
+    // second fit, the check boxes are wrapped against a page measured 34px short.
     QTimer::singleShot(0ms, this, [this, pShownPage]() {
         if (pShownPage && mpStackedWidget_categories->currentWidget() == pShownPage) {
-            capColumnWidth(pShownPage);
+            fitColumn(pShownPage);
             // A grown cap moves the sidebar breakpoint and the window's maximum width, otherwise not
             // re-taken until the next resize
             updateSidebarMode();
@@ -3569,9 +3646,9 @@ void dlgProfilePreferences::refreshFromSettings()
     // Every population ends with this pair: the controls now match the settings, so later changes are user edits
     connectApplyTriggers();
     mSnapshot.take();
-    // Labels may have changed length, so checkboxes may need (un)wrapping. Caps after the controls are written,
-    // tab order after the caps, as a wrapped checkbox sits a widget deeper.
-    updateColumnWidthCaps();
+    // Labels may have changed length, so checkboxes may need (un)wrapping. The fit after the controls are
+    // written, tab order after the fit, as a wrapped checkbox sits a widget deeper.
+    fitColumns();
     rebuildTabOrder();
 }
 
@@ -7899,8 +7976,8 @@ void dlgProfilePreferences::slot_handleHostAddition(Host* pHost, const quint8 co
         guardScrollWheel();
         // Palette fix-ups for the controls just built
         applyShellStyle();
-        // After the stylesheet, so the caps measure styled cards
-        updateColumnWidthCaps();
+        // After the stylesheet, so the fit measures styled cards
+        fitColumns();
         rebuildTabOrder();
     }
 }
@@ -8966,7 +9043,7 @@ void dlgProfilePreferences::slot_guiLanguageChanged(const QString& language)
     // Every text the search index and column widths were measured from has been replaced, including
     // checkboxes fitted to the old language, which can also change the width the sidebar needs
     invalidateSearch();
-    updateColumnWidthCaps();
+    fitColumns();
     updateSidebarMode();
 
     // Re identify which Profile we are showing the settings for (otherwise if
