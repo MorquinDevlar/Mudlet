@@ -46,6 +46,8 @@
 #include <QScrollBar>
 #include <QTranslator>
 
+#include <tuple>
+
 #include "FlowLayout.h"
 #include "MudletApp.h"
 #include "PairGridLayout.h"
@@ -56,6 +58,7 @@
 #include "MudletInstanceCoordinator.h"
 #include "TelnetServerStub.h"
 #include "dlgProfilePreferences.h"
+#include "uiDesign.h"
 #include "mudlet.h"
 
 #include "GroupedTest.h"
@@ -292,6 +295,74 @@ private:
             } else {
                 QVERIFY2(pWell->geometry().top() > pBefore->geometry().bottom(), qPrintable(qsl("'%1' does not start a row under '%2'").arg(pWell->objectName(), pBefore->objectName())));
             }
+        }
+    }
+
+    // Each well that may hold a see-through colour as tall and as wide as the
+    // plain one beside it; inside it a square swatch the well's inner height on
+    // a side, the colour over a checkerboard - both the board's black and its
+    // white showing through a translucent one - and then the field, carrying
+    // the words saying how opaque the colour is
+    void verifyAlphaWells(const QList<std::tuple<QPushButton*, QPushButton*, QColor>>& wells)
+    {
+        QGroupBox* pCard = mpPreferences->groupBox_mapperColors;
+        const QImage card = pCard->grab().toImage();
+        const qreal ratio = card.devicePixelRatio();
+        const QColor field = uiDesign::themeTokens().field;
+        const auto near = [](const QColor& one, const QColor& other) {
+            return qAbs(one.red() - other.red()) <= 3 && qAbs(one.green() - other.green()) <= 3 && qAbs(one.blue() - other.blue()) <= 3;
+        };
+        const auto pixelAt = [&card, ratio](const int x, const int y) {
+            return card.pixelColor((QPointF(x, y) * ratio).toPoint());
+        };
+        for (const auto& [pAlpha, pPlain, colour] : wells) {
+            QVERIFY2(pAlpha->height() == pPlain->height() && pAlpha->width() == pPlain->width(),
+                     qPrintable(qsl("the see-through well '%1' is %2x%3 beside the plain '%4' at %5x%6")
+                                        .arg(pAlpha->objectName())
+                                        .arg(pAlpha->width())
+                                        .arg(pAlpha->height())
+                                        .arg(pPlain->objectName())
+                                        .arg(pPlain->width())
+                                        .arg(pPlain->height())));
+            QCOMPARE(pAlpha->text(), qsl("Opacity %1%").arg(qRound(colour.alphaF() * 100)));
+
+            const auto over = [&colour](const int ground) {
+                const qreal alpha = colour.alphaF();
+                return QColor(qRound(colour.red() * alpha + ground * (1 - alpha)), qRound(colour.green() * alpha + ground * (1 - alpha)), qRound(colour.blue() * alpha + ground * (1 - alpha)));
+            };
+            const QColor overBlack = over(0);
+            const QColor overWhite = over(255);
+            const auto onTheBoard = [&](const QColor& pixel) {
+                return near(pixel, overBlack) || near(pixel, overWhite);
+            };
+            const QPoint origin = pAlpha->mapTo(pCard, QPoint(0, 0));
+            // Inside the hairline
+            const QRect inside(origin.x() + 1, origin.y() + 1, pAlpha->width() - 2, pAlpha->height() - 2);
+            const int side = inside.height();
+            const int middle = inside.top() + side / 2;
+            QVERIFY2(onTheBoard(pixelAt(inside.left() + side / 2, middle)),
+                     qPrintable(qsl("the middle of the swatch in '%1' is %2, not the colour").arg(pAlpha->objectName(), pixelAt(inside.left() + side / 2, middle).name())));
+            // Square: the colour runs to the swatch's far edge and the field begins just past it
+            QVERIFY2(onTheBoard(pixelAt(inside.left() + side - 2, middle)), qPrintable(qsl("the swatch in '%1' ends before it is as wide as it is tall").arg(pAlpha->objectName())));
+            QVERIFY2(near(pixelAt(inside.left() + side + 2, middle), field),
+                     qPrintable(qsl("just past the swatch in '%1' is %2 rather than the field's %3").arg(pAlpha->objectName(), pixelAt(inside.left() + side + 2, middle).name(), field.name())));
+            if (colour.alpha() == 255) {
+                continue;
+            }
+            // The board shows through: from a corner of the swatch, both of its inks
+            bool sawBlack = false;
+            bool sawWhite = false;
+            for (int y = inside.top() + 2; y < inside.top() + side - 2; ++y) {
+                for (int x = inside.left() + 2; x < inside.left() + side - 2; ++x) {
+                    sawBlack |= near(pixelAt(x, y), overBlack);
+                    sawWhite |= near(pixelAt(x, y), overWhite);
+                }
+            }
+            QVERIFY2(sawBlack && sawWhite,
+                     qPrintable(qsl("the swatch in '%1' does not show the checkerboard through its translucent colour: over black %2, over white %3")
+                                        .arg(pAlpha->objectName())
+                                        .arg(sawBlack)
+                                        .arg(sawWhite)));
         }
     }
 
@@ -541,8 +612,15 @@ private slots:
                                                                   {p->label_55, p->pushButton_Lcyan_2},
                                                                   {p->label_47, p->pushButton_white_2},
                                                                   {p->label_56, p->pushButton_Lwhite_2}};
-        QVERIFY2(p->pushButton_mapInfoBg->sizeHint().width() > p->pushButton_black_2->sizeHint().width(),
-                 "the checkered well asks for no more room than a plain one, so this cannot show the two given one width");
+        // Three see-through colours, so the board shows through them, and one opaque one
+        const QList<std::tuple<QPushButton*, QPushButton*, QColor>> alphaWells{{p->pushButton_mapInfoBg, p->pushButton_roomBorderColor, QColor(200, 40, 80, 160)},
+                                                                               {p->pushButton_lowerLevelColor, p->pushButton_foreground_color_2, QColor(40, 90, 200, 204)},
+                                                                               {p->pushButton_upperLevelColor, p->pushButton_background_color_2, QColor(30, 160, 60)},
+                                                                               {p->pushButton_mapGridColor, p->pushButton_roomCollisionBorderColor, QColor(220, 180, 20, 77)}};
+        for (const auto& [pAlpha, pPlain, colour] : alphaWells) {
+            p->setButtonColor(pAlpha, colour, true);
+        }
+        qApp->processEvents();
 
         const int twoPairs = pGrid->sizeHint().width();
         QVERIFY2(pMapColours->width() >= twoPairs,
@@ -550,6 +628,7 @@ private slots:
         for (const bool wide : {true, false}) {
             verifyColourGrid(colours, wide);
             verifyColourGrid(ansiColours, wide);
+            verifyAlphaWells(alphaWells);
             if (QTest::currentTestFailed()) {
                 return;
             }

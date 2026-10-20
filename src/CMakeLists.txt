@@ -182,6 +182,7 @@ set(mudlet_SRCS
 set(mudlet_app_SRCS
     ../3rdparty/qt-tags-widget/src/qtagedit.cpp
     AboutLinkButton.cpp
+    AlphaColourWell.cpp
     AboutSupporterBanner.cpp
     ChipRow.cpp
     ContentScrollArea.cpp
@@ -511,6 +512,7 @@ set(mudlet_HDRS
 set(mudlet_app_HDRS
     ../3rdparty/qt-tags-widget/include/QTagEdit/qtagedit.hpp
     AboutLinkButton.h
+    AlphaColourWell.h
     AboutSupporterBanner.h
     ChipRow.h
     ContentScrollArea.h

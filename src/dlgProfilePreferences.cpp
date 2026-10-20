@@ -25,6 +25,7 @@
 
 #include "dlgProfilePreferences.h"
 
+#include "AlphaColourWell.h"
 #include "CredentialManager.h"
 #include "EditorAutoCompleteFocusHandler.h"
 #include "FlowLayout.h"
@@ -2434,6 +2435,11 @@ void dlgProfilePreferences::reflowColourCards()
                                       {label_47, pushButton_white_2},
                                       {label_56, pushButton_Lwhite_2}},
                       .pFooterTrailing = reset_colors_button_2});
+
+    // The four map colours that may be see-through: a swatch over a checkerboard and how opaque the colour is
+    for (QPushButton* pWell : {pushButton_mapInfoBg, pushButton_lowerLevelColor, pushButton_upperLevelColor, pushButton_mapGridColor}) {
+        uiDesign::AlphaColourWell::on(pWell);
+    }
 }
 
 // Other pages took three of this card's checkboxes and the double-click controls joined it, leaving the .ui
@@ -8480,6 +8486,17 @@ void dlgProfilePreferences::slot_mmcpChatNameChanged()
 
 void dlgProfilePreferences::setButtonColor(QPushButton* button, const QColor& color, const bool hasAlpha)
 {
+    uiDesign::AlphaColourWell* pAlphaWell = hasAlpha ? uiDesign::AlphaColourWell::find(button) : nullptr;
+    if (pAlphaWell && color.isValid()) {
+        // The well draws itself - its swatch, its words and its sheet - at whatever state the button is in when
+        // it is drawn, available or not
+        pAlphaWell->setColour(color);
+        button->setIcon(QIcon());
+        return;
+    }
+    if (pAlphaWell) {
+        pAlphaWell->setColour(QColor());
+    }
     if (color.isValid()) {
         if (button->isEnabled()) {
             if (hasAlpha) {
