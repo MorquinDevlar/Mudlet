@@ -25,6 +25,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QEvent>
+#include <QFontInfo>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPainterPath>
@@ -105,24 +106,31 @@ void AlphaColourWell::applyLook()
     QString sheet;
     if (mColour.isValid()) {
         const auto opacity = [](const int percent) {
-            //: Words inside a map colour well in the settings, beside a swatch of the colour: how opaque the colour is, %1 being a whole percentage - 100 for a colour that is not see-through at all
-            return QCoreApplication::translate("AlphaColourWell", "Opacity %1%").arg(percent);
+            // The number takes three places, so in a fixed-pitch face every well's words are one length and the
+            // word as well as the percent sign stands under the one above it
+            //: Words inside a map colour well in the settings, beside a swatch of the colour: how opaque the colour is, %1 being a whole percentage - 100 for a colour that is not see-through at all - padded with spaces to three characters
+            return QCoreApplication::translate("AlphaColourWell", "Opacity %1%").arg(percent, 3);
         };
         words = opacity(qRound(mColour.alphaF() * 100));
         const ThemeTokens tokens = themeTokens();
-        // The words are set in the fixed-pitch face so the digits are one width and the percent signs of a column
-        // of wells stand under each other; the well's own face, the one a plain well is measured in, is the
-        // parent's
+        // The well's own face, the one a plain well is measured in, is the parent's
         const QFont plain = mpButton->parentWidget() ? mpButton->parentWidget()->font() : QApplication::font();
-        const QFont fixed = fixedPitchFont(plain);
+        // The words are set in the design's fixed-pitch face, a step down, so the digits are one width. A sheet
+        // can carry only a family, so the face is resolved to the family it comes to here: a platform may name
+        // it generically, which a sheet would not resolve to a fixed-pitch one.
+        QFont fixed = fixedPitchFont(plain);
+        fixed.setPointSize(typeSize(TypeStep::Caption));
+        fixed.setFixedPitch(true);
+        fixed.setStyleHint(QFont::Monospace);
+        fixed.setFamily(QFontInfo(fixed).family());
         const QFontMetrics plainMetrics(plain);
         const QFontMetrics fixedMetrics(fixed);
         // The swatch is the inside of a plain well less the padding above and below it, and the words keep that
         // padding from it at least
         const int swatch = plainMetrics.height();
         // As wide as the widest words would need, whatever these are: the words stand at the trailing edge and
-        // any room past that is left between them and the swatch
-        // Measured the way a push button measures its words, so the two agree to the pixel
+        // any room past that is left between them and the swatch. Measured the way a push button measures its
+        // words, so the two agree to the pixel.
         const auto measured = [&fixedMetrics](const QString& text) {
             return fixedMetrics.size(Qt::TextShowMnemonic, text).width();
         };
@@ -131,18 +139,20 @@ void AlphaColourWell::applyLook()
         const int spare = plainMetrics.height() - fixedMetrics.height();
         const int top = std::max(0, scmWellPaddingVertical + spare / 2);
         const int bottom = std::max(0, scmWellPaddingVertical + spare - spare / 2);
-        sheet = qsl("QPushButton { color: %1; background-color: transparent; border: %2px solid %3; border-radius: %4px; font-family: \"%5\";"
-                    " padding: %6px %7px %8px %9px; min-height: 0px; text-align: right; }")
+        sheet = qsl("QPushButton { color: %1; background-color: transparent; border: %2px solid %3; border-radius: %4px; font-family: \"%5\"; font-size: %6pt;"
+                    " padding: %7px %8px %9px ")
                         .arg(tokens.text.name())
                         .arg(scmInputBorderWidth)
                         .arg(tokens.border.name())
                         .arg(scmRadiusInput)
                         .arg(fixed.family())
+                        .arg(typeSize(TypeStep::Caption))
                         .arg(top)
                         .arg(scmInputPaddingHorizontal)
                         .arg(bottom)
-                        .arg(scmWellPaddingVertical + swatch + scmWellPaddingVertical + std::max(0, shortfall))
-                + qsl(" QPushButton:disabled { color: %1; }").arg(tokens.disabledText.name());
+                + qsl("%1px; min-height: 0px; text-align: right; } QPushButton:disabled { color: %2; }")
+                          .arg(scmWellPaddingVertical + swatch + scmWellPaddingVertical + std::max(0, shortfall))
+                          .arg(tokens.disabledText.name());
     }
     // Setting either brings the events that call this back again, so only what differs is set
     if (mpButton->text() != words) {

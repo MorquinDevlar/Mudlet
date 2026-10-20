@@ -33,8 +33,9 @@ namespace uiDesign {
 // a square swatch at the leading edge with the field showing round it, the
 // colour over a checkerboard so any transparency shows the board through it
 // and a hairline of its own over that, and at the trailing edge the button's
-// own words saying how opaque the colour is, in the fixed-pitch face so a
-// column of them lines up. It is drawn at whatever size the well has.
+// own words saying how opaque the colour is, a step smaller in the fixed-pitch
+// face and of one length, so a column of them lines up. It is drawn at
+// whatever size the well has.
 //
 // The field and the swatch are painted under the button's own drawing rather
 // than handed to it as an icon: a push button's size hint follows its icon,

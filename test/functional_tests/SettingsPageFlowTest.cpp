@@ -37,6 +37,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFontInfo>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -319,6 +320,7 @@ private:
         constexpr int inset = 3;
         constexpr int trailingPadding = 6;
         QList<int> wordsEnd;
+        QList<int> wordsStart;
         for (const auto& [pAlpha, pPlain, colour] : wells) {
             QVERIFY2(pAlpha->height() == pPlain->height() && pAlpha->width() == pPlain->width(),
                      qPrintable(qsl("the see-through well '%1' is %2x%3 beside the plain '%4' at %5x%6")
@@ -328,10 +330,12 @@ private:
                                         .arg(pPlain->objectName())
                                         .arg(pPlain->width())
                                         .arg(pPlain->height())));
-            QCOMPARE(pAlpha->text(), qsl("Opacity %1%").arg(qRound(colour.alphaF() * 100)));
-            // Set in the design's fixed-pitch face, so the digits are one width. Its family is what can be read
-            // here: the offscreen platform names that face "monospace", which it does not resolve to one
-            QCOMPARE(pAlpha->font().family(), uiDesign::fixedPitchFont(pPlain->font()).family());
+            // ...in a fixed-pitch face, so the digits are one width, a step smaller than the words beside the well
+            QVERIFY2(QFontInfo(pAlpha->font()).fixedPitch(),
+                     qPrintable(qsl("the words in '%1' are set in %2, which is not a fixed-pitch face").arg(pAlpha->objectName(), QFontInfo(pAlpha->font()).family())));
+            QCOMPARE(pAlpha->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Caption));
+            QVERIFY2(pAlpha->font().pointSizeF() < pPlain->font().pointSizeF(),
+                     qPrintable(qsl("the words in '%1' are %2pt, no smaller than the %3pt beside them").arg(pAlpha->objectName()).arg(pAlpha->font().pointSizeF()).arg(pPlain->font().pointSizeF())));
             // Never narrower than the widest words need, whichever these are
             QCOMPARE(pAlpha->sizeHint().width(), std::get<0>(wells.first())->sizeHint().width());
 
@@ -372,6 +376,17 @@ private:
             QVERIFY2(inkEnd <= contentEnd && inkEnd >= contentEnd - 3,
                      qPrintable(qsl("the words in '%1' end at %2px, not at the trailing padding at %3px").arg(pAlpha->objectName()).arg(inkEnd - inside.left()).arg(contentEnd - inside.left())));
             wordsEnd.append(inkEnd);
+            // ...and where they start, the first ink past the field after the swatch
+            int inkStart = -1;
+            for (int x = swatch.right() + 2; x < inside.right() && inkStart < 0; ++x) {
+                for (int y = inside.top() + inset; y <= inside.bottom() - inset; ++y) {
+                    if (!near(pixelAt(QPoint(x, y)), tokens.field)) {
+                        inkStart = x;
+                        break;
+                    }
+                }
+            }
+            wordsStart.append(inkStart);
             // ...and the field all round it
             verifyIs(QPoint(swatch.right() + 2, centre.y()), tokens.field, qsl("just past the swatch"));
             verifyIs(QPoint(centre.x(), inside.top() + 1), tokens.field, qsl("the margin above the swatch"));
@@ -395,14 +410,21 @@ private:
                                         .arg(sawBlack)
                                         .arg(sawWhite)));
         }
-        // ...so the percent signs of wells one under another stand under each other
+        // ...so down a column of wells both the word and the percent sign stand under the one above
         for (int index = 1; index < wordsEnd.size(); ++index) {
             const QPushButton* pWell = std::get<0>(wells.at(index));
             const QPushButton* pFirst = std::get<0>(wells.first());
-            if (pWell->mapTo(pCard, QPoint(0, 0)).x() == pFirst->mapTo(pCard, QPoint(0, 0)).x()) {
-                QVERIFY2(qAbs(wordsEnd.at(index) - wordsEnd.first()) <= 1,
-                         qPrintable(qsl("the words in '%1' end at %2px and in '%3' at %4px").arg(pWell->objectName()).arg(wordsEnd.at(index)).arg(pFirst->objectName()).arg(wordsEnd.first())));
+            if (pWell->mapTo(pCard, QPoint(0, 0)).x() != pFirst->mapTo(pCard, QPoint(0, 0)).x()) {
+                continue;
             }
+            QVERIFY2(qAbs(wordsEnd.at(index) - wordsEnd.first()) <= 1,
+                     qPrintable(qsl("the words in '%1' end at %2px and in '%3' at %4px").arg(pWell->objectName()).arg(wordsEnd.at(index)).arg(pFirst->objectName()).arg(wordsEnd.first())));
+            QVERIFY2(qAbs(wordsStart.at(index) - wordsStart.first()) <= 1,
+                     qPrintable(qsl("the words in '%1' start at %2px and in '%3' at %4px").arg(pWell->objectName()).arg(wordsStart.at(index)).arg(pFirst->objectName()).arg(wordsStart.first())));
+        }
+        // ...which they do because the number takes three places, so every well's words are one length
+        for (const auto& [pAlpha, pPlain, colour] : wells) {
+            QCOMPARE(pAlpha->text(), qsl("Opacity %1%").arg(qRound(colour.alphaF() * 100), 3));
         }
     }
 
