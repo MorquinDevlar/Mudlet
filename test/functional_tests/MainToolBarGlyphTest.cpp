@@ -18,26 +18,9 @@
  ***************************************************************************/
 
 /*
- * The main window toolbar draws the same monochrome glyphs the editor and the
- * settings dialog do, inked from the palette at runtime. Three things about that
- * can go wrong silently.
- *
- * The Sound button reads "Sound" whether media is muted or not, and the glyph is
- * the whole of what says which. Its caption comes from QAction::iconText() by way
- * of QToolButton::setDefaultAction, while the action's text() - the wording in
- * the dropdown and the wording a screen reader reads - keeps switching between
- * "Mute all media" and "Unmute all media". Anything that writes the mute wording
- * onto the button puts it back to a caption that changes under the pointer.
- *
- * The seven editor concepts take the editor's own files, so a trigger is the same
- * picture wherever it is offered - checked pixel for pixel rather than by file
- * name, because the tint is half of what makes the pair match. Then the palette
- * is moved and it is read again: nothing re-derives a QIcon once it has been set
- * on an action, so a toolbar left out of the restyle sits in the old theme's ink
- * for the rest of the session.
- *
- * A detached profile window builds its own copy of the same bar from its own list
- * of actions, which is a separate place for the mapping to be wrong.
+ * The main and detached toolbars draw the editor's glyph files, inked from the palette and
+ * retinted when it moves. The Sound button's caption comes from iconText() and stays "Sound", so
+ * its glyph alone says whether media is muted.
  *
  * Run with: ctest -R MainToolBarGlyphTest -V
  */
@@ -71,15 +54,11 @@ private:
     const QString mFirstHostname = qsl("MainToolBarGlyph-First");
     const QString mSecondHostname = qsl("MainToolBarGlyph-Second");
 
-    // The size the comparison is made at. Both pictures are held at the
-    // resolution they were drawn at and scaled by whatever draws them, so any one
-    // size settles it.
+    // Any size settles it: both pictures are scaled from the resolution they were drawn at
     static constexpr int scmComparisonSize = 24;
 
     static QImage drawnAt(const QIcon& icon, const QIcon::State state = QIcon::Off) { return icon.pixmap(QSize(scmComparisonSize, scmComparisonSize), QIcon::Normal, state).toImage(); }
 
-    // Somewhere for a difference to be reported from: the colour the glyph is
-    // actually inked in, read off the most opaque pixel of it
     static QString inkOf(const QImage& glyph)
     {
         QColor darkest;
@@ -96,8 +75,7 @@ private:
         return strongest <= 0 ? qsl("nothing at all") : qsl("%1 at alpha %2").arg(darkest.name(), QString::number(strongest));
     }
 
-    // Two glyphs of the same ink differ by shape alone, which a colour cannot
-    // report: say how much of the picture moved as well as what it is inked in
+    // inkOf() cannot report a difference in shape alone between two glyphs of one ink
     static QString differenceBetween(const QImage& left, const QImage& right)
     {
         if (left.size() != right.size()) {
@@ -114,12 +92,8 @@ private:
         return qsl("%1 of %2 pixels differ").arg(QString::number(differing), QString::number(left.width() * left.height()));
     }
 
-    // Reached by name rather than by member, which the toolbar's own tests do as
-    // well: the action carries the name the toolbar button it becomes is given
     static QAction* mainWindowTriggersAction() { return mudlet::self()->findChild<QAction*>(qsl("triggers_action")); }
 
-    // What the Triggers action ought to be carrying: the editor's own file, in
-    // the quiet ink everything else on the bar is set in
     static QImage expectedTriggersGlyph()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -144,11 +118,8 @@ private slots:
 
     void cleanupTestCase() { mSession.stop(); }
 
-    // Every other case here compares one drawn glyph against another built the
-    // same way, so a glyph that came out of the SVG empty - a renderer that
-    // refuses the file, a stroke="currentColor" nothing resolves - would leave
-    // both sides blank and every one of them green. This is the case that reads
-    // the ink itself.
+    // Every other case compares two glyphs built the same way, so an SVG that renders empty
+    // would leave both sides blank and pass them all; this one reads the ink itself
     void test_aGlyphIsDrawnFromItsSvgAtTheDesignsStrokeWidth()
     {
         const QImage drawn = uiDesign::glyphPixmap(qsl(":/icons/toolbar-map.svg")).toImage();
@@ -169,9 +140,8 @@ private slots:
         const qint64 drawnInk = inked(drawn);
         QVERIFY2(drawnInk > 0, "the glyph came out of its SVG with no ink in it at all");
 
-        // ...and the weight is this design's rather than the file's. Lucide
-        // authors every icon at a stroke width of 2, so the same map drawn as
-        // shipped has to cover more of the square than the one the window uses.
+        // Lucide authors every icon at stroke width 2, so the file drawn as shipped covers more of
+        // the square than the design's lighter pen does
         QFile source(qsl(":/icons/toolbar-map.svg"));
         QVERIFY(source.open(QIODevice::ReadOnly));
         QSvgRenderer asAuthored(source.readAll());
@@ -187,7 +157,6 @@ private slots:
         QVERIFY2(drawnInk < inked(authored.toImage()), "the glyph is as heavy as Lucide authored it, so scmGlyphStrokeWidth never reached the renderer");
     }
 
-    // The caption stands still and the picture moves - the whole of the relabel
     void test_theSoundButtonKeepsItsCaptionWhileItsGlyphSaysTheState()
     {
         QToolButton* pButton = mudlet::self()->findChild<QToolButton*>(qsl("mute"));
@@ -207,7 +176,6 @@ private slots:
         const QImage glyphMuted = drawnAt(pButton->icon(), pButton->isChecked() ? QIcon::On : QIcon::Off);
         const bool endedMuted = MudletMedia::self()->allMuted();
 
-        // Back the way it was found, whichever way round that was
         MudletMedia::self()->toggleAllMuted();
 
         qInfo().noquote() << qsl("  caption \"%1\" -> \"%2\"; the action says \"%3\" -> \"%4\"").arg(captionUnmuted, captionMuted, wordingUnmuted, wordingMuted);
@@ -222,9 +190,7 @@ private slots:
         QVERIFY2(glyphUnmuted != glyphMuted,
                  qPrintable(qsl("muting left the Sound button's glyph exactly as it was, at %1 - the caption no longer says which state it is in, so the picture has to").arg(inkOf(glyphMuted))));
 
-        // ...and it is the two pictures the design asks for rather than merely two
-        // different ones: a change of ink alone would pass the line above while
-        // the speaker kept its waves through both states
+        // A change of ink alone would pass the line above while the speaker kept its waves in both states
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QImage expectedUnmuted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/toolbar-sound-on.svg")), tokens.mutedText)));
         const QImage expectedMuted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/toolbar-sound-off.svg")), tokens.accentText)));
@@ -233,7 +199,6 @@ private slots:
         QVERIFY2(glyphMuted == expectedMuted, qPrintable(qsl("the muted Sound button is not the speaker-with-x glyph in the accent: %1").arg(differenceBetween(glyphMuted, expectedMuted))));
     }
 
-    // One file, one ink, whichever of the two windows the concept is offered in
     void test_theTriggersButtonCarriesTheEditorsGlyph()
     {
         QAction* pAction = mainWindowTriggersAction();
@@ -248,8 +213,7 @@ private slots:
                                     .arg(inkOf(onTheToolbar), inkOf(expected), differenceBetween(onTheToolbar, expected))));
     }
 
-    // ...and it stays that way when the theme moves. A QIcon set on an action is
-    // re-derived by nothing.
+    // Nothing re-derives a QIcon once it is set on an action
     void test_aPaletteChangeRetintsTheToolbar()
     {
         QAction* pAction = mainWindowTriggersAction();
@@ -271,14 +235,12 @@ private slots:
         QApplication::setPalette(savedPalette);
         QTest::qWait(100ms);
 
-        // Read before the pair is compared: a restyle that did nothing at all
-        // would leave the two agreeing and say nothing
+        // Checked first: a restyle that did nothing at all could leave the pair below agreeing
         QVERIFY2(before != after, qPrintable(qsl("the palette moved and the toolbar's picture did not: it is still inked %1").arg(inkOf(after))));
         QVERIFY2(after == expectedAfter,
                  qPrintable(qsl("the toolbar was re-inked to %1 where the new palette's mutedText is %2, and %3").arg(inkOf(after), inkOf(expectedAfter), differenceBetween(after, expectedAfter))));
     }
 
-    // The detached window builds its own bar from its own actions
     void test_aDetachedWindowCarriesTheSameTriggersGlyph()
     {
         QVERIFY2(mudlet::self()->getDetachedWindows().isEmpty(), "a detached window was left over from an earlier test");

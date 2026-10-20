@@ -18,14 +18,9 @@
  ***************************************************************************/
 
 /*
- * The events a script is registered for, drawn as a row of chips: what the row
- * shows, what typing in it does, and what its height does to the column it is
- * on.
- *
- * The old pair of controls - a list in a box, a field under it and a "+" and a
- * "-" beside them - is gone, so the first case also holds them gone: a form
- * still carrying them would pass every other case here while showing the user
- * two ways to do the same thing.
+ * A script's events drawn as a row of chips. The first case also holds the old
+ * list, field and +/- buttons gone: a form still carrying them would pass every
+ * other case while offering two ways to do the same thing.
  *
  * Run with: ctest -R EditorEventChipRowTest -V
  */
@@ -68,12 +63,10 @@ private:
     QTreeWidgetItem* mpScriptItem = nullptr;
     const QString mProfileName = qsl("EditorEventChipRow-Test-Profile");
 
-    // The three the script is opened with, and the fourth typed into the field
     static QStringList startingEvents() { return {qsl("sysConnectionEvent"), qsl("MyEvent"), qsl("OneMoreEvent")}; }
 
     uiDesign::ChipRow* row() const { return mpEditor->mpChipRow_scriptEvents; }
-    // The field is only there while a name is being typed, so this answers null
-    // for "closed" rather than for "missing"
+    // Null means closed: the field stays in the row, hidden, between names
     QLineEdit* field() const
     {
         QLineEdit* pField = row()->findChild<QLineEdit*>(qsl("editorChipEditor"));
@@ -95,8 +88,7 @@ private:
         return pScript ? pScript->getEventHandlerList() : QStringList{};
     }
 
-    // What the chips read, in the order they are shown, taken off the widgets
-    // rather than off the row's own list
+    // Read off the chip widgets rather than items(), so it checks what is drawn
     QStringList shownEvents() const
     {
         QStringList shown;
@@ -136,8 +128,7 @@ private:
         return pCompleter ? pCompleter->popup() : nullptr;
     }
 
-    // What the list is showing for what has been typed so far, which is the
-    // completer's filtered model rather than everything on offer
+    // The popup's model is the completer's filtered one, not everything on offer
     QStringList offered() const
     {
         QAbstractItemView* pList = suggestionList();
@@ -151,8 +142,6 @@ private:
         return rows;
     }
 
-    // The word beside a name in the list, off the row that name is showing on -
-    // empty for a name the list is not offering at all
     QString noteFor(const QString& name) const
     {
         QAbstractItemView* pList = suggestionList();
@@ -168,8 +157,7 @@ private:
         return {};
     }
 
-    // Key input rather than setText: the completer is driven by what the field
-    // is typed into, and a name put there in one go never reaches it
+    // Key input, not setText(): the completer only reacts to typed text
     void keyIntoField(const QString& text)
     {
         QLineEdit* pField = field();
@@ -181,7 +169,6 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // Typing over everything that is there, so the completer hears the change
     void retypeField(const QString& text)
     {
         QLineEdit* pField = field();
@@ -194,8 +181,7 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // One event through the profile, carrying a payload the way a protocol's
-    // does, so that it is raised exactly as the game's are
+    // With a payload argument, the way a protocol event arrives
     void raiseInProfile(const QString& name)
     {
         TEvent event{};
@@ -206,8 +192,7 @@ private:
         mpHost->raiseEvent(event);
     }
 
-    // The row put back to a known set of chips with the field open on an empty
-    // name, since each of the cases below leaves the last one's chips behind
+    // Each case leaves the last one's chips behind
     void reopenFieldOn(const QStringList& chips)
     {
         row()->setItems(chips);
@@ -238,17 +223,15 @@ private slots:
         mpScriptItem = mpEditor->mpCurrentScriptItem;
         QVERIFY2(mpScriptItem != nullptr, "addScript() left no current script item");
 
-        // Put the events on the script itself and re-select it, so the row is
-        // filled the way it is for any script a profile was loaded with
+        // Filled by reselecting, the path a script loaded with the profile takes
         TScript* pScript = mpHost->getScriptUnit()->getScript(mpScriptItem->data(0, Qt::UserRole).toInt());
         QVERIFY2(pScript != nullptr, "the new script is not in the script unit");
         pScript->setEventHandlerList(startingEvents());
         mpEditor->slot_scriptsSelected(mpScriptItem);
         QTest::qWait(50ms);
 
-        // Named and saved after that reselect, which fills the form from the
-        // script and would put the old name back over anything typed before it.
-        // The search below looks the script up by the name on its tree row.
+        // After the reselect, which refills the form and would undo the name; the
+        // search cases find the script by its tree row's name
         mpEditor->mpScriptsMainArea->lineEdit_script_name->setText(qsl("ChipRowScript"));
         mpEditor->slot_saveSelectedItem();
         QTest::qWait(50ms);
@@ -263,8 +246,6 @@ private slots:
         mSession.stop();
     }
 
-    // What the script is registered for is what the row shows, in that order -
-    // and the controls it used to be shown through are not on the form any more
     void test_theScriptsEventsAreItsChips()
     {
         QVERIFY2(row() != nullptr, "the scripts form has no row of event chips");
@@ -282,16 +263,13 @@ private slots:
         QVERIFY2(addButton() != nullptr, "the row has no button to add an event with");
         QVERIFY2(field() == nullptr, "the row opens with its field already showing");
 
-        // As the form first comes up, before any font or theme has changed: the
-        // word leading the row is held to the line the chips stand on, which is
-        // only known once the form's sheet has landed on the field
+        // Checked at first show, before any font change: lineHeight() is only
+        // known once the form's sheet has reached the field
         const QLabel* pLead = mpEditor->mpScriptsMainArea->label_script_registered_event_handlers;
         QCOMPARE(pLead->height(), row()->lineHeight());
         QCOMPARE(addButton()->height(), row()->lineHeight());
     }
 
-    // A name typed into the field is a fourth chip, and saving the script puts
-    // all four on it
     void test_typingANameAddsAChip()
     {
         row()->beginAdd();
@@ -309,8 +287,6 @@ private slots:
         QCOMPARE(savedEvents(), startingEvents() << qsl("FourthEvent"));
     }
 
-    // A name the script already has is refused with a note rather than silently,
-    // and the field is left open on what was typed
     void test_aNameAlreadyListedIsRefused()
     {
         QVERIFY2(field() != nullptr, "the field closed after the last name was taken, so there is nothing to type the duplicate into");
@@ -326,7 +302,6 @@ private slots:
         QVERIFY2(field() != nullptr, "the field was closed on a name it refused, so the typing is lost");
     }
 
-    // Escape gives up on the name being typed and puts the button back
     void test_escapeClosesTheField()
     {
         QVERIFY2(field() != nullptr, "the field is not open, so there is nothing for Escape to close");
@@ -340,7 +315,6 @@ private slots:
         QCOMPARE(row()->count(), before);
     }
 
-    // The cross on a chip takes that event off the script
     void test_theCrossTakesAnEventAway()
     {
         QCOMPARE(row()->count(), 4);
@@ -358,11 +332,10 @@ private slots:
         QCOMPARE(row()->items(), QStringList({qsl("sysConnectionEvent"), qsl("OneMoreEvent"), qsl("FourthEvent")}));
     }
 
-    // A search result for an event handler jumps to the chip showing it
     void test_theSearchJumpPointsAtTheChip()
     {
-        // Somewhere else first, or the chip the last case left the keyboard on
-        // would answer this whether the jump pointed at anything or not
+        // Focus elsewhere first, or the chip the last case focused would pass this
+        // without any jump
         row()->focusItem(0);
         QCoreApplication::processEvents();
         QCOMPARE(row()->focusWidget(), row()->chipAt(0));
@@ -372,7 +345,6 @@ private slots:
         pResult->setData(0, dlgTriggerEditor::TypeRole, dlgTriggerEditor::SearchResultIsEventHandler);
         pResult->setData(0, dlgTriggerEditor::NameRole, qsl("ChipRowScript"));
         pResult->setData(0, dlgTriggerEditor::IdRole, mpScriptItem->data(0, Qt::UserRole).toInt());
-        // The second of the three the row is showing now
         pResult->setData(0, dlgTriggerEditor::PatternOrLineRole, 1);
         mpEditor->treeWidget_searchResults->addTopLevelItem(pResult);
 
@@ -380,16 +352,13 @@ private slots:
         QCoreApplication::processEvents();
         QTest::qWait(50ms);
 
-        // focusWidget() rather than hasFocus(): the latter also asks whether the
-        // window is the active one, which a test run headlessly cannot promise
-        // Jumping to the script fills the row from what was saved on it, so the
-        // event taken off above is back - and index 1 is a name again
+        // focusWidget(), not hasFocus(): hasFocus() also needs the window active,
+        // which a headless run cannot promise. The jump refills the row from the
+        // saved script, so the event removed above is back.
         QVERIFY2(row()->count() > 1, "the jump left the row with fewer chips than the result pointed into");
         QCOMPARE(row()->focusWidget(), row()->chipAt(1));
     }
 
-    // A row too narrow for its chips wraps, and the column the form is in takes
-    // the height that costs off the code pane rather than clipping it
     void test_wrappingGrowsTheFormColumn()
     {
         mpEditor->resize(1100, 900);
@@ -419,8 +388,6 @@ private slots:
         QTest::qWait(100ms);
     }
 
-    // The cap on the column comes down as well as up: a script with nothing in
-    // its row gives back the room the last one's chips took
     void test_fewerEventsGiveTheRoomBack()
     {
         mpEditor->resize(620, 900);
@@ -457,9 +424,8 @@ private slots:
         QTest::qWait(100ms);
     }
 
-    // The cross takes no focus, so a name half typed into the open field is
-    // settled by the removal itself rather than by whatever the focus lands on
-    // afterwards - which is nothing at all when the row is emptied
+    // The cross takes no focus, so the removal itself must commit a half-typed
+    // name; with one chip there is no focus-out at all once the row empties
     void test_removingAChipSettlesTheOpenFieldFirst()
     {
         row()->setItems({qsl("AlphaEvent"), qsl("BetaEvent")});
@@ -483,8 +449,6 @@ private slots:
         QVERIFY2(field() == nullptr, "the field is still open after a chip was taken away");
         QVERIFY2(!addButton()->isHidden(), "the add button did not come back when the field closed");
 
-        // ...and again with one chip, where taking it away leaves nothing for
-        // the keyboard to move to and so nothing to commit the name in passing
         row()->setItems({qsl("AlphaEvent")});
         QCoreApplication::processEvents();
         changes.clear();
@@ -505,9 +469,6 @@ private slots:
         QVERIFY2(!addButton()->isHidden(), "the add button did not come back when the field closed");
     }
 
-    // A name already listed cannot be taken, and on the way out there is nobody
-    // left to type it over - so the field goes with the refusal rather than
-    // standing open and unfocused over the button that reopens it
     void test_aRefusedNameOnTheWayOutClosesTheField()
     {
         row()->setItems({qsl("sysLoadEvent")});
@@ -530,9 +491,8 @@ private slots:
         QCOMPARE(row()->count(), before);
     }
 
-    // The search counts through the script's own list, which can hold the same
-    // name twice - the row draws it once. So the jump goes by the name rather
-    // than by the number the search counted to.
+    // The script's list can hold a name twice while the row draws it once, so
+    // the search's index is not the chip's index
     void test_theSearchJumpFindsTheChipByName()
     {
         mpEditor->addScript(false);
@@ -546,8 +506,8 @@ private slots:
         QCOMPARE(pOtherItem->text(0), qsl("SearchJumpScript"));
         const int otherID = pOtherItem->data(0, Qt::UserRole).toInt();
 
-        // Back to the first script before the list is written, so that leaving
-        // the second one is not what saves the row's chips over it
+        // Leave the second script before writing its list, or leaving it saves
+        // the row's chips over it
         mpEditor->slot_scriptsSelected(mpScriptItem);
         QTest::qWait(50ms);
         TScript* pOther = mpHost->getScriptUnit()->getScript(otherID);
@@ -555,8 +515,7 @@ private slots:
         pOther->setEventHandlerList({qsl("MyEvent"), qsl("MyEvent"), qsl("OtherEvent")});
         QCOMPARE(pOther->getEventHandlerList().count(), 3);
 
-        // Something inside the row holds the keyboard first, or a jump that
-        // pointed at nothing would leave the answer below to whatever had it
+        // Focus inside the row first, or a jump that pointed at nothing could pass
         addButton()->setFocus(Qt::OtherFocusReason);
         QCoreApplication::processEvents();
         QCOMPARE(row()->focusWidget(), addButton());
@@ -566,8 +525,7 @@ private slots:
         pResult->setData(0, dlgTriggerEditor::TypeRole, dlgTriggerEditor::SearchResultIsEventHandler);
         pResult->setData(0, dlgTriggerEditor::NameRole, qsl("SearchJumpScript"));
         pResult->setData(0, dlgTriggerEditor::IdRole, otherID);
-        // Where OtherEvent stands in the script's own list, which is one along
-        // from where it stands in the row
+        // OtherEvent's index in the script's list; in the row it is index 1
         pResult->setData(0, dlgTriggerEditor::PatternOrLineRole, 2);
         mpEditor->treeWidget_searchResults->addTopLevelItem(pResult);
 
@@ -579,16 +537,9 @@ private slots:
         QCOMPARE(row()->focusWidget(), row()->chipAt(1));
     }
 
-    // A chip is as tall as the type in it, and the word leading the row is
-    // pinned to one chip's height - both measured off the interface font rather
-    // than written down, so both have to be measured again when it changes.
-    //
-    // The change is handed to the row and to the window rather than set on the
-    // application: trigger_editor.ui pins a font on the frame these forms are
-    // in, and Qt does not carry a font past a widget a stylesheet has been
-    // applied to - so an application font never reaches either of them by
-    // itself. What is walked here is that each of the two answers the change it
-    // does hear.
+    // Set on the row and the window, not the application: trigger_editor.ui pins
+    // a font on the frame, and Qt does not propagate a font past a widget that
+    // has a stylesheet applied
     void test_aLargerFontReMeasuresTheChips()
     {
         row()->setItems({qsl("AlphaEvent"), qsl("BetaEvent")});
@@ -600,10 +551,8 @@ private slots:
         const int wasLine = row()->lineHeight();
         const QFont was = row()->font();
 
-        // Twelve points rather than a few: a line of chips is never shorter than
-        // the field the row types into, and the form's sheet gives that field a
-        // floor a small font sits well under, so a small step would leave the
-        // line on that floor and prove nothing
+        // Twelve points: a chip line is never shorter than the field, and the
+        // form's sheet gives the field a min-height a small step stays under
         QFont bigger = was;
         bigger.setPointSizeF(QFontInfo(was).pointSizeF() + 12.0);
         row()->setFont(bigger);
@@ -628,13 +577,8 @@ private slots:
         QTest::qWait(100ms);
     }
 
-    // Typing searches three sets of names at once: the ones Mudlet raises
-    // itself, the ones another script in the profile listens for, and the ones
-    // any item's Lua names. What this script is already showing is left out,
-    // since offering it would only be to have it refused.
     void test_typingOffersTheEventsTheProfileKnows()
     {
-        // A second script listening for a name of its own...
         mpEditor->addScript(false);
         QCoreApplication::processEvents();
         QTest::qWait(100ms);
@@ -645,14 +589,12 @@ private slots:
         QTest::qWait(50ms);
         const int otherID = pOtherItem->data(0, Qt::UserRole).toInt();
 
-        // ...and a trigger that names one in its own Lua rather than listening
-        // for it
         auto* pTrigger = new TTrigger(qsl("SuggestionTrigger"), QStringList(), QList<int>(), false, mpHost);
         pTrigger->registerTrigger();
         pTrigger->setScript(qsl("raiseEvent(\"CustomRaised\", 1)"));
 
-        // Back to the script under test before the second one's list is
-        // written, so that leaving it is not what saves the row over it
+        // Leave the second script before writing its list, or leaving it saves
+        // the row over it
         mpEditor->slot_scriptsSelected(mpScriptItem);
         QTest::qWait(50ms);
         TScript* pOther = mpHost->getScriptUnit()->getScript(otherID);
@@ -662,8 +604,8 @@ private slots:
         QVERIFY2(pScript != nullptr, "the script under test is not in the script unit");
         pScript->setEventHandlerList(startingEvents());
 
-        // Selecting the same item again reloads the form without saving over
-        // it, which is what fills the row and hands over the names to offer
+        // Reselecting the same item reloads the form without saving, and hands the
+        // row the names to offer
         mpEditor->slot_scriptsSelected(mpScriptItem);
         QTest::qWait(50ms);
         QCOMPARE(row()->items(), startingEvents());
@@ -692,8 +634,6 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // Arrowing into the list and pressing Return takes the name that was
-    // highlighted, and leaves the field open for the next one
     void test_aChosenSuggestionBecomesAChip()
     {
         reopenFieldOn(startingEvents());
@@ -702,15 +642,14 @@ private slots:
         QAbstractItemView* pList = suggestionList();
         QVERIFY2(pList != nullptr && pList->isVisible(), "typing part of an event name offered nothing");
 
-        // The keys go to the list while it is up, which is where they go in the
-        // window as well - it takes the keyboard when it is shown
+        // Keys go to the popup: it takes the keyboard while shown, as in the window
         QTest::keyClick(pList, Qt::Key_Down);
         QCoreApplication::processEvents();
         QVERIFY2(pList->currentIndex().isValid(), "Down did not walk into the list");
         QTest::keyClick(pList, Qt::Key_Return);
 
-        // The chip is taken through a queued connection, since QLineEdit fills
-        // the field from the chosen name first
+        // The chip is added through a queued connection, after QLineEdit fills the
+        // field from the chosen name
         QTRY_VERIFY2(row()->items().contains(qsl("sysLoadEvent")), "the name chosen off the list did not become a chip");
         QVERIFY2(!pList->isVisible(), "the list is still up after a name was taken off it");
         QVERIFY2(field() != nullptr, "the field closed after a name was chosen, so the next one costs another click");
@@ -720,8 +659,6 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // Return with nothing highlighted keeps what was typed, which is what makes
-    // a name nobody has used before still one keystroke away
     void test_returnKeepsTheTypedNameOverTheList()
     {
         reopenFieldOn(startingEvents());
@@ -742,19 +679,12 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // An event that has gone past is offered afterwards, which is the only way
-    // the names a game sends are come by: nothing in a profile writes them down,
-    // and the same holds for a name a script raises at run time
-    // The field, the chips and the add button stand on one line. The field is
-    // never cut down to a chip's height: where the form's sheet makes it the
-    // taller, the chips and the button grow to meet it.
     void test_theChipsStandAsTallAsTheField()
     {
         QWidget* pForm = row()->parentWidget();
         QVERIFY2(pForm != nullptr, "the row is not on a form to style");
         const QString formSheet = pForm->styleSheet();
-        // A field a head taller than any chip, the way the editor's own field
-        // rule makes it on a real screen
+        // Taller than any chip, as the editor's field rule makes it on a real screen
         pForm->setStyleSheet(formSheet + qsl(" QLineEdit { min-height: 40px; }"));
         QCoreApplication::processEvents();
 
@@ -781,8 +711,7 @@ private slots:
         raiseInProfile(qsl("gmcp.Char.Vitals"));
         raiseInProfile(qsl("RaisedAtRuntime"));
 
-        // The names are handed over as the script is loaded into the form, so
-        // the row hears about either of these only on the way back in
+        // The row is handed the names to offer only as a script loads into the form
         mpEditor->slot_scriptsSelected(mpScriptItem);
         QTest::qWait(50ms);
         reopenFieldOn(startingEvents());
@@ -800,8 +729,6 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // Every offered name carries the one word saying where it is from, so that
-    // an unfamiliar name can be placed without leaving the field
     void test_eachNameSaysWhereItIsFrom()
     {
         reopenFieldOn(startingEvents());
@@ -811,8 +738,7 @@ private slots:
         QVERIFY2(offered().contains(qsl("sysLoadEvent")), qPrintable(qsl("an event Mudlet raises was not offered: %1").arg(offered().join(qsl(", ")))));
         QCOMPARE(noteFor(qsl("sysLoadEvent")), qsl("Mudlet"));
 
-        // What another script in the profile listens for, put there by
-        // test_typingOffersTheEventsTheProfileKnows
+        // MyOtherEvent was put on a script by test_typingOffersTheEventsTheProfileKnows
         retypeField(qsl("myother"));
         QVERIFY2(offered().contains(qsl("MyOtherEvent")), qPrintable(qsl("what another script listens for was not offered: %1").arg(offered().join(qsl(", ")))));
         QCOMPARE(noteFor(qsl("MyOtherEvent")), qsl("script"));

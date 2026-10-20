@@ -18,17 +18,9 @@
  ***************************************************************************/
 
 /*
- * A QToolBar too narrow for what it holds posts the tail of itself into a
- * drop-down behind a chevron a few pixels wide at the far edge of the window.
- * Nothing says it is there, and what went into it - Save Profile among them -
- * is out of reach until it is found.
- *
- * The bar gives its names up instead. As the room runs out its groups become
- * rows of pictures in turn, the profile's four first and the item's four after,
- * and the tooltips speak for them; widening gives the names back from the other
- * end, and only with room to spare so a drag across the breakpoint settles
- * rather than flickering. What the cases below hold to is that every action
- * stays on the bar at every width the window can be dragged to.
+ * A QToolBar too narrow for its actions hides the tail, Save Profile among them,
+ * behind a chevron a few pixels wide. The editor's bar gives its names up
+ * instead; these cases hold every action on it at every width the window reaches.
  */
 
 #include <QLayout>
@@ -58,25 +50,20 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorToolBarOverflow-Test-Profile");
 
-    // Where each group sits in dlgTriggerEditor::mEditorToolBarGroups, which is
-    // also the order they give their names up in
+    // Indexes into mEditorToolBarGroups, whose order is also the order names are given up in
     static constexpr int scmProfileGroup = 0;
     static constexpr int scmItemGroup = 1;
 
-    // The sweep: wide enough for every name at any icon size, down to the
-    // narrowest the editor can be dragged to, in steps fine enough to place a
-    // breakpoint within a button's width
+    // 1600px fits every name at any icon size; 8px places a breakpoint within a
+    // button's width
     static constexpr int scmSweepWidest = 1600;
     static constexpr int scmSweepStep = 8;
     static constexpr int scmSweepHeight = 700;
-    // What the preference holds until somebody changes it, and the largest it
-    // offers - the two the breakpoints are reported at
     static constexpr int scmDefaultPreference = 3;
     static constexpr int scmLargestPreference = 4;
 
-    // The button a QToolBar posts what it cannot fit into. It exists from the
-    // start and is shown only while something has been posted to it, so its
-    // visibility is the fold itself rather than a proxy for it.
+    // QToolBar's overflow button exists from the start and is shown only while
+    // something is folded into it, so its visibility is the fold itself
     QWidget* extensionButton() const { return mpEditor->toolBar->findChild<QWidget*>(qsl("qt_toolbar_ext_button")); }
 
     void resizeTo(const int width)
@@ -86,13 +73,10 @@ private:
         QTest::qWait(10ms);
     }
 
-    // The narrowest the window can actually be dragged to, which is where every
-    // sweep stops - a width below it is one no user can reach
     int narrowestWindowWidth() const { return std::max(mpEditor->minimumWidth(), mpEditor->minimumSizeHint().width()); }
 
-    // Whether every button of a group is still carrying its name. Read off the
-    // buttons rather than off the bookkeeping, so a group the bookkeeping
-    // thinks is named but that was never told is a failure
+    // Read off the buttons rather than labelsShown, so a group the bookkeeping
+    // thinks is named but whose buttons were never told fails
     bool groupIsNamed(const int index) const
     {
         const auto& group = mpEditor->mEditorToolBarGroups.at(index);
@@ -114,18 +98,13 @@ private:
                      groupIsNamed(scmItemGroup) ? qsl("named") : qsl("pictures"));
     }
 
-    // The length the bar wants laid out in one line with the styles it is
-    // carrying - the same figure the fit measures against its own width
+    // The same figure the fit measures against the bar's own width
     int barLengthWanted() const { return mpEditor->toolBar->layout()->sizeHint().width(); }
 
-    // What the window costs the bar: everything outside the toolbar's own width
     int windowChromeWidth() const { return mpEditor->width() - mpEditor->toolBar->width(); }
 
-    // Every name back on the bar and the fit asked once for what this width
-    // actually calls for. Put back by hand because it was taken by hand: a
-    // resize to the width the window already has sends no event, so nothing
-    // would run on its own - and by hand rather than through the fit alone, so
-    // that a case measuring with the fit disabled still starts from a named bar.
+    // By hand: a resize to the width the window already has sends no event, so
+    // the fit would not run on its own
     void undoTheForcing()
     {
         for (auto& group : mpEditor->mEditorToolBarGroups) {
@@ -136,8 +115,7 @@ private:
         QTest::qWait(20ms);
     }
 
-    // The shortest the bar can be made - both groups pictures - said as a width
-    // of window, which is what it has to be compared against
+    // As a window width, which is what the sweeps compare it against
     int pictureBarLength()
     {
         resizeTo(scmSweepWidest);
@@ -152,9 +130,7 @@ private:
         return wanted;
     }
 
-    // ...and the same with only the item group named, which is the length the
-    // second breakpoint is measured against. The wording is the view's, so this
-    // is a different number in every view.
+    // The item group's wording is the view's, so this differs in every view
     int itemGroupNamedLength()
     {
         resizeTo(scmSweepWidest);
@@ -170,13 +146,8 @@ private:
 
     struct Sweep
     {
-        // The widest window at which each of these is true, found narrowing
-        // from a window with room for everything
         int profileGaveUp = -1;
         int bothGaveUp = -1;
-        // Qt posted something into its drop-down - and did so while a name was
-        // still being written out, which is the fold that would mean the fit
-        // had given up early
         int folded = -1;
         int foldedWithANameStillWritten = -1;
         int narrowest = 0;
@@ -191,7 +162,6 @@ private:
         int reachedBefore = 0;
         for (int width = scmSweepWidest; width >= result.narrowest; width -= scmSweepStep) {
             resizeTo(width);
-            // A window that will not go any narrower has nothing left to say
             if (reachedBefore && mpEditor->width() >= reachedBefore) {
                 break;
             }
@@ -253,17 +223,12 @@ private slots:
         mSession.stop();
     }
 
-    // Given the room, the bar reads as what it is: two runs of named buttons
-    // with the arrows between them
     void test_everyGroupIsNamedOnAWideWindow()
     {
         resizeTo(scmSweepWidest);
         QVERIFY2(groupIsNamed(scmProfileGroup) && groupIsNamed(scmItemGroup), qPrintable(qsl("On a window with room to spare, %1").arg(stateAt(scmSweepWidest))));
     }
 
-    // The order the names are given up in: the four that act on the profile are
-    // the first to stand as pictures, and there is a width where they have and
-    // the four that act on the item have not
     void test_theProfileGroupIsTheFirstToStandAsPictures()
     {
         const Sweep sweep = sweepNarrowing();
@@ -276,8 +241,6 @@ private slots:
                                     .arg(QString::number(sweep.bothGaveUp), QString::number(sweep.profileGaveUp))));
     }
 
-    // ...and narrower still, both groups are pictures rather than anything
-    // being taken off the bar
     void test_bothGroupsStandAsPicturesOnANarrowWindow()
     {
         const Sweep sweep = sweepNarrowing();
@@ -287,10 +250,6 @@ private slots:
         QVERIFY2(!groupIsNamed(scmProfileGroup) && !groupIsNamed(scmItemGroup), qPrintable(qsl("At the narrowest the window goes, %1").arg(stateAt(sweep.narrowest))));
     }
 
-    // Nothing is ever posted away while there is still a name to give up. Qt's
-    // fold is left in place below that - a window narrower than a bar of
-    // pictures has run out of anything the fit could do - but it is never
-    // reached with a word still written out on the bar.
     void test_nothingIsFoldedAwayWhileANameIsStillWritten()
     {
         const Sweep sweep = sweepNarrowing();
@@ -307,8 +266,6 @@ private slots:
                                     .arg(QString::number(sweep.foldedWithANameStillWritten), QString::number(sweep.bothGaveUp))));
     }
 
-    // Widening gives the names back from the other end: the item group first,
-    // the profile group last
     void test_wideningGivesTheNamesBackInTheOtherOrder()
     {
         const Sweep sweep = sweepNarrowing();
@@ -337,9 +294,6 @@ private slots:
                                     .arg(QString::number(profileNamedAt), QString::number(itemNamedAt))));
     }
 
-    // The margin the names are taken back with, which is what a drag across the
-    // breakpoint is settled by: the same two pixels back and forth cannot keep
-    // turning the names on and off under the pointer
     void test_aDragAcrossTheBreakpointDoesNotFlicker()
     {
         const Sweep sweep = sweepNarrowing();
@@ -366,8 +320,7 @@ private slots:
                  qPrintable(qsl("Two pixels either side of the %1px breakpoint changed the profile group, so a drag over it flickers:\n  %2")
                                     .arg(QString::number(sweep.profileGaveUp), seen.join(qsl("\n  ")))));
 
-        // What the fit costs, which is what says whether a burst of resizes
-        // needs coalescing behind a zero-timer or can simply be answered
+        // Reported to judge whether a burst of resizes needs coalescing behind a zero-timer
         QElapsedTimer timer;
         timer.start();
         constexpr int runs = 1000;
@@ -377,14 +330,8 @@ private slots:
         qInfo().noquote() << qsl("  the fit costs %1us a call at a width it settles at").arg(QString::number(static_cast<double>(timer.nsecsElapsed()) / (runs * 1000.0), 'f', 1));
     }
 
-    // The item group's names are the view's words - "Add Trigger" in one view
-    // and "Add Alias" in the next - so the width they are given up at moves with
-    // the view, and switching views is a re-measurement rather than a repaint
     void test_switchingViewRemeasuresForTheNewWording()
     {
-        // The item group's own breakpoint: the width the bar wants with the
-        // profile group already pictures and this group still named, which is
-        // where the second lot of names goes
         mpEditor->slot_showTriggers();
         const int triggerViewBoundary = itemGroupNamedLength();
         mpEditor->slot_showAliases();
@@ -396,14 +343,12 @@ private slots:
                  qPrintable(qsl("The two views' wordings measure the same (%1px against %2px), so nothing here would show a re-measurement")
                                     .arg(QString::number(aliasViewBoundary), QString::number(triggerViewBoundary))));
 
-        // Roomy for the alias wording by more than the margin the names are
-        // taken back with, and too narrow for the trigger wording: the one
-        // window at which the two views disagree about the item group
+        // +20 clears the margin names are taken back with, so only the trigger
+        // wording is too wide here
         const int between = aliasViewBoundary + 20;
         QVERIFY2(between < triggerViewBoundary,
                  qPrintable(qsl("The wordings are %1px apart, which leaves no width that is roomy for one and not for the other").arg(QString::number(triggerViewBoundary - aliasViewBoundary))));
 
-        // Arrived at by switching the view...
         resizeTo(scmSweepWidest);
         mpEditor->slot_showTriggers();
         QTest::qWait(20ms);
@@ -413,7 +358,6 @@ private slots:
         QTest::qWait(20ms);
         const bool namedAfterSwitching = groupIsNamed(scmItemGroup);
 
-        // ...against arriving at the same window in the same view by a resize
         resizeTo(scmSweepWidest);
         QTest::qWait(20ms);
         resizeTo(between);
@@ -433,8 +377,6 @@ private slots:
         mpEditor->slot_showTriggers();
     }
 
-    // A button standing as a picture is read by its tooltip alone, so each of
-    // the eight says the words it would otherwise be carrying
     void test_everyCollapsingButtonIsNamedByItsTooltip()
     {
         resizeTo(scmSweepWidest);
@@ -451,13 +393,8 @@ private slots:
         QVERIFY2(silent.isEmpty(), qPrintable(qsl("These buttons do not say their own name in their tooltip, so they say nothing once they are pictures:\n  %1").arg(silent.join(qsl("\n  ")))));
     }
 
-    // The fallback, measured rather than assumed. A bar of pictures still wants
-    // more width than the narrowest the editor can be dragged to, so Qt's fold
-    // is reachable - on a window too narrow to work in, but reachable. It is
-    // left in place rather than replaced with a scrolling host of our own,
-    // which would be a second way of hiding the same buttons; what is done
-    // instead is to make its button unmistakable, which the case below checks.
-    // The numbers this reports are the ones docs/design-language.md quotes.
+    // A bar of pictures is wider than the narrowest window, so Qt's fold stays
+    // reachable. docs/design-language.md quotes the numbers this reports.
     void test_theBarOfPicturesIsMeasuredAgainstTheNarrowestWindow()
     {
         QStringList measured;
@@ -475,9 +412,6 @@ private slots:
                                          QString::number(sweep.narrowest),
                                          sweep.folded < 0 ? qsl("no swept width") : QString::number(sweep.folded)));
 
-            // Whatever the fold costs, it is only ever paid below the length a
-            // bar of pictures wants: everything above it is the fit's to hold,
-            // and both groups have given their names up before it is reached
             QVERIFY2(sweep.folded > 0, qPrintable(qsl("the sweep never reached a fold, so the case measured nothing: %1").arg(measured.constLast())));
             QVERIFY2(sweep.folded <= pictureBar, qPrintable(measured.constLast()));
             QVERIFY2(sweep.bothGaveUp > 0 && sweep.bothGaveUp > sweep.folded, qPrintable(measured.constLast()));
@@ -486,9 +420,6 @@ private slots:
         setPreference(scmDefaultPreference);
     }
 
-    // ...and where it is reached, the button is a control rather than the two
-    // faint arrowheads a style leaves on the page: the design's chevron, inked
-    // in the tone a lit control is drawn in
     void test_theFoldsOwnButtonIsTheDesignsChevron()
     {
         auto* pExtension = qobject_cast<QToolButton*>(extensionButton());

@@ -18,14 +18,9 @@
  ***************************************************************************/
 
 /*
- * The keystroke a key answers, set in a field that listens for it.
- *
- * The "Grab New Key" button is gone - the first case holds it gone, since a
- * form still carrying it would pass every other case here while offering two
- * ways to do the one thing - and the field is the control: a click arms the
- * grab, the next keystroke is taken whole (the keypad modifier included, which
- * is what numpad walking is bound through), and Escape or the focus going
- * elsewhere leaves the keystroke as it was.
+ * The keystroke a key answers, set in a field that listens for it. The first
+ * case also holds the "Grab New Key" button gone: a form still carrying it
+ * would pass every other case while offering two ways to do one thing.
  *
  * Run with: ctest -R EditorKeyCaptureTest -V
  */
@@ -60,8 +55,7 @@ private:
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     QTreeWidgetItem* mpKeyItem = nullptr;
-    // An action the editor's shortcuts can be seen going away and coming back
-    // on, since a grab is what takes them away
+    // A grab takes the editor's shortcuts away; this one shows them leave and return
     QAction* mpShortcutAction = nullptr;
     QKeySequence mShortcut;
     const QString mProfileName = qsl("EditorKeyCapture-Test-Profile");
@@ -93,8 +87,7 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 900);
 
-        // One the editor puts back afterwards: restoreShortcuts() puts back
-        // every shortcut the grab took, so any action carrying one will do
+        // Any action with a shortcut will do: restoreShortcuts() restores every one the grab took
         for (QAction* pAction : mpEditor->toolbarActions()) {
             if (!pAction->shortcut().isEmpty()) {
                 mpShortcutAction = pAction;
@@ -120,8 +113,6 @@ private slots:
         mSession.stop();
     }
 
-    // The button that used to arm the grab is gone, and the field it stood
-    // beside does the arming
     void test_clickingTheFieldStartsListening()
     {
         QVERIFY2(mpEditor->mpKeysMainArea->findChild<QWidget*>(qsl("pushButton_key_grabKey")) == nullptr, "the keys form still carries the button that grabbed a key");
@@ -137,8 +128,8 @@ private slots:
         QVERIFY2(mpShortcutAction->shortcut().isEmpty(), "the editor kept its own shortcuts while listening for a keystroke to bind");
     }
 
-    // The keystroke is taken whole: the keypad modifier is what numpad walking
-    // is bound through, so narrowing the modifiers would lose it
+    // Numpad walking is bound through the keypad modifier, so narrowing the
+    // modifiers would lose it
     void test_theKeystrokeIsStoredWithItsModifiers()
     {
         QVERIFY2(mpEditor->mIsGrabKey, "the grab is not armed, so there is nothing to capture");
@@ -158,8 +149,6 @@ private slots:
         QVERIFY2(!clearButton()->isHidden(), "a key with a keystroke is not offered the cross that forgets it");
     }
 
-    // Escape leaves the keystroke as it was, and gives the editor its own
-    // shortcuts back
     void test_escapeKeepsTheKeystroke()
     {
         const QString before = field()->text();
@@ -176,8 +165,6 @@ private slots:
         QCOMPARE(mpShortcutAction->shortcut(), mShortcut);
     }
 
-    // ...and so does going somewhere else with the grab still armed, which is
-    // the same thing by another route
     void test_leavingTheFieldGivesUpOnTheGrab()
     {
         const QString before = field()->text();
@@ -193,7 +180,6 @@ private slots:
         QCOMPARE(mpShortcutAction->shortcut(), mShortcut);
     }
 
-    // The cross takes the keystroke away, and takes itself away with it
     void test_theCrossForgetsTheKeystroke()
     {
         QVERIFY2(!clearButton()->isHidden(), "there is no cross to forget the keystroke with");
@@ -210,10 +196,8 @@ private slots:
         QVERIFY2(clearButton()->isHidden(), "the cross is still offered for a key with nothing to forget");
     }
 
-    // Saving the item is a way out of a grab too. Nothing on the toolbar takes
-    // the keyboard, so the field's own FocusOut never fires - and the name a
-    // key with no name of its own is given is read off the very field the grab
-    // has emptied.
+    // Nothing on the toolbar takes the keyboard, so the field's FocusOut never
+    // fires; and an unnamed key's name is read off the field the grab emptied
     void test_savingWhileListeningEndsTheGrab()
     {
         mpEditor->mpKeysMainArea->lineEdit_key_name->setText(qsl("New key"));
@@ -227,9 +211,8 @@ private slots:
         QVERIFY2(!mpEditor->mIsGrabKey, "saving the item left the editor listening for a keystroke");
         QCOMPARE(mpShortcutAction->shortcut(), mShortcut);
 
-        // The filter a grab puts on the application takes the arrows wherever
-        // in Mudlet they are pressed, so one pressed somewhere else says
-        // whether that filter is still there
+        // The grab's application-wide filter takes arrow keys anywhere, so one
+        // pressed elsewhere shows whether the filter is still installed
         QLineEdit elsewhere;
         elsewhere.setText(qsl("abc"));
         elsewhere.setCursorPosition(0);
@@ -242,8 +225,7 @@ private slots:
         QVERIFY2(!mpKeyItem->text(0).isEmpty(), "the key's row in the tree is blank");
     }
 
-    // ...and so is going to another view, which the sidebar does without taking
-    // the keyboard either
+    // The sidebar takes no keyboard either, so no FocusOut ends the grab here
     void test_switchingViewsEndsTheGrab()
     {
         armTheGrab();
@@ -262,18 +244,15 @@ private slots:
         QTest::qWait(50ms);
     }
 
-    // A key group never matches a keystroke - TKey::match() answers no for a
-    // folder - so none of the row is a setting it has, and the row widget goes
-    // with the three things on it: left showing, it holds a row of the form's
-    // grid open for nothing, which is dead height in a capped column
+    // TKey::match() never matches a folder. The row widget must hide with its
+    // three children, or it holds a grid row open as dead height
     void test_aKeyGroupIsOfferedNoneOfTheRow()
     {
         QWidget* pRow = mpEditor->mpKeysMainArea->findChild<QWidget*>(qsl("editorKeyBindingRow"));
         QVERIFY2(pRow != nullptr, "the keys form has no key binding row");
         QVERIFY2(pRow->isVisible(), "the key binding row is not showing for a key that can hold a keystroke");
-        // What the row asks for rather than what it was given: the form's own
-        // hint is what the two readings below are, and a row stretched to fill
-        // the column is not what it costs that hint
+        // sizeHint(), not height(): the form readings below are hints, and a
+        // row stretched to fill the column is not what it costs the hint
         const int rowHeight = pRow->sizeHint().height();
         const int withRow = mpEditor->mpKeysMainArea->sizeHint().height();
 

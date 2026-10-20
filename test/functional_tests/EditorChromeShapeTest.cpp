@@ -18,28 +18,9 @@
  ***************************************************************************/
 
 /*
- * The shapes the editor's own chrome is cut to, read off a shot of the window
- * rather than off the rules that draw them.
- *
- * Two of them, both of which were a rectangle of the wrong tone before:
- *
- * - The gap between two panes. A splitter handle has to be nine pixels wide to
- *   be aimed at with a mouse, and it used to be nine pixels of the separator
- *   tone - a groove across the window wherever two panes met. It is now a one
- *   pixel seam with each pane's own tone carried up to it, so the width the
- *   mouse needs is not a width the reader sees; hovered, the seam widens to
- *   three and takes the accent, which is what says it can be dragged. A handle
- *   carrying a heading says it the same way, along the top edge of its strip -
- *   it used to draw a short grip bar across its middle instead, which is a
- *   second thing on a strip that already has words on it.
- *
- * - The heading over the code pane, which is the handle above it. The pane
- *   under it is a panel, so the heading takes a panel's corner at the top and
- *   the page shows through outside the arc.
- *
- * ...and one that is not chrome but is cut the same way: a button showing a
- * colour, which the design draws as a well - the input corner and a hairline
- * round it - rather than as a hard edged rectangle with a grey line round it.
+ * The shapes the editor's chrome is cut to - splitter seams, the code pane's
+ * heading, colour wells - read off a shot of the window rather than off the
+ * rules that draw them.
  *
  * Run with: ctest -R EditorChromeShapeTest -V
  */
@@ -76,21 +57,16 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorChromeShape-Test-Profile");
 
-    // What the actions toolbar holds its contents off its own leading edge by,
-    // which the handle sits inside - see the rules in applyEditorShellStyle()
+    // Mirrors the actions toolbar's padding in applyEditorShellStyle(), which the
+    // grip sits inside
     static constexpr int scmToolBarPadding = 6;
 
     QImage windowShot() const { return mpEditor->grab().toImage(); }
 
-    // The seam between the panel of items and the column an item is edited in,
-    // which is the one plain handle of the horizontal splitter
     QSplitterHandle* paneSeam() const { return mpEditor->splitter_main->handle(1); }
 
-    // ...and the handle carrying the code pane's heading, which is the second of
-    // the three the right hand splitter stacks
     QSplitterHandle* codeHeading() const { return mpEditor->splitter_right->handle(1); }
 
-    // A row of pixels across a handle, in the handle's own coordinates
     QList<QColor> acrossTheHandle(const QImage& shot, const QWidget* pHandle, const int y) const
     {
         QList<QColor> row;
@@ -109,9 +85,6 @@ private:
         return names.join(QLatin1Char(' '));
     }
 
-    // How many pixels in a row are the given colour, and where the run of them
-    // starts - a seam is one run, so the pair says both how wide it is and
-    // whether it is in one piece
     static QPair<int, int> runOf(const QList<QColor>& row, const QColor& wanted)
     {
         int start = -1;
@@ -157,8 +130,8 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 800);
         mpEditor->slot_showTriggers();
-        // A trigger to look at, so that the form above the code pane holds
-        // something and the heading over it is laid out
+        // The heading over the code pane is only laid out once the form above it
+        // holds an item
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
 
@@ -173,9 +146,6 @@ private slots:
         mSession.stop();
     }
 
-    // The gap between the panel of items and the column beside it: one pixel of
-    // the seam tone, with the panel's own tone up to it on one side and the
-    // page's on the other. Nine pixels of the seam tone is what it used to be.
     void test_aPlainHandleIsOneHairlineBetweenTwoTones()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -202,18 +172,14 @@ private slots:
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("the handle is not the two panes' own tones either side of the seam: %1").arg(wrong.join(qsl(", ")))));
     }
 
-    // ...and under the pointer the seam widens to three and takes the accent,
-    // which is the whole of what says the panes can be dragged apart
     void test_hoveringAPlainHandleWidensTheSeamToTheAccent()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = paneSeam();
         hover(pHandle, true);
         const QImage shot = windowShot();
-        // Two readings down the handle rather than one: the grip pill this
-        // replaces was three pixels wide as well, and drawn across the middle
-        // of the handle - so a single reading taken there says nothing about
-        // which of the two is on screen. The whole length of the seam is lit.
+        // Three heights rather than one: a three-pixel grip pill drawn across the
+        // middle of the handle would pass a single reading taken there
         const QList<QPair<QString, QList<QColor>>> rows{{qsl("near its top"), acrossTheHandle(shot, pHandle, 4)},
                                                         {qsl("across its middle"), acrossTheHandle(shot, pHandle, pHandle->height() / 2)},
                                                         {qsl("near its foot"), acrossTheHandle(shot, pHandle, pHandle->height() - 5)}};
@@ -228,21 +194,16 @@ private slots:
             if (lit.second != 3) {
                 wrong << qsl("%1 the seam is %2px of the accent rather than three").arg(row.first, QString::number(lit.second));
             } else if (lit.first != middle - 1) {
-                // ...and still centred on the line the resting seam is drawn on
                 wrong << qsl("%1 the seam starts at x=%2 rather than one either side of the middle at x=%3").arg(row.first, QString::number(lit.first), QString::number(middle));
             }
         }
         qInfo().noquote() << qsl("  hovered: %1; the accent is %2").arg(measured.join(qsl("; ")), tokens.accent.name());
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("the hovered handle is not one lit seam from end to end: %1").arg(wrong.join(qsl(", ")))));
 
-        // ...and it goes away again, or every later reading is of a lit seam
         const QList<QColor> atRest = acrossTheHandle(windowShot(), pHandle, pHandle->height() / 2);
         QVERIFY2(runOf(atRest, tokens.accent).second == 0, qPrintable(qsl("the seam stayed lit after the pointer left it: %1").arg(describe(atRest))));
     }
 
-    // The heading over the code pane is the top of that pane, so it is cut to a
-    // panel's corner: the page outside the arc, the strip inside it. Its bottom
-    // stays square - what is under the pane is the next pane down.
     void test_theCodePanesHeadingIsCutToThePanelsCorner()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -262,9 +223,6 @@ private slots:
         QVERIFY2(bottomCorner.rgb() == tokens.separator.rgb(), qPrintable(qsl("the heading's bottom corner is cut away as well, at %1 - only its top meets the page").arg(bottomCorner.name())));
     }
 
-    // ...and nothing is drawn across the middle of it. The strip carries words,
-    // and a grip bar over them is a second thing saying what the strip already
-    // says by being a strip.
     void test_theHeadingCarriesNoGrip()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -276,15 +234,12 @@ private slots:
                  qPrintable(qsl("something is drawn across the middle of the heading: it is %1 rather than the strip's own %2").arg(middle.name(), tokens.separator.name())));
     }
 
-    // What says the heading can be dragged is what a plain seam says it with:
-    // the accent, along the edge the drag moves - which for the code pane's
-    // heading is the top of the strip
     void test_hoveringTheHeadingLightsItsTopEdge()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSplitterHandle* pHandle = codeHeading();
-        // The pointer may still be counted as inside the handle from the case
-        // above, and a hover that is already on lights nothing new
+        // The case above may leave the handle hovered, and entering a handle that
+        // is already hovered lights nothing new
         hover(pHandle, false);
 
         const int x = pHandle->width() / 2;
@@ -316,10 +271,8 @@ private slots:
         QVERIFY2(atRest.rgb() == tokens.separator.rgb(), qPrintable(qsl("the top edge stayed lit after the pointer left it: it is %1").arg(atRest.name())));
     }
 
-    // ...and not even that where there is no drag to offer. Five of the seven
-    // forms are a fixed set of fields, so the heading over them resizes nothing
-    // - see EditorFormShellTest, which is where which views those are is
-    // settled. A band on one of those would promise a drag that never happens.
+    // Five of the seven forms are fixed fields whose heading resizes nothing -
+    // see EditorFormShellTest
     void test_aHeadingThatDragsNothingStaysDark()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -336,8 +289,7 @@ private slots:
         const QColor whileInert = topRow(windowShot());
         hover(pHandle, false);
 
-        // Put back, and shown to still light when it does drag something, so a
-        // band that never appears cannot pass this case
+        // Control: a band that never appears would otherwise pass this case
         QVERIFY(mpEditor->splitter_right->setHandleResizes(1, true));
         hover(pHandle, true);
         const QColor whileDragging = topRow(windowShot());
@@ -352,19 +304,14 @@ private slots:
                  qPrintable(qsl("the heading did not light when it does drag, so the case above proves nothing: the top row is %1").arg(whileDragging.name())));
     }
 
-    // The bar the actions are on can be dragged to another edge of the window,
-    // and the grip at its leading end is what says so. Styling the bar takes
-    // the platform's own handle with it, which left a pair of dots a shade off
-    // the bar they are drawn on; these are the six the pattern rows are
-    // dragged by, inked in the tone the rest of the bar's chrome is.
+    // Styling the bar drops the platform's handle; the fallback draws two dots a
+    // shade off the bar
     void test_theToolbarsGripIsTheSixDotsInTheQuietTone()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QToolBar* pToolBar = mpEditor->toolBar;
         QVERIFY2(pToolBar != nullptr && pToolBar->isMovable(), "The actions toolbar is missing or cannot be moved, so it carries no grip");
         const int extent = pToolBar->style()->pixelMetric(QStyle::PM_ToolBarHandleExtent, nullptr, pToolBar);
-        // The handle sits inside whatever the bar holds its contents off its
-        // edge by, so the strip read is the extent plus that padding
         const int strip = extent + scmToolBarPadding;
 
         const QImage shot = windowShot();
@@ -375,12 +322,9 @@ private slots:
         for (int x = 0; x < strip; ++x) {
             for (int y = 0; y < pToolBar->height() - 1; ++y) {
                 const QColor measured = shot.pixelColor(pToolBar->mapTo(mpEditor, QPoint(x, y)));
-                // How far the pixel is from the bar towards the tone the grip
-                // is inked in: a dot two pixels across is drawn with antialiased
-                // edges, so even its strongest pixel is short of the full ink.
-                // Read as a distance rather than as a drop, since on a dark page
-                // the quiet tone is lighter than the bar and a subtraction the
-                // one way round clamps to nothing.
+                // A fraction rather than a match, as two-pixel dots are
+                // antialiased; qAbs, as on a dark page the ink is lighter than
+                // the bar
                 const qreal towardsTheInk = static_cast<qreal>(qAbs(measured.green() - tokens.page.green())) / std::max(1, qAbs(tokens.mutedText.green() - tokens.page.green()));
                 if (towardsTheInk < 0.1) {
                     continue;
@@ -406,20 +350,14 @@ private slots:
                                           tokens.mutedText.name());
 
         QVERIFY2(extent >= 8, qPrintable(qsl("the handle is %1px wide, which is not room for a grip").arg(QString::number(extent))));
-        // Six dots of two pixels across: the count is a floor rather than a
-        // measurement of them
+        // A floor rather than a measurement: six dots of two pixels across
         QVERIFY2(inked >= 6 * 4, qPrintable(qsl("the handle holds %1 painted pixels, so the six dots are not being drawn on it").arg(QString::number(inked))));
         QVERIFY2(strongest >= 0.7,
                  qPrintable(qsl("the grip's strongest pixel is %1, only %2 of the way to the quiet tone - it is a wash rather than the ink")
                                     .arg(strongestColour.name(), QString::number(strongest, 'f', 2))));
-        // Two columns of three, so it is taller than it is wide
         QVERIFY2(dots.height() > dots.width(), qPrintable(qsl("the grip is %1x%2, which is not two columns of three dots").arg(QString::number(dots.width()), QString::number(dots.height()))));
     }
 
-    // A button showing a colour is a well: the design's input corner, so the
-    // extreme corner of it is whatever it lies on rather than more of the fill.
-    // The sheet is the editor's own - what it puts on this very button when a
-    // trigger colours what it matched.
     void test_aColourWellIsCutToTheInputCorner()
     {
         // The well is on the options strip, which the editor opens closed
@@ -439,7 +377,6 @@ private slots:
         };
         const QColor fill = at(pWell->rect().center());
         const QColor corner = at(pWell->rect().topLeft());
-        // What the well lies on, read just outside its own edge
         const QColor behind = at(QPoint(-2, pWell->height() / 2));
         qInfo().noquote() << qsl("  the well is filled %1, its corner is %2 and what it lies on is %3").arg(fill.name(), corner.name(), behind.name());
 
@@ -449,28 +386,18 @@ private slots:
                  qPrintable(qsl("the well's corner is not cut away to what it lies on: the corner is %1 and the surface beside it %2").arg(corner.name(), behind.name())));
     }
 
-    // The button that empties the sound file field carried a green bitmap of
-    // its own. It is now the same tinted set every other glyph in the window is
-    // drawn from, which means it has a switched-off tone as well - and that is
-    // the one it is drawn in most of the time, since a trigger with no sound
-    // set has nothing for it to take away.
     void test_theSoundFileClearButtonIsATintedGlyph()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QToolButton* pClear = mpEditor->mpTriggersMainArea->toolButton_clearSoundFile;
         QVERIFY2(pClear != nullptr, "The trigger form has no button to empty the sound file field");
-        // Only there while the trigger has a file to forget, and this reads the
-        // glyph it is drawn with rather than when it is drawn
+        // The button is only shown while the trigger has a sound file
         mpEditor->showTriggerSoundFile(qsl("/tmp/EditorChromeShapeTest.wav"));
         QTest::qWait(50ms);
         QVERIFY2(!pClear->icon().isNull(), "The button carries no picture at all");
 
-        // How far the strongest pixel of the glyph is from the card it is drawn
-        // on towards the words on that card: a stroke a pixel and a half wide is
-        // antialiased, so its own tone is read as a fraction rather than
-        // matched. A distance rather than a drop, since on a dark page the words
-        // are lighter than the card and a subtraction the one way round clamps
-        // to nothing.
+        // A fraction rather than a match, as a 1.5px stroke is antialiased;
+        // qAbs, as on a dark page the words are lighter than the card
         const auto strongestInk = [&]() {
             const QImage shot = windowShot();
             qreal strongest = 0.0;

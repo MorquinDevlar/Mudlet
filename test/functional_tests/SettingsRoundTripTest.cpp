@@ -1089,8 +1089,6 @@ private slots:
         QCOMPARE(mpHost->getWideAmbiguousEAsianGlyphsControlState(), Qt::PartiallyChecked);
     }
 
-    // The script editor reads code in the display font until the box is unticked; the two controls
-    // under it show what following gives, greyed out, and pick the editor's own font once it is
     void test_theEditorFontIsTheDisplayFontUntilTheBoxIsUnticked()
     {
         QVERIFY(mpHost->editorFontFollowsDisplay());
@@ -1114,7 +1112,6 @@ private slots:
         QVERIFY2(pFamily->isEnabled() && pSize->isEnabled(), "unticking the box left the editor font greyed out");
         QVERIFY2(applyAndWait(applySpy), "the debounce never wrote the settings back");
         QVERIFY(!mpHost->editorFontFollowsDisplay());
-        // ...starting from what it showed
         QCOMPARE(mpHost->getEditorFont().family(), display.family());
         QCOMPARE(mpHost->getEditorFont().pointSize(), display.pointSize());
 
@@ -1141,7 +1138,6 @@ private slots:
         QCOMPARE(pSize->value(), display.pointSize());
     }
 
-    // Both are the profile's, so they outlast the session
     void test_theEditorFontIsSavedWithTheProfileAndReadBack()
     {
         restoreLater([this]() {
@@ -1184,7 +1180,6 @@ private slots:
         QCOMPARE(mpHost->getEditorFont().family(), mEditorOwnFamily);
         QCOMPARE(mpHost->getEditorFont().pointSize(), ownSize);
 
-        // ...and the dialog, still open, shows what was read
         QVERIFY(!mpPreferences->checkBox_editorFontFollowsDisplay->isChecked());
         QVERIFY(mpPreferences->fontComboBox_editorFont->isEnabled());
         QCOMPARE(mpPreferences->fontComboBox_editorFont->currentFont().family(), mEditorOwnFamily);

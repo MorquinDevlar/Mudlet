@@ -18,10 +18,8 @@
  ***************************************************************************/
 
 /*
- * The script editor reads code in a font of its own: the display font for as
- * long as it follows that, else a family and size the profile gave it. What
- * reads it is the code pane, the error console and the pattern fields; the
- * form's labels stay in the interface font either way.
+ * The editor's code font - the display font while it follows that, else its
+ * own - reaches the code pane, error console and pattern fields, never labels.
  *
  * Run with: ctest -R EditorFontTest -V
  */
@@ -64,7 +62,6 @@ private:
 
     dlgTriggerPatternEdit* patternRow() const { return mpEditor->mTriggerPatternEdit.isEmpty() ? nullptr : mpEditor->mTriggerPatternEdit.first(); }
 
-    // Everything that reads code, named so a failure says which one stayed behind
     QStringList readersNotIn(const QString& family, const int pointSize) const
     {
         const std::pair<const char*, QFont> readers[] = {{"code pane", mpEditor->mpSourceEditorEdbee->config()->font()},
@@ -148,7 +145,6 @@ private slots:
         verifyReadersIn(mOriginalDisplayFont.family(), mOriginalDisplayFont.pointSize());
     }
 
-    // The editor starts from what is on show when it first leaves the display font
     void test_leavingTheDisplayFontStartsFromIt()
     {
         QVERIFY(!mpHost->editorFontChoice().has_value());

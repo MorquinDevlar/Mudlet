@@ -18,22 +18,9 @@
  ***************************************************************************/
 
 /*
- * A row whose item will not compile is marked in red, not in the grey every
- * other mark is drawn in - and so is the state dot beside that mark. The dot
- * also says its three readings by shape as well as by ink, which the last case
- * here reads off the middle of one.
- *
- * Every mark on an editor tree row used to be tinted mutedText, the errors
- * glyph included - so the one mark that reports a state rather than labelling a
- * kind was the same colour as the folder above it, and a broken script had to
- * be found by reading its glyph rather than by seeing it. It is now inked with
- * uiDesign::errorInk(), which is the very value the compile note over the code
- * pane is written in.
- *
- * The two cases below read it off a grab of the tree rather than off the
- * delegate's own colours: what the reader sees is the mark as the style
- * actually painted it, on the surface the rows sit on, in both appearances -
- * and a red that cannot be read on that surface is no better than a grey one.
+ * A broken item's mark and dot are inked uiDesign::errorInk() rather than mutedText,
+ * and the WantedOn dot reads by shape as well as ink. Read off a grab in both
+ * appearances: a red that cannot be read on the rows' surface is no better than grey.
  *
  * Run with: ctest -R EditorTreeErrorMarkTest -V
  */
@@ -76,14 +63,10 @@ private:
     int mQuietFolderId = 0;
     int mWantedOnScriptId = 0;
 
-    // How far a reading may be from the colour it should be and still be that
-    // colour, summed over the three channels. A glyph is drawn through a
-    // painter at the screen's own ratio and composed onto the row, so its most
-    // opaque pixel is near the ink rather than exactly it.
+    // Summed over three channels: a glyph composed onto the row at the screen's
+    // ratio has its most opaque pixel near the ink rather than exactly it
     static constexpr int scmInkSlack = 30;
 
-    // A folder with two scripts in it: one that compiles and one that does not,
-    // so the red is read beside the grey it has to be told apart from
     void buildTheProfilesItems()
     {
         auto* pFolder = new TScript(qsl("A group of scripts"), mpHost);
@@ -101,17 +84,12 @@ private:
 
         auto* pBroken = new TScript(pFolder, mpHost);
         pBroken->setName(qsl("A broken script"));
-        // An unclosed parenthesis and words that are not Lua: nothing the
-        // interpreter can compile, which is the whole of what leaves the item
-        // in the state the errors glyph stands for
+        // Failing to compile is what puts an item in the errors glyph's state
         pBroken->setScript(qsl("this is not lua ((\n"));
         pBroken->registerScript();
         mBrokenScriptId = pBroken->getID();
 
-        // ...and a second group, switched off, holding a script the user has
-        // switched on. That child is the one row in the fixture whose dot reads
-        // WantedOn: its own switch says yes, and nothing is running because the
-        // group above it says no.
+        // A switched-on script inside a switched-off group is the one WantedOn dot
         auto* pQuietFolder = new TScript(qsl("A group that is switched off"), mpHost);
         pQuietFolder->setIsFolder(true);
         pQuietFolder->setIsActive(false);
@@ -140,11 +118,8 @@ private:
         return nullptr;
     }
 
-    // Where the row's mark is painted, in the viewport's coordinates. The style
-    // is asked where the row's picture lands rather than the number being
-    // worked out here - the trees carry a stylesheet, and its padding is
-    // nothing this could guess at - and the mark is the last square of that
-    // picture, after the room the row's depth holds it in and the state dot.
+    // The style is asked because the trees' stylesheet padding cannot be guessed;
+    // the mark is the decoration's last square, after the depth room and the dot
     QRect markRectOf(TTreeWidget* pTree, QTreeWidgetItem* pItem) const
     {
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(pTree->itemDelegateForIndex(QModelIndex()));
@@ -166,11 +141,8 @@ private:
                 decoration.right() + 1 - uiDesign::scmTreeMarkSize, decoration.top() + (decoration.height() - uiDesign::scmTreeMarkSize) / 2, uiDesign::scmTreeMarkSize, uiDesign::scmTreeMarkSize);
     }
 
-    // The square the row's state dot is drawn in, in the viewport's
-    // coordinates. The delegate is asked where a click on that dot would land -
-    // the same rectangle EditorTreeDotClickTest aims at - and the slack it
-    // grows that by for the pointer's sake is taken back off, which leaves the
-    // dot's own scmTreeDotDiameter square.
+    // dotHitRect() is grown by scmTreeMarkHitSlack for the pointer; taking that
+    // back off leaves the dot's own scmTreeDotDiameter square
     QRect dotSquareOf(TTreeWidget* pTree, QTreeWidgetItem* pItem) const
     {
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(pTree->itemDelegateForIndex(QModelIndex()));
@@ -191,15 +163,12 @@ private:
 
     static int distance(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
 
-    // The pixel a point of the viewport was drawn onto, at the grab's own ratio
     static QColor pixelAt(const QImage& shot, const QPointF& point, const qreal ratio)
     {
         const QPoint inShot(static_cast<int>(point.x() * ratio), static_cast<int>(point.y() * ratio));
         return shot.rect().contains(inShot) ? shot.pixelColor(inShot) : QColor();
     }
 
-    // The nearest any pixel of a square comes to a colour, and which pixel that
-    // was - so a failure can say what the mark is actually drawn in
     static QPair<int, QColor> nearest(const QImage& shot, const QRect& square, const qreal ratio, const QColor& wanted)
     {
         int best = 3 * 255;
@@ -221,11 +190,8 @@ private:
         return {best, read};
     }
 
-    // The nearest any pixel lying in the gap a ring leaves comes to a colour.
-    // The gap is the band between the point in the middle of the dot and the
-    // ring's inner edge, taken off the design's own constants and held clear of
-    // both by a fifth of a pixel, so that what is read is the surface rather
-    // than either shape's antialiasing.
+    // The 0.2px margin keeps the band clear of both the point's and the ring's
+    // antialiasing, so what is read is the surface
     static QPair<int, QColor> nearestInTheRingsGap(const QImage& shot, const QRect& square, const qreal ratio, const QColor& wanted)
     {
         constexpr qreal margin = 0.2;
@@ -296,9 +262,8 @@ private slots:
         mpEditor->treeWidget_scripts->expandAll();
         QTest::qWait(50ms);
 
-        // The fixture is the whole of what these cases read: a script that
-        // compiled after all would leave them measuring a folder's grey and
-        // reporting it as a fault of the ink rather than of the fixture
+        // Checked first: a script that compiled after all would be reported as a
+        // fault of the ink rather than of the fixture
         TScript* pBroken = mpHost->getScriptUnit()->getScript(mBrokenScriptId);
         QVERIFY2(pBroken && !pBroken->state(), "The script the fixture meant to leave broken compiles after all");
         QVERIFY2(rowFor(mpEditor->mpScriptsBaseItem, mBrokenScriptId) != nullptr, "The broken script has no row in the Scripts tree");
@@ -322,9 +287,6 @@ private slots:
         mSession.stop();
     }
 
-    // The mark on a broken item's row is the red the note over the code pane is
-    // written in, and the mark on the folder beside it is still the chrome's
-    // grey - read off a grab of the tree in both appearances
     void test_aBrokenItemsMarkIsPaintedInTheErrorInk()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -366,12 +328,8 @@ private slots:
                 misses << qsl("%1: the broken row's mark holds a pixel within %2 of the chrome's %3, so it cannot be told from a folder's")
                                   .arg(appearance.first, QString::number(greyOnTheBroken.first), tokens.mutedText.name());
             }
-            // ...and the reading only means anything while the folder beside
-            // it is still grey. Which of the two tones it is nearer, rather
-            // than how near: a 1.5px stroke scaled into a 16px square never
-            // reaches the full ink at any one pixel, so an absolute floor here
-            // would be measuring the glyph's antialiasing rather than its
-            // colour.
+            // Nearer of two tones rather than a floor: a 1.5px stroke scaled
+            // into a 16px square never reaches the full ink at any one pixel
             if (greyOnTheFolder.first >= redOnTheFolder.first) {
                 misses << qsl("%1: the folder's mark is nearer the red %2 (%3 away) than the chrome's %4 (%5 away), so this case is reading the wrong squares")
                                   .arg(appearance.first, red.name(), QString::number(redOnTheFolder.first), tokens.mutedText.name(), QString::number(greyOnTheFolder.first));
@@ -381,8 +339,6 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // A red nobody can see on the surface the rows sit on says no more than the
-    // grey it replaced, so the ink is held to the floor a mark is held to
     void test_theErrorInkCanBeReadOnThePanelTheRowsSitOn()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -397,9 +353,7 @@ private slots:
             showTheAppearance(appearance.second);
             const QColor red = uiDesign::errorInk(uiDesign::themeTokens());
 
-            // Off the rows rather than beside them: what the mark is drawn on
-            // is the viewport's own surface, read where nothing is painted over
-            // it
+            // Below the rows, where nothing is painted over the viewport's own surface
             const QImage shot = pTree->viewport()->grab().toImage();
             const qreal ratio = shot.devicePixelRatio();
             const QRect lastRow = pTree->visualItemRect(pTree->topLevelItem(0));
@@ -417,9 +371,6 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // The dot beside that mark is inked in the same red, so the two marks a
-    // broken row carries say the one thing - while the working script's dot
-    // beside it is still the ok tone every running item is drawn in
     void test_aBrokenItemsDotIsPaintedInTheErrorInk()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -476,12 +427,6 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // Switched on inside a switched-off group is a ring with a point in the
-    // middle of it, not a filled dot: the reading is carried by the shape as
-    // well as by the ink, so a reader who cannot separate the inks still has
-    // all three readings. Read as two pixels - the middle of the dot, which is
-    // the point, and the gap between that point and the ring, which is the row
-    // showing through.
     void test_aWantedOnDotIsARingRoundAPoint()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -502,10 +447,8 @@ private slots:
 
             const QImage shot = pTree->viewport()->grab().toImage();
             const qreal ratio = shot.devicePixelRatio();
-            // What the dot is drawn on, read off the row itself rather than
-            // assumed: the room the row's depth holds it in leads the
-            // decoration and nothing is drawn there for a row with nothing
-            // folded inside it
+            // Read off the row rather than assumed: the depth room before the
+            // dot is unpainted on a row with nothing folded inside it
             const QColor surface = pixelAt(shot, QPointF(dot.left() - uiDesign::scmTreeDotGap, dot.center().y()), ratio);
             QVERIFY2(surface.isValid(), qPrintable(qsl("%1: there is no room beside the dot to read the row's own surface off").arg(appearance.first)));
 
@@ -529,11 +472,8 @@ private slots:
                                 .arg(okOnTheRing.first)
                                 .arg(okTone.name());
 
-            // Which of the two tones the middle is nearer, rather than how
-            // near: the decoration composes the dot at half a pixel down the
-            // row's slot, so a point three pixels across is never the full ink
-            // at any one pixel of the grab. A point that is there is still an
-            // order of magnitude nearer its ink than the row behind it.
+            // Nearer of two tones rather than a floor: the dot sits half a pixel
+            // down its slot, so a 3px point never reaches full ink at any pixel
             if (middleFromQuiet * 2 >= middleFromSurface) {
                 misses << qsl("%1: the middle of the dot reads %2 - %3 off the muted %4 and %5 off the row's own %6, so there is no point standing in the ring")
                                   .arg(appearance.first, middle.name(), QString::number(middleFromQuiet), tokens.mutedText.name(), QString::number(middleFromSurface), surface.name());

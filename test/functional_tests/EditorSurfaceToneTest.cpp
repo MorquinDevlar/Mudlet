@@ -19,21 +19,8 @@
 
 /*
  * What each of the editor's three columns is painted, measured off the window.
- *
- * The sidebar and the column an item is edited in are the page. The panel of
- * items between them is a pane: a fifth of a card's lift off the page, which is
- * enough to be told apart from the columns either side of it and far short of
- * reading as a panel laid on top of them. The handle that resizes two of them is
- * the seam between them, and is darker than either.
- *
- * Two bugs are guarded here. The form was reading as a different surface from
- * the panel because nothing was painting it at all - everything from the frame
- * an item is edited in down to the seven forms inside it is transparent and fell
- * back on QPalette::Window, which agrees with the page tone only until a palette
- * answers the same colour to Window and to Base (macOS in light appearance among
- * them), where themeTokens() steps the page down under the card. And afterwards
- * every one of the three columns was painted that one tone, leaving the window a
- * single flat expanse with no seam between the panels.
+ * Guards an unpainted form falling back on QPalette::Window where Window and Base
+ * agree (macOS light), and all three columns painted one flat tone.
  *
  * Run with: ctest -R EditorSurfaceToneTest -V
  */
@@ -70,18 +57,15 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorSurfaceTone-Test-Profile");
 
-    // Off a shot of the whole window rather than of the widget alone. What is
-    // being measured here is a surface a widget shows through rather than one it
-    // paints, and grab() renders only the widget it is called on and its
-    // children - a transparent one comes back as an unpainted pixmap.
+    // Off the whole window: grab() renders only the widget and its children, so a
+    // transparent widget comes back as an unpainted pixmap
     QColor pixelOfWindowUnder(QWidget* pWidget, const QPoint& pointInWidget) const
     {
         const QPixmap shot = mpEditor->grab();
         return shot.toImage().pixelColor(pWidget->mapTo(mpEditor, pointInWidget));
     }
 
-    // Both surfaces are flat fills, so the nearer of the two is the one that
-    // was painted
+    // Flat fills, so the nearer of two surfaces is the one that was painted
     static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
 
     static QString describe(const QColor& measured, const uiDesign::ThemeTokens& tokens)
@@ -90,9 +74,8 @@ private:
                 .arg(measured.name(), tokens.page.name(), tokens.pane.name(), tokens.card.name(), tokens.field.name(), tokens.separator.name());
     }
 
-    // The empty room under the last pattern row, which is what a form with one
-    // pattern in it is mostly made of - and the one place in the column an item
-    // is edited in that is nothing but its surface
+    // Under the last pattern row: the one place in the edit column that is
+    // nothing but its surface
     QColor editColumnTone() const
     {
         auto* pPatternList = mpEditor->findChild<QWidget*>(qsl("editorPatternList"));
@@ -102,8 +85,8 @@ private:
         return pixelOfWindowUnder(pPatternList, QPoint(pPatternList->width() - 3, pPatternList->height() - 3));
     }
 
-    // ...and the room under the sidebar's last row, inside its own bottom
-    // padding, clear of the pill a chosen row is drawn as
+    // Inside the sidebar's bottom padding, clear of the pill a chosen row is
+    // drawn as
     QColor sidebarTone() const
     {
         QWidget* pSidebar = mpEditor->findChild<QWidget*>(qsl("editorSidebarPane"));
@@ -113,13 +96,9 @@ private:
         return pixelOfWindowUnder(pSidebar, QPoint(4, pSidebar->height() - 5));
     }
 
-    // Window and Base both white, which is the palette the three readings below
-    // are actually about. themeTokens() then keeps the card at the window's
-    // colour and steps the page down under it, so the page tone stops being
-    // QPalette::Window - and a surface nobody paints, which falls back on
-    // Window, stops answering the page tone by accident. Under the palette these
-    // run with otherwise the two agree and the readings hold whether or not
-    // anything painted the surface.
+    // Window and Base both white: themeTokens() then steps the page down under
+    // the card, so a surface nobody paints, which falls back on Window, stops
+    // matching the page tone by accident
     static QPalette theWhiteOnWhitePalette()
     {
         QPalette palette(QApplication::palette());
@@ -129,10 +108,8 @@ private:
         return palette;
     }
 
-    // The editor restyles off a PaletteChange - dlgTriggerEditor::changeEvent()
-    // calls applyEditorShellStyle() on one - and setting the application's
-    // palette is what sends it, which is the same path an appearance change
-    // takes
+    // Setting the application palette sends the PaletteChange that
+    // dlgTriggerEditor::changeEvent() restyles on, as an appearance change does
     void restyleWith(const QPalette& palette) const
     {
         QApplication::setPalette(palette);
@@ -167,7 +144,7 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1000, 800);
 
-        // A trigger to edit, so the form is the one a user looks at
+        // An empty view shows a placeholder rather than the form
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
@@ -180,8 +157,6 @@ private slots:
         mSession.stop();
     }
 
-    // The empty room under the last pattern row, which is what a form with one
-    // pattern in it is mostly made of
     void test_theFormBehindThePatternsIsThePageTone()
     {
         auto* pPatternList = mpEditor->findChild<QWidget*>(qsl("editorPatternList"));
@@ -208,10 +183,6 @@ private slots:
         QCOMPARE(measured.rgb(), tokens.page.rgb());
     }
 
-    // The two columns drawn on the page: the one down the left the sections are
-    // picked in, and the one an item is edited in. Both measured off the window
-    // rather than taken from the tokens, so a column nothing paints - which is
-    // how the form came to differ from the panel - is caught here.
     void test_theSidebarAndTheEditColumnAreBothThePage()
     {
         const QPalette savedPalette = QApplication::palette();
@@ -229,12 +200,9 @@ private slots:
         const QColor form = editColumnTone();
         QVERIFY2(sidebar.isValid() && form.isValid(), "the sidebar or the edit column is too small to read a pixel out of");
 
-        // What a surface the editor paints nothing on reads as, put on the shell
-        // beside the two being measured. Its palette is named rather than
-        // inherited: a stylesheet's background-color lands on the polished
-        // widget's QPalette::Window, so a child filling itself from the shell's
-        // palette would take the page tone from the shell rather than stand for
-        // a surface outside the editor's own painting.
+        // A control the editor paints nothing on. Its palette is set rather than
+        // inherited: a stylesheet's background-color lands on the polished shell's
+        // QPalette::Window, so an inheriting child would fill with the page tone.
         QWidget* pShell = mpEditor->findChild<QWidget*>(qsl("editorShell"));
         QVERIFY2(pShell, "the editor shell has gone, or been renamed");
         QWidget unpaintedProbe(pShell);
@@ -256,9 +224,6 @@ private slots:
                 qPrintable(qsl("a widget nothing paints reads %1, which is the page tone - so the two readings above would hold for a column nobody painted either").arg(describe(unpainted, tokens))));
     }
 
-    // ...and the panel between them, which is a surface of its own: lifted off
-    // the page so that it reads as a pane rather than as more of the window, and
-    // nowhere near a card, which would read as a panel laid on top of it
     void test_theItemPanelIsAPaneLiftedOffThePage()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -273,18 +238,13 @@ private slots:
                  qPrintable(qsl("the panel of items is nearer a card than the page it lies beside: it is painted %1").arg(describe(panel, tokens))));
     }
 
-    // The seam between two panes is the handle that resizes them, which is where
-    // the reader already looks for the join. Both of the window's splitters: the
-    // one parting the panel from the edit column, and the one down that column
-    // whose handle carries the code pane's heading.
     void test_theSplitterHandlesAreSeparatorsDarkerThanThePage()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
         QSplitterHandle* pPanelHandle = mpEditor->splitter_main->handle(1);
         QVERIFY2(pPanelHandle && pPanelHandle->width() > 4 && pPanelHandle->height() > 80, "the handle between the panel and the edit column is missing or too small to read a pixel out of");
-        // Down the seam the handle draws, and taken clear of the middle of its
-        // length so that anything a splitter puts there is not what is read
+        // Clear of the middle of its length, where a splitter may draw a grip
         const QColor panelSeam = pixelOfWindowUnder(pPanelHandle, QPoint(pPanelHandle->width() / 2, 6));
 
         QSplitterHandle* pCodeHandle = mpEditor->splitter_right->handle(1);
@@ -298,7 +258,6 @@ private slots:
         QVERIFY2(panelSeam.lightness() < tokens.page.lightness(), qPrintable(qsl("the seam between two panes is not darker than the page: it is painted %1").arg(describe(panelSeam, tokens))));
     }
 
-    // The one thing on the form that is still a field is the one typed into
     void test_theNameFieldKeepsTheFieldTone()
     {
         QLineEdit* pName = mpEditor->mpTriggersMainArea->lineEdit_trigger_name;
@@ -314,19 +273,16 @@ private slots:
         QVERIFY2(tokens.field.rgb() != tokens.page.rgb(),
                  qPrintable(qsl("the field surface and the page are both %1 on this palette, so a field painted as neither would still pass").arg(tokens.field.name())));
 
-        // Inside the field's own border and clear of whatever is typed in it,
-        // which is drawn from the leading edge - the middle of the field is a
-        // letter of the item's name as soon as the name is long enough for it
+        // Near the trailing edge: the name is drawn from the leading edge, so the
+        // middle of the field is a letter once the name is long enough
         const QColor measured = pixelOfWindowUnder(pName, QPoint(pName->width() - 6, pName->height() / 2));
         qInfo().noquote() << qsl("  the trigger name field is painted %1").arg(describe(measured, tokens));
 
         QVERIFY2(measured.rgb() == tokens.field.rgb(), qPrintable(qsl("the trigger name field is painted %1 - it has lost the sunken colour a field is filled with").arg(describe(measured, tokens))));
     }
 
-    // The page tone is painted on the shell, which is Mudlet's own scaffolding
-    // and nothing a profile's Lua stylesheet is offered. Named outright, so that
-    // it draws that one widget and lets everything under it show through rather
-    // than painting over what draws it.
+    // Scoped by id so the rule paints the shell alone and lets everything under
+    // it show through, rather than painting over what draws it
     void test_theShellRuleNamesNothingButTheShell()
     {
         QWidget* pShell = mpEditor->findChild<QWidget*>(qsl("editorShell"));
@@ -338,13 +294,8 @@ private slots:
         QVERIFY2(sheet.contains(uiDesign::themeTokens().page.name()), qPrintable(qsl("the shell is painted something other than the page tone: \"%1\"").arg(sheet)));
     }
 
-    // The words and the wells they are typed into. A palette answers pure white
-    // to WindowText on a dark theme and near-black to Base, which is white type
-    // in a hole cut through the window - so the text is pulled a little way back
-    // towards the page it is written on and a dark field is lifted a little way
-    // up towards it. Every muted tone is mixed over the page from that same
-    // text colour, so the whole scale softens with it, and what the softening
-    // left of the contrast is measured here rather than assumed.
+    // Every muted tone is mixed from the softened text colour, so the whole scale
+    // loses contrast with it - measured here rather than assumed
     void test_theWordsAreSoftenedAndADarkFieldIsLifted()
     {
         const QPalette savedPalette = QApplication::palette();
@@ -389,8 +340,6 @@ private slots:
             qInfo().noquote() << qsl("%1: an unavailable word is %2, reading %3:1 on the page and %4:1 in a field")
                                          .arg(theme, tokens.disabledText.name(), QString::number(disabledOnPage, 'f', 2), QString::number(disabledOnField, 'f', 2));
 
-            // Softened, and softened the one way: towards the page rather than
-            // away from it, and never past it
             QVERIFY2(tokens.text.rgb() != paletteText.rgb(),
                      qPrintable(qsl("on the %1 theme the words are the palette's own %2, which is the glare the softening is for").arg(theme, paletteText.name())));
             const int towardsThePage = std::abs(tokens.text.lightness() - paletteText.lightness());
@@ -399,9 +348,6 @@ private slots:
                      qPrintable(qsl("on the %1 theme the words are %2, %3 levels off the palette's %4 with only %5 between that and the page - that is a wash, not a softening")
                                         .arg(theme, tokens.text.name(), QString::number(towardsThePage), paletteText.name(), QString::number(roomToThePage))));
 
-            // What a reader has to be able to make out: the words on each of
-            // the three surfaces they are set on, and the quieter tone that
-            // labels and captions are written in
             for (const auto& reading : {QPair<QString, qreal>{qsl("the page"), onPage}, {qsl("a card"), onCard}, {qsl("a field"), onField}}) {
                 QVERIFY2(reading.second >= 4.5,
                          qPrintable(qsl("on the %1 theme the words read %2:1 against %3, under the 4.5:1 body text has to clear").arg(theme, QString::number(reading.second, 'f', 2), reading.first)));
@@ -409,28 +355,20 @@ private slots:
             QVERIFY2(mutedOnPage >= 3.0,
                      qPrintable(qsl("on the %1 theme the quiet tone reads %2:1 on the page, under the 3:1 a large or secondary line has to clear").arg(theme, QString::number(mutedOnPage, 'f', 2))));
 
-            // ...and the tone an unavailable word is written in, which is
-            // quieter again but still a word. A third of the way from the page
-            // to the text lands at about 2.3:1 on a light theme - the pattern
-            // row that says "match on the prompt line (disabled)" was all but
-            // invisible - so it is floored against both of the surfaces such a
-            // word is set on: the page it is a label on, and the field it is
-            // typed into.
+            // A third of the way from page to text came to about 2.3:1 on a light
+            // theme, leaving the disabled prompt-line pattern row all but invisible
             for (const auto& reading : {QPair<QString, qreal>{qsl("the page"), disabledOnPage}, {qsl("a field"), disabledOnField}}) {
                 QVERIFY2(reading.second >= 3.0,
                          qPrintable(qsl("on the %1 theme an unavailable word is %2, reading %3:1 against %4 - under the 3:1 a secondary line has to clear, and a word nobody can read is not a word "
                                         "switched off")
                                             .arg(theme, tokens.disabledText.name(), QString::number(reading.second, 'f', 2), reading.first)));
             }
-            // ...and it is still quieter than the tone a live secondary line is
-            // written in, or "switched off" has stopped meaning anything
             QVERIFY2(disabledOnPage < mutedOnPage,
                      qPrintable(qsl("on the %1 theme an unavailable word reads %2:1 on the page against the quiet tone's %3:1, so the two say the same thing")
                                         .arg(theme, QString::number(disabledOnPage, 'f', 2), QString::number(mutedOnPage, 'f', 2))));
 
             if (!tokens.darkPage) {
-                // A light theme's Base is white, and lifting white towards a
-                // grey page only muddies it
+                // Lifting a light theme's white Base towards a grey page only muddies it
                 QCOMPARE(tokens.field.rgb(), paletteField.rgb());
                 continue;
             }
@@ -443,14 +381,9 @@ private slots:
         QTest::qWait(50ms);
     }
 
-    // The three tones are mixed from the palette, so what holds on the theme the
-    // test happens to be running under says nothing about the other one. Both
-    // are put to the tokens directly here: a dark page with room under it for a
-    // groove, and a light page near enough to white that the same drop would
-    // draw a grey rule across the window instead.
-    //
-    // Last of the cases, and the palette is put back afterwards, because the
-    // window restyles itself off the one the application is holding.
+    // The tones are mixed from the palette, so both themes are put to the tokens
+    // rather than trusting whichever one the run is under. Put back afterwards,
+    // as the window restyles off the application's palette.
     void test_thePaneAndTheSeamHoldOnBothThemes()
     {
         const QPalette savedPalette = QApplication::palette();
@@ -480,9 +413,8 @@ private slots:
             QVERIFY2(paneLift * 3 < cardLift,
                      qPrintable(qsl("on the %1 theme the pane is %2 levels off the page and a card is %3 - the pane reads as a panel laid on top").arg(theme).arg(paneLift).arg(cardLift)));
             QVERIFY2(seamDrop >= 4, qPrintable(qsl("on the %1 theme the seam is only %2 levels under the page, which is no groove at all").arg(theme).arg(seamDrop)));
-            // A groove, not a black rule: the drop is a fraction of the room
-            // under the page rather than a number of levels, so a light page
-            // gets a seam it can carry
+            // A fraction of the room under the page rather than a fixed number of
+            // levels, so a light page gets a groove rather than a black rule
             QVERIFY2(seamDrop < tokens.page.lightness() / 2,
                      qPrintable(qsl("on the %1 theme the seam is %2 levels under a page of %3, which reads as a rule drawn across the window").arg(theme).arg(seamDrop).arg(tokens.page.lightness())));
         }

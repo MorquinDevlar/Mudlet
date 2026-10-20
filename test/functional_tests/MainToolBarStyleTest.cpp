@@ -18,29 +18,9 @@
  ***************************************************************************/
 
 /*
- * The main window's toolbar is drawn by the same flat-bar recipe the script
- * editor's is, and every part of that claim is about pixels a platform style
- * would otherwise own.
- *
- * Left to the platform, the bar reads two ways that are both wrong: on the
- * native macOS style a hovered button shows nothing at all, and on the
- * Fusion-based dark theme it shows a lighter box with a hairline round it. A
- * checkable button that is switched on - Sound, Full Screen, MultiView - is
- * drawn as a sunken block that swallows the menu half beside it.
- *
- * So three things are read off a grab here: a hovered button is washed in the
- * hover tone over the bar's own surface, a switched-on one in the accent's, and
- * a split button's trailing half is still told from its body by the seam the
- * recipe draws on it. Both appearances, because an ink that reads in one and
- * vanishes in the other is the defect the tokens exist to prevent.
- *
- * The fourth claim is about composition rather than colour. A profile's Lua
- * stylesheet is assigned to this very widget, so the design's rules and the
- * profile's have to live on one sheet: the design's first, the profile's last,
- * or a profile that has always painted its own bar stops being able to.
- *
- * ...and a detached profile window builds a bar of its own from its own
- * actions, which is a separate place for all of it to be missing.
+ * The main and detached toolbars use the flat-bar recipe in both appearances: left to the
+ * platform, a hovered button shows nothing on native macOS and a checked one swallows its menu
+ * half. A profile's Lua sheet lands on the same widget, so it has to come after the recipe.
  *
  * Run with: ctest -R MainToolBarStyleTest -V
  */
@@ -72,18 +52,12 @@ private:
     const QString mFirstHostname = qsl("MainToolBarStyle-First");
     const QString mSecondHostname = qsl("MainToolBarStyle-Second");
 
-    // How far a sampled pixel may sit from the colour the tokens mix, per
-    // channel: a wash is composited rather than blitted, so the two agree to a
-    // level or two rather than exactly
+    // A wash is composited rather than blitted, so it agrees with the token mix to a level or two
     static constexpr int scmInkTolerance = 2;
-    // Wide enough that every button on the bar is still on the bar: past the
-    // window's own length Qt posts the tail of the bar into the overflow menu,
-    // where nothing can be sampled
+    // Past the window's width Qt moves the bar's tail into the overflow menu, where nothing can be sampled
     static constexpr int scmWindowWidth = 1600;
     static constexpr int scmWindowHeight = 600;
 
-    // Reached by object name rather than by member: the bar is the window's own
-    // and every button on it carries the name of the action it was made from
     static QToolBar* theBar() { return mudlet::self()->findChild<QToolBar*>(qsl("mpMainToolBar")); }
 
     static QToolButton* buttonNamed(const QString& objectName) { return theBar() ? theBar()->findChild<QToolButton*>(objectName) : nullptr; }
@@ -94,8 +68,6 @@ private:
 
     static QString saidAs(const QPoint& at) { return qsl("%1,%2").arg(QString::number(at.x()), QString::number(at.y())); }
 
-    // A wash carries its own alpha, so what a grab shows is it over whatever it
-    // was laid on
     static QColor composited(const QColor& ink, const QColor& surface)
     {
         if (ink.alpha() == 255) {
@@ -117,8 +89,7 @@ private:
         return theBar()->grab().toImage().convertToFormat(QImage::Format_ARGB32);
     }
 
-    // A grab is in device pixels and everything measured here is in the logical
-    // ones a rectangle is given in
+    // A grab is in device pixels; the rectangles here are logical
     static QColor sampled(const QImage& image, const QPoint& at)
     {
         const qreal ratio = image.devicePixelRatio();
@@ -129,20 +100,15 @@ private:
         return QColor(image.pixel(device));
     }
 
-    // Inside the button's face, past the corner the recipe rounds it to and
-    // above the glyph and the word, where nothing but the fill is drawn
+    // Past the rounded corner and above the glyph and the word, where only the fill is drawn
     static QPoint washSpotIn(const QRect& button) { return QPoint(button.left() + uiDesign::scmToolBarButtonRadius + 2, button.top() + 2); }
 
-    // Where splitButtonMenuHalfStyleSheet() draws the seam: the leading edge of
-    // a menu half that is scmInputDropDownWidth wide and stands at the trailing
-    // end of the button's padding box, inside the one-pixel border the bar's
-    // own rule gives every button
+    // splitButtonMenuHalfStyleSheet() draws the seam on the leading edge of a scmInputDropDownWidth
+    // menu half, inside the one-pixel border the bar's rule gives every button
     static int seamColumnOf(const QRect& button) { return button.right() - uiDesign::scmInputDropDownWidth; }
 
-    // The pointer over a button, said the way a style reads it: QToolButton asks
-    // QStyleOption::initFrom(), which takes State_MouseOver from WA_UnderMouse -
-    // an attribute QApplication sets as it dispatches enter and leave, and
-    // nothing sets on a platform that composites nothing.
+    // QStyleOption::initFrom() takes State_MouseOver from WA_UnderMouse, which QApplication sets
+    // only while dispatching a real enter or leave, so the offscreen platform never sets it
     static void hoverOver(QWidget* pWidget, const bool over)
     {
         const QPoint at = pWidget->rect().center();
@@ -166,7 +132,6 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // The one path an appearance change takes while a window is open
     static void setAppearance(const enums::Appearance appearance)
     {
         mudlet::self()->setAppearance(appearance);
@@ -177,9 +142,6 @@ private:
 
     static QString appearanceSaidAs(const enums::Appearance appearance) { return appearance == enums::Appearance::dark ? qsl("dark") : qsl("light"); }
 
-    // The two claims that are about colour rather than about the sheet, so that
-    // the appearance case below makes them a second time against the other
-    // palette rather than restating them
     void aHoveredButtonIsWashed(const QString& appearance)
     {
         QToolButton* pHovered = buttonNamed(qsl("triggers_action"));
@@ -226,8 +188,7 @@ private:
         const QColor body = sampled(bar, washSpotIn(box));
         const QColor wantedBody = composited(tokens.accentWash, tokens.page);
 
-        // A pixel either side of the computed column as well, since the seam is
-        // one pixel wide and a rounding of the sub-control's box would move it
+        // The seam is one pixel wide and rounding the sub-control's box can move it a pixel
         const int seamAt = seamColumnOf(box);
         QColor seam;
         int seamFoundAt = -1;
@@ -272,8 +233,7 @@ private slots:
         QVERIFY2(mSession.openProfile(mFirstHostname), qPrintable(mSession.why()));
         QVERIFY2(mSession.openProfile(mSecondHostname), qPrintable(mSession.why()));
 
-        // Nothing on a bar that is not on show can be sampled, and with a
-        // profile loaded the shipped default is to keep it off
+        // With a profile loaded the shipped default hides the bar, and a hidden bar cannot be sampled
         mudlet::self()->setToolBarVisibility(enums::visibleAlways);
         mudlet::self()->resize(scmWindowWidth, scmWindowHeight);
         mudlet::self()->show();
@@ -292,8 +252,6 @@ private slots:
         mSession.stop();
     }
 
-    // The design's rules are on the bar, and a profile's own sheet is composed
-    // after them rather than in place of them
     void test_theBarCarriesTheRecipeAndTheProfilesSheetComesLast()
     {
         const QString sheet = theBar()->styleSheet();
@@ -303,7 +261,6 @@ private slots:
         QVERIFY2(sheet.contains(qsl("[popupMode=\"1\"]")), "the bar's sheet never picks out the buttons whose trailing half opens a menu");
         QVERIFY2(sheet.contains(qsl("::menu-button")), "the bar's sheet draws no menu half on a split button, so its two click areas read as one");
 
-        // The way a profile's Lua setProfileStyleSheet() reaches the bar
         Host* pHost = mudlet::self()->getActiveHost();
         QVERIFY2(pHost, "no profile is active, so no profile stylesheet can reach the bar");
         const QString marker = qsl("/* profile-sheet-marker */");
@@ -321,8 +278,6 @@ private slots:
 
     void test_aSwitchedOnSplitButtonReadsAsTwoAreas() { aSwitchedOnSplitButtonReadsAsTwoAreas(qsl("as started")); }
 
-    // One look on both, which is the whole reason the bar stopped being the
-    // platform's to draw
     void test_bothAppearances()
     {
         for (const enums::Appearance appearance : {enums::Appearance::dark, enums::Appearance::light}) {
@@ -339,7 +294,6 @@ private slots:
         setAppearance(enums::Appearance::systemSetting);
     }
 
-    // A detached window builds its own bar from its own actions
     void test_aDetachedWindowsBarCarriesTheRecipe()
     {
         QVERIFY2(mudlet::self()->getDetachedWindows().isEmpty(), "a detached window was left over from an earlier test");

@@ -18,15 +18,8 @@
  ***************************************************************************/
 
 /*
- * The variables form, and the three things around it.
- *
- * The two type pickers were tucked into the right hand columns of the form's
- * grid behind words that pointed at them with arrows; they are one row under
- * the name now, with the switch that keeps the variable out of the tree on the
- * row under them. The switch over the tree starts on the line the search field
- * above it starts on. The caret readout in the status bar belongs to the code
- * pane, so it goes when the pane does. And the heading over that pane names a
- * value here rather than a Lua script.
+ * Guards the variables form's layout, the hidden-variables switch's alignment,
+ * and the code pane's caret readout and heading in the Variables view.
  *
  * Run with: ctest -R EditorVariablesFormTest -V
  */
@@ -63,21 +56,15 @@ private:
     Host* mpHost = nullptr;
     QTreeWidget* mpVariablesTree = nullptr;
     const QString mProfileName = qsl("EditorVariablesForm-Test-Profile");
-    // The two arrows the words leading the pickers used to point with, written
-    // as code points rather than as themselves so that this file stays readable
-    // wherever it is opened
+    // Code points rather than the glyphs, so this file reads the same wherever it is opened
     static constexpr char16_t scmLeftPointingArrow = 0x23f4;
     static constexpr char16_t scmDownPointingArrow = 0x23f7;
 
-    // The one frame every control can be compared in: each is nested a
-    // different number of layouts deep
+    // Mapped to the editor: each control is nested a different number of layouts deep
     int leftEdgeOf(QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).x(); }
     int topEdgeOf(QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
 
     dlgVarsMainArea* form() const { return mpEditor->mpVarsMainArea; }
-    // What the code pane's heading reads out about the caret. The reading moved
-    // off the window's status bar onto the strip over the pane, so it is empty
-    // when that strip is away - which is what it is when the pane is.
     QString caretReadoutSays() const
     {
         QLabel* pCaret = mpEditor->findChild<QLabel*>(qsl("editorCodeCaret"));
@@ -104,9 +91,8 @@ private:
         return nullptr;
     }
 
-    // What clicking a row does. Both calls are deliberate: setting the current
-    // item already reaches slot_variableSelected() through itemSelectionChanged,
-    // and the explicit call stands in for the itemClicked on the mouse release.
+    // Both calls are deliberate: setCurrentItem() reaches slot_variableSelected() through
+    // itemSelectionChanged, and the explicit call stands in for itemClicked on release
     void selectVariable(QTreeWidgetItem* pItem)
     {
         mpVariablesTree->setCurrentItem(pItem);
@@ -147,8 +133,6 @@ private slots:
         mpVariablesTree = mpEditor->treeWidget_variables;
         QVERIFY2(mpVariablesTree != nullptr, "the editor has no variables tree");
 
-        // Two variables of the profile's own to pick out of everything Lua
-        // holds: one with a value the code pane can show, and one without
         QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("myString = \"north\"; myTable = { a = 1 }")), "the two variables this walks could not be made");
         mpEditor->repopulateVars();
         QTest::qWait(50ms);
@@ -163,8 +147,6 @@ private slots:
         mSession.stop();
     }
 
-    // The two readings are one row, in the place every other form puts the row
-    // under its head row, and the switch is the row under them
     void test_theTwoTypePickersAreOneRowUnderTheName()
     {
         QVERIFY2(showTheStringVariable(), "the string variable is not showing");
@@ -185,7 +167,6 @@ private slots:
                      qPrintable(qsl("\"%1\" still points at its picker with an arrow").arg(pLabel->text())));
         }
 
-        // ...and the whole row starts where the name above it is typed
         const int nameEdge = leftEdgeOf(form()->lineEdit_var_name);
         qInfo().noquote() << qsl("  the name is typed at %1, the key picker starts at %2 and the switch under it at %3")
                                      .arg(QString::number(nameEdge), QString::number(leftEdgeOf(pKeyType)), QString::number(leftEdgeOf(form()->checkBox_variable_hidden)));
@@ -202,8 +183,6 @@ private slots:
         }
     }
 
-    // The switch over the tree is a piece of the panel's head, so it starts on
-    // the line the search field above it and the tree rows below it start on
     void test_theHiddenVariablesSwitchStartsWhereTheSearchFieldDoes()
     {
         openTheVariablesView();
@@ -217,12 +196,10 @@ private slots:
         QCOMPARE(pSwitch->text(), qsl("Show hidden variables"));
     }
 
-    // What the heading says about the caret belongs to the code pane: a root
-    // row has no value under it, so neither the pane nor the readout is there
+    // A root row has no value under it, so selecting one hides the code pane
     void test_theCaretReadoutGoesWithTheCodePane()
     {
-        // The pane's state on the way in is whatever the case before this left,
-        // so it is put somewhere known rather than assumed
+        // The pane's state on the way in is whatever the case before this left
         openTheVariablesView();
         selectVariable(rootRow());
 
@@ -238,8 +215,6 @@ private slots:
         QVERIFY2(!caretReadoutSays().isEmpty(), "the caret readout did not come back with the code pane");
     }
 
-    // Six views type Lua under that heading; this one holds the value of
-    // whatever the tree has chosen, and the heading says so
     void test_theCodePaneHeadingNamesWhatIsUnderIt()
     {
         openTheVariablesView();

@@ -18,39 +18,9 @@
  ***************************************************************************/
 
 /*
- * The right hand splitter stacks the form column over the code editor, and the
- * form is snapped to the height the item in it asks for - shrinking as readily
- * as growing - whenever the item changes, whenever a view is entered, and once
- * the editor has been shown and the panes have real heights to divide up.
- *
- * Two faults that replaces. A trigger of eleven pattern rows, opened as the
- * first item of a freshly shown editor, scrolled inside a short form under a
- * code pane holding most of the window: the fit ran while the editor was still
- * hidden, when the splitter had nothing to divide. And a form left tall by a
- * long item stayed tall for the three-row item after it, because the fit only
- * ever grew a pane - it could not tell its own growth from a drag.
- *
- * The one exception is a view whose handle the user has dragged in this
- * session. QSplitter emits splitterMoved() for a drag and not for setSizes(),
- * so a drag is the only thing that records a height, and it records it for that
- * view alone. Nothing is stored: the seven settings keys each view's split used
- * to live under are cleared on the way past, so a restart snaps everywhere.
- *
- * Retired with the rule they were written for:
- *  - test_aStaleSavedSplitDoesNotStrandTheCodeEditor, which checked that a
- *    stored split of 630 above 220 was clamped to what the form could fill. A
- *    stored split no longer reaches the layout at all, so the seeded state is
- *    now only the backdrop the first-show case is measured against, and
- *    test_nothingOfASessionsDragSurvivesIntoTheNextOne covers the keys going.
- *  - test_theClampMeasuresTheFormWithTheOptionsPanelOpen, which checked that
- *    the clamp measured a form with the trigger options panel in it. There is
- *    no clamped restore left to measure, and no panel either: the options are
- *    two rows of the form, measured with the rest of it.
- *  - test_theOptionsPanelIsJustMoreFormInAViewThatSnaps and
- *    test_theOptionsPanelBorrowsAndHandsBackInADraggedView, which covered the
- *    panel opening and closing, and
- *    test_theFoldedOptionsPanelDoesNotFlickerOnEveryMoveEvent, which covered
- *    the drag that folded it away. Nothing opens, closes or folds any more.
+ * Guards the right splitter's fit: the form snaps to its item's height on first
+ * show and on every item change, shrinking as well as growing; only a view
+ * dragged this session keeps its own height, and nothing survives a restart.
  *
  * Run with: ctest -R EditorSplitterRestoreTest -V
  */
@@ -88,8 +58,8 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorSplitterRestore-Test-Profile");
 
-    // Room for a form of eleven pattern rows over a code pane well clear of its
-    // floor, so that nothing here ends up measuring the clamp instead of the fit
+    // Room for eleven pattern rows over a code pane clear of its floor, so no
+    // case ends up measuring the clamp instead of the fit
     static constexpr int scmWindowWidth = 1000;
     static constexpr int scmWindowHeight = 1400;
     // Mirrors scmEditorSourcePaneFloor in src/dlgTriggerEditor.cpp, which is
@@ -98,9 +68,8 @@ private:
     static constexpr int scmTallTriggerPatterns = 11;
     static constexpr int scmShortTriggerPatterns = 3;
 
-    // The sizes off the reported profile, written to settings before the editor
-    // is built so it reads them the way a returning user's would arrive. Under
-    // the rule this file covers nothing reads them at all.
+    // The split from the reported profile, seeded as a returning user's
+    // settings; nothing should read it
     static constexpr int scmSavedFormHeight = 630;
     static constexpr int scmSavedCodeHeight = 220;
     static constexpr int scmSavedErrorConsoleHeight = 30;
@@ -114,9 +83,8 @@ private:
     TTrigger* mpOneRowTrigger = nullptr;
     TAlias* mpAlias = nullptr;
 
-    // Everything the very first item shown after the editor was built and put
-    // on screen was left at. Taken in initTestCase() because no later case can
-    // put the editor back to never having been shown.
+    // Taken in initTestCase(): no later case can put the editor back to never
+    // having been shown
     QList<int> mFirstShowSizes;
     int mFirstShowFormWants = 0;
     int mFirstShowRowsWant = 0;
@@ -134,9 +102,8 @@ private:
                 qsl("mVarEditorSplitterState")};
     }
 
-    // A QSplitter stores the sizes it was asked for, not the ones it ended up
-    // drawing, so a stand-in splitter sized to hold them exactly is enough to
-    // produce the byte array a profile would have carried
+    // QSplitter stores the sizes it was asked for, not the ones it drew, so a
+    // stand-in splitter produces the byte array a profile would have carried
     static QByteArray splitterStateFor(const QList<int>& sizes)
     {
         QSplitter splitter(Qt::Vertical);
@@ -214,8 +181,7 @@ private:
     }
 
     // QSplitter emits splitterMoved() for a drag and not for setSizes(), so the
-    // slot a drag would have reached is called for it. The two panes keep their
-    // total between them, as a drag on the handle above the error console does.
+    // slot is called by hand. The two panes keep their total, as in a drag.
     void dragFormPaneTo(const int formHeight)
     {
         QList<int> sizes = mpSplitter->sizes();
@@ -232,8 +198,6 @@ private:
         return sizes.at(0) + sizes.at(1);
     }
 
-    // What the form column is asking for as it stands, which is what an
-    // undragged view is snapped to
     int formWants() const { return mpEditor->formPaneHeightForItsContents(panesTotal()); }
 
     bool patternsScrolling() const { return mpPatterns->verticalScrollBar() && mpPatterns->verticalScrollBar()->isVisible(); }
@@ -247,9 +211,7 @@ private slots:
 
         QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
-        // Seeded before the profile is up, which is what builds the editor: the
-        // configuration a returning user arrives with, carrying the split their
-        // last session was left at. Nothing is to read it.
+        // Seeded before openProfile(), which is what builds the editor
         mSeededState = splitterStateFor({scmSavedFormHeight, scmSavedCodeHeight, scmSavedErrorConsoleHeight});
         QVERIFY(!mSeededState.isEmpty());
         for (const QString& key : retiredSplitterKeys()) {
@@ -265,12 +227,10 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Loading the profile did not build an editor");
         QVERIFY2(!mpEditor->isVisible(), "the editor was already on screen, so the first-show case has nothing left to prove");
 
-        // Three triggers of known height, built on the profile and read back
-        // through the editor's own fill of the tree
         mpTallTrigger = registeredTrigger(qsl("Eleven patterns"), scmTallTriggerPatterns, mpHost);
         mpShortTrigger = registeredTrigger(qsl("Three patterns"), scmShortTriggerPatterns, mpHost);
         mpOneRowTrigger = registeredTrigger(qsl("One pattern"), 1, mpHost);
-        // ...and one alias, for the view that is never dragged
+        // An alias, for the view that is never dragged
         mpAlias = new TAlias(qsl("An alias"), mpHost);
         mpAlias->setRegexCode(qsl("^greet$"));
         mpAlias->setCommand(qsl("say hello"));
@@ -288,10 +248,8 @@ private slots:
         }
         mpEditor->fillout_form();
 
-        // The eleven-row trigger is made the item the editor will open on, and
-        // the form is filled with it while the window is still hidden - which
-        // is the order mudlet::slot_showEditorDialog() puts them in, and the
-        // whole of why the fit that ran with it had no panes to divide up
+        // Filled while the window is still hidden, in the order mudlet::slot_showEditorDialog()
+        // uses, so a fit run here has no panes to divide up
         QTreeWidgetItem* pTallRow = triggerRowFor(mpTallTrigger->getID());
         QVERIFY2(pTallRow != nullptr, "the eleven-row trigger is not in the tree");
         mpEditor->treeWidget_triggers->setCurrentItem(pTallRow);
@@ -299,10 +257,8 @@ private slots:
         QCoreApplication::processEvents();
         QVERIFY2(!mpEditor->isVisible(), "showing the trigger view put the editor on screen, which this case needs the show itself to do");
 
-        // Tall enough that the eleven-row form fits over a code pane clear of
-        // its floor - the offscreen platform's screen is smaller than the
-        // window this scenario needs, and nothing here is shown to a window
-        // manager that would refuse the size
+        // Taller than the offscreen platform's screen; with no window manager,
+        // nothing refuses the size
         mpEditor->resize(scmWindowWidth, scmWindowHeight);
         mpEditor->show();
         QTest::qWait(200ms);
@@ -329,8 +285,8 @@ private slots:
         mSession.stop();
     }
 
-    // Each case is its own session as far as the splitter is concerned: a
-    // height is remembered only for a view dragged in that session
+    // Each case is its own session: a height is remembered only for a view
+    // dragged in that session
     void init()
     {
         if (!mpEditor) {
@@ -339,11 +295,8 @@ private slots:
         mpEditor->mDraggedFormPaneHeights.clear();
     }
 
-    // The first defect from the screenshots: the editor picks its opening item
-    // and fills the form with it before the window is put on screen, so the fit
-    // that ran with it was dividing up a splitter that had no height yet. A
-    // trigger of eleven pattern rows came up scrolling inside a short form,
-    // under a code pane holding most of the window.
+    // Regression: the form is filled before the window is shown, and a fit run
+    // then divided a splitter with no height, leaving eleven rows scrolling
     void test_theFirstItemShownGetsItsContentsHeight()
     {
         QVERIFY2(!mFirstShowSizes.isEmpty(), "the first show was never measured");
@@ -356,9 +309,8 @@ private slots:
                                           mFirstShowScrolling ? qsl("scroll") : qsl("all fit"));
 
         QVERIFY2(mFirstShowRowsWant > 0, "the pattern list has no height at all, so this case is measuring nothing");
-        // Asked of what the form wanted rather than of where the panes ended
-        // up, so that a form given the whole window reads here as the fault it
-        // is rather than as a window too short to run the case in
+        // Asked of what the form wanted, not where the panes ended up, so a form
+        // given the whole window fails as the fault, not as a too-short window
         const int panes = mFirstShowSizes.at(0) + mFirstShowSizes.at(1);
         QVERIFY2(mFirstShowFormWants < panes - scmSourcePaneFloor,
                  qPrintable(qsl("the form asked for %1px of the %2px the two panes have, so it was clamped rather than fitted - the window is too short for this case")
@@ -374,10 +326,7 @@ private slots:
                  qPrintable(qsl("the code pane opened at %1, under the %2px floor it keeps").arg(QString::number(mFirstShowSizes.at(1)), QString::number(scmSourcePaneFloor))));
     }
 
-    // The second defect: a form left tall by an eleven-row trigger stayed tall
-    // for the three-row one after it, because the fit only ever grew a pane. A
-    // large empty band between the last pattern row and the Lua heading, with
-    // the code pane pushed to the bottom of the window.
+    // Regression: the fit only ever grew a pane, so a tall form stayed tall
     void test_choosingAShorterItemSnapsTheFormBackDown()
     {
         enterTheTriggerView();
@@ -397,15 +346,11 @@ private slots:
         QVERIFY2(shortened.at(1) == tall.at(1) + (tall.at(0) - shortened.at(0)),
                  qPrintable(qsl("the code pane should have grown by the %1px the form gave up and sat at %2px, it is at %3px")
                                     .arg(QString::number(tall.at(0) - shortened.at(0)), QString::number(tall.at(1) + tall.at(0) - shortened.at(0)), QString::number(shortened.at(1)))));
-        // The form gave its room to the code pane rather than to the error
-        // console under it
+        // The form's height trades with the code pane only; the error console (index 2) stays put
         QCOMPARE(shortened.at(0) + shortened.at(1), tall.at(0) + tall.at(1));
         QCOMPARE(shortened.at(2), tall.at(2));
     }
 
-    // The exception to the snap, and the whole of it: a view whose handle the
-    // user has dragged keeps that height as the item in it changes, and no
-    // other view is given it.
     void test_aDraggedViewKeepsItsHeightAndOnlyThatView()
     {
         enterTheTriggerView();
@@ -413,12 +358,9 @@ private slots:
         const int tallestFormNeeds = mpSplitter->sizes().at(0);
         chooseTrigger(mpShortTrigger);
         const int panes = panesTotal();
-        // As tall as the form is dragged in this case: past what any of the
-        // three items fills on its own, and still inside what the seam will
-        // hand that height back at. A drag may take the code pane under its
-        // share, but the snap that reads the height afterwards keeps that pane
-        // codePaneFloor() of the two - so a drag past it is measured against
-        // the clamp rather than against what this case came to measure.
+        // Past what the tallest item fills, yet short of where the snap that
+        // reads the height back clamps the code pane to codePaneFloor() - a
+        // deeper drag would measure the clamp instead
         dragFormPaneTo(std::min({tallestFormNeeds + 80, panes - scmSourcePaneFloor - 40, panes - panes / 3}));
         const int draggedTo = mpSplitter->sizes().at(0);
         QVERIFY2(mpEditor->mDraggedFormPaneHeights.value(EditorViewType::cmTriggerView) == draggedTo,
@@ -434,8 +376,6 @@ private slots:
         QVERIFY2(mpSplitter->sizes().at(0) == draggedTo,
                  qPrintable(qsl("an eleven-row trigger pulled the dragged form from %1px to %2px").arg(QString::number(draggedTo), QString::number(mpSplitter->sizes().at(0)))));
 
-        // ...and only this view. The aliases have never been dragged, so they
-        // still snap.
         chooseTheAlias();
         const QList<int> aliasSizes = mpSplitter->sizes();
         const int aliasFormWants = formWants();
@@ -446,24 +386,14 @@ private slots:
                                     .arg(QString::number(aliasFormWants), QString::number(aliasSizes.at(0)))));
         QVERIFY2(aliasSizes.at(0) != draggedTo, "the alias form happens to want exactly the height the trigger view was dragged to, so this case proves nothing");
 
-        // ...and the trigger view still has it on the way back in
         enterTheTriggerView();
         chooseTrigger(mpShortTrigger);
         QVERIFY2(mpSplitter->sizes().at(0) == draggedTo,
                  qPrintable(qsl("the trigger view came back at %1px rather than the %2px it was dragged to").arg(QString::number(mpSplitter->sizes().at(0)), QString::number(draggedTo))));
     }
 
-    // The other half of the same fault as the shrink: the split was never the
-    // wrong size for the view, it was the wrong size for the item. A trigger
-    // with more pattern rows opened after one with a single row was given the
-    // height the single row needed, so the rows scrolled inside a pane a third
-    // of the window tall while the code pane under it sat nearly empty.
-    //
-    // The eleven-row item rather than the three-row one: the form's own rows
-    // are taller than they were - the options strip carries the caption saying
-    // why the modes are greyed out while there is only one pattern - so three
-    // rows now fit in the pane one row leaves, and the case would prove nothing
-    // about growing it.
+    // Eleven rows, not three: a one-row trigger's options caption already leaves
+    // room for three, so three would not prove the pane grows
     void test_choosingATallerItemGivesItsFormTheRoom()
     {
         enterTheTriggerView();
@@ -486,16 +416,13 @@ private slots:
         QVERIFY2(rowsShown >= rowsWant,
                  qPrintable(qsl("the pattern rows want %1px and are shown %2px, so the last of them is off the bottom of the form").arg(QString::number(rowsWant), QString::number(rowsShown))));
         QVERIFY2(!scrolling, "the pattern rows are still scrolling inside the form pane");
-        // ...and what the form grew by came off the code pane, which keeps its
-        // own floor - the editor is no use with a code pane too short to type in
         QVERIFY2(sizes.at(1) >= scmSourcePaneFloor, qPrintable(qsl("the code pane was left at %1, under the floor it keeps").arg(QString::number(sizes.at(1)))));
-        // The two of them still add up to what they did: the form took its room
-        // off the code pane rather than off the error console under it
+        // The form's height trades with the code pane only; the error console (index 2) stays put
         QCOMPARE(sizes.at(0) + sizes.at(1), panesForOne);
     }
 
-    // A dragged height lives for the session and no longer. Last of the cases,
-    // because it writes settings and builds the editor a restart would build.
+    // Last of the cases, because it writes settings and builds the editor a
+    // restart would build
     void test_nothingOfASessionsDragSurvivesIntoTheNextOne()
     {
         enterTheTriggerView();
@@ -506,10 +433,7 @@ private slots:
         const int draggedTo = mpSplitter->sizes().at(0);
         QVERIFY2(mpEditor->mDraggedFormPaneHeights.contains(EditorViewType::cmTriggerView), "the drag was not recorded, so there is nothing here for a restart to lose");
 
-        // The editor a restart builds, on the same profile and a configuration
-        // still carrying a split under all seven of the keys that used to hold
-        // one - written again here because any save in between will have taken
-        // the seeded ones out
+        // Seeded again: any save in between will have taken the seeded keys out
         for (const QString& key : retiredSplitterKeys()) {
             MudletApp::getQSettings()->setValue(key, mSeededState);
         }
@@ -545,8 +469,6 @@ private slots:
         delete pReopened;
         QCoreApplication::processEvents();
 
-        // ...and the keys the split used to be stored under are cleared rather
-        // than written back
         mpEditor->writeSettings();
         for (const QString& key : retiredSplitterKeys()) {
             QVERIFY2(!MudletApp::getQSettings()->contains(key), qPrintable(qsl("the editor still keeps %1, which it is now %2").arg(key, MudletApp::getQSettings()->value(key).toString())));

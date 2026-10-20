@@ -18,43 +18,9 @@
  ***************************************************************************/
 
 /*
- * The notice at the top of the column an item is edited in, and what the
- * pattern list under it does to the seam over the code pane.
- *
- * Thirteen things this holds them to:
- *
- * - A notice takes its own height and no more. The column is the notice, the
- *   gap under it and the form, so the fields sit exactly where they sit with
- *   no notice, moved down by the notice. They used to spread apart: the
- *   notice's wrapping label reported the height its text would have in a
- *   column a hundred pixels wide as its minimum, and the column was held to
- *   that.
- *
- * - With nothing chosen there is no form and no code pane, so the notice is
- *   the whole of the column - at the top of the pane, at its own height,
- *   rather than centred in it or stretched down it.
- *
- * - A form with no code pane under it - a Lua table has no value to edit -
- *   leads the pane the same way, at the height its own fields ask for. It was
- *   held to that height and then centred in the pane by QSplitter, which left
- *   the Name field floating half way down the window.
- *
- * - A pattern row added or taken away resizes the pane it is in. One click on
- *   Add pattern used to leave the pane where it was, so the new row pushed the
- *   button under the code heading and a scroll bar appeared beside the list.
- *
- * - A height the reader drags the seam to is kept net of the notice: a notice
- *   put up and taken down over it hands its room back to the pattern list.
- *   The drag used to be written down with whatever notice was up inside it, so
- *   each one that came and went afterwards took its own height off the list.
- *
- * - The count beside the "show hidden variables" switch belongs to the
- *   Variables view and leaves with it.
- *
- * - The notice is drawn by one owner: a hairline of the accent round a wash of
- *   it, in either appearance. It carried two sheets - its own and the editor's
- *   shell style - and an appearance change left the older of them showing, a
- *   3px band in the window's text colour over the wash.
+ * Guards the edit column's notice and pattern list against the seam over the code pane:
+ * a notice moves the form down without resizing it, pattern rows resize the pane, and a
+ * dragged seam height is kept net of any notice.
  *
  * Run with: ctest -R EditorNoticeSeamTest -V
  */
@@ -101,35 +67,27 @@ private:
     TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
-    // The rows the two items these cases edit are on. A fresh profile ships
-    // with items of its own, so neither is the first row of its tree.
+    // A fresh profile ships items of its own, so neither is the first row of its tree
     QTreeWidgetItem* mpTriggerRow = nullptr;
     QTreeWidgetItem* mpAliasRow = nullptr;
     const QString mProfileName = qsl("EditorNoticeSeam-Test-Profile");
 
-    // A drag of the seam, in the small steps a pointer really arrives in
+    // In the small steps a real pointer arrives in
     static constexpr int scmDragTravel = 120;
     static constexpr int scmDragStep = 20;
 
-    // The seam is placed by hand often enough to be a pixel or two off what was
-    // asked for, and this holds a height against where it was put
+    // A seam placed by hand lands a pixel off what was asked for
     static constexpr int scmSeamTolerance = 1;
 
-    // How far into the notice its fill is read: past the hairline the design
-    // draws, and inside the three pixels the legacy sheet's band was deep
+    // Past the 1px hairline, inside the 3px band the legacy sheet drew
     static constexpr int scmInsideTheBand = 2;
-    // ...and how far under the notice the column it is drawn on is read, which
-    // is inside the gap the column holds the form off it by
+    // Inside the gap the column holds the form off the notice by
     static constexpr int scmBelowTheNotice = 6;
-    // What the accent is washed over the page at - uiDesign's own accentSoft,
-    // which a stylesheet takes as an rgba() and a grab shows composited
+    // uiDesign's accentSoft alpha, which a grab shows composited over the page
     static constexpr qreal scmAccentWashAlpha = 0.14;
-    // An ink read off a grab is held to nearness rather than to a match, summed
-    // over the three channels: a rounded corner's edge is drawn antialiased,
-    // and the two things being told apart here are hundreds apart
+    // Summed over three channels: antialiased corners blur an ink, and the inks told apart are hundreds apart
     static constexpr int scmInkSlack = 40;
 
-    // The window every case here runs in
     static constexpr int scmEditorWidth = 1200;
     static constexpr int scmEditorHeight = 800;
 
@@ -140,8 +98,7 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // The one frame every measurement is taken in: each widget is nested a
-    // different number of layouts deep
+    // Mapped to the editor, since each widget is nested a different number of layouts deep
     int topEdgeOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
 
     int bottomEdgeOf(const QWidget* pWidget) const { return topEdgeOf(pWidget) + pWidget->height() - 1; }
@@ -152,16 +109,14 @@ private:
         return pLayout ? pLayout->spacing() : 0;
     }
 
-    // ...and what the column holds its last piece off the code heading by,
-    // which is in the height a column held to its contents is given
+    // Counted into the height a column held to its contents is given
     int columnBottomMargin() const
     {
         QLayout* pLayout = mpEditor->mpNonCodeWidgets->layout();
         return pLayout ? pLayout->contentsMargins().bottom() : 0;
     }
 
-    // The package warning, word for word, so that a case measures the notice
-    // against the length of text a reader actually meets
+    // The package warning word for word, so the notice wraps as it does for a reader
     void raiseTheNotice()
     {
         mpEditor->showWarning(qsl("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
@@ -174,8 +129,6 @@ private:
         settle();
     }
 
-    // The alias made in initTestCase(), loaded into the form the way choosing
-    // its row loads it, with nothing over that form
     void openTheAlias()
     {
         QVERIFY2(mpAliasRow != nullptr, "the alias these cases edit was never made");
@@ -187,8 +140,7 @@ private:
         takeTheNoticeDown();
     }
 
-    // ...and the trigger, chosen the way clicking its row chooses it - which
-    // is also what puts whatever the item has to say over the form
+    // Leaves up whatever notice choosing the row puts over the form
     void chooseTheTrigger()
     {
         QVERIFY2(mpTriggerRow != nullptr, "the trigger these cases edit was never made");
@@ -199,8 +151,6 @@ private:
         settle();
     }
 
-    // ...which comes back with the three patterns it was saved with however
-    // many rows the case before this one left on show
     void openTheTrigger()
     {
         chooseTheTrigger();
@@ -211,11 +161,8 @@ private:
 
     bool patternListScrolls() const { return mpEditor->mpScrollArea->verticalScrollBar()->isVisible(); }
 
-    // The appearance is changed at the application, which is what both the
-    // editor's restyle and the notice's own answer to, and the window is
-    // painted afterwards: painting is what settles a widget's palette against
-    // the application's, and under the offscreen platform nothing paints unless
-    // it is asked to
+    // grab() forces a paint: painting settles a widget's palette against the
+    // application's, and under the offscreen platform nothing paints unless asked
     void takeTheEditorTo(const enums::Appearance appearance)
     {
         mudlet::self()->setAppearance(appearance);
@@ -224,43 +171,28 @@ private:
         settle();
     }
 
-    // How far apart two inks read, summed over the three channels
     static int distanceBetween(const QColor& first, const QColor& second)
     {
         return std::abs(first.red() - second.red()) + std::abs(first.green() - second.green()) + std::abs(first.blue() - second.blue());
     }
 
-    // The ink a given number of rows down from the top of a box, read off a grab
-    // of the window it is in - the notice is drawn on the column behind it, and
-    // a widget grabbed on its own is grabbed against its own palette instead.
-    // The depth is in the window's own pixels, which a grab holds however many
-    // device pixels the screen gives each of them.
+    // Off a grab of the window: a widget grabbed alone is drawn against its own
+    // palette rather than the column behind it
     static QColor inkAt(const QImage& shot, const QRect& box, const int depth)
     {
         const qreal ratio = shot.devicePixelRatio();
-        // The first device row of the row asked for, so that a depth of 0 is
-        // inside a hairline one pixel deep however many device rows the screen
-        // draws it in - and the middle of the edge across, which is clear of
-        // the rounded corners
+        // The first device row, so depth 0 lands inside a 1px hairline at any device
+        // ratio; the middle across, clear of the rounded corners
         const int y = std::min(static_cast<int>((box.top() + depth) * ratio), shot.height() - 1);
         const int x = std::min(static_cast<int>(box.center().x() * ratio), shot.width() - 1);
         return shot.pixelColor(x, y);
     }
 
-    // Where the Add pattern button sits against the list it is the last thing
-    // in: negative while it is above the bottom of what can be seen, and zero
-    // when it ends on that bottom exactly, which is a list sized to its rows
     int addPatternButtonOverhang() const { return bottomEdgeOf(mpEditor->mpButton_addPattern) - bottomEdgeOf(mpEditor->mpScrollArea->viewport()); }
 
-    // The empty rows between the Add pattern button and the code heading. What
-    // the column holds its last piece off the heading by, and nothing more: the
-    // pattern list used to keep a scroll bar's row under its last row as well,
-    // because a scroll area's minimum hint counts that bar in whether or not it
-    // is showing.
+    // A scroll area's minimum hint counts its scroll bar in even while hidden
     int roomUnderAddPattern() const { return topEdgeOf(mpEditor->mpWidget_editorCodeHeader) - bottomEdgeOf(mpEditor->mpButton_addPattern) - 1; }
 
-    // The row a global of this name is on, which the Variables tree keeps under
-    // its one root
     QTreeWidgetItem* variableRow(const QString& name) const
     {
         QTreeWidgetItem* pBase = mpEditor->treeWidget_variables->topLevelItem(0);
@@ -279,36 +211,24 @@ private:
         settle();
     }
 
-    // A move with the button held, which QTest::mouseMove does not send: it
-    // reports no button down, and a splitter only follows a pointer that has
-    // one. The global point is what leads, since the handle moves out from
-    // under the pointer as the panes resize.
+    // QTest::mouseMove reports no button down, and a splitter follows only a held one.
+    // The global point leads: the handle moves out from under the pointer as panes resize.
     static void dragTo(QWidget* pHandle, const QPointF& global)
     {
         QMouseEvent move(QEvent::MouseMove, pHandle->mapFromGlobal(global), global, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(pHandle, &move);
     }
 
-    // A notice over the form, raised the way everything the notice still
-    // carries is raised. What the compiler made of the item in the editor is
-    // not one of those any more - the heading over the code pane says that -
-    // so the case puts one up itself rather than breaking the item's Lua.
+    // Raised directly: a broken item's Lua is reported on the code heading, not the notice
     void raiseANotice()
     {
         mpEditor->showError(qsl("Unable to activate this item, so the notice says so over the form"));
         settle();
     }
 
-    // The seam over the code pane, pulled down by scmDragTravel in the small
-    // steps a real pointer arrives in - which is the only thing that reaches
-    // slot_rightSplitterMoved(), and so the only thing that records a height.
-    //
-    // Not past what the seam will hand that height back at, though: a drag is
-    // free to leave the code pane as little as the reader likes, but the snap
-    // that reads the height afterwards keeps that pane its share of the two
-    // (codePaneFloor()), and a case that drags past the share is measuring the
-    // clamp rather than what it came to measure. roomForANoticeToCome is what
-    // the notice a case will put up afterwards takes out of the same pane.
+    // Small steps, since only a real drag reaches slot_rightSplitterMoved() and records a height.
+    // Stops short of codePaneFloor(), past which a case measures the clamp; roomForANoticeToCome
+    // is what a notice raised later takes out of the same pane.
     void dragTheSeamDown(const int roomForANoticeToCome = 0)
     {
         QSplitterHandle* pHandle = mpEditor->splitter_right->handle(1);
@@ -316,9 +236,7 @@ private:
         const QList<int> sizes = mpEditor->splitter_right->sizes();
         QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
         const int paneTotal = sizes.at(0) + sizes.at(1);
-        // What the cap leaves over the pane as it stands, less the notice to
-        // come and a step's worth on top of it: the notice measured now and the
-        // one that goes up later can differ by a pixel of wrapping
+        // A step spare: the notice measured now and the later one can differ by a pixel of wrapping
         const int room = paneTotal - mpEditor->codePaneFloor(paneTotal) - sizes.at(0) - roomForANoticeToCome - scmDragStep;
         const int travel = std::min(scmDragTravel, room - room % scmDragStep);
         QVERIFY2(travel >= scmDragStep,
@@ -355,8 +273,7 @@ private slots:
         mpEditor->resize(scmEditorWidth, scmEditorHeight);
         settle();
 
-        // A trigger holding three patterns, which is enough of a list that one
-        // row more than it asks for does not fit in the room the pane was given
+        // Three patterns, so one row more does not fit the room the pane was given
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         settle();
@@ -383,9 +300,7 @@ private slots:
         mSession.stop();
     }
 
-    // The notice is worth its own height and the gap under it, and nothing
-    // else: the fields of the form below it neither spread apart nor move
-    // anywhere but down
+    // A word-wrapping label's minimum height is its text at a very narrow width, which spread the form apart
     void test_aNoticeMovesTheFormDownAndLeavesItAlone()
     {
         openTheAlias();
@@ -418,17 +333,12 @@ private slots:
         takeTheNoticeDown();
     }
 
-    // With nothing chosen the notice is all the column holds, so it starts at
-    // the top of the pane and is as tall as the words in it - not centred half
-    // way down, and not stretched to the bottom
     void test_aNoticeWithNothingChosenLeadsThePane()
     {
         for (const bool triggers : {false, true}) {
             const QString view = triggers ? qsl("triggers") : qsl("aliases");
             QTreeWidget* pTree = triggers ? mpEditor->treeWidget_triggers : mpEditor->treeWidget_aliases;
 
-            // Where a notice starts with an item chosen, which is the top of
-            // the column either way
             if (triggers) {
                 openTheTrigger();
             } else {
@@ -468,11 +378,8 @@ private slots:
         }
     }
 
-    // A Lua table has no value to edit, so its form comes up with no code pane
-    // under it. The column has the pane to itself and leads it at the height
-    // its own fields ask for - held to that height it was a lone child shorter
-    // than the pane, and QSplitter centres one of those, which left the Name
-    // field floating half way down the window.
+    // A Lua table has no value, so no code pane; QSplitter centres a lone child
+    // shorter than the pane, which leaves the Name field half way down the window
     void test_aFormWithNoCodePaneLeadsThePane()
     {
         QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("seamString = \"north\"")), "the string variable this case measures against could not be made");
@@ -480,8 +387,7 @@ private slots:
         mpEditor->slot_showVariables();
         settle();
 
-        // A string has a value, so its form comes up over a code pane: where
-        // that form starts is where one with no code pane has to start too
+        // A string has a value and so a code pane, which makes its form's top the reference
         QTreeWidgetItem* pString = variableRow(qsl("seamString"));
         QVERIFY2(pString != nullptr, "the string variable is not on the Variables tree");
         chooseTheVariable(pString);
@@ -511,9 +417,6 @@ private slots:
         QVERIFY2(mpEditor->mpVarsMainArea->height() == wanted,
                  qPrintable(qsl("the form is %1 tall with the pane to itself, where its fields ask for %2").arg(mpEditor->mpVarsMainArea->height()).arg(wanted)));
 
-        // ...and a notice over it costs it the same as it costs a form with a
-        // code pane under it: the height of the notice and the gap, and nothing
-        // else
         raiseTheNotice();
         QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "the notice did not come up over the form with no code pane, so the rest of this case says nothing");
         const int shift = mpEditor->mpSystemMessageArea->height() + columnSpacing();
@@ -524,9 +427,6 @@ private slots:
         takeTheNoticeDown();
     }
 
-    // The trigger form's pattern list keeps its room under a notice: the seam
-    // moves by what the notice takes rather than the list being squeezed under
-    // it, so Add pattern still sits the column's gap above the code heading
     void test_theAddPatternButtonKeepsItsPlaceUnderANotice()
     {
         openTheTrigger();
@@ -550,9 +450,6 @@ private slots:
         takeTheNoticeDown();
     }
 
-    // One click on Add pattern is one row more than the pane was sized for, so
-    // the pane is sized again - the new row and the button under it are both on
-    // show without the list having to scroll
     void test_addingAPatternRowMakesRoomForIt()
     {
         openTheTrigger();
@@ -568,8 +465,6 @@ private slots:
         QVERIFY2(!patternListScrolls(), "a scroll bar came up beside the pattern list after one row was added");
     }
 
-    // ...and a row taken away gives the room back rather than leaving it empty
-    // until the trigger is chosen afresh
     void test_deletingAPatternRowGivesTheRoomBack()
     {
         openTheTrigger();
@@ -590,22 +485,13 @@ private slots:
                                     .arg(columnBefore)));
     }
 
-    // A height the reader drags the seam to is theirs to keep, and a notice
-    // that comes and goes over it hands its room back. The dragged height was
-    // written down raw - with whatever notice was up inside it - and re-applied
-    // whole while a notice was up again, so the pattern list paid the notice's
-    // height a second time and kept paying it: every notice that came and went
-    // took another one off.
-    //
-    // The pane is sized at the end of choosing an item, with whatever notice is
-    // over the form counted into the column. So the notice goes up first and
-    // the pane is sized under it, which is the order a selection runs in.
+    // The notice goes up before the pane is sized, the order a selection runs in:
+    // sizing counts whatever notice is over the form into the column
     void test_aDraggedSeamKeepsItsHeightAcrossANotice()
     {
         chooseTheTrigger();
         raiseANotice();
-        // Measured while it is up, since the drag below has to stop short of
-        // the room the same notice will ask for when the pane is sized again
+        // Measured while up: the drag must stop short of the room it will ask for later
         const int noticeRoomToCome = mpEditor->noticeRoomInFormColumn();
         takeTheNoticeDown();
 
@@ -639,13 +525,10 @@ private slots:
                                     .arg(draggedTo + noticeRoom)));
         QVERIFY2(qAbs(afterTheNotice - draggedTo) <= scmSeamTolerance, qPrintable(qsl("the seam was dragged to %1 and a notice that came and went left it at %2").arg(draggedTo).arg(afterTheNotice)));
 
-        // A dragged height is kept for the rest of the session, and every other
-        // case here reads a seam that snaps to the item it is showing
+        // A dragged height lasts the session, and the other cases expect a seam that snaps to its item
         mpEditor->mDraggedFormPaneHeights.remove(EditorViewType::cmTriggerView);
     }
 
-    // The reading of how many variables are hidden is said beside the switch
-    // that shows them, and both belong to the Variables view
     void test_theHiddenVariablesCountLeavesWithTheVariablesView()
     {
         mpEditor->slot_showVariables();
@@ -659,10 +542,6 @@ private slots:
         QVERIFY2(!mpEditor->checkBox_displayAllVariables->isVisible(), "the switch itself is still showing outside the Variables view");
     }
 
-    // A trigger with more rows than the pane has room for used to open scrolled
-    // to the empty row after its last pattern, with the first ones out of sight;
-    // the reader came to see the patterns from the top. Adding a row still
-    // scrolls to the row it adds.
     void test_aTriggerWithMoreRowsThanFitOpensAtItsFirstRow()
     {
         chooseTheTrigger();
@@ -687,9 +566,6 @@ private slots:
         settle();
     }
 
-    // The seam keeps the code pane its floor whenever it places it; a drag of
-    // the heading used to be free to take it under, down to whatever the pane's
-    // widgets would shrink to
     void test_aDragCannotTakeTheCodePaneUnderItsFloor()
     {
         chooseTheTrigger();
@@ -718,11 +594,8 @@ private slots:
                  qPrintable(qsl("a drag took the code pane down to %1, under its floor of %2").arg(after.at(1)).arg(dlgTriggerEditor::scmEditorSourcePaneFloor)));
     }
 
-    // The notice is drawn by one owner, in either appearance: a hairline of the
-    // accent round a wash of it. It used to carry two sheets - its own legacy
-    // one and the editor's shell style - on the same frame, and an appearance
-    // change ran them in the order that left the legacy one showing: a 3px band
-    // in the window's text colour, over the wash.
+    // Guards a second, legacy sheet on the frame that an appearance change left
+    // showing as a 3px band in the text colour over the wash
     void test_theNoticeIsDrawnInTheAccentInEitherAppearance()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -756,8 +629,7 @@ private slots:
             if (distanceBetween(border, tokens.accent) > scmInkSlack) {
                 misses << qsl("%1: the frame's edge is %2 against the accent %3 it is drawn in").arg(appearance.first, border.name(), tokens.accent.name());
             }
-            // A band three pixels deep reads the same at both depths, which is
-            // the whole of what the legacy sheet did
+            // A 3px band reads the same at both depths, a hairline does not
             if (distanceBetween(justInside, border) <= scmInkSlack) {
                 misses << qsl("%1: the frame is %2 at its edge and %3 %4px in, so what it carries is a band rather than a hairline")
                                   .arg(appearance.first, border.name(), justInside.name())

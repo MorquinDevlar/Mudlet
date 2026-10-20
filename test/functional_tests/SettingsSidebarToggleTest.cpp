@@ -18,24 +18,9 @@
  ***************************************************************************/
 
 /*
- * The settings dialog's sidebar is the editor's sidebar: the same component,
- * the same rail, and now the same chevron on the seam between it and what it
- * selects.
- *
- * Two things decide what that sidebar is drawn as, and only one of them is the
- * user's. The chevron's choice is kept across sessions under
- * settingsSidebarLabelsShown - a labels-shown preference, since the sidebar has
- * no closed state to remember: it minimises to a rail of icons and every
- * category goes on being one click away, with its name as a tooltip. A dialog
- * nobody has told opens with the names, as the editor does. A window too
- * narrow to draw the names
- * takes them away regardless, and that one is transient: it must never reach
- * the stored preference, or a stretch of work in a small window would decide
- * what every later session opens with.
- *
- * The width the names are drawn at is measured off the names themselves rather
- * than written down, the way the editor's is - a flat 232px was what this
- * sidebar used to be held to whatever it held.
+ * Guards the settings sidebar's chevron and its stored labels-shown preference:
+ * a window too narrow for the names forces the rail but must never write it to
+ * the preference, or one small window would decide every later session.
  *
  * Run with: ctest -R SettingsSidebarToggleTest -V
  */
@@ -70,12 +55,9 @@
 
 using namespace std::chrono_literals;
 
-// What a style leaves round an item's text is the whole of what the two
-// appearances differ by on a desktop - two pixels either side under the dark
-// theme's Fusion proxy, four under the platform's own style on macOS - and it
-// is what decides whether a row's name is drawn out or elided. Under the
-// offscreen platform these run on both appearances are Fusion, so the
-// difference is installed rather than waited for.
+// On a desktop the appearances' styles leave different text margins (2px under
+// dark's Fusion proxy, 4px under macOS's style), deciding whether a name elides.
+// Offscreen both appearances are Fusion, so the difference is installed instead.
 namespace {
 class WiderTextMarginStyle : public QProxyStyle
 {
@@ -89,21 +71,16 @@ public:
     }
 };
 
-// How much more of a row's name is inked once it is the chosen one. Bold stems
-// cover more pixels than regular ones of the same size, and this is two thirds
-// of the way from no difference at all to the 1.59x measured here - a name
-// drawn at one weight in both states comes to 1.11x, which is the whole of what
-// the colours and the pill under them are worth.
+// Measured: a bold chosen name inks 1.59x its unchosen self, one weight in both
+// states 1.11x (colours and pill alone); 1.40 is 2/3 of the way from 1.0 to 1.59.
 constexpr double scmBoldInkFloor = 1.40;
 
-// A name is painted with a solid pen, so its stems come back opaque whatever
-// they are drawn over. Only the antialiased edges are part of the way there,
-// and those follow the background rather than the weight.
+// A solid pen leaves stems opaque on any background; only antialiased edges
+// fall below, and those follow the background rather than the weight.
 constexpr int scmOpaqueInk = 192;
 constexpr int scmInkSpread = 24;
 
-// The pixels of one colour a rect holds. A weight cannot be read back off a
-// widget, so the picture is the only witness there is.
+// A font weight cannot be read back off a widget, so the grab is the only witness.
 int inkPixels(const QImage& picture, const QRect& area, const QColor& ink)
 {
     int found = 0;
@@ -134,8 +111,7 @@ private:
     Host* mpHost = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
     const QString mProfileName = qsl("SettingsSidebarToggle-Test");
-    // The size the dialog refuses to go below, which is well under the width
-    // the names need
+    // The dialog's minimum size, well under the width the names need
     const QSize mTooNarrow = QSize(780, 560);
     const QSize mWideEnough = QSize(1060, 760);
 
@@ -144,17 +120,13 @@ private:
     QListWidget* categories() const { return TestSettings::sidebar(mpPreferences); }
     uiDesign::SidebarToggle* toggle() const { return mpPreferences->findChild<uiDesign::SidebarToggle*>(qsl("settingsSidebarToggle")); }
 
-    // The mode is the property the shared delegate and the sidebar's rules both
-    // read, so it is what the window is actually drawing rather than a copy of
-    // the intent
+    // The property the delegate and the stylesheet read: what is drawn, not a copy of the intent
     bool railShowing() const { return categories()->property(uiDesign::scmProp_rail).toBool(); }
 
     static bool storedLabelsShown() { return MudletApp::getQSettings()->value(qsl("settingsSidebarLabelsShown"), true).toBool(); }
 
     static bool anythingStored() { return MudletApp::getQSettings()->contains(qsl("settingsSidebarLabelsShown")); }
 
-    // The widest of the names the sidebar has to be able to draw, in the bold a
-    // chosen row is written in
     int widestBoldName() const
     {
         QFont nameFont = categories()->font();
@@ -167,10 +139,8 @@ private:
         return widest;
     }
 
-    // What each row leaves for its name against what the name comes to, in the
-    // bold a chosen row is drawn in. The text rect is not the answer on its
-    // own: QCommonStyle draws inside it shrunk by PM_FocusFrameHMargin + 1 on
-    // each side, so a name that only just fits the rect is still elided.
+    // QCommonStyle draws inside the text rect shrunk by PM_FocusFrameHMargin + 1
+    // on each side, so a name that only just fits the rect is still elided.
     QStringList namesTooNarrowForTheirRows(QStringList& measured) const
     {
         QListWidget* pList = categories();
@@ -186,8 +156,7 @@ private:
         option.decorationSize = pList->iconSize();
         option.decorationPosition = QStyleOptionViewItem::Left;
         option.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
-        // Any picture of the right size: what a row costs beside its name is
-        // the space the glyph is given, not the glyph
+        // Any blank of the right size: a row's cost is the glyph's space, not the glyph
         QPixmap blank(pList->iconSize());
         blank.fill(Qt::transparent);
         option.icon = QIcon(blank);
@@ -223,9 +192,7 @@ private:
         return squeezed;
     }
 
-    // Where a row's name is drawn, in the list's own coordinates. Taken with the
-    // bold the chosen row is written in, so that the same rect covers the name
-    // in either state and the two pictures are read at the same place.
+    // In bold, so the same rect covers the name chosen or not and both grabs read the same place
     QRect nameAreaOf(const int row) const
     {
         QListWidget* pList = categories();
@@ -250,9 +217,8 @@ private:
         return pList->style()->subElementRect(QStyle::SE_ItemViewItemText, &option, pList).translated(pList->viewport()->mapTo(pList, QPoint(0, 0)));
     }
 
-    // The selectable row with the longest name, where a change of weight has the
-    // most to show for itself. The support link at the foot of the list is
-    // named but never chosen, so its flags keep it out.
+    // The longest name shows a change of weight most. The support link at the
+    // foot of the list is named but never selectable, so its flags keep it out.
     int longestNamedRow() const
     {
         QListWidget* pList = categories();
@@ -288,8 +254,7 @@ private:
         QTest::qWait(50ms);
     }
 
-    // The dialog's own control, which is the path that restyles every open
-    // window rather than only this one
+    // The dialog's own control: the path that restyles every open window, not only this one
     void takeTheDialogTo(const enums::Appearance appearance)
     {
         if (mpPreferences->comboBox_appearance->currentIndex() == appearance) {
@@ -363,8 +328,6 @@ private slots:
         mSavedNoThemeDownload.isNull() ? qunsetenv("MUDLET_TEST_NO_THEME_DOWNLOAD") : qputenv("MUDLET_TEST_NO_THEME_DOWNLOAD", mSavedNoThemeDownload);
     }
 
-    // Nothing stored, a window with all the room it needs: the dialog opens
-    // with its names showing, the way the editor does
     void test_aDialogNobodyHasToldOpensWithItsNames()
     {
         qInfo().noquote() << qsl("  %1").arg(state());
@@ -372,20 +335,14 @@ private slots:
         QVERIFY2(sidebar()->width() > uiDesign::scmSidebarRailWidth, qPrintable(qsl("the sidebar has the rail's width with its names showing: %1").arg(state())));
         QVERIFY2(!anythingStored(), "opening the dialog wrote a preference nobody chose");
         QVERIFY2(toggle()->isEnabled(), "the chevron cannot be pressed on a window with room for the names");
-        // Pointing the way the sidebar will go: into the seam, since pressing
-        // it is what takes the names away
         QVERIFY2(toggle()->pointingLeft(), "the names are showing and the chevron does not point at the sidebar");
-        // With the names on show a row needs no tooltip to say what it is
         QListWidgetItem* pItem = categories()->item(TestSettings::rowOf(mpPreferences, qsl("mapper")));
         QVERIFY2(!pItem->text().isEmpty(), "a row lost the text that is its accessible name");
         QVERIFY2(pItem->toolTip().isEmpty(), "a row with its name on show still repeats it as a tooltip");
         QVERIFY2(!mpPreferences->findChild<QLabel*>(qsl("settingsWordmark"))->isHidden(), "the wordmark is hidden beside a sidebar with room for it");
     }
 
-    // Where it is: on the line the sidebar's pane ends on, halfway down that
-    // pane - not inside either of the two things it lies between. Read in both
-    // modes, because the line moves when the sidebar gives its names up and the
-    // control has to follow it.
+    // Read in both modes: the seam moves when the sidebar becomes a rail
     void test_theToggleRidesTheSeamBesideTheSidebar()
     {
         QVERIFY2(toggle()->parentWidget() == shell(), "the toggle is a child of one of the two things it lies between, which would clip it");
@@ -412,15 +369,11 @@ private slots:
         }
         qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("; ")));
         QVERIFY2(adrift.isEmpty(), qPrintable(qsl("the settings sidebar's toggle is not on the seam: %1").arg(adrift.join(qsl("; ")))));
-        // The second of the two presses above put the names back, which is the
-        // state the next case starts from
+        // The next case starts from the names showing
         QVERIFY2(!railShowing(), qPrintable(qsl("the second press did not put the names back: %1").arg(state())));
     }
 
-    // Pressed, the names go and a rail of icons is left - and the choice is
-    // written down as it is made rather than waiting for the dialog to be shut.
-    // The names are what a screen reader announces the rows as, so the rail
-    // offers them on hover rather than dropping them.
+    // The rail keeps each row's text, which a screen reader announces, and shows it on hover
     void test_theToggleTakesTheNamesAwayAndWritesItDown()
     {
         pressTheToggle();
@@ -433,15 +386,12 @@ private slots:
         QCOMPARE(pItem->toolTip(), pItem->text());
         QVERIFY2(mpPreferences->findChild<QLabel*>(qsl("settingsWordmark"))->isHidden(), "the wordmark is drawn beside a rail that has no room for it");
 
-        // ...and back, written down again, which is where the cases below start
+        // Back to the names, where the cases below start
         pressTheToggle();
         QVERIFY2(!railShowing(), qPrintable(qsl("the second press did not put the names back: %1").arg(state())));
         QVERIFY2(storedLabelsShown(), qPrintable(qsl("putting the names back did not write the choice down: %1").arg(state())));
     }
 
-    // The width is measured off the names rather than written down: wide enough
-    // that the longest of them is not squeezed, and no wider than the flat
-    // 232px this sidebar was held to before it measured anything
     void test_theSidebarIsAsWideAsItsNamesAndNoWider()
     {
         QVERIFY2(!railShowing(), "this case starts from the names showing");
@@ -451,16 +401,11 @@ private slots:
         QVERIFY2(measured >= widest + uiDesign::scmSidebarRailWidth,
                  qPrintable(qsl("the sidebar is %1px wide, which leaves the widest name (%2px) less than a rail's width of chrome around it").arg(measured).arg(widest)));
         QVERIFY2(measured <= 232, qPrintable(qsl("the measured sidebar is %1px, wider than the flat 232px it replaced").arg(measured)));
-        // ...and the wordmark row over the names is drawn out rather than
-        // elided, which is the other thing the pane has to hold
         QWidget* pWordmarkRow = mpPreferences->findChild<QLabel*>(qsl("settingsWordmark"))->parentWidget();
         QVERIFY2(pWordmarkRow->width() >= pWordmarkRow->sizeHint().width(),
                  qPrintable(qsl("the wordmark row wants %1px and was given %2px").arg(pWordmarkRow->sizeHint().width()).arg(pWordmarkRow->width())));
     }
 
-    // The width's own collapse, over a preference that says otherwise. It is
-    // the sidebar that changes and nothing else: the preference is untouched,
-    // so widening the window again is settled by it alone
     void test_aNarrowWindowForcesTheRailWithoutStoringIt()
     {
         QVERIFY2(!railShowing(), "this case starts from the names showing");
@@ -469,8 +414,6 @@ private slots:
         qInfo().noquote() << qsl("  %1").arg(state());
         QVERIFY2(railShowing(), qPrintable(qsl("a window too narrow for the names kept them: %1").arg(state())));
         QVERIFY2(storedLabelsShown(), qPrintable(qsl("running out of room rewrote the user's preference: %1").arg(state())));
-        // The toggle cannot be pressed here, so it says why rather than doing
-        // nothing
         QVERIFY2(!toggle()->isEnabled(), "the toggle offers labels a window this narrow cannot draw");
         QVERIFY2(toggle()->toolTip() != toggle()->accessibleName(), "the toggle a narrow window has disabled still offers to show the labels");
 
@@ -479,9 +422,6 @@ private slots:
         QVERIFY2(toggle()->isEnabled(), "the toggle is still refusing on a window with room for the names");
     }
 
-    // The toggle says what happens to the labels rather than open or close, and
-    // a screen reader hears the same words - which matters most in the rail,
-    // where the rows have given their names up to their tooltips
     void test_theToggleNamesWhatItDoesToTheLabels()
     {
         const QString showing = toggle()->accessibleName();
@@ -497,8 +437,6 @@ private slots:
         QVERIFY2(!storedLabelsShown(), qPrintable(qsl("the press above did not write the rail down: %1").arg(state())));
     }
 
-    // The round trip: the choice is the dialog's rather than this instance's,
-    // and a brand new one opens with it
     void test_theChoiceSurvivesAFreshDialog()
     {
         QVERIFY2(railShowing(), "this case starts from the rail the case above left");
@@ -516,14 +454,9 @@ private slots:
         QVERIFY2(!railShowing(), qPrintable(qsl("a fresh dialog forgot that the names had been asked for: %1").arg(state())));
     }
 
-    // The chosen row is drawn bold, which is the weight the sidebar's width was
-    // measured in - sidebarRowWidth() asks the style for a name in bold, so a
-    // row rendered at regular weight is a pane wider than what it holds. The
-    // weight is SidebarItemDelegate's: a font-weight on an ::item never reaches
-    // the painter, which lays the name out in the style option's own font. So
-    // nothing structural can prove it and the picture is asked instead - the
-    // same rect of the same row, once while it is chosen and once while it is
-    // not.
+    // sidebarRowWidth() measures in bold, so a regular chosen row means a pane wider
+    // than it needs. An ::item font-weight never reaches SidebarItemDelegate's
+    // painter, so nothing structural proves the weight and the grab is asked.
     void test_theChosenRowIsDrawnBold()
     {
         if (railShowing()) {
@@ -539,9 +472,7 @@ private slots:
         const QString name = pList->item(chosen)->text();
         const QRect nameArea = nameAreaOf(chosen);
 
-        // The pane is already measured against a bold name, so drawing one must
-        // not move it - a width that changed with the selection would shift
-        // every row under the pointer
+        // A width that changed with the selection would shift every row under the pointer
         const int paneBefore = sidebar()->width();
         const int rowBefore = pList->visualItemRect(pList->item(chosen)).width();
 
@@ -552,9 +483,8 @@ private slots:
         const int paneChosen = sidebar()->width();
         const int rowChosen = pList->visualItemRect(pList->item(chosen)).width();
 
-        // Full strength rather than the editor's muted tone: this sidebar is the
-        // dialog's navigation, and tokens.text is what it hands
-        // sidebarStyleSheet() as the item colour
+        // tokens.text, not the editor's muted tone: the item colour this sidebar
+        // hands sidebarStyleSheet()
         chooseRow(other);
         QCOMPARE(pList->currentRow(), other);
         const int inkWhenNot = inkPixels(pList->grab().toImage(), nameArea, tokens.text);
@@ -587,20 +517,12 @@ private slots:
                                     .arg(name, QString::number(paneBefore), QString::number(paneChosen), QString::number(rowBefore), QString::number(rowChosen))));
     }
 
-    // The width has to hold the names under whichever style is drawing the
-    // rows. The two appearances are two different base styles on a desktop - a
-    // Fusion proxy on dark, the platform's own on light - and they leave
-    // different margins round an item's text, so a sidebar measured with one
-    // number for both draws the names out in one appearance and elides them in
-    // the other. Under the offscreen platform this runs on both appearances are
-    // Fusion, which is why the last pass installs the difference outright.
     void test_everyNameFitsItsRowUnderTheStyleDrawingThem()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
         auto restore = qScopeGuard([appearanceBefore]() {
-            // The appearance builds a style of its own, whatever was put in its
-            // place; the loading flag is what makes it do that for an
-            // appearance already in force
+            // The loading flag makes setAppearance rebuild its own style for an
+            // appearance already in force, replacing WiderTextMarginStyle
             mudlet::self()->setAppearance(appearanceBefore, true);
         });
         if (railShowing()) {
@@ -613,9 +535,8 @@ private slots:
         const auto walkTheRows = [this, &squeezed](const QString& drawnBy) {
             QCoreApplication::sendPostedEvents();
             QTest::qWait(100ms);
-            // Reported rather than asserted: a return out of a lambda is
-            // all QVERIFY2 can do here, and a silent one would leave the walk
-            // below unrun and the case passing on an empty list
+            // Reported, not asserted: QVERIFY2 would only return from the lambda,
+            // leaving the walk unrun and the case passing on an empty list
             if (railShowing()) {
                 squeezed << qsl("%1: the sidebar gave its names up altogether (%2)").arg(drawnBy, state());
                 return;

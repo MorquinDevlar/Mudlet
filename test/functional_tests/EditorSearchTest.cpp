@@ -96,11 +96,8 @@ private:
         mpEditor->slot_searchMudletItems(0);
     }
 
-    // The result tree is two deep and one column wide: an item that matched is a
-    // heading row carrying its kind and its name, and every place inside it that
-    // matched - the first one included - hangs off that heading. What each row
-    // shows is drawn by uiDesign::SearchResultDelegate out of the roles below
-    // rather than written into columns.
+    // Each matched item is a heading row with every match, the first included, as a
+    // child; SearchResultDelegate paints the rows from the roles below, not from columns
     static QString typeOf(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::TypeLabelRole).toString(); }
     static QString titleOf(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::TitleRole).toString(); }
     static QString whereOf(const QTreeWidgetItem* row) { return row->data(0, uiDesign::SearchResultDelegate::WhereRole).toString(); }
@@ -145,8 +142,7 @@ private:
         return nullptr;
     }
 
-    // A search that found nothing still leaves one row - the line saying so -
-    // and that line is not a result
+    // A search that finds nothing still leaves one notice row saying so, which is not a result
     int totalResultRows() const
     {
         auto* results = mpEditor->treeWidget_searchResults;
@@ -313,8 +309,7 @@ private slots:
 
         auto* result = topLevelResultFor(qsl("Button"));
         QVERIFY(result);
-        // The heading carries the first match's navigation data as well as its
-        // own, so clicking it goes where the first match under it goes
+        // Clicking the heading has to go where the first match under it goes
         QVERIFY(result->childCount() > 0);
         QCOMPARE(whereOf(result->child(0)), qsl("Name"));
         QCOMPARE(static_cast<EditorViewType>(result->data(0, dlgTriggerEditor::ItemRole).toInt()), EditorViewType::cmActionView);
@@ -516,13 +511,11 @@ private slots:
         search(mNeedle);
         QVERIFY(totalResultRows() > 0);
 
-        // Emptying the field is how the panel is put back to the profile's own
-        // items, so the results go with it rather than being left behind
+        // Emptying the field puts the panel back to the profile's own items, so the results go with it
         mpEditor->comboBox_searchTerms->lineEdit()->clear();
         QCOMPARE(totalResultRows(), 0);
 
-        // The slot's own guard is the other half: an entry with nothing in it,
-        // and no entry at all, both leave whatever was found alone
+        // Unlike clearing the field, the slot itself ignores an empty or missing entry
         search(mNeedle);
         const int found = totalResultRows();
         QVERIFY(found > 0);

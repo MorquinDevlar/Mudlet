@@ -18,26 +18,9 @@
  ***************************************************************************/
 
 /*
- * The editor's status bar carries how many items the view holds and when the
- * profile last saved itself. Where the caret is in the code pane is not on it:
- * that is a fact about one pane, and it is read at the end of that pane's own
- * heading - see EditorCodeHeadingTest.
- *
- * It used to go out through showMessage(), the channel a status bar keeps for
- * something it will take away again. A message on that channel hides the bar's
- * plain widgets for as long as it stands and is painted in the space they
- * leave. The caret report was sent with no timeout, so it stood for the life of
- * the window and the counts could never be read again once the code pane had
- * said anything. Worse, the first report arrives before the window is on
- * screen, and QStatusBar::hideOrShow() passes over a widget that is not visible
- * yet - so the counts label was never hidden at all, and the message was
- * painted over the top of it. That is what the reader saw: "Line 1, Column 1,
- * Offset 0" laid over "14 triggers - 12 active" in the bottom left corner.
- *
- * What is left on the bar is the counts on the message side and the last save
- * at the trailing edge, and the message channel is left to the editor's
- * genuinely temporary messages - the ones that borrow the counts label's place
- * for the two or three seconds they are shown and then give it back.
+ * The status bar carries only the item counts and the last save. A caret report sent
+ * by showMessage() with no timeout was painted over the counts: hideOrShow() passes
+ * over widgets not yet visible, and the first report arrives before the window shows.
  *
  * Run with: ctest -R EditorStatusBarTest -V
  */
@@ -69,27 +52,19 @@ private:
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorStatusBar-Test-Profile");
-    // How far apart, summed over the three channels, two inks may be and still
-    // be one ink: antialiasing lands the darkest pixel of a glyph a shade off
+    // Summed over three channels: antialiasing lands a glyph's darkest pixel a shade off
     static constexpr int scmInkTolerance = 24;
 
     QStatusBar* statusBar() const { return mpEditor->statusBar(); }
 
-    // Where a label sits in the bar, so that two of them can be asked whether
-    // they are in the same place
     static QRect placeInTheBar(const QWidget* pLabel, const QWidget* pBar) { return QRect(pLabel->mapTo(pBar, QPoint(0, 0)), pLabel->size()); }
 
     static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
 
-    // What a piece of text is painted in, read off a shot of the window: the
-    // pixel in its rectangle furthest from the ground at its corner. A palette
-    // can say one thing and the style paint another, which is why the paint is
-    // what is read.
+    // A palette can say one thing and the style paint another, so the paint is read
     static QColor paintedInk(const QImage& shot, const QRect& rect)
     {
-        // A shot of a window on a screen that doubles its pixels is twice the
-        // size the window measures, so the rectangle has to be taken there
-        // before anything in it can be read
+        // grab() is in device pixels, the rectangle in logical ones
         const qreal shotRatio = shot.devicePixelRatio();
         const QRect inShot =
                 QRect(QPoint(qRound(rect.left() * shotRatio), qRound(rect.top() * shotRatio)), QPoint(qRound(rect.right() * shotRatio), qRound(rect.bottom() * shotRatio))).intersected(shot.rect());
@@ -126,17 +101,14 @@ private slots:
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 800);
-        // Everything below reads which of the bar's widgets are on show, and a
-        // window the compositor has not put up yet has none of them showing -
-        // so the cases say so rather than reading nothing and failing
+        // None of the bar's widgets read as shown until the window is exposed
         QVERIFY2(QTest::qWaitForWindowExposed(mpEditor, 2000), "the editor window was never put on screen, so nothing in its status bar is showing");
         QVERIFY2(statusBar() != nullptr, "The editor window has no status bar");
     }
 
     void init()
     {
-        // A trigger to look at, so the counts have something to count and the
-        // code pane holds a document the caret can be moved about in
+        // Something for the counts to count and a document for the caret to move in
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         mpEditor->mpSourceEditorEdbee->textDocument()->setText(qsl("-- somewhere for the caret to be\n"));
@@ -157,8 +129,6 @@ private slots:
         mSession.stop();
     }
 
-    // Nothing the code pane says goes out as a message, and nothing on the bar
-    // reports the caret: both belong to the code pane's own heading now.
     void test_theCaretReadingIsNotAMessageOnTheBar()
     {
         edbee::TextEditorController* pController = mpEditor->mpSourceEditorEdbee->controller();
@@ -179,10 +149,7 @@ private slots:
         qInfo().noquote() << qsl("  the counts read \"%1\" at %2, with the bar carrying no message").arg(pCounts->text(), describe(placeInTheBar(pCounts, statusBar())));
     }
 
-    // ...and what the message channel is left for: the editor's own messages,
-    // which take the counts label's place for the seconds they are shown and
-    // then hand it back. The counts label is laid out on the message side
-    // precisely so that this happens, so it is worth having it written down.
+    // The counts sit on the message side on purpose, so a timed message can borrow their place
     void test_timedMessageBorrowsTheCountsThenReturnsThem()
     {
         QLabel* pCounts = mpEditor->mpLabel_statusCounts;
@@ -198,9 +165,6 @@ private slots:
         QTRY_VERIFY2(pCounts->isVisible(), "the counts label never came back once the message had timed out");
     }
 
-    // The bar is written in the sidebar's hand: the same face at the same size
-    // and weight as the names down the left of the window, so the two edges of
-    // the window read as one thing rather than the bar as small print under it
     void test_theBarIsWrittenLikeTheSidebar()
     {
         QListWidget* pSidebar = mpEditor->mpListWidget_editorSidebar;
@@ -223,8 +187,7 @@ private slots:
                      qPrintable(qsl("%1 is not written in the sidebar's hand").arg(pLabel->objectName())));
         }
 
-        // ...and in the sidebar's ink, as painted rather than as the rules say:
-        // a name that is not the chosen one, against the counts
+        // An unchosen sidebar row: the chosen one is painted in the selection's colours
         QTRY_VERIFY2(!mpEditor->mpLabel_statusCounts->text().isEmpty(), "the counts label never filled, so there is no ink to read");
         QVERIFY2(pSidebar->count() > 1 && pSidebar->currentRow() != 1, "the sidebar has no unchosen second row to read the ink from");
         const QImage shot = mpEditor->grab().toImage();

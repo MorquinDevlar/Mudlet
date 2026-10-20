@@ -291,7 +291,6 @@ private slots:
         TAlias* pAlias = mpHost->getAliasUnit()->getAlias(pKill->data(0, dlgTriggerEditor::FolderPartsRole).toStringList().constFirst().split(QLatin1Char(':')).constLast().toInt());
         QVERIFY(pAlias);
         QCOMPARE(pDelegate->markOf(indexOf(pKill)), uiDesign::EditorTreeDelegate::RowMark::None);
-        // Read off the alias as the row is drawn, as an alias tree's own row is
         const auto dotBefore = pDelegate->dotStateOf(indexOf(pKill));
         const bool wasActive = pAlias->isActive();
         pAlias->setIsActive(!wasActive);

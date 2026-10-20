@@ -18,17 +18,9 @@
  ***************************************************************************/
 
 /*
- * The state dot at the head of an editor tree row is a switch, and
- * uiDesign::EditorTreeDelegate answers the clicks that land on it. What the
- * view does with the rest of such a click is the subject here: it records what
- * was pressed before it consults a delegate at all, and it only consults one
- * about an event that lands on a row - so a press the dot answered has to be
- * seen through by a filter on the viewport rather than by editorEvent().
- *
- * The cases are the three ways that used to go wrong: a drifted double click
- * toggling twice, a press on the dot turning into a drag of its row, and a
- * press whose release landed elsewhere leaving the delegate swallowing every
- * later drag-select.
+ * Guards the viewport filter EditorTreeDelegate uses for clicks on a row's dot and
+ * chevron: the view records a press before consulting a delegate, and consults one
+ * only for events on a row, so editorEvent() alone cannot see a press through.
  *
  * Run with: ctest -R EditorTreeDotClickTest -V
  */
@@ -49,12 +41,9 @@
 using namespace std::chrono_literals;
 
 namespace {
-// Whether the view has entered DraggingState is the whole of one assertion
-// below, and QAbstractItemView keeps both state() and the State enum protected.
-// Using-declarations in a class derived from it make those names public there,
-// and the address taken of the member function is an ordinary pointer to a
-// QAbstractItemView member - so the view is asked through its own type, with no
-// cast of the object involved.
+// QAbstractItemView keeps state() and State protected; using-declarations in a
+// subclass make them public, and &ViewStatePeek::state is still a pointer to a
+// QAbstractItemView member, so the view is read with no cast of the object
 struct ViewStatePeek : QTreeView
 {
     using QAbstractItemView::NoState;
@@ -82,8 +71,7 @@ private:
     QWidget* viewport() const { return tree()->viewport(); }
     QTreeWidgetItem* baseItem() const { return mpEditor->mpTriggerBaseItem; }
 
-    // QTreeWidget::indexFromItem() is protected, and the row's rectangle is
-    // wanted here anyway
+    // QTreeWidget::indexFromItem() is protected
     QModelIndex indexOf(QTreeWidgetItem* pItem) const { return tree()->indexAt(tree()->visualItemRect(pItem).center()); }
 
     uiDesign::EditorTreeDelegate* dotDelegate() const { return qobject_cast<uiDesign::EditorTreeDelegate*>(tree()->itemDelegateForIndex(QModelIndex())); }
@@ -92,29 +80,23 @@ private:
 
     QRect chevronRect(QTreeWidgetItem* pItem) const { return dotDelegate()->chevronHitRect(indexOf(pItem)); }
 
-    // A group with a trigger inside it, made the way the editor makes one: a new
-    // item goes inside whichever folder is chosen, and what has just been added
-    // is what is chosen next
+    // addTrigger() adds inside the chosen folder and then chooses the new item,
+    // so the trigger lands inside the group
     QTreeWidgetItem* aGroupHoldingATrigger()
     {
         tree()->setCurrentItem(baseItem());
         mpEditor->addTrigger(true);
         QTreeWidgetItem* pGroup = tree()->currentItem();
         mpEditor->addTrigger(false);
-        // Opening the group is animated, and a view part-way through one of
-        // those answers a press itself rather than passing it on to whatever
-        // was pressed - the same guard the view's own arrow used to sit behind
+        // The expand is animated, and a view mid-animation answers a press
+        // itself rather than passing it on
         QTest::qWait(400ms);
         return pGroup;
     }
 
-    // Both ways the editor can be asked to switch a row: the delegate's own
-    // request, and the view's activated() that a double click on a row reaches.
-    // They arrive at one slot, so their sum is how many times the switch was
-    // thrown - which is what these cases are about, and is not the same
-    // question as what the item ended up as. A trigger with no patterns is one
-    // activeToggle_trigger() forces straight back off however it was asked, and
-    // every trigger the editor has just made is one of those.
+    // Counts requests rather than reading the item: activeToggle_trigger() forces
+    // a trigger with no patterns, as every new one is, straight back off.
+    // toggleRequested and itemActivated both reach that one slot.
     struct ToggleCounter
     {
         ToggleCounter(uiDesign::EditorTreeDelegate* pDelegate, TTreeWidget* pTree)
@@ -156,8 +138,6 @@ private slots:
         mSession.stop();
     }
 
-    // Two sibling triggers under the base item, both freshly made, so that every
-    // case starts from the same rows in the same order
     void init()
     {
         mpEditor->slot_showTriggers();
@@ -179,7 +159,6 @@ private slots:
         QVERIFY2(!tree()->visualItemRect(baseItem()->child(1)).isEmpty(), "Both rows should be laid out and visible");
     }
 
-    // A click on the dot switches the row it leads, once, and picks that row
     void testSingleClickOnDotTogglesOnce()
     {
         QTreeWidgetItem* pItem = baseItem()->child(1);
@@ -194,13 +173,10 @@ private slots:
         QCoreApplication::processEvents();
 
         QCOMPARE(toggles.count(), 1);
-        // The slot the request reaches reads the tree rather than being handed a
-        // row, so choosing the row is half of what a dot click has to do
+        // The toggle slot reads the tree's current item rather than being handed a row
         QCOMPARE(tree()->currentItem(), pItem);
     }
 
-    // The pair's first press has already switched the row, so the second press
-    // and the release that closes it are both eaten
     void testDoubleClickOnDotTogglesOnce()
     {
         QTreeWidgetItem* pItem = baseItem()->child(1);
@@ -217,11 +193,8 @@ private slots:
         QCOMPARE(toggles.count(), 1);
     }
 
-    // The platform allows a double click a few pixels of drift, and the dot is
-    // small enough that the second press can land off it while still being the
-    // second press of the pair. Handed on, it reaches the view's activated() and
-    // switches the row straight back - a visible flip and flip back, with the
-    // trigger stopped and restarted on the way.
+    // A double click tolerates a few pixels of drift, so its second press can
+    // land off the small dot; handed on, it reaches activated() and flips the row back
     void testDriftedDoubleClickTogglesOnce()
     {
         QTreeWidgetItem* pItem = baseItem()->child(1);
@@ -244,16 +217,9 @@ private slots:
         QCOMPARE(toggles.count(), 1);
     }
 
-    // A press on the dot must not become a drag of the row it is on, however far
-    // the pointer travels before the button comes back up - including out of the
-    // rows altogether, which is where the view stops consulting the delegate.
-    //
-    // The drag distance is raised for the duration so that the view can enter
-    // DraggingState without going on to start a real drag: startDrag() ends in
-    // QDrag::exec(), which runs a modal event loop that only a mouse release can
-    // end, and the release is in the events this test has yet to send. Entering
-    // DraggingState is the assertion either way - a drag cannot start without
-    // it, and the state is reached before the distance is even measured.
+    // The pointer leaves the rows too, where the view stops consulting the delegate.
+    // The drag distance is raised so no real drag starts: QDrag::exec() runs a modal
+    // loop only a release ends, and DraggingState is entered before distance is measured.
     void testPressOnDotDoesNotStartDrag()
     {
         QTreeWidgetItem* pItem = baseItem()->child(1);
@@ -288,10 +254,8 @@ private slots:
         QCOMPARE(baseItem()->childCount(), 2);
     }
 
-    // A press on the dot whose release lands on another row is one the view
-    // never hands back, so the delegate has to hear the release for itself -
-    // otherwise it goes on believing a dot press is live and swallows the moves
-    // of every drag-select made afterwards.
+    // The view never hands back a release on another row; a delegate that misses
+    // it thinks the dot press is live and swallows every later drag-select's moves
     void testReleaseOffTheRowLeavesDragSelectWorking()
     {
         QTreeWidgetItem* pFirst = baseItem()->child(0);
@@ -311,7 +275,6 @@ private slots:
 
         QCOMPARE(toggles.count(), 1);
 
-        // ...and now a rubber band drawn from the blank space up across both rows
         tree()->clearSelection();
         QCoreApplication::processEvents();
         QTest::mousePress(viewport(), Qt::LeftButton, Qt::NoModifier, blank);
@@ -324,10 +287,6 @@ private slots:
         QVERIFY2(selected.contains(pFirst) && selected.contains(pSecond), qPrintable(qsl("A drag-select across both rows should have selected both, but selected %1 item(s)").arg(selected.size())));
     }
 
-    // The chevron is drawn by the same delegate, in the cell the view used to
-    // draw its branch arrow in, and answers its presses the same way - so what
-    // the view did with a click there has to go on happening: the row folds, and
-    // nothing else about it moves.
     void testClickOnChevronFoldsTheRowAndLeavesTheSelectionAlone()
     {
         QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
@@ -343,7 +302,7 @@ private slots:
         QCoreApplication::processEvents();
         QVERIFY2(!pGroup->isExpanded(), "A click on the chevron did not fold the group away");
 
-        // ...and the folding is animated in its turn
+        // The collapse is animated too
         QTest::qWait(400ms);
         QTest::mouseClick(viewport(), Qt::LeftButton, Qt::NoModifier, chevronRect(pGroup).center());
         QCoreApplication::processEvents();
@@ -353,19 +312,15 @@ private slots:
         QCOMPARE(tree()->currentItem(), pChosen);
     }
 
-    // The keyboard reaches the same folding, and never went through the arrow
-    // the view drew - so it has to be unaffected by the arrow having moved into
-    // the row. What is guarded is the delegate's event filter: it sits on the
-    // tree's viewport and eats some of what the pointer does there, and a key
-    // has to pass straight through it.
+    // Guards the delegate's viewport event filter: it eats some pointer events,
+    // and a key has to pass straight through it
     void testArrowKeysStillFoldTheRow()
     {
         uiDesign::EditorTreeDelegate* pDelegate = dotDelegate();
         QVERIFY2(pDelegate != nullptr, "the triggers tree is not drawn by an EditorTreeDelegate, so there is no filter here for a key to be swallowed by");
         QVERIFY2(tree()->itemDelegate() == pDelegate, "the tree's rows are drawn by something other than the delegate that carries the filter");
-        // Qt reads back no list of the filters on a widget, so that the filter
-        // is on tree()->viewport() is taken from the delegate's constructor,
-        // which installs it there - the clicks below are the guard on it
+        // Qt cannot list a widget's event filters, so the filter's place on the
+        // viewport is not asserted
 
         QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
         tree()->setCurrentItem(pGroup);
@@ -382,9 +337,7 @@ private slots:
         QVERIFY2(pGroup->isExpanded(), "The right arrow key did not open the group again");
     }
 
-    // A double click on the chevron folds the row once and switches nothing: the
-    // pair's first press has already folded it, and the second handed on would
-    // reach the view's activated() and switch the group on or off
+    // The pair's second press, handed on, would reach activated() and switch the group
     void testDoubleClickOnChevronFoldsOnceAndSwitchesNothing()
     {
         QTreeWidgetItem* pGroup = aGroupHoldingATrigger();
@@ -403,9 +356,6 @@ private slots:
         QVERIFY2(!pGroup->isExpanded(), "A double click on the chevron should leave the group folded, having folded it once");
     }
 
-    // A double click on the row itself is the editor's way of switching an item
-    // on or off, and the view folds the row under it at the same time. Neither
-    // half went through the chevron, and neither may be swallowed by it.
     void testDoubleClickOnTheRowStillSwitchesIt()
     {
         QTreeWidgetItem* pGroup = aGroupHoldingATrigger();

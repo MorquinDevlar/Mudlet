@@ -22,9 +22,7 @@
  * shared theme download cache, so a profile moved to another machine can name
  * a theme that is not there. edbee's editor then paints with its fallback
  * theme, and the trigger pattern line edits must highlight from the same one
- * rather than dereference the theme that is not there. What they are drawn in
- * is not the theme's business either way: a pattern row is a field on a form,
- * so its colours come from setFieldColors().
+ * rather than dereference the theme that is not there.
  *
  * Run with: ctest -R MissingEditorThemeTest -V
  */
@@ -87,9 +85,8 @@ private slots:
 
         SingleLineTextEdit patternEdit;
         // The fallback is black on white, which a default palette may already
-        // be, so pre-paint with a colour it does not use: the highlighter has to
-        // reach the fallback's inks, and the field's own colours have to stay
-        // where setFieldColors() left them
+        // be, so pre-paint with a colour it does not use: the field's own colours
+        // have to stay where setFieldColors() left them
         const QColor sentinel(Qt::magenta);
         QVERIFY(fallback->backgroundColor() != sentinel && fallback->foregroundColor() != sentinel);
         QPalette sentinelPalette = patternEdit.palette();
@@ -112,10 +109,8 @@ private slots:
 
         QCOMPARE(anchorFormat().foreground().color(), fallback->foregroundColor());
 
-        // A pattern row is a field on a form rather than a slice of the code
-        // pane, so what it is drawn in comes from setFieldColors() and a theme
-        // never writes to it - the sentinel is still there afterwards, and a
-        // token carries no background of the theme's either
+        // A pattern row is a form field, not a slice of the code pane, so its
+        // colours come from setFieldColors() and a theme never writes to them
         QCOMPARE(patternEdit.palette().color(QPalette::Base), sentinel);
         QCOMPARE(patternEdit.palette().color(QPalette::Text), sentinel);
         QCOMPARE(patternEdit.viewport()->palette().color(QPalette::Base), sentinel);

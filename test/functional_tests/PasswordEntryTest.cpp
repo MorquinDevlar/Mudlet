@@ -1048,8 +1048,7 @@ private slots:
         QTRY_COMPARE(box()->geometry(), commandLine()->geometry());
     }
 
-    // The box opens over the command line and goes with the game's next line, so a
-    // row that sat anywhere else in the command line would jump as it came and went
+    // The box comes and goes over the command line, so a row placed anywhere else would jump
     void test_theBoxPutsItsTextWhereTheCommandLinePutsItsRow()
     {
         const int fontSizeBefore = commandLine()->font().pointSize();

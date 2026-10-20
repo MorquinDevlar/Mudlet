@@ -18,16 +18,9 @@
  ***************************************************************************/
 
 /*
- * The two menus the script editor owns - the one Save Profile drops and the
- * search options behind the search field - are drawn by the design language
- * rather than by the platform: the card surface, the hairline and the corner a
- * combo box's dropped-down list takes, with the one mark on a row that is
- * switched on or off.
- *
- * A menu is a window of its own, filled before anything in it is drawn, so the
- * corner has to be cut out of that window as well as off the frame - which is
- * read here the way the settings dialog's combo box popup is read, off a grab
- * that keeps its alpha.
+ * The script editor's two menus are drawn by the design language. A menu is a
+ * window filled before anything in it is drawn, so its corner has to be cut out
+ * of that window as well as off the frame - read off a grab that keeps alpha.
  *
  * Run with: ctest -R EditorMenuStyleTest -V
  */
@@ -63,18 +56,16 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorMenuStyle-Test-Profile");
 
-    // How far a pixel may be from a colour and still be read as that colour: a
-    // rounded edge and a glyph are both drawn against what is behind them, and
-    // a screen that doubles its pixels blends more of it again
+    // Generous: rounded edges and glyphs blend with what is behind them, and more
+    // so on a screen that doubles its pixels
     static constexpr int scmMarkInkSlack = 40;
 
     QToolButton* saveProfileButton() const { return qobject_cast<QToolButton*>(mpEditor->toolBar->widgetForAction(mpEditor->mProfileSaveAction)); }
 
     QMenu* searchOptionsMenu() const { return mpEditor->findChild<QMenu*>(qsl("pMenu_searchOptions")); }
 
-    // Every sheet standing over the menu, since the rules that draw one are
-    // carried by whatever it hangs off - the toolbar for the button's menu, the
-    // menu itself for the one hanging off the window
+    // A menu's rules are carried by whatever it hangs off - the toolbar for the
+    // button's menu, the menu itself for the one hanging off the window
     static QString sheetsReaching(const QWidget* pMenu)
     {
         QString sheets;
@@ -86,9 +77,8 @@ private:
         return sheets;
     }
 
-    // Shown rather than only asked for: a menu is polished against the sheets
-    // over it when it is popped up, and the window it is drawn in is only made
-    // at that first show
+    // Popped up: a menu is polished against the sheets over it, and its window
+    // made, only at its first show
     QImage grabOfMenu(QMenu* pMenu, const QPoint& where) const
     {
         pMenu->popup(where);
@@ -101,18 +91,15 @@ private:
         return shot;
     }
 
-    // Where the pointer would drop each menu: under the button for the one it
-    // hangs off, and under the search field for the other
     QPoint underTheSaveProfileButton() const
     {
         const QToolButton* pButton = saveProfileButton();
         return pButton ? pButton->mapToGlobal(QPoint(0, pButton->height())) : mpEditor->mapToGlobal(QPoint(20, 60));
     }
 
-    // The rectangle the style hands the half that opens the menu. Asked for
-    // rather than clicked: a popup runs an event loop of its own that a case
-    // cannot get back out of, and the option is filled the way QToolButton
-    // fills its own for a button in MenuButtonPopup mode.
+    // Asked of the style rather than clicked: a popup runs an event loop a case
+    // cannot get back out of. Filled as QToolButton fills its own in
+    // MenuButtonPopup mode.
     static QRect menuHalfOf(QToolButton* pButton)
     {
         QStyleOptionToolButton option;
@@ -129,8 +116,7 @@ private:
 
     QImage grabOfTheBar() const { return mpEditor->toolBar->grab().toImage().convertToFormat(QImage::Format_ARGB32); }
 
-    // Where the pointer is, said in the way a widget hears it, and left long
-    // enough for the button to have taken the state and been asked to paint
+    // The wait lets the button take the hover state and be asked to paint
     static void pointAt(QWidget* pWidget, const QPoint& where)
     {
         QTest::mouseMove(pWidget, where);
@@ -138,9 +124,8 @@ private:
         QTest::qWait(30ms);
     }
 
-    // What a patch of the grab comes to, rather than one pixel of it: a wash
-    // over a face is a few levels' difference, and a single pixel that landed
-    // on a glyph or on an antialiased edge is not that difference
+    // A patch rather than a pixel: a wash is a few levels' difference, and one
+    // pixel on a glyph or an antialiased edge would swamp it
     static QColor averageColour(const QImage& shot, const QRect& box)
     {
         const QRect inside = box.intersected(shot.rect());
@@ -170,8 +155,6 @@ private:
 
     static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
 
-    // How many pixels well inside the mark's box are not the fill it is drawn
-    // on: none in an empty box, a good few once the tick is in it
     static int markedPixelsIn(const QImage& shot, const QRect& box, const QColor& fill)
     {
         const QRect inside = box.adjusted(box.width() / 4, box.height() / 4, -box.width() / 4, -box.height() / 4);
@@ -186,11 +169,8 @@ private:
         return marked;
     }
 
-    // The square the mark on a checkable row is drawn in: at the size every
-    // choice indicator is drawn at, standing in the room the row leaves at its
-    // leading end. Found rather than named - where in that room it stands is
-    // the recipe's own business - by walking in from the row's edge until the
-    // surface gives way to the mark's outline.
+    // Found by walking in from the row's edge rather than named, since where the
+    // mark stands in the row's leading room is the recipe's own business
     static QRect markBoxOf(const QMenu* pMenu, QAction* pAction, const QImage& shot)
     {
         const QRect row = inTheGrabsPixels(shot, pMenu->actionGeometry(pAction));
@@ -231,8 +211,6 @@ private slots:
         mSession.stop();
     }
 
-    // Saving the profile under another name hangs off the button beside it, so
-    // the bar's own sheet is what has to reach it
     void test_theSaveProfileMenuIsDrawnFromTheDesign()
     {
         QToolButton* pButton = saveProfileButton();
@@ -247,10 +225,6 @@ private slots:
         QVERIFY2(sheets.contains(tokens.card.name()), qPrintable(qsl("the Save Profile menu is not drawn on the design's card surface (%1)").arg(tokens.card.name())));
     }
 
-    // ...and it is opened round the same corner the combo boxes' lists are. The
-    // menu is its own window, and a window is filled before what is in it is
-    // drawn, so a radius on the frame alone leaves square corners showing
-    // through in the fill.
     void test_theSaveProfileMenuIsOpenAtTheCorner()
     {
         QToolButton* pButton = saveProfileButton();
@@ -266,10 +240,8 @@ private slots:
         const qreal ratio = shot.devicePixelRatio();
         const int middle = shot.height() / 2;
         const QColor corner = QColor::fromRgba(shot.pixel(0, 0));
-        // The hairline at the menu's left edge halfway down, where it is a
-        // straight run of the line rather than the corner it is rounded
-        // through, and the surface a couple of pixels inside it - which is the
-        // band the frame leaves round the rows, so no row is being read here
+        // Halfway down, the left edge is a straight run of the hairline, and two
+        // pixels in is the band the frame leaves round the rows
         const QColor hairline = QColor::fromRgba(shot.pixel(0, middle));
         const QColor surface = QColor::fromRgba(shot.pixel(qRound(2 * ratio), middle));
         QVERIFY2(corner.alpha() == 0, qPrintable(qsl("the menu's corner is painted %1 rather than cut away, so its radius has a square window behind it").arg(corner.name(QColor::HexArgb))));
@@ -279,11 +251,6 @@ private slots:
                  qPrintable(qsl("the menu is painted %1 rather than the card surface's %2").arg(surface.name(QColor::HexArgb), tokens.card.name())));
     }
 
-    // Save Profile is two click areas, and has to read as two before the
-    // pointer arrives: the seam down the leading edge of the trailing half says
-    // so at rest, the design's chevron stands on that half rather than the
-    // platform's filled triangle, and the half lights on its own when it is
-    // what is being pointed at.
     void test_theSaveProfileButtonShowsItsTwoHalves()
     {
         QToolButton* pButton = saveProfileButton();
@@ -300,16 +267,13 @@ private slots:
         QVERIFY2(half.width() > 4 && half.height() > 8, qPrintable(qsl("the style hands the menu a %1x%2 rectangle, which is nothing to read").arg(half.width()).arg(half.height())));
         QVERIFY2(half.left() > pButton->width() / 2, "the half that opens the menu is not the trailing one");
 
-        // The pointer is put somewhere neither half can claim before the button
-        // is read at rest, since a case run after one that left it hovered
-        // would otherwise read a lit button as its resting state
+        // Off the button first: an earlier case may have left it hovered
         pointAt(mpEditor->toolBar, QPoint(2, 2));
         const QImage rest = grabOfTheBar();
         const QRect halfInGrab = inTheGrabsPixels(rest, QRect(pButton->mapTo(mpEditor->toolBar, half.topLeft()), half.size()));
         QVERIFY2(halfInGrab.width() > 4 && halfInGrab.height() > 8, "the menu half does not land inside the grab of the bar");
 
-        // The seam, read down the straight run of it rather than through the
-        // ends, where the half's own corners round away from the line
+        // Clear of the ends, where the half's own corners round away from the line
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const int from = halfInGrab.top() + halfInGrab.height() / 5;
         const int to = halfInGrab.bottom() - halfInGrab.height() / 5;
@@ -326,9 +290,7 @@ private slots:
                 ++onTheLine;
             }
         }
-        // ...and a couple of pixels in from it, which has to be something else
-        // entirely: a seam is a line, and a half filled in the hairline's tone
-        // would pass the reading above at every column
+        // Control: a half filled in the hairline's tone would pass the reading above
         const int inside = halfInGrab.left() + qMax(3, qRound(3 * rest.devicePixelRatio()));
         const QColor justInside = rest.pixelColor(inside, halfInGrab.center().y() - halfInGrab.height() / 4);
 
@@ -347,23 +309,17 @@ private slots:
         QVERIFY2(distanceBetween(justInside, tokens.border) > scmMarkInkSlack,
                  qPrintable(qsl("the half is filled with the hairline's own tone (%1 a few pixels in), so what was read at its edge is a fill rather than a seam").arg(justInside.name())));
 
-        // A band across the top of the half, clear of the seam at one edge and
-        // of the chevron standing in the middle of it, and one of the same
-        // height in the gap the padding leaves between the words and the seam,
-        // which is the button's own face with nothing drawn over it
+        // The wash band sits clear of the seam and the chevron; the face band sits
+        // in the padding between the words and the seam, where nothing is drawn
         const int inset = qMax(3, qRound(3 * rest.devicePixelRatio()));
         const int bandHeight = qMax(2, halfInGrab.height() / 5);
         const QRect wash(halfInGrab.left() + inset, halfInGrab.top() + qMax(2, qRound(2 * rest.devicePixelRatio())), halfInGrab.width() - qMax(5, qRound(5 * rest.devicePixelRatio())), bandHeight);
         const QRect face(halfInGrab.left() - 2 * inset, wash.top(), inset, bandHeight);
         const QColor atRest = averageColour(rest, wash);
 
-        // Pointed at, the half has to be drawn as something other than the face
-        // beside it. Which of the two the pointer is actually over is not asked:
-        // a tool button's hover is tracked through QStyle::hitTestComplexControl,
-        // which QStyleSheetStyle does not answer for CC_ToolButton, so the
-        // button reports SC_ToolButton for a point anywhere on it and no sheet
-        // can tell the halves apart. What the wash says is that the half is a
-        // target of its own, not that it is the one under the pointer.
+        // Which half the pointer is over is not asked: QStyleSheetStyle does not
+        // answer hitTestComplexControl for CC_ToolButton, so the button reports
+        // SC_ToolButton anywhere on it and no sheet can tell the halves apart
         pointAt(pButton, half.center());
         const QImage lit = grabOfTheBar();
         const QColor litHalf = averageColour(lit, wash);
@@ -387,8 +343,6 @@ private slots:
         pointAt(mpEditor->toolBar, QPoint(2, 2));
     }
 
-    // The search options hang off the window rather than off a button, so they
-    // are drawn and opened up on their own
     void test_theSearchOptionsMenuIsDrawnFromTheDesign()
     {
         QMenu* pMenu = searchOptionsMenu();
@@ -405,8 +359,6 @@ private slots:
         QVERIFY2(corner.alpha() == 0, qPrintable(qsl("the search options menu's corner is painted %1 rather than cut away").arg(corner.name(QColor::HexArgb))));
     }
 
-    // ...and a search option that is switched on shows the one mark every other
-    // choice in the window is made with, in the ink that mark is drawn in
     void test_aCheckedSearchOptionCarriesTheOneMark()
     {
         QMenu* pMenu = searchOptionsMenu();
@@ -430,8 +382,7 @@ private slots:
         const QImage checked = grabOfMenu(pMenu, underTheSaveProfileButton());
         const int aTick = markedPixelsIn(checked, emptyBox, fill);
 
-        // The ink the mark is drawn in, which is measured against the fill it
-        // lies on rather than against the accent framing the box
+        // Against the fill the mark lies on rather than the accent framing the box
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const QColor markInk = uiDesign::readableOn(tokens.field, tokens.accent, tokens.text, uiDesign::scmQuietMinimumRatio);
         int nearest = 3 * 255;

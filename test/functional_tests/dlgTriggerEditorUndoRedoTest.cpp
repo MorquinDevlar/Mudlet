@@ -2846,14 +2846,8 @@ private slots:
     cleanupAll(mItemTypes[2]);
   }
 
-  // ========================================================================
-  // CATEGORY 16: Pattern row reordering, deletion and the match mode radios
-  // ========================================================================
-
-  // The pattern rows are a pool of widgets that is never reordered, so taking
-  // one away or moving one means copying what every row holds into its
-  // neighbour. Anything a type carries beyond its text - a colour pattern's
-  // button captions, a line spacer's count - has to travel with it.
+  // The row widgets are a pool that is never reordered, so a move or delete
+  // copies each row's content, and colour captions and spacer counts with it.
   void testPatternRowMoveDeleteAndMatchMode() {
     mpEditor->slot_showTriggers();
     cleanupAll(mItemTypes[0]);
@@ -2873,14 +2867,12 @@ private slots:
     mpEditor->showPatternItems(5);
     QVERIFY(mpEditor->mTriggerPatternEdit.size() >= 5);
 
-    // ANSI 1 in the foreground, background ignored - a pattern whose text is
-    // generated rather than typed, and whose row carries two button captions
+    // Its text is generated rather than typed, and its row carries two captions
     const QString colorPattern =
         TTrigger::createColorPatternText(1, TTrigger::scmIgnored);
 
-    // Filled top down: every content change collapses the rows under the last
-    // one that holds something, so a row is only written once the row above it
-    // already has content of its own.
+    // Top down: every content change collapses the rows under the last one that
+    // holds something
     mpEditor->mTriggerPatternEdit[0]->singleLineTextEdit_pattern->setPlainText(
         qsl("alpha"));
     mpEditor->mTriggerPatternEdit[1]->comboBox_patternType->setCurrentIndex(
@@ -2904,16 +2896,14 @@ private slots:
              QList<int>({REGEX_SUBSTRING, REGEX_COLOR_PATTERN,
                          REGEX_LINE_SPACER, REGEX_PROMPT, REGEX_SUBSTRING}));
 
-    // What the colour row shows for its two colours is read off the pattern
-    // text once, when the trigger is loaded, so it is only right after a move
-    // if the move carried it along.
+    // The colour captions are read off the pattern text only on load, so they
+    // are right after a move only if the move carried them
     const QString colorForeground =
         mpEditor->mTriggerPatternEdit[1]->pushButton_fgColor->text();
     const QString colorBackground =
         mpEditor->mTriggerPatternEdit[1]->pushButton_bgColor->text();
     QVERIFY(!colorForeground.isEmpty());
 
-    // Taking the first row away pulls all four below it up one place
     mpEditor->deletePatternRow(0);
     QCoreApplication::processEvents();
     mpEditor->saveTrigger();
@@ -2929,7 +2919,6 @@ private slots:
              colorBackground);
     QCOMPARE(mpEditor->mTriggerPatternEdit[1]->spinBox_lineSpacer->value(), 3);
 
-    // Carrying the substring at the bottom up over the colour row
     mpEditor->movePatternRowContent(3, 0);
     QCoreApplication::processEvents();
     mpEditor->saveTrigger();
@@ -2945,7 +2934,6 @@ private slots:
              colorBackground);
     QCOMPARE(mpEditor->mTriggerPatternEdit[2]->spinBox_lineSpacer->value(), 3);
 
-    // ...and back down over it again
     mpEditor->movePatternRowContent(0, 2);
     QCoreApplication::processEvents();
     mpEditor->saveTrigger();
@@ -2959,7 +2947,6 @@ private slots:
              colorForeground);
     QCOMPARE(mpEditor->mTriggerPatternEdit[1]->spinBox_lineSpacer->value(), 3);
 
-    // A row past the last one on show is not a place content may land
     const int lastVisible = mpEditor->lastVisiblePatternRow();
     QVERIFY(lastVisible < mpEditor->mTriggerPatternEdit.size() - 1);
     mpEditor->movePatternRowContent(0, lastVisible + 1);
@@ -2970,8 +2957,8 @@ private slots:
                  ->singleLineTextEdit_pattern->toPlainText(),
              QString());
 
-    // The radio pair is a view of spinBox_lineMargin, which is what the save
-    // and load paths still read. OR mode is the spin box's special first value.
+    // The radios are a view of spinBox_lineMargin, which save and load read; OR
+    // mode is the spin box's special first value
     QVERIFY(mpEditor->mpRadioButton_matchAll != nullptr);
     QCOMPARE(mpEditor->mpTriggersMainArea->spinBox_lineMargin->maximum(),
              mpEditor->mpSpinBox_matchWithinLines->maximum());
@@ -2980,8 +2967,8 @@ private slots:
     mpEditor->mpSpinBox_matchWithinLines->setValue(7);
     QCOMPARE(mpEditor->mpTriggersMainArea->spinBox_lineMargin->value(), 7);
 
-    // Past the 99 a QSpinBox defaults to, which the hidden control used to
-    // clamp the typed value back to
+    // Past QSpinBox's default maximum of 99, which a hidden control left at the
+    // default would clamp to
     mpEditor->mpSpinBox_matchWithinLines->setValue(500);
     QCOMPARE(mpEditor->mpTriggersMainArea->spinBox_lineMargin->value(), 500);
     QCOMPARE(mpEditor->mpSpinBox_matchWithinLines->value(), 500);
@@ -2990,7 +2977,7 @@ private slots:
     QCOMPARE(mpEditor->mpTriggersMainArea->spinBox_lineMargin->value(), -1);
     QVERIFY(!mpEditor->mpRadioButton_matchAll->isChecked());
 
-    // ...and the other way round, which is the path a load or an undo takes
+    // Spin box to radios is the path a load or an undo takes
     mpEditor->mpTriggersMainArea->spinBox_lineMargin->setValue(4);
     QVERIFY(mpEditor->mpRadioButton_matchAll->isChecked());
     QVERIFY(!mpEditor->mpRadioButton_matchAny->isChecked());
@@ -3004,10 +2991,6 @@ private slots:
     cleanupAll(mItemTypes[0]);
   }
 
-  // A trigger is opened with as many rows as it has patterns and no more: the
-  // trailing empty row the form used to grow by itself went away with the Add
-  // pattern button, so nothing appears under the cursor while a row is typed
-  // in, and one empty row is the floor a delete stops at.
   void testPatternRowFloorIsOneRow() {
     mpEditor->slot_showTriggers();
     cleanupAll(mItemTypes[0]);
@@ -3024,22 +3007,17 @@ private slots:
     mpEditor->slot_triggerSelected(trigger);
     mpEditor->mpUndoStack->clear();
 
-    // A new trigger has no patterns, so it opens with one empty row
     QCOMPARE(mpEditor->mVisiblePatternCount, 1);
-    // ...and the Any / All choice says why it cannot be used yet
     QVERIFY(mpEditor->mpLabel_matchModeHint != nullptr);
     QVERIFY(!mpEditor->mpWidget_matchModeRows->isEnabled());
-    // The form may not be on screen, so what is asked of the caption is that it
-    // is not hidden in its own right
+    // isHidden(), not isVisible(): the form may not be on screen
     QVERIFY(!mpEditor->mpLabel_matchModeHint->isHidden());
 
-    // Typing in the last row no longer grows the form
     mpEditor->mTriggerPatternEdit[0]->singleLineTextEdit_pattern->setPlainText(
         qsl("alpha"));
     QCoreApplication::processEvents();
     QCOMPARE(mpEditor->mVisiblePatternCount, 1);
 
-    // Return in the last row is what the keyboard adds one with
     QTest::keyClick(mpEditor->mTriggerPatternEdit[0]->singleLineTextEdit_pattern,
                     Qt::Key_Return);
     QCOMPARE(mpEditor->mVisiblePatternCount, 2);
@@ -3051,18 +3029,16 @@ private slots:
         qsl("beta"));
     QCoreApplication::processEvents();
     QCOMPARE(mpEditor->mVisiblePatternCount, 2);
-    // Two patterns is what the modes need, so the caption goes away again
+    // Any/All needs two patterns, so the second one enables the radios and hides the hint
     QVERIFY(mpEditor->mpWidget_matchModeRows->isEnabled());
     QVERIFY(mpEditor->mpLabel_matchModeHint->isHidden());
 
     mpEditor->saveTrigger();
     QCOMPARE(pT->getPatternsList(), QStringList({qsl("alpha"), qsl("beta")}));
 
-    // Loading it back shows those two rows and no trailing empty one
     mpEditor->slot_triggerSelected(trigger);
     QCOMPARE(mpEditor->mVisiblePatternCount, 2);
 
-    // Deleting down to the last row leaves it there, empty
     mpEditor->deletePatternRow(1);
     QCoreApplication::processEvents();
     QCOMPARE(mpEditor->mVisiblePatternCount, 1);

@@ -18,11 +18,9 @@
  ***************************************************************************/
 
 /*
- * A console's foot - its command line, and in the main window the search box,
- * the buttons and the latency readout beside it - is parted from the text above
- * by one 1px seam along its top, mixed from the profile's own command-line
- * colours, and by nothing else: the input has no frame of its own, so a border
- * a profile gives it through setCmdLineStyleSheet() is the only one drawn there.
+ * A console's foot is parted from the text above by one 1px seam mixed from the profile's
+ * command-line colours, and the input has no frame of its own, so a border a profile gives it
+ * through setCmdLineStyleSheet() is the only one drawn there.
  *
  * Run with: ctest -R ConsoleFootSeamTest -V
  */
@@ -54,8 +52,7 @@ private:
 
     static QWidget* seamOf(TConsole* pConsole) { return pConsole->findChild<QWidget*>(qsl("consoleFootSeam")); }
 
-    // The strength is the user's choice, written out here rather than read from
-    // the constant so the test says what was asked for
+    // 0.20 written out rather than read from the constant, so the test says what was asked for
     QColor expectedSeamColour() const { return uiDesign::blend(mpHost->mCommandLineBgColor, mpHost->mCommandLineFgColor, 0.20); }
 
     // As a QRgb: a grab holds eight bits a channel, where blend() mixes in floating point
@@ -113,9 +110,8 @@ private slots:
                 qPrintable(qsl("the command line's leading edge is %1, not its background %2, so something is still drawn round it").arg(describe(edge), describe(mpHost->mCommandLineBgColor.rgb()))));
     }
 
-    // The search box, the buttons and the latency readout sit beside the command
-    // line in a splitter, so a seam that stopped at the command line would leave
-    // a third of the foot without it
+    // The search box, buttons and latency readout share a splitter with the command line, so a
+    // seam on the command line alone would miss them
     void test_theSeamSpansTheWholeFootOfTheMainWindow()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();
@@ -137,11 +133,9 @@ private slots:
         QVERIFY2(pSeam->width() > pConsole->layerCommandLine->width(),
                  qPrintable(qsl("the seam is %1 wide, no wider than the command line's %2").arg(pSeam->width()).arg(pConsole->layerCommandLine->width())));
 
-        // Directly over the input and the buttons, with nothing between
         QCOMPARE(pConsole->mpCommandLine->mapTo(pConsole, QPoint()).y(), seamInConsole.y() + 1);
         QCOMPARE(pConsole->mpButtonMainLayer->mapTo(pConsole, QPoint()).y(), seamInConsole.y() + 1);
 
-        // ...and the text stops where the seam starts rather than running under it
         const int textBottom = pConsole->mpMainDisplay->mapTo(pConsole, QPoint(0, pConsole->mpMainDisplay->height())).y();
         QVERIFY2(textBottom <= seamInConsole.y(), qPrintable(qsl("the text area ends at %1, under the seam at %2").arg(textBottom).arg(seamInConsole.y())));
     }
@@ -161,9 +155,8 @@ private slots:
         }
     }
 
-    // No script can set the command-line colours; a profile or package import and
-    // the settings dialog both write the two members and then restyle the main
-    // console alone, which has to carry the change to every other console's foot
+    // No script can set these colours; import and the settings dialog write the two members and
+    // restyle the main console alone, which has to carry the change to every other console's foot
     void test_theSeamFollowsTheProfilesColoursWhenTheyChange()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();
@@ -204,8 +197,7 @@ private slots:
         QVERIFY2(miniPainted == expected.rgb(), qPrintable(qsl("after the change the miniconsole's seam is painted %1, not %2").arg(describe(miniPainted), describe(expected.rgb()))));
     }
 
-    // A miniconsole's foot is the command line alone, and the seam sits inside it.
-    // The hiding is tested here: Lua refuses to hide the main command line.
+    // Hiding is tested here because Lua refuses to hide the main command line
     void test_aMiniConsoleCommandLineCarriesTheSeamToo()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();
@@ -226,7 +218,7 @@ private slots:
         QCOMPARE(pSeam->mapTo(pMiniConsole, QPoint()).x(), 0);
         QCOMPARE(pSeam->width(), pMiniConsole->width());
         QCOMPARE(pSeam->mapTo(pMiniConsole, QPoint()).y() + 1, pMiniConsole->mpCommandLine->mapTo(pMiniConsole, QPoint()).y());
-        // The seam is the foot's extra pixel, not one taken off the input
+        // The seam adds a pixel to the foot rather than taking one off the input
         QCOMPARE(pMiniConsole->layerCommandLine->height(), pMiniConsole->mpCommandLine->height() + 1);
         const int priorMinimumHeight = mpHost->commandLineMinimumHeight;
         const auto restoreMinimumHeight = qScopeGuard([this, pMiniConsole, priorMinimumHeight]() {

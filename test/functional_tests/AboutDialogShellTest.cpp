@@ -18,30 +18,9 @@
  ***************************************************************************/
 
 /*
- * The About dialog was four tab pages of concatenated HTML with the version and
- * the copyright painted onto the splash picture in a serif face. It is now a
- * shell of real widgets over the same .ui file, and five things about that can
- * go wrong without anything else noticing.
- *
- * The version used to be part of the artwork, so it could not be selected,
- * copied, translated or read by a screen reader, and the picture could not be
- * scaled without the type going soft. It is a label now, and the picture is
- * whatever getSplashScreen() answered and nothing more - which is checked by
- * reading the band of pixels the old text was painted across.
- *
- * The build information is what a bug report needs, and the Copy button is the
- * whole of how it gets there.
- *
- * The third-party page is one row per component with the licence folded away.
- * How many rows there are depends on what this build actually bundles, so the
- * rows are held against the data rather than against a number typed here.
- *
- * The supporter pennants are drawn rather than lettered onto two raster frames.
- * One banner per name in each of the two lists, with the blades on the first
- * list alone.
- *
- * Steam builds may not point at Patreon at all, which used to be one branch in
- * one string and is now a button that is not built.
+ * Guards the About dialog's widget shell: nothing painted onto the splash, the
+ * Copy button, third-party rows held against the bundled data, and no Patreon
+ * button on Steam builds.
  *
  * Run with: ctest -R AboutDialogShellTest -V
  */
@@ -82,9 +61,7 @@ private:
     dlgAboutDialog* mpDialog = nullptr;
     const QString mProfileName = qsl("AboutDialogShell-Test-Profile");
 
-    // How far the two lists of supporters run, so that the banners can be
-    // counted rather than assumed. Kept here rather than read off the dialog:
-    // reading them off what is on screen would pass a page with nothing on it.
+    // Fixed here: counting what the dialog shows would pass an empty page
     static constexpr int scmSwordsSupporters = 6;
     static constexpr int scmPlaqueSupporters = 2;
 
@@ -115,7 +92,7 @@ private slots:
         }
 
         QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
-        // The captions below are read as words rather than as pictures
+        // Some assertions match English text
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
 
         QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
@@ -131,8 +108,6 @@ private slots:
         mSession.stop();
     }
 
-    // The shell itself: the arch keeps a column of its own, and the four tabs
-    // are four pages driven by a row of four buttons
     void test_theShellIsAColumnOfArtAndFourPages()
     {
         QVERIFY2(mpDialog->findChild<QWidget*>(qsl("aboutShell")), "the dialog has no 'aboutShell' - it is still the .ui file's own layout");
@@ -162,7 +137,7 @@ private slots:
             QVERIFY2(buttons.at(index)->isChecked(), qPrintable(qsl("the %1 button is not lit while its own page is showing").arg(keys.at(index))));
         }
 
-        // ...and the way in the footer's licence link takes
+        // The footer's licence link goes through showPage()
         buttons.at(0)->click();
         QCoreApplication::processEvents();
         QVERIFY(QMetaObject::invokeMethod(mpDialog, "showPage", Q_ARG(QString, qsl("license"))));
@@ -170,8 +145,7 @@ private slots:
         QCOMPARE(pStack->currentWidget()->objectName(), qsl("aboutPage_license"));
         QVERIFY2(buttons.at(2)->isChecked(), "showPage(\"license\") moved the stack without lighting the License button");
 
-        // The .ui file's own browser is reused rather than replaced, so the GPL
-        // and its translator note travel with it
+        // The .ui file's browser is reused so the GPL and its translator note travel with it
         QVERIFY2(mpDialog->findChild<QGroupBox*>(qsl("aboutLicenseNotice")), "the License page has no notice card over the licence");
         auto* pLicence = mpDialog->findChild<QTextBrowser*>(qsl("textBrowser_license"));
         QVERIFY2(pLicence, "the dialog has no 'textBrowser_license' at all");
@@ -180,15 +154,13 @@ private slots:
         buttons.at(0)->click();
         QCoreApplication::processEvents();
 
-        // Nothing on the Mudlet page may be wider than the column it is in. A
-        // chip row that cannot wrap makes a maker's card as wide as the sum of
-        // their contacts, which pushes the card beside it - and the third link
-        // column - off the page at both sizes.
+        // A chip row that cannot wrap widens a maker's card and pushes the
+        // third link column off the page
         auto* pMudletPage = mpDialog->findChild<QScrollArea*>(qsl("aboutPage_mudlet"));
         QVERIFY2(pMudletPage, "there is no 'aboutPage_mudlet'");
         for (const QSize& size : QList<QSize>{QSize(1080, 680), QSize(900, 560)}) {
-            // Resized outright: the constructor clamps its opening size to the
-            // screen, which offscreen is smaller than either of these
+            // The constructor clamps its opening size to the screen, which
+            // offscreen is smaller than either of these
             mpDialog->resize(size);
             QCoreApplication::processEvents();
             QTest::qWait(50ms);
@@ -201,13 +173,8 @@ private slots:
         }
     }
 
-    // The sizes the shell's sheet names actually reach the words. Every rule
-    // here used to name a percentage, which Qt's stylesheet parser drops
-    // without a word - so the name over the page, the chips beside it and the
-    // body under them were all one size, and the window read flat. Read off the
-    // resolved font of the widget rather than out of the sheet: a rule that
-    // parses and a rule that applies are two different things, and only the
-    // second one is what the reader sees.
+    // Read off the resolved font, not the sheet: Qt's stylesheet parser
+    // silently drops a percentage font size
     void test_theShellsWordsAreSetAtTheStepsTheScaleNames()
     {
         auto* pName = mpDialog->findChild<QLabel*>(qsl("aboutName"));
@@ -228,9 +195,7 @@ private slots:
         QVERIFY2(pChip, "the dialog shows no chip, so the caption step is not being read off one");
         QCOMPARE(pChip->font().pointSize(), uiDesign::typeSize(uiDesign::TypeStep::Caption));
 
-        // ...and the steps are apart, which is the whole point of having them.
-        // A scale whose four steps came to the same number would pass every
-        // comparison above and change nothing on the page.
+        // Four equal steps would pass every comparison above
         QVERIFY2(uiDesign::typeSize(uiDesign::TypeStep::Caption) < uiDesign::typeSize(uiDesign::TypeStep::Body)
                          && uiDesign::typeSize(uiDesign::TypeStep::Body) < uiDesign::typeSize(uiDesign::TypeStep::Title)
                          && uiDesign::typeSize(uiDesign::TypeStep::Title) < uiDesign::typeSize(uiDesign::TypeStep::Display),
@@ -241,9 +206,6 @@ private slots:
                                          QString::number(uiDesign::typeSize(uiDesign::TypeStep::Display)))));
     }
 
-    // Nothing is painted onto the arch any more: the version is a label, and the
-    // band of the picture the serif version used to be drawn across is the
-    // picture's own pixels
     void test_theArtworkCarriesNoPaintedText()
     {
         auto* pArt = mpDialog->findChild<QLabel*>(qsl("mudletTitleLabel"));
@@ -253,16 +215,14 @@ private slots:
 
         auto* pVersion = mpDialog->findChild<QLabel*>(qsl("aboutVersion"));
         QVERIFY2(pVersion, "the version is not a label - it is still painted onto the picture");
-        // APP_VERSION is a compile definition of the application rather than of
-        // this test, so the version is held against the one string that carries
-        // it: scmVersion is "Mudlet " and then exactly what this label shows
+        // APP_VERSION is not defined for this test; scmVersion is "Mudlet "
+        // followed by exactly what this label shows
         QVERIFY2(!pVersion->text().isEmpty(), "the version label is empty");
         QCOMPARE(MudletApp::scmVersion(), qsl("Mudlet %1").arg(pVersion->text()));
         QVERIFY2(pVersion->text().endsWith(MudletApp::buildSuffix()), qPrintable(qsl("the version label \"%1\" does not end with this build's own suffix").arg(pVersion->text())));
 
-        // The dialog's own copy rather than a second call to getSplashScreen():
-        // on 1 April that answers one of twenty-four Easter eggs at random, so
-        // asking again would compare two different pictures 23 times in 24
+        // Not a second getSplashScreen() call: on 1 April that returns one of
+        // twenty-four Easter eggs at random
         const QImage splash = mpDialog->splashImage();
         QVERIFY2(!splash.isNull(), "the dialog kept no splash image, so there is no picture to compare against");
         const QSize logical = shown.deviceIndependentSize().toSize();
@@ -271,11 +231,9 @@ private slots:
                  qPrintable(qsl("the artwork is %1x%2 where the splash scaled to that width is %1x%3 - something else is in the label")
                                     .arg(QString::number(logical.width()), QString::number(logical.height()), QString::number(expectedHeight))));
 
-        // The old code drew the version at y=270 and the copyright at y=340 of a
-        // 360-tall picture, both centred. Read that whole lower band against the
-        // plainly scaled splash: type in a colour of its own is thousands of
-        // pixels, where the rounded corners and the hairline are neither in this
-        // band nor this many.
+        // The old text was painted centred at y=270 and y=340 of a 360-tall
+        // picture; painted type differs in thousands of pixels, while the
+        // rounded corners and the hairline lie outside this band
         const QImage drawn = shown.toImage().convertToFormat(QImage::Format_ARGB32);
         const QImage plain = splash.scaledToWidth(drawn.width(), Qt::SmoothTransformation).convertToFormat(QImage::Format_ARGB32);
         const int shortest = std::min(drawn.height(), plain.height());
@@ -303,7 +261,6 @@ private slots:
                                     .arg(QString::number(differing), QString::number(read))));
     }
 
-    // What a bug report needs, and the one gesture that gets it there
     void test_copyWritesTheBuildInformationToTheClipboard()
     {
         QApplication::clipboard()->clear();
@@ -327,17 +284,13 @@ private slots:
         QVERIFY2(lines.first().contains(MudletApp::scmVersion()), qPrintable(qsl("the first line is \"%1\", which does not name the version").arg(lines.first())));
         QVERIFY2(pButton->text() != resting, qPrintable(qsl("the button still reads \"%1\" straight after copying, so nothing says it worked").arg(pButton->text())));
 
-        // ...and it goes back to being a button once the moment has passed
         QTest::qWait(1900ms);
         QCOMPARE(pButton->text(), resting);
     }
 
-    // One row per component this build actually bundles, each with its licence
-    // folded away until it is asked for
     void test_everyThirdPartyRowOpensToItsLicence()
     {
-        // The page has to be the one on show, or every body below reads as
-        // hidden whether its row is open or not
+        // isVisible() is false on a hidden page, whether the row is open or not
         QToolButton* pNav = mpDialog->findChild<QToolButton*>(qsl("aboutNavButton_thirdparty"));
         QVERIFY2(pNav, "there is no 'aboutNavButton_thirdparty'");
         pNav->click();
@@ -356,8 +309,6 @@ private slots:
             QVERIFY2(!pBody->isVisible(), "a third-party licence is showing before its row has been opened");
             QVERIFY2(!pBody->text().isEmpty(), "a third-party row carries no licence text at all");
         }
-        // The text browsers these labels replaced carried
-        // Qt::TextBrowserInteraction, so a licence could be selected and copied
         QVERIFY2(bodies.first()->textInteractionFlags().testFlag(Qt::TextSelectableByMouse), "a third-party licence cannot be selected with the mouse - the text browser it replaced could be");
 
         toggles.first()->setChecked(true);
@@ -377,7 +328,6 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // The pennants are widgets now: one per name, blades on the higher tier only
     void test_everySupporterHasABannerOfTheRightTier()
     {
         QToolButton* pNav = mpDialog->findChild<QToolButton*>(qsl("aboutNavButton_supporters"));
@@ -423,16 +373,12 @@ private slots:
         QVERIFY2(!hasButton, "a Steam build still offers the Patreon button");
         QVERIFY2(!introText.contains(qsl("<a")), qPrintable(qsl("a Steam build's supporters intro still carries a link: \"%1\"").arg(introText.simplified())));
 
-        // ...and the ordinary build does offer both
         QVERIFY2(mpDialog->findChild<QPushButton*>(qsl("aboutPatreonButton")), "a non-Steam build has no Patreon button, so the check above says nothing");
     }
 
-    // A QLabel bakes the colour of a link into its document the moment its text
-    // is set, from the application palette of that moment - so a palette written
-    // to the label afterwards leaves every anchor at Qt's own blue, which is
-    // 2.4:1 on a dark page. The readability audit cannot see it: it reads inks
-    // off palettes, and the palette here says the right thing while the document
-    // says the wrong one.
+    // QLabel bakes link colours into its document at setText() from the palette
+    // of that moment, leaving anchors Qt blue (2.4:1 on dark); the readability
+    // audit reads palettes and cannot see it
     void test_everyLinkCarriesTheAccentInBothAppearances()
     {
         auto* pFooter = mpDialog->findChild<QLabel*>(qsl("aboutFooter"));
@@ -460,8 +406,7 @@ private slots:
         QVERIFY2(footerOnDark.contains(qsl("color: %1").arg(onDark)), qPrintable(qsl("the footer's link is not inked %1 on the dark appearance: \"%2\"").arg(onDark, footerOnDark)));
         QVERIFY2(footerOnLight.contains(qsl("color: %1").arg(onLight)),
                  qPrintable(qsl("the footer's link is not inked %1 on the light appearance - an appearance change did not re-ink it: \"%2\"").arg(onLight, footerOnLight)));
-        // ...and the licence browser, whose head declares a rule for anchors
-        // that a QTextDocument does not ink them with
+        // QTextDocument does not ink anchors with the licence head's anchor rule
         QVERIFY2(licenceHtml.contains(onLight, Qt::CaseInsensitive), qPrintable(qsl("the licence text's links do not carry the accent %1").arg(onLight)));
     }
 };

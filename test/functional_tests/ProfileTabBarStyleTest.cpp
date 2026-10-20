@@ -18,23 +18,9 @@
  ***************************************************************************/
 
 /*
- * The profile strip is the design's row of chips, and every part of that claim
- * is about pixels: a word in a box, filled with the walked accent and written on
- * in white while it is the one on show on a light page and washed in the accent
- * on a dark one, a lighter wash under the pointer, the cross trailing the word
- * at the size the recipe names, and a connection indicator inked from the state
- * colours. None of it comes from a stylesheet - TStyle paints it - so nothing
- * but a grab says whether it happened.
- *
- * The chips are also measured here rather than merely looked at: the tab's
- * height is the word's plus the recipe's padding, the chips lie side by side and
- * share the whole width of the bar between them, and the cross, the word and the
- * dot share one centre line. That last is the light-mode complaint the
- * platform's own tabs earned - a close cross visibly higher than the word
- * beside it.
- *
- * Both appearances, because an ink that reads in one and vanishes in the other
- * is exactly the defect the tokens exist to prevent.
+ * TStyle paints the profile strip's chips with no stylesheet - fill or wash, word, cross,
+ * indicator and their geometry - so only a grab shows them, and in both appearances, since an
+ * ink can read in one and vanish in the other.
  *
  * Run with: ctest -R ProfileTabBarStyleTest -V
  */
@@ -62,8 +48,7 @@
 
 #include "GroupedTest.h"
 
-// initStyleOption() is QTabBar's to call, and what the style is handed is the
-// only place the text's rectangle can be read from
+// initStyleOption() is protected, and the option it fills is the only source of the text's rectangle
 class ExposedTabBar : public TTabBar
 {
 public:
@@ -71,10 +56,8 @@ public:
     using TTabBar::TTabBar;
 };
 
-// Put where TStyle's proxy base would otherwise be built on demand: a fresh
-// instance of the platform's native style, which on Windows 10 paints from the
-// OS theme rather than from Mudlet's palette (#8999). Whatever reaches it was
-// painted by that style.
+// Stands in for the native style TStyle's proxy base would build on demand, which on Windows 10
+// paints from the OS theme rather than from Mudlet's palette (#8999)
 class NativeBaseTrap : public QProxyStyle
 {
 public:
@@ -110,32 +93,19 @@ private:
     ExposedTabBar* mpTabBar = nullptr;
     QPalette mSavedPalette;
 
-    // How far a sampled pixel may sit from the colour the tokens mix, per
-    // channel: a wash is composited rather than blitted, so the two agree to a
-    // level or two rather than exactly
+    // A wash is composited rather than blitted, so it agrees with the token mix to a level or two
     static constexpr int scmInkTolerance = 2;
-    // Wider than three short names need, so that a chip drawn only as wide as
-    // its word rather than as the share of the bar it was given would be caught
+    // Wider than three short names need, so a chip held to its word's width would show
     static constexpr int scmBarWidth = 600;
-    // What the word naming the profile on show has to reach against the wash it
-    // is written on: short of the 7:1 the ink is mixed for, because the glyph's
-    // own edges are antialiased and only its stems are at full ink
+    // Short of the 7:1 the ink is mixed for: antialiasing leaves only the glyph's stems at full ink
     static constexpr qreal scmChosenWordFloor = 6.5;
-    // ...and the same allowance where the chip is filled rather than washed,
-    // said as a fraction of what the field's white itself reads at on that
-    // fill: a rasteriser that leaves no pixel at full coverage still has to
-    // bring the word most of the way there
+    // The same allowance on a filled chip, as a fraction of the white's own contrast on the fill,
+    // for a rasteriser that leaves no pixel at full coverage
     static constexpr qreal scmOnFillWordReach = 0.9;
 
-    // What a chip the reader chose is filled with on a light page: the accent
-    // taken towards black until the field's own white reads on it at the floor
-    // every word of the design clears. Mixed here rather than asked of TStyle,
-    // so the two are two readings of the same rule rather than one reading of
-    // itself.
+    // Mixed here rather than asked of TStyle, so the test is an independent reading of the rule
     static QColor chosenFillOnLightPage(const uiDesign::ThemeTokens& tokens) { return uiDesign::readableOn(tokens.field, tokens.accent, tokens.text, uiDesign::scmTextMinimumRatio); }
 
-    // Qt composites a wash rather than blitting it, so what the reader sees is
-    // the mix rather than the colour the tokens answer with
     static QColor composited(const QColor& ink, const QColor& surface)
     {
         if (ink.alpha() == 255) {
@@ -155,11 +125,8 @@ private:
 
     static QString saidAs(const QRect& box) { return qsl("%1,%2 %3x%4").arg(QString::number(box.left()), QString::number(box.top()), QString::number(box.width()), QString::number(box.height())); }
 
-    // A widget that was never shown keeps its resize pending until something
-    // renders it, and QTabBar lays its tabs out on that event - so without this
-    // the chips would be measured for a top-level's default width rather than
-    // for the one the bar was given, and the two differ now that the chips share
-    // that width between them
+    // A never-shown widget keeps its resize pending until rendered, and QTabBar lays out its tabs
+    // on that event, so the chips would be measured for a top-level's default width
     static void layOutAtItsOwnSize(QTabBar* pTabBar)
     {
         QResizeEvent resized(pTabBar->size(), QSize());
@@ -173,8 +140,7 @@ private:
         return mpTabBar->grab().toImage().convertToFormat(QImage::Format_ARGB32);
     }
 
-    // A grab is in device pixels and everything measured here is in the logical
-    // ones a rectangle is given in
+    // A grab is in device pixels; the rectangles here are logical
     static QColor sampled(const QImage& image, const QPoint& at)
     {
         const qreal ratio = image.devicePixelRatio();
@@ -185,8 +151,6 @@ private:
         return QColor(image.pixel(device));
     }
 
-    // What the chips are lying on: the colour most of the strip is, which is the
-    // bar's own surface everywhere no chip is washed
     static QColor commonestColour(const QImage& image)
     {
         QHash<QRgb, int> counts;
@@ -206,10 +170,8 @@ private:
         return QColor(commonest);
     }
 
-    // How much of a word's box the word marks, read against the ink that word
-    // is written in rather than against a fixed distance: a chosen chip's word
-    // is in the accent's ink and a resting one's in the chrome tone, and a fixed
-    // threshold would count the stronger ink as more word
+    // Thresholded against the word's own ink: a fixed distance would count the chosen chip's
+    // stronger ink as more word
     static int inkCoverage(const QImage& strip, const QRect& box, const QColor& ink)
     {
         const auto separation = [](const QColor& from, const QColor& to) {
@@ -230,9 +192,6 @@ private:
         return touched;
     }
 
-    // How wide the ink a word leaves in a box is, in logical pixels, by the same
-    // reading as inkCoverage(): a word clipped by its box or drawn in a lighter
-    // weight than asked for comes out narrower than its advance says
     static int inkedWidth(const QImage& strip, const QRect& box, const QColor& ink)
     {
         const auto separation = [](const QColor& from, const QColor& to) {
@@ -256,28 +215,23 @@ private:
         return left < 0 ? 0 : qRound((right - left + 1) / ratio);
     }
 
-    // The chip a tab is drawn as: the tab's rectangle less the gap that tells
-    // two chips apart, which TStyle takes off the trailing side
+    // Mirrors TStyle::layoutChip()
     QRect chipOf(const int index) const { return mpTabBar->tabRect(index).adjusted(0, 0, -uiDesign::scmTabGap, 0); }
 
-    // Inside the chip's leading padding, past the accent bar a chosen chip
-    // carries, where nothing is drawn but the wash
+    // Past the accent bar a chosen chip carries, where only the wash is drawn
     QPoint washSpot(const int index) const
     {
         const QRect chip = chipOf(index);
         return QPoint(chip.left() + uiDesign::scmAccentBarWidth + 2, chip.center().y());
     }
 
-    // On the accent bar down a chosen chip's leading edge, clear of the arc at
-    // either end of it
+    // Mid-height on the accent bar, clear of the arc at either end of it
     QPoint barSpot(const int index) const
     {
         const QRect chip = chipOf(index);
         return QPoint(chip.left() + 1, chip.center().y());
     }
 
-    // Where TStyle stands the connection indicator: the design's 8px dot at the
-    // start of the chip's contents, centred on the chip
     QRect indicatorOf(const int index) const
     {
         const QRect chip = chipOf(index);
@@ -289,9 +243,8 @@ private:
 
     QAbstractButton* crossOf(const int index) const { return qobject_cast<QAbstractButton*>(mpTabBar->tabButton(index, QTabBar::RightSide)); }
 
-    // The pointer over a tab, said the way the platform says it. QTest::mouseMove
-    // does not always reach a window nothing is compositing, so the hover event
-    // itself is sent when it did not arrive.
+    // QTest::mouseMove does not always reach a window nothing is compositing, so the hover event
+    // is sent as well
     void hoverOver(const int index)
     {
         const QPoint over = mpTabBar->tabRect(index).center();
@@ -302,10 +255,6 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // The two claims that are about colour rather than about geometry, so that
-    // the appearance case below can make them a second time against a dark
-    // palette rather than restating them. How the chip the reader chose is
-    // drawn is the one thing the two appearances answer differently.
     void theChosenChipIsWashed()
     {
         const QImage strip = grabTheBar();
@@ -323,11 +272,7 @@ private:
 
         const QRect chosenChip = chipOf(0);
         if (!tokens.darkPage) {
-            // On a light page the chip is filled with the accent taken far
-            // enough towards black to be written on in the field's white, as
-            // the platform's own chosen tab is - so that one colour is read
-            // wherever the wash, the bar and the outline each used to be, and
-            // a bar or an outline in the accent would have nothing left to say
+            // No bar or outline on a light page: in the accent they would say nothing on the accent fill
             const QColor fill = chosenFillOnLightPage(tokens);
             struct Spot
             {
@@ -348,30 +293,21 @@ private:
         const QColor wanted = composited(tokens.accentWash, surface);
         QVERIFY2(readsAs(chosen, wanted), qPrintable(qsl("the tab on show is not washed in the accent: %1 where the accent wash over %2 is %3").arg(saidAs(chosen), saidAs(surface), saidAs(wanted))));
 
-        // ...and carries the sidebar's bar down its leading edge, since on a
-        // dark page the wash alone did not say which profile was on show
+        // On a dark page the wash alone does not say which profile is on show
         const QColor bar = sampled(strip, barSpot(0));
         QVERIFY2(readsAs(bar, tokens.accent), qPrintable(qsl("the tab on show has no accent bar on its leading edge: %1 where the accent is %2").arg(saidAs(bar), saidAs(tokens.accent))));
 
-        // ...and is outlined all the way round in the same accent
         const QColor edge = sampled(strip, QPoint(chosenChip.center().x(), chosenChip.top()));
         QVERIFY2(readsAs(edge, tokens.accent), qPrintable(qsl("the tab on show has no accent outline: %1 on its top edge where the accent is %2").arg(saidAs(edge), saidAs(tokens.accent))));
     }
 
-    // On a dark page the word naming the profile on show is walked past the
-    // floor every other word of the design is held to: the accent ink at that
-    // floor was mixed against the deepest wash, and on this strip's page it
-    // fades into its own. On a light page the fill is what was walked instead,
-    // far enough for the word to be the field's own white. Either way what is
-    // read is the strongest pixel the word marks, since only the glyph's stems
-    // are at full ink.
+    // The accent ink at the design's floor was mixed against the deepest wash and fades into this
+    // strip's own, so the dark-page word is walked past it. The strongest pixel is read because
+    // only the glyph's stems are at full ink.
     void theChosenWordIsStrong()
     {
         const QImage strip = grabTheBar();
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        // What the word is actually read against: the walked fill where the
-        // chip is filled, and the wash as it composites over the page where it
-        // is washed
         const QColor behind = tokens.darkPage ? composited(tokens.accentWash, commonestColour(strip)) : chosenFillOnLightPage(tokens);
 
         QStyleOptionTab option;
@@ -423,8 +359,7 @@ private:
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
-        // A tab that is not the one on show lies on the strip's own page, so
-        // that is what its dot is walked against
+        // Tab 2 rests on the page; the chosen chip's light-page fill is checked separately below
         mpTabBar->setTabConnectionIndicator(2, TabConnectionIndicator::Connected);
         QImage strip = grabTheBar();
         const QColor dot = sampled(strip, indicatorOf(2).center());
@@ -444,9 +379,7 @@ private:
             return;
         }
 
-        // ...while on a light page the chip the reader chose is filled, and what
-        // stands on that fill is read against it: a dot at the page's reading is
-        // swallowed by it, and so is a ring in the chrome tone
+        // A dot walked for the page, or a ring in the chrome tone, would be swallowed by a light page's fill
         const QColor fill = chosenFillOnLightPage(tokens);
         mpTabBar->setTabConnectionIndicator(0, TabConnectionIndicator::Connected);
         strip = grabTheBar();
@@ -472,12 +405,10 @@ private slots:
     {
         mSavedPalette = QApplication::palette();
         mpTabBar = new ExposedTabBar(nullptr);
-        // What mudlet.cpp sets, and in that order: the crosses have to exist
-        // before the tabs do, or QTabBar makes them itself and never says so
+        // In mudlet.cpp's order: the crosses have to exist before the tabs, or QTabBar silently makes its own
         mpTabBar->setMovable(true);
         mpTabBar->setTabsClosable(true);
-        // The bar is a window of its own here, where the main window's frame is
-        // what fills the surface behind the chips - so it is asked to fill it
+        // A top-level here, with no main window frame to fill the surface behind the chips
         mpTabBar->setAutoFillBackground(true);
         for (const QString& profileName : {qsl("Alpha"), qsl("Bravo"), qsl("Delta")}) {
             mpTabBar->setTabData(mpTabBar->addTab(profileName), profileName);
@@ -493,8 +424,6 @@ private slots:
         QApplication::setPalette(mSavedPalette);
     }
 
-    // The cross is on the trailing edge on every platform, and it is the box the
-    // recipe names rather than whatever the platform's own close indicator is
     void test_theCrossTrailsTheWordAndIsTheDesignsSize()
     {
         const QSize wanted(uiDesign::scmTabCloseBoxSize, uiDesign::scmTabCloseBoxSize);
@@ -512,8 +441,7 @@ private slots:
         QVERIFY2(mpTabBar->testAttribute(Qt::WA_Hover), "the bar asks for no hover events, so no chip can ever be washed under the pointer");
     }
 
-    // The light-mode complaint: the platform drew the cross visibly higher than
-    // the word beside it
+    // Guards the platform tabs' light-mode cross sitting visibly higher than the word
     void test_everythingIsCentredOnTheChip()
     {
         for (int i = 0; i < mpTabBar->count(); ++i) {
@@ -546,22 +474,14 @@ private slots:
                                         .arg(QString::number(i), QString::number(mpTabBar->tabRect(i).left()), QString::number(mpTabBar->tabRect(i - 1).right() + 1))));
         }
 
-        // The chips share the bar between them rather than being held to the
-        // width of their words, so the last one ends where the bar does
         const int lastEdge = mpTabBar->tabRect(mpTabBar->count() - 1).right();
         QVERIFY2(lastEdge == mpTabBar->width() - 1,
                  qPrintable(qsl("three chips end at %1 on a %2px bar, so they are not sharing its width between them").arg(QString::number(lastEdge), QString::number(mpTabBar->width()))));
     }
 
-    // Bold already says something on this strip - a profile with new output -
-    // and the chosen chip's word is bold as well, the way the settings sidebar
-    // draws its chosen row; the wash is what tells the two readings apart. What
-    // that costs is that every tab has to be measured bold, or the strip would
-    // shift sideways each time the choice moved.
     void test_theChosenWordIsBoldAndTheStripDoesNotShiftForIt()
     {
-        // The same word on both chips, so the only thing that can differ
-        // between the two readings is which of them is the one on show
+        // The same word on both chips, so only the choice can differ between the two readings
         ExposedTabBar bar(nullptr);
         bar.setAutoFillBackground(true);
         bar.setTabData(bar.addTab(qsl("Same")), qsl("Same-A"));
@@ -580,8 +500,7 @@ private slots:
         const QImage strip = bar.grab().toImage().convertToFormat(QImage::Format_ARGB32);
 
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        // Whichever ink that chip's word is actually written in, or the reading
-        // counts the whole box as word
+        // Each word's own ink, or the reading counts the whole box as word
         const int chosenInk = inkCoverage(strip, wordBox(0), tokens.darkPage ? tokens.accentText : tokens.field);
         const int restingInk = inkCoverage(strip, wordBox(1), tokens.mutedText);
         QVERIFY2(restingInk > 0, "the resting chip's word marks nothing at all, so there is no reading to compare the chosen one against");
@@ -589,10 +508,7 @@ private slots:
                  qPrintable(qsl("the word on the chosen chip marks %1 pixels of its box against the %2 the same word marks on the resting chip beside it, so it is not drawn any bolder")
                                     .arg(QString::number(chosenInk), QString::number(restingInk))));
 
-        // ...and the room every chip leaves its word is the bold word's, so the
-        // strip stands still when the choice moves. A pixel of slack because Qt
-        // measures a tab's text with QFontMetrics::size() and this with
-        // horizontalAdvance().
+        // A pixel of slack: Qt measures a tab's text with QFontMetrics::size(), this with horizontalAdvance()
         QFont bold = bar.font();
         bold.setBold(true);
         for (int i = 0; i < bar.count(); ++i) {
@@ -616,17 +532,14 @@ private slots:
         }
     }
 
-    // The text a tab shows is not always the profile's name - #2056 hit a '&'
-    // accelerator in tabText() on FreeBSD, and applyPrefixToDisplayedText()
-    // puts a prefix in front of it - so the mark for new output is keyed on the
-    // name kept in the tab's data, and has to reach the painting from there
+    // tabText() is not always the profile's name: #2056 found a '&' accelerator in it on FreeBSD,
+    // and applyPrefixToDisplayedText() prefixes it
     void test_anActivityMarkKeyedOnTheProfileNameReachesThePainting()
     {
         ExposedTabBar bar(nullptr);
         bar.setAutoFillBackground(true);
         bar.setTabData(bar.addTab(qsl("Chosen")), qsl("Chosen"));
-        // The same displayed word on both resting chips, neither of them the
-        // profile's name, so only the mark can tell the two apart
+        // The same displayed word on both resting chips, so only the mark can tell them apart
         bar.setTabData(bar.addTab(qsl("&Gorbash")), qsl("Gorbash"));
         bar.setTabData(bar.addTab(qsl("&Gorbash")), qsl("Gorbash-Twin"));
         bar.resize(scmBarWidth, bar.sizeHint().height());
@@ -653,18 +566,14 @@ private slots:
                                     .arg(QString::number(markedInk), QString::number(unmarkedInk))));
     }
 
-    // QTabBar measures a tab once and keeps the answer, so a mark that only
-    // repainted would draw bold text into a tab still sized for plain and clip
-    // the end of the name. Every chip is measured bold, so the mark goes on with
-    // the tab standing still as well. Held to the tabs' own widths, as a share
-    // of a wide bar would leave room for the word whatever had been measured.
+    // QTabBar measures a tab once and keeps the answer, so a mark that only repainted would clip the
+    // bold name. Not expanding, as a share of a wide bar leaves room whatever was measured.
     void test_aTabTurnedBoldByItsMarkIsNotClippedAndDoesNotMove()
     {
 #ifndef INCLUDE_FONTS
         QSKIP("Built with WITH_FONTS=NO, so there is no font here that is known to be wider in bold");
 #else
-        // The platform's default font is whatever the machine has, and one whose
-        // bold face is no wider would leave this with nothing to see
+        // The machine's default font may be no wider in bold, which would leave nothing to see
         for (const QString& file : {qsl(":/fonts/ttf-bitstream-vera-1.10/Vera.ttf"), qsl(":/fonts/ttf-bitstream-vera-1.10/VeraBd.ttf")}) {
             QVERIFY2(QFontDatabase::addApplicationFont(file) != -1, qPrintable(qsl("Could not register the bundled font %1").arg(file)));
         }
@@ -679,8 +588,7 @@ private slots:
         bar.setTabData(bar.addTab(qsl("Gorbash")), qsl("Gorbash"));
         const int index = bar.addTab(profileName);
         bar.setTabData(index, profileName);
-        // What the tab shows is not the profile's name, as with the debug tag,
-        // so the mark has to reach the painting by the name in the tab's data
+        // The debug tag's prefix, so the mark has to reach the painting by the name in the tab's data
         bar.applyPrefixToDisplayedText(profileName, qsl("[1] "));
         bar.resize(1000, bar.sizeHint().height());
         layOutAtItsOwnSize(&bar);
@@ -710,8 +618,6 @@ private slots:
 #endif
     }
 
-    // A script's setAppStyleSheet() keeps the last word over the chips once it
-    // names the tab bar, and a sheet about other widgets leaves them alone
     void test_anApplicationSheetNamingTheTabBarTakesTheTabs()
     {
         const auto restoreSheet = qScopeGuard([this]() {
@@ -739,11 +645,8 @@ private slots:
                                     .arg(QString::number(mpTabBar->tabSizeHint(0).width()), QString::number(sheetWidth))));
     }
 
-    // TStyle's proxy base is never given a style, and a QProxyStyle without
-    // one builds a fresh instance of the platform's native style rather than
-    // falling back on the application's. The chips are TStyle's own to paint,
-    // and what it does not paint goes to the application style - neither
-    // reaches that base.
+    // TStyle's proxy base is never given a style, and a QProxyStyle without one builds a fresh
+    // native style rather than falling back on the application's
     void test_nothingIsPaintedByABareNativeStyle()
     {
         auto* pTabStyle = qobject_cast<QProxyStyle*>(mpTabBar->style());
@@ -759,7 +662,6 @@ private slots:
         mpTabBar->setTabConnectionIndicator(1, TabConnectionIndicator::None);
         QVERIFY2(pTrap->mPainted.isEmpty(), qPrintable(qsl("drawing the strip painted through the bare native style: %1").arg(pTrap->mPainted.join(qsl(", ")))));
 
-        // ...and what TStyle hands on is handed to the application style
         QImage canvas(QSize(40, 20), QImage::Format_ARGB32);
         canvas.fill(Qt::transparent);
         QPainter painter(&canvas);
@@ -777,15 +679,8 @@ private slots:
 
     void test_theIndicatorIsAStateColour() { theIndicatorIsAStateColour(); }
 
-    // The cross is chrome, so it is mutedText - not the near-black x a platform
-    // draws a closable tab with.
-    //
-    // Read as how far from the surface the ink gets rather than as a colour
-    // match: the mark is a 1.5px stroke drawn at 8px, so antialiasing leaves no
-    // pixel at full coverage and the darkest one is a blend rather than the ink
-    // itself. What tells the two crosses apart is how far that blend goes - a
-    // cross inked in the palette's own text colour overshoots the chrome tone,
-    // which is by definition pulled back towards the surface.
+    // Read as distance from the surface, not a colour match: a 1.5px stroke at 8px leaves no pixel
+    // at full coverage, and a cross in the palette's text colour overshoots the chrome tone
     void test_theCrossIsDrawnInChromeInk()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -817,9 +712,7 @@ private slots:
             }
         }
 
-        // The mark is the recipe's, not whatever x a platform draws a closable
-        // tab with: it is scmTabCloseGlyphSize across inside the larger box, and
-        // a platform's own fills nearly all of that box instead
+        // A platform's own x fills nearly all of the box; the recipe's is scmTabCloseGlyphSize across
         const QSize markSize(qRound(marked.width() / ratio), qRound(marked.height() / ratio));
         QVERIFY2(std::abs(markSize.width() - uiDesign::scmTabCloseGlyphSize) <= 2 && std::abs(markSize.height() - uiDesign::scmTabCloseGlyphSize) <= 2,
                  qPrintable(qsl("the mark inside the cross's box measures %1x%2 rather than the %3x%3 the recipe draws it at, so it is not this design's x")
@@ -842,11 +735,8 @@ private slots:
             return;
         }
 
-        // The cross on the tab on show is read the same way, against the fill
-        // the chip carries on a light page rather than against the page: the
-        // chrome tone it wears at rest would be swallowed by that fill.
-        // Read off the strip rather than off the button's own grab, since the
-        // button paints the page behind its mark and not the chip under it.
+        // The chrome tone would vanish on a light page's fill. Read off the strip, since the button's
+        // own grab paints the page behind its mark rather than the chip under it.
         QAbstractButton* pChosenCross = crossOf(0);
         QVERIFY(pChosenCross);
         const QImage strip = grabTheBar();
@@ -877,9 +767,8 @@ private slots:
         QVERIFY2(chosenFurthest * 2 >= inkReach,
                  qPrintable(qsl("the cross on the tab on show barely marks the fill %1: its furthest pixel %2 gets %3 from it, only part of the %4 the field's white %5 would reach")
                                     .arg(saidAs(fill), saidAs(chosenFurthestInk), QString::number(chosenFurthest), QString::number(inkReach), saidAs(tokens.field))));
-        // ...and further from the fill than the chrome tone it wears at rest
-        // could get on it even at full coverage, which is what tells a cross
-        // written for the fill from one still inked in the page's grey
+        // Past what the chrome tone reaches on the fill even at full coverage, which tells a cross
+        // written for the fill from one still in the page's grey
         const int chromeOnTheFill = distance(fill, tokens.mutedText);
         QVERIFY2(chosenFurthest > chromeOnTheFill + scmInkTolerance,
                  qPrintable(qsl("the cross on the tab on show is still inked in the chrome tone %1 rather than in the field's white %2: its furthest pixel %3 gets %4 from the fill, where the "
@@ -902,9 +791,6 @@ private slots:
         QVERIFY2(readsAs(hovered, wanted), qPrintable(qsl("the chip under the pointer is not washed: %1 where the hover wash over %2 is %3").arg(saidAs(hovered), saidAs(surface), saidAs(wanted))));
     }
 
-    // The same colour claims against the dark palette. An ink that reads in
-    // one appearance and vanishes in the other is the defect the tokens exist
-    // to prevent, and only a second pass catches it.
     void test_bothAppearances()
     {
         theChosenChipIsWashed();

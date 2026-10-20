@@ -18,48 +18,9 @@
  ***************************************************************************/
 
 /*
- * One ink for every word of the editor's chrome.
- *
- * The rule the editor is held to here: everything the window says that is not
- * inside a field is written in `mutedText` - the toolbar's buttons, the
- * sidebar's names, the item trees' rows, a card's title and the words on it, a
- * check box, a radio button, the code pane's heading, the status bar. The full
- * tone is what is typed into a field, and nothing else has it. A window with
- * two greys in its chrome reads as two windows.
- *
- * Read off the palettes rather than off the rules that write them: a
- * stylesheet's "color:" reaches a widget through QStyleSheetStyle::polish(), so
- * the palette is the answer to what a widget is actually drawn in - and a view,
- * whose rows a stylesheet can only reach through ::item, is read by its palette
- * for the same reason.
- *
- * Every view is walked, not only the one the editor opens on: each of the seven
- * is entered with an item of its own in the form, so that the words on all
- * seven forms are read rather than only the trigger's.
- *
- * Five things keep an ink of their own, and each is left out for a reason
- * rather than for convenience:
- *
- * - Anything inside a field. That is the one place the full tone belongs.
- * - Anything unavailable, chosen or under the pointer: those are states, drawn
- *   in `disabledText` and `accentText`, and saying so is the whole point of
- *   them.
- * - The three chips whose colour says a reading, by object name: the compile
- *   chip in a state hue walked against its own fill, the OR/AND chip in the
- *   accent while it is the mode in force, and the note the events row answers a
- *   duplicate with, in the error hue - none of them chrome in the sense this
- *   measures.
- * - A chip holding one of a script's own event names, which is the name the
- *   reader typed and so content in a box rather than a word the window says.
- *   Mudlet's own sys* events are written in the chrome tone by the same row,
- *   which is what tells the two apart on sight.
- * - The error console, which shows what the profile's own script printed in the
- *   colours that profile chose.
- *
- * ...and one thing is read off the window rather than out of a palette: the
- * name on the Triggers heading row, whose pixels have to be that same ink. A
- * palette a view never draws from would pass every case above and paint the
- * tree in the platform's white.
+ * Every word of the editor's chrome outside a field is the one mutedText ink, on
+ * all seven views and both appearances. Read off palettes, since a stylesheet's
+ * "color:" reaches a widget through QStyleSheetStyle::polish().
  *
  * Run with: ctest -R EditorChromeInkTest -V
  */
@@ -105,30 +66,15 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorChromeInk-Test-Profile");
 
-    // Measured over the seven views together and pinned under what the walk
-    // actually reaches - 127 things on the dark appearance and 133 on the
-    // light - so that a walk which stopped finding widgets cannot pass as a
-    // walk that found them all in the one ink. The two counts differ because
-    // what is unavailable, chosen or empty of words is left out, and that is
-    // not the same set on both appearances.
+    // Pinned under the measured 127 (dark) and 133 (light), so a walk that stops
+    // finding widgets cannot pass as one that found them all in the one ink
     static constexpr int scmLeastAudited = 100;
-    // What antialiasing is allowed to have left of a letter's core. Never more:
-    // the edges of a glyph are steps between the ink and what is behind it, so
-    // the pixel furthest from the surface is the ink itself.
+    // Small: a glyph's antialiased edges step between ink and surface, so the
+    // pixel furthest from the surface is the ink itself
     static constexpr int scmInkTolerance = 2;
 
-    // The things whose colour says a reading rather than a tone: the compile
-    // note over the code pane, written in the one red anything broken is
-    // written in; the OR/AND chip, which takes the accent while it is the mode
-    // in force; and the note the events row answers a duplicate with, which is
-    // that same red. Named here because each is drawn as a widget with words
-    // inside it, and the words are what would otherwise be measured.
-    //
-    // A script's own event names go with them, for the opposite reason: what a
-    // chip holds is the name the reader typed, so it is content in a box rather
-    // than a word the window says - the full tone, as in a field. The row
-    // writes Mudlet's own sys* events in the chrome tone, which is what tells
-    // the two apart on sight, but the ink of a chip is the row's to choose.
+    // The compile and duplicate notes say a reading in the error hue, and a chip
+    // label holds an event name the reader typed - content, not chrome
     static bool aStateChipOrAChipsOwnName(const QWidget* pWidget)
     {
         for (const QWidget* pAt = pWidget; pAt; pAt = pAt->parentWidget()) {
@@ -140,10 +86,8 @@ private:
         return false;
     }
 
-    // The full tone is what is typed into or picked in a field, so the field
-    // and everything under it is left alone: a combo box's own line edit, a
-    // spin box's, the code pane edbee draws from a syntax theme, and the
-    // console the profile's script writes its errors to.
+    // Fields keep the full tone; edbee draws from its syntax theme and the error
+    // console in the colours the profile chose
     static bool insideAField(const QWidget* pWidget)
     {
         for (const QWidget* pAt = pWidget; pAt; pAt = pAt->parentWidget()) {
@@ -159,10 +103,8 @@ private:
         return false;
     }
 
-    // What a widget writes its words in, or nothing where it shows none. A view
-    // is read once, by the colour its rows are drawn in - which is its palette,
-    // since a stylesheet can only reach a row through ::item and a ::item rule
-    // reaches the palette for some selectors and not others.
+    // A view is read by its palette: a stylesheet only reaches a row through
+    // ::item, and a ::item rule reaches the palette for some selectors only
     static QString inkRoleOf(const QWidget* pWidget, QColor& ink)
     {
         if (const auto* pView = qobject_cast<const QAbstractItemView*>(pWidget)) {
@@ -177,8 +119,7 @@ private:
             return qsl("its title");
         }
         if (const auto* pButton = qobject_cast<const QAbstractButton*>(pWidget)) {
-            // A button that is currently doing something, or being pressed, is
-            // lit in the accent - which is a state rather than an ink
+            // Checked or pressed, a button is lit in the accent - a state, not an ink
             if (pButton->text().isEmpty() || pButton->isChecked() || pButton->isDown()) {
                 return QString();
             }
@@ -195,14 +136,12 @@ private:
         return QString();
     }
 
-    // Every word the editor shows on one appearance. Answers how many things it
-    // read, and adds a line to misses for each one written in something else.
     int walkTheChrome(const QString& appearance, const QColor& chrome, QStringList& misses) const
     {
         int audited = 0;
         for (const QWidget* pWidget : mpEditor->findChildren<QWidget*>()) {
-            // An unavailable word is held to the design's quieter tone, and one
-            // under the pointer to the accent - both states rather than inks
+            // Disabled words take disabledText and hovered ones the accent -
+            // states, not inks
             if (!pWidget->isVisible() || pWidget->rect().isEmpty() || !pWidget->isEnabled() || pWidget->underMouse()) {
                 continue;
             }
@@ -230,9 +169,6 @@ private:
         return audited;
     }
 
-    // Three rows rather than one, and one of each shape the row can take: a
-    // pattern typed into a field, the words that stand in for the prompt line,
-    // and the pair of wells a colour trigger is set from
     void buildThreePatternRows()
     {
         mpEditor->showPatternItems(3);
@@ -245,10 +181,8 @@ private:
         QVERIFY2(mpEditor->mVisiblePatternCount == types.size(), qPrintable(qsl("the trigger form shows %1 pattern rows rather than three").arg(QString::number(mpEditor->mVisiblePatternCount))));
     }
 
-    // One item in each of the other six views, so that entering a view shows
-    // the form rather than the placeholder an empty view stands in with - and,
-    // on the scripts form, one event of the reader's own beside one of Mudlet's
-    // so both inks the events row uses are on show while it is walked.
+    // An empty view shows a placeholder rather than its form; the events row gets
+    // an own event and a sys* one so both of its inks are walked
     void buildAnItemInEveryOtherView()
     {
         mpEditor->slot_showAliases();
@@ -267,7 +201,6 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // Each of the seven, with the form filled in rather than the placeholder up
     void enterView(const EditorViewType view)
     {
         switch (view) {
@@ -300,11 +233,9 @@ private:
         mpEditor->grab();
     }
 
-    // Through the settings dialog's own control, which is the one path an
-    // appearance change takes while these windows are open - and the path that
-    // restyles them. A window on screen paints itself between one change and
-    // the next, and painting is what settles a widget's palette against the
-    // application's; under the offscreen platform nothing paints unless asked.
+    // Through the settings control, the path that restyles these windows. The
+    // grab() is there because painting settles a widget's palette against the
+    // application's, and under the offscreen platform nothing paints unasked.
     void setAppearance(const enums::Appearance appearance)
     {
         if (mpPreferences->comboBox_appearance->currentIndex() == appearance) {
@@ -373,9 +304,8 @@ private slots:
         mSession.stop();
     }
 
-    // One case for both appearances and all seven views, with one list at the
-    // end: a run that stopped at the first word in the wrong tone would take as
-    // many runs to clear as there are of them
+    // One list at the end: stopping at the first miss would take a run per miss
+    // to clear
     void test_everyWordOutsideAFieldIsTheOneQuietTone()
     {
         QStringList misses;
@@ -408,17 +338,13 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("%1 thing(s) in the editor's chrome are written in something other than the one quiet tone - listed above").arg(QString::number(misses.size()))));
     }
 
-    // A palette a view never draws from would pass the walk above and leave the
-    // tree painted in the platform's white, so one row's pixels are read off a
-    // shot of the window: the Triggers heading, which is neither chosen nor
-    // under the pointer. The ink is the pixel furthest from the pane it is
-    // written on - antialiasing gives lighter steps towards the surface, never
-    // a core beyond the ink.
+    // A palette a view never draws from would pass the walk above while the tree
+    // paints in the platform's white
     void test_theTreesHeadingRowIsPaintedInThatSameTone()
     {
         setAppearance(enums::Appearance::dark);
-        // The panel shows one tree at a time, and the walk above leaves
-        // whichever view it ended on up
+        // The panel shows one tree at a time, and the walk above leaves the last
+        // view up
         enterView(EditorViewType::cmTriggerView);
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 

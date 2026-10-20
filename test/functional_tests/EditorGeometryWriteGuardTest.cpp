@@ -18,24 +18,9 @@
  ***************************************************************************/
 
 /*
- * Loading a profile builds a dlgTriggerEditor for it whether or not anybody
- * asks to see one - mudlet::slot_connectionDialogueFinished() does it as part
- * of opening the tab. The editor's placement, though, is one pair of keys for
- * the whole application: script_editor_pos and script_editor_size, in the
- * global QSettings rather than the profile.
- *
- * writeSettings() wrote both on close whatever the window had been doing, and
- * closeEvent() reaches every editor on quit - so a second profile's editor,
- * built and never shown, stored the geometry that restoreWindowGeometry() and
- * the layout happened to leave it at and overwrote the placement the user had
- * actually chosen in the first profile's editor. With two profiles open, the
- * placement was lost every quit. Upstream PR #10317 reports the same defect.
- *
- * The seeded size is deliberately smaller than the editor's own minimum, so an
- * editor that has never been shown holds a size nobody asked for: what it
- * stores without the guard is not the seeded figure but the minimum its layout
- * floors it to, which is what makes this test fail loudly rather than by a few
- * pixels.
+ * Loading a profile builds its editor unshown, and closeEvent() reaches every
+ * editor on quit: a never-shown editor must not overwrite the app-wide
+ * script_editor_pos/size another profile's editor stored (upstream PR #10317).
  */
 
 #include <QGuiApplication>
@@ -64,10 +49,8 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorGeometryWriteGuard-Test-Profile");
 
-    // Standing in for the placement a user chose in another profile's editor
     QPoint mSeededPos;
     QSize mSeededSize;
-    // ...and for the drag that would replace it
     QPoint mDraggedPos;
 
     static QString describe(const QPoint& point) { return qsl("(%1,%2)").arg(QString::number(point.x()), QString::number(point.y())); }
@@ -92,6 +75,8 @@ private slots:
         const QRect availableArea = pScreen->availableGeometry();
         mSeededPos = availableArea.topLeft() + QPoint(37, 29);
         mDraggedPos = availableArea.topLeft() + QPoint(116, 83);
+        // Below the editor's minimum, so an unguarded write stores the layout's floor
+        // and fails loudly rather than by a few pixels
         mSeededSize = QSize(640, 460).boundedTo(availableArea.size());
         QVERIFY2(mSeededSize.height() >= 300, "The screen is too small for this test to say anything");
 
@@ -99,8 +84,6 @@ private slots:
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), mSeededSize);
         qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), describe(mSeededSize));
 
-        // Building the profile is what builds the editor, and nothing here ever
-        // asks to see it - which is the whole of the case below
         QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
         mpHost = mSession.host();
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
@@ -114,8 +97,6 @@ private slots:
         mSession.stop();
     }
 
-    // The second profile's editor, in miniature: built by the load, never put
-    // on screen, and closed on quit
     void test_anEditorNobodyOpenedLeavesThePlacementAlone()
     {
         QVERIFY2(!mpEditor->isVisible(), "The editor was shown, so this is no longer the case being covered");
@@ -129,8 +110,6 @@ private slots:
         QVERIFY2(storedPos() == mSeededPos, qPrintable(qsl("An editor nobody opened overwrote the stored position %1 with %2").arg(describe(mSeededPos), describe(storedPos()))));
     }
 
-    // ...and the other half, which the guard must not have taken with it: an
-    // editor the user has actually worked in still stores where they left it
     void test_anEditorTheUserOpenedStoresWhereItWasLeft()
     {
         mudlet::self()->slot_showEditorDialog();

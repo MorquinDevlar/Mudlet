@@ -18,25 +18,9 @@
  ***************************************************************************/
 
 /*
- * The Central Debug Console's filter bar draws the same monochrome glyphs the
- * main window and the editor do, inked from the palette at runtime. Three things
- * about that can go wrong silently.
- *
- * Pause is a checkable action whose two states are two different pictures, and
- * the picture is now the whole of what carries the state through a QIcon's On
- * slot rather than a setIcon() call inside the toggle slot. An icon built from
- * one file for both states leaves the button showing "pause" while the console
- * is already paused, and nothing about the bar looks wrong.
- *
- * The Show button is a QToolButton on the bar rather than an action, so it is
- * outside restyleActionGlyphs() and has to be inked by hand. It also takes the
- * editor tree's own funnel, so that a filter is the same picture wherever it is
- * offered - checked pixel for pixel rather than by file name, because the tint
- * is half of what makes the pair match.
- *
- * Then the palette is moved and the bar is read again: nothing re-derives a
- * QIcon once it has been set, so a bar left out of the restyle sits in the old
- * theme's ink for the rest of the session.
+ * The debug filter bar's glyphs are inked from the palette and retinted when it moves. Pause
+ * carries both states in its QIcon's On slot, which one file for both would hide, and Show is a
+ * QToolButton outside restyleActionGlyphs(), so it is inked by hand.
  *
  * Run with: ctest -R DebugFilterBarGlyphTest -V
  */
@@ -65,15 +49,11 @@ private:
     TestProfile::Session mSession;
     const QString mHostname = qsl("Test-DebugFilterBarGlyph");
 
-    // The size the comparison is made at. Both pictures are held at the
-    // resolution they were drawn at and scaled by whatever draws them, so any one
-    // size settles it.
+    // Any size settles it: both pictures are scaled from the resolution they were drawn at
     static constexpr int scmComparisonSize = 24;
 
     static QImage drawnAt(const QIcon& icon, const QIcon::State state = QIcon::Off) { return icon.pixmap(QSize(scmComparisonSize, scmComparisonSize), QIcon::Normal, state).toImage(); }
 
-    // Somewhere for a difference to be reported from: the colour the glyph is
-    // actually inked in, read off the most opaque pixel of it
     static QString inkOf(const QImage& glyph)
     {
         QColor darkest;
@@ -90,8 +70,7 @@ private:
         return strongest <= 0 ? qsl("nothing at all") : qsl("%1 at alpha %2").arg(darkest.name(), QString::number(strongest));
     }
 
-    // Two glyphs of the same ink differ by shape alone, which a colour cannot
-    // report: say how much of the picture moved as well as what it is inked in
+    // inkOf() cannot report a difference in shape alone between two glyphs of one ink
     static QString differenceBetween(const QImage& left, const QImage& right)
     {
         if (left.size() != right.size()) {
@@ -112,8 +91,7 @@ private:
 
     static QImage expectedPauseGlyph() { return expectedGlyph(qsl(":/icons/debug-pause.svg"), uiDesign::themeTokens().mutedText); }
 
-    // The bar's actions carry no object name, so they are reached the way the
-    // user reads them - which is why the interface language is pinned in init()
+    // The bar's actions carry no object name, so they are found by their English text
     static QAction* barAction(const QString& text)
     {
         if (!mudlet::smpDebugFilterBar) {
@@ -166,8 +144,6 @@ private slots:
         mSession.stop();
     }
 
-    // The word changes too, but the picture is what is read at a glance - and it
-    // now comes out of the icon's On slot rather than from the toggle slot
     void test_thePauseButtonCarriesThePauseGlyphAndOffersToResumeOnceChecked()
     {
         startDebuggingProfile();
@@ -211,8 +187,6 @@ private slots:
         QVERIFY2(onTheBar == expected, qPrintable(qsl("the Clear button is not the eraser glyph in the toolbar's ink: %1").arg(differenceBetween(onTheBar, expected))));
     }
 
-    // One file, one ink, whichever window the concept is offered in - the editor
-    // tree marks its filter with the same funnel
     void test_theShowButtonCarriesTheEditorsFilterGlyph()
     {
         startDebuggingProfile();
@@ -252,16 +226,14 @@ private slots:
         QApplication::setPalette(savedPalette);
         QTest::qWait(100ms);
 
-        // Read before the pair is compared: a restyle that did nothing at all
-        // would leave the two agreeing and say nothing
+        // Checked first: a restyle that did nothing at all could leave the pair below agreeing
         QVERIFY2(before != after, qPrintable(qsl("the palette moved and the bar's picture did not: it is still inked %1").arg(inkOf(after))));
         QVERIFY2(after == expectedAfter,
                  qPrintable(qsl("the bar was re-inked to %1 where the new palette's mutedText is %2, and %3").arg(inkOf(after), inkOf(expectedAfter), differenceBetween(after, expectedAfter))));
     }
 
 private:
-    // Starts a profile and brings the Central Debug Console - and with it the
-    // filter bar - into existence, the way toggling Debug in the editor does.
+    // The filter bar exists only once the Central Debug Console is attached, as toggling Debug does
     Host* startDebuggingProfile()
     {
         if (!mSession.openProfile(mHostname)) {

@@ -18,41 +18,9 @@
  ***************************************************************************/
 
 /*
- * The notepad drawn in the design language, and the things about that which can
- * go wrong without anything else noticing.
- *
- * Every sheet goes on a widget rather than on the window, because a profile's
- * Lua stylesheet is assigned to the window on every show - so a sheet set on
- * the window would simply be replaced by it, and the window would come back
- * platform-drawn with nothing failing.
- *
- * The strip at the foot of the window has three readings and every one of them
- * is a claim something can break: idle, it says how far each send would reach
- * and shows no way to stop what is not running; sending, the buttons give way
- * to the progress of the send and to Stop; and with no prefix over a long note
- * it says what sending would come to, in the warning tone, with the field
- * carrying the same hairline and a cue inside it.
- *
- * That last reading is fitted to the room the bar has left, which is usually
- * none: the whole sentence, the short form, or no words at all beside the cue
- * in the field - and never a sentence cut off mid-word, which is what a reader
- * used to be left with at the width the warning matters most at.
- *
- * The pictures on the add-tab button and the three the find bar is worked from
- * are set in the style pass rather than in the .ui file, which is the only
- * thing that re-inks them when the appearance moves. A pass that stopped
- * setting one leaves an empty square.
- *
- * A tab is drawn as a chip on the page rather than as the folder tab a platform
- * cuts, which is a claim about pixels and is read as pixels here.
- *
- * Closing a note destroys it: save() writes the tabs that are left and nothing
- * keeps a copy of the rest. So a note with text in it is asked about first, once
- * per act however many notes the act takes, with Cancel as both the default and
- * the escape - and an empty note goes without a word.
- *
- * ...and an appearance change has to rebuild both sheets. The window is not a
- * QDialog and gets no restyle from anybody else.
+ * Guards the notepad's design-language shell: its two sheets, the send strip's
+ * three readings, the tab chips and their crosses, the glyphs, and the question
+ * before a note with text in it is destroyed.
  *
  * Run with: ctest -R NotepadShellTest -V
  */
@@ -96,9 +64,7 @@ private:
     dlgNotepad* mpNotepad = nullptr;
     const QString mProfileName = qsl("NotepadShell-Test-Profile");
 
-    // How far a sampled pixel may sit from the colour the tokens mix, per
-    // channel. A styled fill is composited rather than blitted, so the two
-    // agree to a level or two rather than exactly.
+    // Per channel: a styled fill is composited rather than blitted
     static constexpr int scmFillTolerance = 6;
 
     QString centralSheet() const { return mpNotepad->centralwidget->styleSheet(); }
@@ -106,8 +72,7 @@ private:
 
     QPlainTextEdit* currentNote() const { return qobject_cast<QPlainTextEdit*>(mpNotepad->tabWidget->currentWidget()); }
 
-    // A note of that many lines, none of them empty - which is what the counts
-    // on the two buttons are counts of
+    // None empty: the counts on the two buttons count non-empty lines
     void writeNote(const int lines)
     {
         QStringList text;
@@ -118,7 +83,6 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // The first lines of that note, chosen the way a reader drags over them
     void selectFromTheTop(const int lines)
     {
         QTextCursor cursor = currentNote()->textCursor();
@@ -142,12 +106,11 @@ private:
         return pLabel ? pLabel->text() : QString();
     }
 
-    // What the bar shows for an action, which is what a reader clicks: an action
-    // hidden while a send runs is still an action, and only the button says so
+    // The action, not its toolbar widget, says whether the bar carries it
     static bool onShow(const QAction* pAction) { return pAction && pAction->isVisible(); }
 
-    // The cue the warning is carried by inside the prefix field, found where a
-    // reader meets it - on the field - rather than through the member holding it
+    // Found on the field rather than through the member, so a cue never added
+    // to the field fails
     QAction* fieldCue() const
     {
         const QList<QAction*> onTheField = mpNotepad->lineEdit_prependText->actions();
@@ -159,15 +122,13 @@ private:
         return nullptr;
     }
 
-    // Whatever the strip is showing of the warning, it is never the tail end of
-    // a sentence that ran out of room
     void nothingIsAFragment() const
     {
         const QString words = wordsOn(qsl("notepadNoPrefixText"));
         QVERIFY2(!words.contains(QChar(0x2026)) && !words.endsWith(qsl("...")), qPrintable(qsl("the warning is cut to a fragment rather than shown whole or not at all: \"%1\"").arg(words)));
     }
 
-    // The window at that width, and the strip given its chance to measure again
+    // The wait gives the strip its chance to measure again
     void atWidth(const int width) const
     {
         mpNotepad->resize(width, 520);
@@ -191,9 +152,6 @@ private:
         return std::abs(read.red() - wanted.red()) <= scmFillTolerance && std::abs(read.green() - wanted.green()) <= scmFillTolerance && std::abs(read.blue() - wanted.blue()) <= scmFillTolerance;
     }
 
-    // The cross on a tab: the box the recipe draws it in, standing inside the
-    // chip's padding on whichever side the strip puts it - the same line the
-    // word is laid to - and on the chip's own centre line.
     void theCrossOnTabIsTheRecipes(const int index) const
     {
         QTabBar* pTabBar = mpNotepad->tabWidget->tabBar();
@@ -206,8 +164,7 @@ private:
                  qPrintable(qsl("tab %1: a cross drawn into a %2px box the platform sized is stretched past the %3px mark the recipe draws")
                                     .arg(QString::number(index), QString::number(pCross->size().width()), QString::number(uiDesign::scmTabCloseGlyphSize))));
 
-        // The gap that tells two chips apart comes off the trailing side, so the
-        // chip is the tab's rectangle less that gap
+        // The gap between chips comes off the trailing side of the tab's rect
         const QRect tab = pTabBar->tabRect(index);
         const QRect chip = tab.adjusted(0, 0, -uiDesign::scmTabGap, 0);
         const int padding = uiDesign::scmInputBorderWidth + uiDesign::scmTabPaddingHorizontal;
@@ -220,15 +177,11 @@ private:
         QVERIFY2(offCentre <= 1, qPrintable(qsl("the cross on tab %1 sits %2px off the chip's centre line, where the word is").arg(QString::number(index), QString::number(offCentre))));
     }
 
-    // How many 20ms ticks the answerer below will wait for a box to turn up, and
-    // how long it puts up with one that did not go away after it was answered.
-    // It has to give up: the modal loop runs inside the call under test, so a
-    // box nothing presses would hang the case until ctest kills it rather than
-    // failing it with a message.
+    // 20ms ticks the answerer waits for a box, and puts up with one still shown
+    // after it was answered. It must give up: a box nothing presses would hang
+    // the case inside the modal loop until ctest kills it
     static constexpr int scmBoxAnswerTicks = 100;
 
-    // What the answerer presses: the button that keeps the note, or the one in
-    // the destructive role that takes it
     enum class TheAnswer { Keep, Discard };
 
     QTimer* mpBoxAnswerer = nullptr;
@@ -236,9 +189,8 @@ private:
     int mBoxesSeen = 0;
     QString mBoxComplaint;
 
-    // The box a close puts to the reader. activeModalWidget() is Qt's own
-    // bookkeeping rather than the platform plugin's, so it works offscreen; the
-    // sweep over the top levels keeps this from resting on that alone.
+    // activeModalWidget() is Qt's bookkeeping, not the platform plugin's, so it
+    // works offscreen; the sweep over the top levels is a fallback
     static QMessageBox* visibleMessageBox()
     {
         if (auto* pModal = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
@@ -253,11 +205,9 @@ private:
         return nullptr;
     }
 
-    // QMessageBox::exec() spins a loop of its own, so the answer is armed before
-    // the close and presses from inside it. The box just answered is held by a
-    // QPointer rather than by address: it is a local of the call under test, so
-    // the pointer empties when it goes and a second question - which is the
-    // thing these cases are counting - is told apart from the first.
+    // QMessageBox::exec() spins its own loop, so the answer is armed before the
+    // close. A QPointer empties when the answered box (a local of the call under
+    // test) goes, so a second box at the same address is still counted
     void armTheAnswer(const TheAnswer answer)
     {
         mBoxesSeen = 0;
@@ -277,7 +227,6 @@ private:
             }
 
             if (pBox == mpAnsweredBox) {
-                // The one just pressed, on its way out
                 if (++*ticks > scmBoxAnswerTicks) {
                     mBoxComplaint = qsl("the box stayed up after it was answered");
                     mpBoxAnswerer->stop();
@@ -326,8 +275,7 @@ private:
     }
 
 private slots:
-    // A case that stops at a failed assertion must not leave the answerer
-    // pressing its way through the next one's dialogs
+    // A failed case must not leave the answerer pressing the next case's dialogs
     void cleanup() { disarmTheAnswer(); }
 
     void initTestCase()
@@ -337,7 +285,7 @@ private slots:
         }
 
         QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
-        // The words below are read as words rather than as pictures
+        // Some assertions match English text
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
 
         QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
@@ -350,8 +298,7 @@ private slots:
         mpNotepad->resize(760, 520);
         QVERIFY(QTest::qWaitForWindowExposed(mpNotepad));
 
-        // A second note, so that the strip below has both a chosen tab and one
-        // that is not
+        // A second note, so the strip has a chosen tab and one that is not
         if (mpNotepad->tabWidget->count() < 2) {
             mpNotepad->addTab(qsl("Second"));
         }
@@ -370,9 +317,8 @@ private slots:
         mSession.stop();
     }
 
-    // Both sheets exist and are set where they have to be: on the central
-    // widget and on the bar, never on the window, whose own stylesheet a
-    // profile's Lua one is assigned to on every show
+    // A profile's Lua stylesheet is assigned to the window on every show,
+    // replacing any sheet set there
     void test_theShellsTwoSheetsAreSetOnWidgetsRatherThanOnTheWindow()
     {
         const QString central = centralSheet();
@@ -386,9 +332,6 @@ private slots:
         QVERIFY2(bar.contains(qsl("notepadSendingBar")), "the bar's sheet says nothing about the thread a send's progress is drawn as");
     }
 
-    // Idle, the strip says how far each of the three sends would reach and shows
-    // no way to stop what is not running. The fold that used to hide all of it
-    // is gone: it saved no space and guarded nothing.
     void test_theStripShowsItsReachAndNoStopWhileIdle()
     {
         QVERIFY2(!mpNotepad->findChild<QToolButton*>(qsl("notepadOptionsToggle")), "the bar still carries the Options button the send controls were folded behind");
@@ -414,13 +357,12 @@ private slots:
 
         QVERIFY2(!onShow(mpNotepad->action_stop), "Stop is on the strip with nothing being sent");
 
-        // The word leading the prefix field and the field itself are set in
-        // the size the bar's buttons are, or on macOS they sit a size larger
-        // than the buttons beside them and off their line
+        // On macOS the lead word and the field otherwise sit a size larger than
+        // the buttons beside them and off their line
         const QWidget* pSendLine = mpNotepad->toolBar->widgetForAction(mpNotepad->action_sendLine);
         QVERIFY2(pSendLine, "the bar made no button for Send line");
-        // Rounded: the platform's tool button font is a fraction on some of
-        // them, where the sheet can only name a whole point
+        // Rounded: some platforms' tool button font is fractional, where a
+        // sheet can only name a whole point
         const int buttonSize = qRound(pSendLine->font().pointSizeF());
         for (const QWidget* pWord : {static_cast<QWidget*>(mpNotepad->label_prependText),
                                      static_cast<QWidget*>(mpNotepad->lineEdit_prependText),
@@ -431,16 +373,8 @@ private slots:
         }
     }
 
-    // The seam between the send buttons and the prefix is centred between the
-    // two words it parts, not between the two widgets. A tool button holds its
-    // word the bar's own padding in from its edge while a label's word starts
-    // at the label's edge - so the seam, whose margins are the same either
-    // side, sat nearly twice as far from "Send all (12 lines)" as from "Before
-    // each line" until the word was given the same room a button gives its own.
-    //
-    // Read as geometry: what a word's own ink reaches is not measurable, but
-    // the box each of them is held in is. The two readings together put the
-    // seam within the button's one transparent border pixel of centred.
+    // A tool button holds its word in by the bar's padding while a label's word
+    // starts at its edge, so equal margins alone leave the seam off-centre
     void test_theSeamOnTheStripIsCentredBetweenTheTwoWordsItParts()
     {
         atWidth(1400);
@@ -467,12 +401,8 @@ private slots:
         const int afterTheSeam = pWord->x() - (pSeam->x() + pSeam->width());
         QVERIFY2(beforeTheSeam == afterTheSeam, qPrintable(qsl("the bar leaves %1px before the seam and %2px after it").arg(QString::number(beforeTheSeam), QString::number(afterTheSeam))));
 
-        // ...and the word's own box, which is where the rule this case is about
-        // does its work: a label with no padding holds its word at its edge and
-        // the seam reads as belonging to the field rather than parting a pair
-        // Read off the pixels rather than off the margins: what the reader sees
-        // is ink either side of a line, and the button's own slack after its
-        // word is what a margin alone cannot account for
+        // Read off the ink: the button's slack after its word is what the
+        // margins alone cannot account for
         const QImage shot = mpNotepad->toolBar->grab().toImage().convertToFormat(QImage::Format_ARGB32);
         const qreal ratio = shot.width() / qreal(mpNotepad->toolBar->width());
         const QRgb bar = shot.pixel(qRound(2 * ratio), qRound(2 * ratio));
@@ -501,13 +431,11 @@ private slots:
         const int leftOfTheLine = seamLine - buttonLast;
         const int rightOfTheLine = wordFirst - seamLine;
         qInfo().noquote() << qsl("  the seam stands %1px after Send all's last ink and %2px before the lead word's first").arg(QString::number(leftOfTheLine), QString::number(rightOfTheLine));
+        // <= 2: the tool button's one transparent border pixel, plus rounding at the grab's ratio
         QVERIFY2(qAbs(leftOfTheLine - rightOfTheLine) <= 2,
                  qPrintable(qsl("the seam is %1px from the word on its left and %2px from the word on its right").arg(QString::number(leftOfTheLine), QString::number(rightOfTheLine))));
     }
 
-    // Sending, the three buttons, the word, the field and the warning leave the
-    // strip and the progress of the send takes their place - with Stop the one
-    // button on it. Stopping puts the strip back the way it was.
     void test_aSendShowsProgressAndStopThenReturns()
     {
         writeNote(12);
@@ -544,12 +472,9 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // The reading the strip is really for: an empty prefix over a note long
-    // enough to be prose, which would go to the game a command at a time
     void test_anEmptyPrefixOverALongNoteWarns()
     {
-        // Wide enough for the whole sentence: which of the warning's forms the
-        // strip has room for is the case after this one
+        // Wide enough for the whole sentence; the narrower forms are the next case
         mpNotepad->resize(1400, 520);
         QCoreApplication::processEvents();
         mpNotepad->lineEdit_prependText->clear();
@@ -563,8 +488,6 @@ private slots:
         QCOMPARE(mpNotepad->lineEdit_prependText->property("notepadFieldState").toString(), qsl("warning"));
         QVERIFY2(mpNotepad->action_sendAll->isEnabled(), "the warning took the send away rather than saying what it would do");
 
-        // ...and the cue that costs the bar no room, so it is there at every
-        // width the window is dragged to: inside the field, at its trailing end
         QAction* pCue = fieldCue();
         QVERIFY2(pCue, "the prefix field carries no 'notepadPrefixWarning' at all");
         QVERIFY2(pCue->isVisible(), "the field carries no cue while the strip is warning about what a send would do");
@@ -585,31 +508,22 @@ private slots:
         QVERIFY2(!pCue->isVisible(), "a three line note put the cue in the field");
         QVERIFY2(mpNotepad->lineEdit_prependText->property("notepadFieldState").toString().isEmpty(), "a three line note put the warning hairline on the field");
 
-        // ...and on a window narrower than the strip's own content the whole
-        // sentence is still there to be read, whatever the strip has room for
         writeNote(12);
         atWidth(760);
         QVERIFY2(pCue->isVisible(), "the field's cue went with the words the narrower strip had no room for");
         QVERIFY2(pNote->toolTip().contains(qsl("12")), qPrintable(qsl("the whole sentence is nowhere to be read: \"%1\"").arg(pNote->toolTip())));
         QVERIFY2(mpNotepad->lineEdit_prependText->toolTip().contains(qsl("12")),
                  qPrintable(qsl("the field, which is what a reader is looking at, does not carry the sentence: \"%1\"").arg(mpNotepad->lineEdit_prependText->toolTip())));
-        // The action rather than the widget: a bar that has posted its tail
-        // into its drop-down leaves the widget saying it is visible
+        // The action rather than the widget: a bar that has moved its tail into
+        // its extension menu leaves the widget saying it is visible
         if (mpNotepad->action_noPrefixNote->isVisible()) {
             QVERIFY2(pNote->x() + pNote->width() <= mpNotepad->toolBar->width(), "the warning is drawn off the end of the strip");
         }
     }
 
-    // The words come only whole. The strip's own content wants more room than
-    // the window opens at, so a sentence at its end is the first thing to go:
-    // it is the whole sentence where there is room for the whole sentence, the
-    // short form where there is not, and nothing at all rather than a fragment -
-    // with the cue in the field standing at every one of the three.
-    //
-    // The widths are pinned to what this window measures on the platform these
-    // run on: the strip with the words off it asks for 712px, the sentence is
-    // 298px wide and the short form 54px - so the sentence wants 1010px of
-    // window and the short form 766px, and below that neither is shown.
+    // Widths pinned to what this window measures on the platform these run on:
+    // the strip without the words asks 712px, the sentence 298px and the short
+    // form 54px, so the sentence needs a 1010px window and the short form 766px
     void test_theWarningIsShownWholeOrShortOrNotAtAll()
     {
         mpNotepad->lineEdit_prependText->clear();
@@ -634,10 +548,8 @@ private slots:
         QVERIFY2(pCue->isVisible(), "the field's cue went with the sentence the strip had no room for");
         nothingIsAFragment();
 
-        // Read as the action being off the bar rather than as isVisible() on the
-        // widget: at a width this narrow the bar is over its own room as well and
-        // posts its tail into the drop-down, which leaves that flag saying what it
-        // said before the fit ran. What the reader sees is what the bar carries.
+        // Read off the action: at this width the bar also moves its tail into
+        // the extension menu, which leaves the widget's isVisible() stale
         atWidth(520);
         QTRY_VERIFY2(!onShow(mpNotepad->action_noPrefixNote), "the reading is still on the strip at a width neither form fits in");
         QVERIFY2(pNote->isHidden(), "the warning's widget was left on the strip, so it is drawn as a dot with nothing after it");
@@ -646,7 +558,7 @@ private slots:
         QVERIFY2(pNote->toolTip().contains(qsl("12")) && pCue->toolTip().contains(qsl("12")), "the whole sentence is nowhere to be read at the narrowest width");
         nothingIsAFragment();
 
-        // ...and back, since a form that only ever narrows is half a fit
+        // Widened again: a fit that only ever narrows would pass the steps above
         atWidth(1400);
         QTRY_COMPARE(wordsOn(qsl("notepadNoPrefixText")), whole);
         QVERIFY2(pNote->isVisible(), "the warning did not come back when the window was widened again");
@@ -655,9 +567,6 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // Both readings are drawn in the design's own colours: the send in the
-    // accent, since it is the window doing what it was asked, and the warning in
-    // words walked off the page until they can be read on it
     void test_theStripsInksAreTheDesigns()
     {
         auto* pDot = mpNotepad->findChild<QLabel*>(qsl("notepadSendingDot"));
@@ -683,13 +592,10 @@ private slots:
                                         .arg(appearance.first, ink.name(), tokens.page.name(), QString::number(ratio, 'f', 2), QString::number(uiDesign::scmTextMinimumRatio, 'f', 1))));
         }
 
-        // The cases after this one read pixels against whichever appearance the
-        // machine is in, which is where they began
+        // The cases after this one read pixels against the machine's appearance
         setAppearance(enums::Appearance::systemSetting);
     }
 
-    // The four buttons that are a picture and nothing else, and the cross on a
-    // tab, which is a picture a rule points at rather than an icon on a widget
     void test_everyPictureInTheWindowComesFromTheGlyphs()
     {
         const QStringList pictureButtons{qsl("notepadAddTab"), qsl("notepadFindPrevious"), qsl("notepadFindNext"), qsl("notepadFindClose")};
@@ -706,9 +612,6 @@ private slots:
         QVERIFY2(central.mid(at, 200).contains(qsl("image:")), "the tab's close-button rule points at no picture");
     }
 
-    // A tab is a chip on the page: the chosen one filled with the accent's wash
-    // and the rest showing the page through. Read as pixels, since that is the
-    // whole of the claim.
     void test_theChosenTabIsLitAndTheRestAreThePage()
     {
         QTabBar* pTabBar = mpNotepad->tabWidget->tabBar();
@@ -721,8 +624,7 @@ private slots:
         const QColor lit = uiDesign::blend(tokens.page, tokens.accent, uiDesign::scmSoftWashStrength);
         const QImage shot = mpNotepad->grab().toImage();
 
-        // Inside the fill and clear of the word: the tab's own padding leaves
-        // room at its leading edge that nothing is drawn in
+        // Inside the fill and clear of the word, in the tab's leading padding
         const auto insideTab = [pTabBar, this](const int index) {
             const QRect tab = pTabBar->tabRect(index);
             return pTabBar->mapTo(mpNotepad, QPoint(tab.left() + 4, tab.center().y()));
@@ -737,9 +639,8 @@ private slots:
                  qPrintable(qsl("the tab that is not chosen reads %1 rather than the page %2 - the strip is still drawing folder tabs").arg(other.name(), tokens.page.name())));
     }
 
-    // An appearance change has to rebuild both sheets. Nothing else restyles
-    // this window: it is not a QDialog, and the profile stylesheet it is handed
-    // on show says nothing about either.
+    // Nothing else restyles this window: it is not a QDialog, and the profile
+    // stylesheet it is handed on show says nothing about either sheet
     void test_bothSheetsAreRebuiltWhenTheAppearanceMoves()
     {
         QMap<QString, QPair<QString, QString>> sheets;
@@ -757,9 +658,6 @@ private slots:
         QVERIFY2(sheets.value(qsl("dark")).second != sheets.value(qsl("light")).second, "both appearances built the same toolbar sheet");
     }
 
-    // The fold the send controls used to hide behind was remembered per
-    // profile. Nothing reads that key now, so a profile that still carries it
-    // from an older notepad has it taken out the next time this one saves.
     void test_theRetiredFoldKeyIsClearedOnSave()
     {
         const QString key = qsl("Notepad/SendControlsVisible");
@@ -772,11 +670,7 @@ private slots:
         QVERIFY2(!mpHost->readProfileIniData(qsl("Notepad/WindowState")).isEmpty(), "the save that was meant to clear the old key did not write the window state either, so it did not run");
     }
 
-    // A closed note is gone: save() writes the tabs that are left and nothing
-    // keeps a copy of the rest, so a cross caught by a slip of the finger used
-    // to take the work with it. A note with text in it is asked about first,
-    // with Cancel as both the default and the escape so that Return and Escape
-    // alike keep it - and an empty note, which is no loss, goes without a word.
+    // A closed note is gone: save() writes only the tabs that are left
     void test_aNoteWithTextAsksBeforeItIsClosed()
     {
         QCOMPARE(mpNotepad->tabWidget->count(), 2);
@@ -800,8 +694,8 @@ private slots:
         QCOMPARE(mBoxesSeen, 1);
         QCOMPARE(mpNotepad->tabWidget->count(), 1);
 
-        // ...and a note with nothing in it: had it asked, the answerer would
-        // have been let in by the loop the box spins and would have kept it
+        // Armed anyway: a wrong question is answered rather than left to hang
+        // the case in the box's loop
         mpNotepad->addTab(qsl("Second"));
         QCoreApplication::processEvents();
         QCOMPARE(mpNotepad->tabWidget->count(), 2);
@@ -817,8 +711,6 @@ private slots:
         QCOMPARE(mpNotepad->tabWidget->count(), 2);
     }
 
-    // Close Other Tabs is one act rather than a run of closes, so it is put to
-    // the reader once - and Cancel keeps every one of the notes it named
     void test_closingTheOtherNotesAsksOnceForAllOfThem()
     {
         QCOMPARE(mpNotepad->tabWidget->count(), 2);
@@ -848,10 +740,6 @@ private slots:
         QCOMPARE(mpNotepad->tabWidget->count(), 2);
     }
 
-    // A cross that cannot close anything is a control that does nothing. The
-    // last note left is kept by closeTab() and the context menu offers no close
-    // for it, so the strip carries no crosses while there is one tab - and both
-    // tabs carry one again the moment a second note is made.
     void test_theLastTabCarriesNoCrossSinceItCannotClose()
     {
         QTabBar* pTabBar = mpNotepad->tabWidget->tabBar();
@@ -870,8 +758,6 @@ private slots:
         QCOMPARE(mpNotepad->tabWidget->count(), 1);
         QVERIFY2(!crossOn(0), "the sole tab still carries a cross, though closeTab() will not close it");
 
-        // The rule the cross is hidden for: the last note stays whatever is
-        // asked of it
         mpNotepad->closeTab(0);
         QCoreApplication::processEvents();
         QCOMPARE(mpNotepad->tabWidget->count(), 1);
@@ -883,9 +769,8 @@ private slots:
             QVERIFY2(crossOn(i), qPrintable(qsl("tab %1 carries no cross after a second note brought the crosses back").arg(QString::number(i))));
         }
 
-        // ...and the crosses the strip made again are the recipe's, which is
-        // the keeper on the bar catching them rather than the pass over the
-        // tabs that were there when it was styled
+        // Recreated crosses are caught by the filter on the bar, not by the
+        // styling pass over the tabs that existed then
         theCrossOnTabIsTheRecipes(0);
         if (QTest::currentTestFailed()) {
             return;
@@ -896,18 +781,9 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // The cross on a tab is sized by the widget, not by the rule that draws it:
-    // Qt's close button asks the style for its own box in its constructor, and
-    // a ::close-button rule is never asked. The mark is drawn at
-    // scmTabCloseGlyphSize inside a picture scmTabCloseBoxSize across, and that
-    // picture is painted into whatever rect the button ended up with - so a box
-    // the platform made larger stretches the mark by the same ratio, and the
-    // reader gets a heavier x here than on the profile strip.
-    //
-    // Where that box stands is the second half of the same claim, and Qt gets it
-    // from the tab's raw rectangle rather than from the padding box the rule
-    // lays the word in - so the cross came out flush against the chip's edge
-    // while the word beside it had ten pixels of air.
+    // Qt's tab close button takes its size from the style in its constructor,
+    // never from the ::close-button rule, and is placed from the tab's raw rect
+    // rather than from the padding box the rule lays the word in
     void test_everyCrossIsTheRecipesBoxInsideTheChipsPadding()
     {
         for (int i = 0; i < mpNotepad->tabWidget->tabBar()->count(); ++i) {
@@ -917,11 +793,9 @@ private slots:
             }
         }
 
-        // ...and a tab made after the strip was prepared, under the appearance
-        // whose base style is Fusion rather than the platform's own: the two
-        // answer different numbers for a tab's cross and only one of them is
-        // the recipe's. This one is kept by the filter watching the bar rather
-        // than by the pass over the tabs that were already there.
+        // The dark appearance's base style is Fusion, which answers a different
+        // size for a tab's cross than the platform style; a new tab is caught by
+        // the filter on the bar
         setAppearance(enums::Appearance::dark);
         const int third = mpNotepad->addTab(qsl("Third"));
         QCoreApplication::processEvents();

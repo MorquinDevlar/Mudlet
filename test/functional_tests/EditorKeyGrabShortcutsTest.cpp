@@ -18,14 +18,9 @@
  ***************************************************************************/
 
 /*
- * The editor's own shortcuts across a key grab. A grab takes them away so that
- * the keystroke being bound reaches the grab rather than the action it would
- * otherwise fire, and ending the grab - by Escape or by taking a keystroke -
- * has to give every one of them back.
- *
- * It used to give back only the shortcuts a label-keyed table listed, so
- * Ctrl+N to add an item, and the others set directly on their actions, were
- * gone for the rest of the session after the first grab.
+ * Ending a key grab, by Escape or by a captured keystroke, must give back every
+ * shortcut the grab suspended, not only those a label-keyed table listed: Ctrl+N
+ * and the others set on their actions were lost for the session after one grab.
  *
  * Run with: ctest -R EditorKeyGrabShortcutsTest -V
  */
@@ -58,8 +53,6 @@ private:
     TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
-    // Every toolbar action's shortcut as it stood before any grab, so that what
-    // a grab gives back can be held against all of them
     QHash<QAction*, QKeySequence> mShortcutsBeforeTheGrab;
     const QString mProfileName = qsl("EditorKeyGrabShortcuts-Test-Profile");
 
@@ -68,8 +61,6 @@ private:
 
     void armTheGrab()
     {
-        // The redesign replaced the Grab Key button with the binding field
-        // itself: a click on it is what arms the grab
         QTest::mouseClick(mpEditor->mpKeysMainArea->lineEdit_key_binding, Qt::LeftButton);
         QCoreApplication::processEvents();
     }
@@ -103,16 +94,14 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 900);
 
-        // The toolbar and the view switchers, which the redesign moved off a
-        // toolbar of their own - the same set the grab suspends
+        // The same set the grab suspends
         for (QAction* pAction : mpEditor->toolbarActions()) {
             mShortcutsBeforeTheGrab.insert(pAction, pAction->shortcut());
         }
 
         QVERIFY2(mShortcutsBeforeTheGrab.contains(mpEditor->mAddItem), "Add Item is not on the editor's toolbar, so the shortcut this test watches is not among the recorded ones");
         QCOMPARE(mpEditor->mAddItem->shortcut(), QKeySequence(QKeySequence::New));
-        // Ctrl+S used to come from a label-keyed table, which never matched in
-        // a translated UI; it is now set on the action itself
+        // A label-keyed lookup never matched in a translated UI, so Save carries its own
         QCOMPARE(mpEditor->mSaveItem->shortcut(), QKeySequence(QKeySequence::Save));
 
         mpEditor->slot_showKeys();
@@ -158,8 +147,7 @@ private slots:
         QCoreApplication::processEvents();
         QVERIFY2(!mpEditor->mIsGrabKey, "the grab is still armed after a keystroke was taken");
 
-        // The keystroke reaching the key proves it was the capturing branch of
-        // event(), not the Escape one, that ended this grab
+        // Proves the capturing branch of event(), not the Escape one, ended the grab
         TKey* pKey = mpHost->getKeyUnit()->getKey(mpEditor->mpCurrentKeyItem->data(0, Qt::UserRole).toInt());
         QVERIFY2(pKey != nullptr, "the key is not in the key unit");
         QCOMPARE(pKey->getKeyCode(), Qt::Key_F7);

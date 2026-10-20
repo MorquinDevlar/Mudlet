@@ -18,29 +18,9 @@
  ***************************************************************************/
 
 /*
- * Every word in the editor and the settings dialog, in both appearances, read
- * against what is actually painted behind it.
- *
- * The design mixes its inks and its surfaces from the same palette, so the pair
- * is meant to hold at any theme - but a rule that names one and not the other,
- * or a control the platform styles itself, lands text on a surface nobody
- * measured. That defect is invisible in whichever theme it was written in and
- * unreadable in the other, and nothing catches it until somebody switches.
- *
- * So this opens both windows, flips the appearance, and for every visible thing
- * that shows words compares the ink its palette answers with against the colour
- * most of the pixels behind it are. WCAG's floors: 4.5:1 for text, 3:1 for
- * what is unavailable or not yet typed in.
- *
- * Two things are deliberately not audited:
- *
- * - The code pane. Edbee carries a syntax theme of its own with its own
- *   background, and what it draws is not this design's ink on this design's
- *   surface.
- * - A colour well - a button filled with the colour the user picked. The fill
- *   is a value being shown rather than a surface, and the words on it are
- *   chosen against that fill by generateButtonStyleSheet() rather than by the
- *   theme. They are skipped by object name, listed in wellNames() below.
+ * Guards that every word on a designed window clears WCAG contrast against what
+ * is painted behind it, in both appearances: an ink and surface that do not pair
+ * up are unreadable in one theme only, and nothing shows it until somebody switches.
  *
  * Run with: ctest -R ReadabilityAuditTest -V
  */
@@ -106,7 +86,6 @@ private:
     dlgPackageManager* mpPackages = nullptr;
     dlgPackageExporter* mpExporter = nullptr;
     Host* mpHost = nullptr;
-    // The three items the forms walked on their own below are shown from
     QTreeWidgetItem* mpKeyItem = nullptr;
     QTreeWidgetItem* mpTimerItem = nullptr;
     QTreeWidgetItem* mpActionItem = nullptr;
@@ -125,92 +104,43 @@ private:
     }
     const QString mProfileName = qsl("ReadabilityAudit-Test-Profile");
 
-    // What text has to clear against what it is written on, and the lower floor
-    // WCAG allows for words that are unavailable or not yet typed
     static constexpr qreal scmTextFloor = uiDesign::scmTextMinimumRatio;
     static constexpr qreal scmQuietFloor = uiDesign::scmQuietMinimumRatio;
-    // Measured floors, pinned below what the walk actually reaches - 41 things
-    // in the editor, 25 on the settings dialog's first page and 37 on the About
-    // dialog's Mudlet page - so that a walk which silently stopped finding
-    // widgets cannot pass as a clean one
+    // Pinned below the measured 41 (editor), 25 (settings) and 37 (About), so a
+    // walk that silently stopped finding widgets cannot pass as a clean one
     static constexpr int scmLeastAuditedInTheEditor = 30;
     static constexpr int scmLeastAuditedInTheSettings = 18;
-    // ...and on each of the four forms walked on their own below. Those walks
-    // are held to the form widget rather than to the whole window, so these are
-    // floors the form alone can miss: measured at 6 on the scripts form (the
-    // name, the ID pill's two words, the word leading the row of events, the
-    // two chips and the button that adds another), 7 on the keys form (the
-    // name, the command, the ID pill's two words, the word leading the key row,
-    // the placeholder standing in for the keystroke it has not been given, and
-    // the hint beside it), 14 on the timers form, where the words of the
-    // interval's sentence are read beside the four fields they name, 7 on the
-    // variables form (the name, the two words leading the type pickers, what
-    // each picker is showing, and the switch that hides the variable from the
-    // tree), and 8 on the buttons form (the name and what is typed in it, the
-    // ID pill's two words, the words leading the rotation, command and
-    // stylesheet rows, what the rotation picker is showing, and the push-down
-    // switch)
+    // Each form alone, measured at 6 (scripts), 7 (keys), 14 (timers),
+    // 7 (variables) and 8 (buttons)
     static constexpr int scmLeastAuditedOnTheScriptsForm = 6;
     static constexpr int scmLeastAuditedOnTheKeysForm = 6;
     static constexpr int scmLeastAuditedOnTheTimersForm = 12;
     static constexpr int scmLeastAuditedOnTheVariablesForm = 6;
     static constexpr int scmLeastAuditedOnTheButtonsForm = 6;
     static constexpr int scmLeastAuditedInTheAbout = 28;
-    // ...and the connection dialog's two tabs, walked from the tab page rather
-    // than from the window, so these are floors each page alone can miss:
-    // measured at 7 on the Connect-to tab (the three words leading its fields,
-    // the name, the address and the port typed into them, and the word beside
-    // the secure switch) and 5 on the Options tab (the three words leading its
-    // rows and the two switches under them - the character name and the
-    // password stand empty behind no placeholder, and a profile with no saved
-    // sessions leaves the history picker showing nothing)
+    // Measured at 7 and 5: on the Options tab the character name and password
+    // have no placeholder, and with no saved sessions the history picker is empty
     static constexpr int scmLeastAuditedOnTheConnectTab = 6;
     static constexpr int scmLeastAuditedOnTheOptionsTab = 4;
-    // ...and the two containers holding that window's buttons, walked the same
-    // way and for the same reason - the sheet that draws them is set on each of
-    // those rather than on the window. A disabled push button is skipped by the
-    // walk on purpose (see aDisabledPushButton() below), and the profile this
-    // fixture selects is the one the editor above is open on, so the dialog
-    // holds Remove, Offline and Connect unavailable for as long as it is
-    // loaded. That leaves 2 over the games list (Copy and New) and 1 under it
-    // (Cancel - the skip button is hidden except on a first launch).
+    // Measured at 2 (Copy, New) and 1 (Cancel): the selected profile is the one
+    // already open, so Remove, Offline and Connect are disabled and skipped
     static constexpr int scmLeastAuditedOnTheAdminRow = 2;
     static constexpr int scmLeastAuditedOnTheButtonRow = 1;
-    // ...and the notepad, walked whole: measured at 6 - Send line and Send all,
-    // the word leading the prefix field, the prompt standing in for what has not
-    // been typed into it, the warning a long note with no prefix carries, and
-    // the same prompt in the find field. Send selection is skipped, being a
-    // disabled tool button with nothing selected to send, Stop and the progress
-    // of a send are not on the strip with nothing being sent, and the four
-    // buttons that are a picture alone say nothing in words.
+    // Measured at 6: Send selection is disabled with nothing selected, Stop and
+    // the progress are hidden with nothing sending, and icon-only buttons have no words
     static constexpr int scmLeastAuditedInTheNotepad = 6;
-    // ...and the package manager, walked a column at a time, since the sheet
-    // that draws each of them is set on that column rather than on the window.
-    // Measured at 4 on the list column - the search field's prompt, the rows of
-    // the list in both their inks, and Install from a file - and 5 on the
-    // details column: the package's name, its summary, the author and the
-    // version of the caption line, and Remove. Install is hidden in the
-    // Installed view on purpose, and Website and Report are hidden for a
-    // package the repository index does not list, which is every package here:
-    // this fixture's profile has no index on disk.
+    // Measured at 4 and 5: Install is hidden in the Installed view, and Website
+    // and Report for a package no repository index lists - this profile has none
     static constexpr int scmLeastAuditedOnThePackageList = 3;
     static constexpr int scmLeastAuditedOnThePackageDetails = 4;
-    // ...and the package exporter, walked the same way and for the same reason:
-    // the tree's column, the form beside it and the foot under both each carry a
-    // sheet of their own. Measured at 4 on the selection column (the heading, the
-    // count chip, the caption under the tree and the tree's own rows), 23 on the
-    // details column - the two headings, the note beside each of them, the word
-    // over every field, the prompts standing in what has not been typed, the
-    // prompt on the drop zone and the three buttons - and 4 on the foot: the
-    // caption, the path, Change folder and Close. Export is unavailable with the
-    // package unnamed, and a disabled push button is skipped by the walk.
+    // Measured at 4, 23 and 4; Export is disabled while the package is unnamed,
+    // and the walk skips a disabled push button
     static constexpr int scmLeastAuditedOnTheExporterSelection = 3;
     static constexpr int scmLeastAuditedOnTheExporterDetails = 18;
     static constexpr int scmLeastAuditedOnTheExporterFoot = 3;
 
-    // A button filled with the colour it stands for. Its fill is a value rather
-    // than a surface of the design, and the words on it are chosen against that
-    // fill - so it is measured by nothing here.
+    // A colour well's fill is a value rather than a surface, and its words are
+    // chosen against that fill by generateButtonStyleSheet(), so it is not audited
     static const QList<QRegularExpression>& wellNames()
     {
         static const QList<QRegularExpression> names{QRegularExpression(qsl("colou?r"), QRegularExpression::CaseInsensitiveOption),
@@ -236,12 +166,8 @@ private:
         QVERIFY(themes.write("[]") == 2);
     }
 
-    // Three rows rather than one, and one of each shape the row can take: a
-    // pattern typed into a field, the words that stand in for the prompt line,
-    // and the pair of wells a colour trigger is set from. The middle one is the
-    // row that has been wrong before - with no Go-Ahead from the game its words
-    // are disabled, and an unavailable word is the one this design writes in a
-    // tone of its own rather than the platform's.
+    // The prompt row has regressed before: with no Go-Ahead from the game its
+    // words are disabled, and the design inks those in a tone of its own
     void buildThreePatternRows()
     {
         mpEditor->showPatternItems(3);
@@ -253,9 +179,7 @@ private:
         mpEditor->mTriggerPatternEdit.at(0)->singleLineTextEdit_pattern->setPlainText(qsl("^You (?:see|hear) (.+)$"));
         QCoreApplication::processEvents();
 
-        // Pinned rather than assumed: a form that quietly went back to one row
-        // would leave the walk below reading a window with nothing on it, and
-        // the row that matters most here is the middle one
+        // Pinned, so a form that went back to one row cannot leave the walk nothing to read
         QVERIFY2(mpEditor->mVisiblePatternCount == types.size(), qPrintable(qsl("the trigger form shows %1 pattern rows rather than three").arg(QString::number(mpEditor->mVisiblePatternCount))));
         QVERIFY2(mpEditor->mTriggerPatternEdit.at(0)->singleLineTextEdit_pattern->isVisible(), "the first row is not a pattern typed into a field");
         QVERIFY2(mpEditor->mTriggerPatternEdit.at(1)->label_prompt->isVisible(), "the second row does not show the words that stand in for the prompt line");
@@ -266,16 +190,13 @@ private:
     void openPreferences()
     {
         mpPreferences = new dlgProfilePreferences(mudlet::self(), mpHost);
-        // What mudlet::showOptionsDialog() assigns on every show, so a dialog
-        // built by hand here is the one the application puts on screen
+        // As mudlet::showOptionsDialog() does on every show
         mpPreferences->setStyleSheet(mpHost->mProfileStyleSheet);
         mpPreferences->resize(1060, 760);
         mpPreferences->show();
         QVERIFY(QTest::qWaitForWindowExposed(mpPreferences));
     }
 
-    // The way mudlet::slot_showAboutDialog() opens it. It restyles itself off
-    // mudlet::signal_appearanceChanged, which is what the control below emits.
     void openAbout()
     {
         mpAbout = new dlgAboutDialog(mudlet::self());
@@ -284,10 +205,7 @@ private:
         QVERIFY(QTest::qWaitForWindowExposed(mpAbout));
     }
 
-    // The way mudlet opens it, minus the auto-login path: the two tabs draw
-    // themselves from the tokens on every appearance change, which is what the
-    // control below sets off. A profile is selected so that the fields carry
-    // what the walk reads them by.
+    // A profile is selected so that the fields carry text for the walk to read
     void openConnection()
     {
         mpConnection = new dlgConnectionProfiles(mudlet::self());
@@ -301,26 +219,18 @@ private:
         QVERIFY(QTest::qWaitForWindowExposed(mpConnection));
     }
 
-    // The way mudlet's Notes button opens it, with everything it can put away on
-    // show: the bar it is searched through, and the warning the send strip
-    // carries over a long note with no prefix. It restyles itself off
-    // mudlet::signal_appearanceChanged, which is what the control below emits.
     void openNotepad()
     {
         mudlet::self()->slot_notes();
         mpNotepad = HostDialogs::of(mpHost).mpNotePad;
         QVERIFY2(mpNotepad, "the notepad did not open at all");
-        // Wide enough for the whole of the send strip: the warning at its
-        // trailing end is cut to the room the bar has, and a window that leaves
-        // it none is a window with nothing there to read
+        // Wide enough for the send strip: its trailing warning is cut to the room the bar has
         mpNotepad->resize(1100, 500);
         mpNotepad->show();
         QVERIFY(QTest::qWaitForWindowExposed(mpNotepad));
 
-        // A note long enough for the strip's warning to apply, with nothing in
-        // the prefix field: the words of that warning are the one reading in
-        // this window written in a state colour rather than in the chrome tone,
-        // so the walk has to have them on show to read them
+        // Long enough, with no prefix, for the strip's warning: the window's one
+        // word in a state colour rather than the chrome tone
         if (auto* pNote = qobject_cast<QPlainTextEdit*>(mpNotepad->tabWidget->currentWidget())) {
             QStringList lines;
             for (int line = 1; line <= 12; ++line) {
@@ -338,15 +248,9 @@ private:
         QCoreApplication::processEvents();
     }
 
-    // The package manager, with an installed package chosen so that the details
-    // column has a name, a summary, a caption line and a row of buttons on it
-    // to be read. It restyles itself off mudlet::signal_appearanceChanged, which
-    // is what the control below emits.
     void openPackageManager()
     {
-        // One installed package with everything a row and a details column can
-        // show: a title, an author and a version. Written onto the host rather
-        // than installed, since what is being read is how the window draws it.
+        // Written onto the host rather than installed: what is read is how the window draws it
         const QString package = qsl("readability-audit-package");
         mpHost->mInstalledPackages << package;
         mpHost->mPackageInfo.insert(package,
@@ -367,11 +271,7 @@ private:
         QVERIFY2(!mpPackages->label_packageName->text().isEmpty(), "no package is chosen, so the details column is empty");
     }
 
-    // The package exporter, with a trigger folder and a child under it so the
-    // tree of things to export has rows to be read, and every word of the form
-    // on show - the .ui file's fold is gone, so nothing has to be opened first.
-    // It restyles itself off mudlet::signal_appearanceChanged, which is what the
-    // control below emits.
+    // So the tree of things to export has rows to read
     void openPackageExporter()
     {
         auto* pFolder = new TTrigger(nullptr, mpHost);
@@ -383,8 +283,7 @@ private:
         pChild->setRegexCodeList(QStringList{qsl("audited")}, QList<int>{REGEX_SUBSTRING});
         mpHost->getTriggerUnit()->registerTrigger(pChild);
 
-        // Parented to nothing, the way mudlet::slot_packageExporter() parents it
-        // to the main window: this fixture has no main window on screen
+        // Parented to nothing rather than the main window: this fixture has none on screen
         mpExporter = new dlgPackageExporter(nullptr, mpHost);
         QVERIFY2(mpExporter, "the package exporter did not open at all");
         mpExporter->show();
@@ -395,20 +294,13 @@ private:
         QVERIFY2(mpExporter->findChild<QWidget*>(qsl("exporterFoot")), "the package exporter built no foot, so there is nothing to walk");
     }
 
-    // Through the settings dialog's own control rather than through
-    // mudlet::setAppearance() outright: that is the one path an appearance
-    // change takes while these two windows are open, and the path a player
-    // takes to it.
-    //
-    // A window on screen paints itself between one change and the next, and
-    // painting is what settles a widget's palette against the application's.
-    // Under the offscreen platform nothing paints unless it is asked to.
+    // Through the settings dialog's control, the path a player takes; each window
+    // restyles off the mudlet::signal_appearanceChanged it sets off. Painting
+    // settles a widget's palette, and offscreen nothing paints unless grabbed.
     void setAppearance(const enums::Appearance appearance)
     {
-        // The dialog restyles when the control moves, so a control already
-        // showing what is wanted is moved away and back rather than left where
-        // it is - which is also what makes this independent of whichever
-        // appearance the machine running it happens to be in
+        // The dialog restyles only when the control moves, so a control already on
+        // the wanted appearance (the machine's own, say) is moved away and back
         if (mpPreferences->comboBox_appearance->currentIndex() == appearance) {
             mpPreferences->comboBox_appearance->setCurrentIndex(appearance == enums::Appearance::dark ? enums::Appearance::light : enums::Appearance::dark);
             QCoreApplication::processEvents();
@@ -430,10 +322,8 @@ private:
         }
     }
 
-    // Where a widget actually lands on a shot of the window it is in, clipped by
-    // every ancestor on the way up. A control scrolled out of the column it is
-    // in is still "visible" to Qt and still maps to a coordinate, which without
-    // this would be read against whatever the window paints there instead.
+    // Clipped by every ancestor: a control scrolled out of its column is still
+    // visible to Qt and maps to a coordinate the window paints something else at
     static QRect paintedRectIn(const QWidget* pWidget, const QRect& local, const QWidget* pWindow)
     {
         QRect rect = local.intersected(pWidget->rect());
@@ -455,9 +345,7 @@ private:
         return rect;
     }
 
-    // What is painted behind a widget, taken as the colour most of the pixels in
-    // its rectangle are: the words are always the minority, and every surface in
-    // this design is a flat fill.
+    // The commonest pixel: words are always the minority, and every surface here is a flat fill
     static QColor paintedBehind(const QImage& shot, const QRect& rect)
     {
         QHash<QRgb, int> histogram;
@@ -489,8 +377,6 @@ private:
                 ink.redF() * weight + surface.redF() * (1.0 - weight), ink.greenF() * weight + surface.greenF() * (1.0 - weight), ink.blueF() * weight + surface.blueF() * (1.0 - weight));
     }
 
-    // What a widget shows in words, and nothing else: a picture, an empty label
-    // or a control that only holds a value says nothing about readability
     static QString wordsOf(const QWidget* pWidget)
     {
         if (const auto* pLabel = qobject_cast<const QLabel*>(pWidget)) {
@@ -516,16 +402,12 @@ private:
         QString what;
         QColor ink;
         qreal floor = scmTextFloor;
-        // What the ink is drawn on, where that is not the whole of the widget:
-        // a view's rows are painted on its viewport, and a chosen row on its own
-        // strip of that viewport rather than on the list as a whole
+        // Set where the ink is not drawn on the widget itself: a view paints its
+        // rows on its viewport
         const QWidget* pSurface = nullptr;
         QRect where;
     };
 
-    // The inks one widget is read in. Usually one; a field with nothing typed
-    // into it is read by its placeholder instead, and a view is read by the
-    // colour its rows are drawn in.
     static QList<Reading> readingsOf(const QWidget* pWidget)
     {
         const QPalette::ColorGroup group = pWidget->isEnabled() ? QPalette::Active : QPalette::Disabled;
@@ -535,9 +417,8 @@ private:
             const QWidget* pViewport = pView->viewport();
             QList<Reading> readings{{qsl("its rows"), pView->palette().color(group, QPalette::Text), floor, pViewport, pViewport->rect()}};
             if (pView->selectionModel() && pView->selectionModel()->hasSelection()) {
-                // Against the fill of the chosen row rather than against the
-                // list: what a selection is drawn on is the one surface in a
-                // view that is not the viewport's own
+                // A selection is drawn on its own fill, the one surface in a view
+                // that is not the viewport's
                 const QRect row = pView->visualRect(pView->selectionModel()->selectedIndexes().constFirst());
                 if (!row.isEmpty()) {
                     readings.append({qsl("its chosen row"), pView->palette().color(group, QPalette::HighlightedText), floor, pViewport, row});
@@ -547,17 +428,15 @@ private:
         }
 
         if (const auto* pField = qobject_cast<const QLineEdit*>(pWidget); pField && pField->text().isEmpty()) {
-            // A prompt for what to type is not text yet, so it is held to the
-            // floor the design writes an unavailable word at
+            // A placeholder is not text yet, so it is held to the quiet floor
             return pField->placeholderText().isEmpty() ? QList<Reading>{} : QList<Reading>{{qsl("its placeholder"), pField->palette().color(group, QPalette::PlaceholderText), scmQuietFloor}};
         }
 
         if (wordsOf(pWidget).isEmpty()) {
             return {};
         }
-        // A stylesheet's "color:" rule reaches the widget through
-        // QStyleSheetStyle::polish(), which is why the palette is what is read
-        // here rather than the sheet - see the case below that proves it
+        // A sheet's "color:" reaches the palette through QStyleSheetStyle::polish(),
+        // as test_aStyleSheetsColourReachesTheWidgetsPalette proves
         return {{qsl("its text"), pWidget->palette().color(group, pWidget->foregroundRole()), floor}};
     }
 
@@ -570,12 +449,8 @@ private:
                || qobject_cast<const QGroupBox*>(pWidget);
     }
 
-    // The one control neither window draws the surface of: a push button keeps
-    // whichever bevel the platform gives it, and switched off that bevel is a
-    // grey the platform picked - macOS's is within 2.1:1 of the quiet ink the
-    // shells write an unavailable word in. WCAG asks nothing of an inactive
-    // component for exactly this reason; the ink is still the design's, so what
-    // is given up here is only the floor on the platform's own bevel.
+    // A push button keeps the platform's bevel, whose disabled grey is within
+    // 2.1:1 of the quiet ink on macOS; WCAG asks nothing of an inactive component
     static bool aDisabledPushButton(const QWidget* pWidget) { return !pWidget->isEnabled() && (qobject_cast<const QPushButton*>(pWidget) || qobject_cast<const QToolButton*>(pWidget)); }
 
     // Edbee draws itself from a syntax theme with a background of its own, so
@@ -590,14 +465,10 @@ private:
         return false;
     }
 
-    // Every word on one window in one appearance. Answers how many things it
-    // read, and adds a line to failures for each one that cannot be read.
     int auditWindow(QWidget* pWindow, const QString& windowName, const QString& appearance, QStringList& failures) const { return auditWithin(pWindow, pWindow, windowName, appearance, failures); }
 
-    // ...and the same walk held to one part of that window. The picture is still
-    // taken of the whole window, since what is painted behind a form is painted
-    // by whatever is under it - but only what is on pRoot is read, so a floor on
-    // the count is a floor on that form rather than on everything around it.
+    // The whole window is grabbed, since what is behind a form is painted by what
+    // is under it, but only pRoot's widgets are read and counted
     int auditWithin(QWidget* pWindow, QWidget* pRoot, const QString& windowName, const QString& appearance, QStringList& failures) const
     {
         const QImage shot = pWindow->grab().toImage();
@@ -662,11 +533,8 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 800);
 
-        // A script listening for one of Mudlet's own events and one of its own,
-        // which is the only place the editor draws chips: the walk below shows
-        // that form as well, since the two names are inked differently and
-        // neither is the platform's doing. Made before the trigger, so that the
-        // trigger view is the one the editor is left settled in.
+        // Only a script's events are drawn as chips, Mudlet's own inked apart from
+        // the script's. Made before the trigger, so the editor settles on that view.
         mpEditor->slot_showScripts();
         mpEditor->addScript(false);
         QTest::qWait(100ms);
@@ -677,9 +545,7 @@ private slots:
         mpEditor->slot_scriptsSelected(mpEditor->mpCurrentScriptItem);
         QTest::qWait(100ms);
 
-        // A key with no keystroke set and a timer, so that the two forms walked
-        // on their own below have something to show: the key row's placeholder
-        // and hint, and the words of the interval's sentence
+        // A key with no keystroke, so its form shows the placeholder and the hint
         mpEditor->slot_showKeys();
         mpEditor->addKey(false);
         QTest::qWait(100ms);
@@ -692,17 +558,13 @@ private slots:
         mpTimerItem = mpEditor->mpCurrentTimerItem;
         QVERIFY2(mpTimerItem != nullptr, "addTimer() left no current timer item");
 
-        // ...and a button, whose form is the one with a row for every way a
-        // button can be set up rather than a couple of fields
         mpEditor->slot_showActions();
         mpEditor->addAction(false);
         QTest::qWait(100ms);
         mpActionItem = mpEditor->mpCurrentActionItem;
         QVERIFY2(mpActionItem != nullptr, "addAction() left no current button");
 
-        // ...and a variable of the profile's own, so that the form walked below
-        // shows the two type pickers and the switch beside them rather than the
-        // notice a root row puts up
+        // A variable of the profile's own: a root row shows a notice instead of the form
         QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("auditedVariable = \"north\"")), "the variable the variables form is walked on could not be made");
         mpEditor->slot_showVariables();
         QTest::qWait(100ms);
@@ -712,9 +574,8 @@ private slots:
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
         buildThreePatternRows();
-        // The strip is closed when the editor opens, so it is put on show for
-        // the walk; a sound file and a highlight colour go with it, so that the
-        // two switches on it are walked with something beside them to read
+        // The options strip opens closed; a sound file and a highlight colour give
+        // its two switches something beside them to read
         mpEditor->setTriggerOptionsShown(true);
         mpEditor->showTriggerSoundFile(qsl("/tmp/ReadabilityAuditTest.wav"));
         mpEditor->mpTriggersMainArea->checkBox_soundTrigger->setChecked(true);
@@ -728,10 +589,8 @@ private slots:
         openPackageManager();
         openPackageExporter();
 
-        // A save that does not compile, so that the note the code pane's
-        // heading carries is on screen for the walk below. Its words are the
-        // one thing in the editor written in a state's own colour rather than
-        // in the shell's ink, which is exactly the case a theme change breaks.
+        // A failed compile puts up the code pane's note: the editor's one word in
+        // a state colour rather than the shell's ink
         mpEditor->mpSourceEditorEdbee->textDocument()->setText(qsl("local a = 1\nlocal b = 1 +* 2\n"));
         mpEditor->slot_saveEdits();
         QTest::qWait(50ms);
@@ -760,14 +619,7 @@ private slots:
         mSession.stop();
     }
 
-    // The whole of what this test is built on: a rule that says what colour a
-    // widget's words are reaches the widget through its palette, so reading the
-    // palette reads what the sheet asked for. Proved on a label the editor's
-    // own sheet colours rather than assumed - the status bar's counts, which
-    // the shell sheet names with
-    // "QStatusBar#editorStatusBar QLabel { color: <mutedText> }" - and read in
-    // both appearances, since two readings that agreed would be of something
-    // the theme does not move rather than of the sheet.
+    // The premise of the audit, which reads palettes rather than sheets; the shell sheet colours this label by name
     void test_aStyleSheetsColourReachesTheWidgetsPalette()
     {
         QLabel* pLabel = mpEditor->mpLabel_statusCounts;
@@ -792,9 +644,7 @@ private slots:
                                     .arg(answered.value(qsl("dark")).name())));
     }
 
-    // One case for both windows and both appearances, and one list at the end:
-    // a run that stopped at the first unreadable thing would take as many runs
-    // to clear as there are of them
+    // One list at the end: stopping at the first failure would take a run per failure to clear
     void test_everyWordInBothWindowsIsReadableInBothAppearances()
     {
         QStringList failures;
@@ -825,12 +675,8 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // Only one of the editor's seven forms is in the column at a time, so the
-    // case above reads the trigger one and this one the scripts form - which is
-    // where a script's events are drawn as chips, Mudlet's own events quieter
-    // than the script's. A case of its own rather than a switch inside that
-    // loop: showing another form leaves the one it replaced needing a repaint
-    // before its fields can be read off the screen again.
+    // A case per form: only one is in the column at a time, and the one it replaced
+    // needs a repaint before its fields can be read off the screen again
     void test_theScriptsFormIsReadableInBothAppearances()
     {
         mpEditor->slot_showScripts();
@@ -856,9 +702,6 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // The keys form, for the same reason: the field a keystroke is set in
-    // stands empty behind a placeholder until there is one, and the word beside
-    // it saying what a click will do is written in the quiet ink
     void test_theKeysFormIsReadableInBothAppearances()
     {
         mpEditor->slot_showKeys();
@@ -885,8 +728,6 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // ...and the timers form, where the interval is a sentence: its words are
-    // the form's scaffolding and are read at the quiet ink's floor
     void test_theTimersFormIsReadableInBothAppearances()
     {
         mpEditor->slot_showTimers();
@@ -913,9 +754,6 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // ...and the variables form, where the two type pickers sit on one row
-    // behind the words naming them, with the switch that keeps the variable out
-    // of the tree under them
     void test_theVariablesFormIsReadableInBothAppearances()
     {
         mpEditor->slot_showVariables();
@@ -946,9 +784,8 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // The connection dialog's two tabs, which are all of that window the design
-    // has reached: only one of them is on show at a time, so each is walked
-    // with its own tab current and against a floor of its own
+    // Only the tabs have adopted the design, and only one is on show at a time,
+    // so each is walked with its own tab current
     void test_theConnectionDialogsTabsAreReadableInBothAppearances()
     {
         QVERIFY2(mpConnection->tabWidget_connectionInfo->isVisible(), "the connection dialog is showing the first-launch invitation rather than the tabs this walks");
@@ -968,8 +805,7 @@ private slots:
                                             .arg(QString::number(read), tab.first->objectName(), appearance.first, QString::number(tab.second))));
             }
 
-            // ...and the two containers the button sheet is set on, which the
-            // tab pages above do not reach
+            // The button sheet is set on these two containers, which the tab pages do not reach
             for (const auto& row : QList<QPair<QWidget*, int>>{{mpConnection->profileAdminArea, scmLeastAuditedOnTheAdminRow}, {mpConnection->widget_bottom, scmLeastAuditedOnTheButtonRow}}) {
                 const int read = auditWithin(mpConnection, row.first, qsl("the connection dialog's %1").arg(row.first->objectName()), appearance.first, failures);
                 counts << qsl("%1 %2: %3").arg(appearance.first, row.first->objectName(), QString::number(read));
@@ -986,8 +822,7 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // The notepad, walked whole: it is one window the design draws all of, from
-    // the strip of tabs down to the bar of actions at its foot
+    // Walked whole: the design draws all of the notepad
     void test_theNotepadIsReadableInBothAppearances()
     {
         QStringList failures;
@@ -1008,9 +843,7 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // The package manager, walked a column at a time: the sheet that draws each
-    // of them is set on that column rather than on the window, so a floor on
-    // each is a floor on that column rather than on everything around it.
+    // Walked a column at a time: each column carries its own sheet
     void test_thePackageManagerIsReadableInBothAppearances()
     {
         QStringList failures;
@@ -1035,9 +868,7 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // The package exporter, walked a container at a time for the same reason the
-    // package manager is: each of the three carries a sheet of its own rather
-    // than the window carrying one
+    // Walked a container at a time: each of the three carries its own sheet
     void test_thePackageExporterIsReadableInBothAppearances()
     {
         QWidget* pSelection = mpExporter->findChild<QWidget*>(qsl("exporterSelectionColumn"));
@@ -1072,9 +903,6 @@ private slots:
         QVERIFY2(failures.isEmpty(), qPrintable(qsl("%1 thing(s) cannot be read against what is painted behind them - listed above").arg(QString::number(failures.size()))));
     }
 
-    // ...and the buttons form, which is rows of one grid rather than the three
-    // group boxes it was: the words leading them, the picker and the switch that
-    // share the row under the name, and the stylesheet editor under all of it
     void test_theButtonsFormIsReadableInBothAppearances()
     {
         mpEditor->slot_showActions();

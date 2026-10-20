@@ -18,22 +18,9 @@
  ***************************************************************************/
 
 /*
- * The row at the top of each of the editor's trees stands for exactly what the
- * row beside it in the sidebar stands for - Triggers, Aliases, Scripts - so the
- * two carry the same picture.
- *
- * They did not. The sidebar was redrawn from the monochrome set the whole window
- * is tinted from, while the heading rows kept the bitmaps the trees were built
- * with a decade ago: a wizard's hat for triggers, a stopwatch for timers, a pair
- * of people for aliases. Sitting a couple of hundred pixels apart, that reads as
- * two different applications.
- *
- * Checked pixel for pixel rather than by file name, for all seven views, because
- * the glyph is tinted at runtime and the tint is half of what makes the pair
- * match: a heading drawn from the right file in the wrong colour is still wrong.
- * The palette is then moved and both are read again - a QIcon on a tree item is
- * re-derived by nothing, so the one thing that could go wrong here is a theme
- * change reaching the sidebar and leaving the headings behind.
+ * Each tree's heading row must carry its sidebar row's glyph in the same tint.
+ * Compared pixel for pixel rather than by file name because the tint is applied
+ * at runtime: the right file in the wrong colour is still wrong.
  *
  * Run with: ctest -R EditorTreeHeadingIconTest -V
  */
@@ -66,15 +53,11 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorTreeHeadingIcon-Test-Profile");
 
-    // The size the comparison is made at. Both pictures are held at the
-    // resolution they were drawn at and scaled by whatever draws them, so any
-    // one size settles it - and this is the size the window actually draws
-    // them at, which makes a failure something a reader could have seen.
+    // The size the window draws both at, so a failure is one a user could see
     static constexpr int scmComparisonSize = 18;
 
-    // Which sidebar row a heading is paired with. Kept on the row by
-    // dlgTriggerEditor rather than looked up by position, so a row added to the
-    // list later cannot quietly re-pair the seven.
+    // dlgTriggerEditor's role on a sidebar row; read rather than the row's
+    // position, so a row added to the list cannot re-pair the seven
     static constexpr int scmRole_editorSidebarView = Qt::UserRole + 1;
 
     QList<QPair<QString, QPair<QTreeWidgetItem*, EditorViewType>>> headings() const
@@ -102,8 +85,6 @@ private:
 
     static QImage drawnAt(const QIcon& icon, const int size) { return icon.pixmap(QSize(size, size)).toImage(); }
 
-    // Somewhere for a difference to be reported from: the colour the glyph is
-    // actually inked in, read off the most opaque pixel of it
     static QString inkOf(const QImage& glyph)
     {
         QColor darkest;
@@ -135,8 +116,7 @@ private slots:
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1000, 800);
-        // The variables tree is built the first time it is asked for, and its
-        // heading row is the one of the seven that is made afresh every time
+        // The variables tree and its heading row are built only when first shown
         mpEditor->slot_showVariables();
         QTest::qWait(100ms);
         mpEditor->slot_showTriggers();
@@ -155,8 +135,6 @@ private slots:
         mSession.stop();
     }
 
-    // The whole point, for all seven: one picture, drawn from one file in one
-    // colour, whichever of the two places it is shown in
     void test_everyHeadingCarriesItsSidebarRowsGlyph()
     {
         QStringList mismatched;
@@ -178,9 +156,8 @@ private slots:
         QVERIFY2(mismatched.isEmpty(), qPrintable(qsl("a tree's heading row does not carry its sidebar row's glyph: %1").arg(mismatched.join(qsl("; ")))));
     }
 
-    // ...and it stays one picture when the theme moves. Nothing re-derives a
-    // QIcon once it has been set on a tree item, so a heading left out of the
-    // restyle would sit in the old theme's ink for the rest of the session.
+    // Nothing re-derives a QIcon once it is set on a tree item, so a heading the
+    // restyle misses keeps the old theme's ink for the rest of the session
     void test_aThemeChangeRetintsTheHeadingsWithTheSidebar()
     {
         const QPalette savedPalette = QApplication::palette();
@@ -207,8 +184,8 @@ private slots:
         QApplication::setPalette(savedPalette);
         QTest::qWait(100ms);
 
-        // Read before the pair is compared: a restyle that did nothing at all
-        // would leave the two agreeing and say nothing
+        // Checked before the pair: a restyle that did nothing would leave the
+        // two agreeing
         QVERIFY2(before != after, qPrintable(qsl("the theme moved and the heading's picture did not: it is still inked %1").arg(inkOf(after))));
         QVERIFY2(mismatched.isEmpty(), qPrintable(qsl("a theme change reached the sidebar and left a heading behind: %1").arg(mismatched.join(qsl("; ")))));
     }

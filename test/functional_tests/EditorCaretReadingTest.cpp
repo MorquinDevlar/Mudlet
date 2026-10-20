@@ -18,21 +18,9 @@
  ***************************************************************************/
 
 /*
- * Where the caret is is a fact about the code pane, not about the window, so
- * it is read at the trailing end of that pane's own heading.
- *
- * It used to go out through QStatusBar::showMessage() with no timeout. A
- * message with no timeout never comes down, and QStatusBar::hideOrShow() hides
- * a plain widget for a message only if that widget is already visible - the
- * first caret report arrives before the window is shown, so the item counts
- * were never hidden and the message was painted over them.
- *
- * On the heading the reading also comes and goes with the pane, because the
- * strip carrying it does, rather than being hidden and shown by hand.
- *
- * The label is looked up by object name rather than through the member holding
- * it, so a build without it fails saying the heading has no caret reading on it
- * rather than failing to compile.
+ * The caret reading belongs on the code pane's heading: as a QStatusBar message with
+ * no timeout it painted over the item counts, since hideOrShow() hides only widgets
+ * already visible and the first caret report arrives before the window is shown.
  *
  * Run with: ctest -R EditorCaretReadingTest -V
  */
@@ -64,15 +52,14 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorCaretReading-Test-Profile");
 
-    // The handle over the code pane, which is the second of the three the right
-    // hand splitter stacks, and the strip it carries
+    // handle(1): the code pane is the second of the three panes splitter_right stacks
     QSplitterHandle* codeHeadingHandle() const { return mpEditor->splitter_right->handle(1); }
+    // Found by object name, not member, so a build missing them fails a check rather than the compile
     QWidget* heading() const { return mpEditor->findChild<QWidget*>(qsl("editorCodeHeader")); }
     QLabel* caretReading() const { return mpEditor->findChild<QLabel*>(qsl("editorCodeCaret")); }
 
     edbee::TextEditorController* controller() const { return mpEditor->mpSourceEditorEdbee->controller(); }
 
-    // Where a piece of the heading sits on the strip
     QRect placeOnTheStrip(const QWidget* pPiece) const { return QRect(pPiece->mapTo(heading(), QPoint(0, 0)), pPiece->size()); }
 
     static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
@@ -92,8 +79,7 @@ private slots:
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1200, 800);
-        // Everything below reads what is on show and where it is, and a window
-        // the compositor has not put up yet has none of it
+        // Visibility and placement read nothing real until the window is exposed
         QVERIFY2(QTest::qWaitForWindowExposed(mpEditor, 2000), "the editor window was never put on screen, so nothing on its code pane's heading is showing");
         QVERIFY2(codeHeadingHandle() != nullptr, "The right hand splitter has no handle over the code pane");
         QVERIFY2(heading() != nullptr, "The handle over the code pane carries no heading");
@@ -116,9 +102,6 @@ private slots:
         mSession.stop();
     }
 
-    // The reading is on the strip, it is the line and column rather than the
-    // byte offset the pane used to add for its own debugging, and it does not
-    // go out as a status bar message
     void test_theCaretReadingSitsOnTheHeading()
     {
         QVERIFY2(controller() != nullptr, "The code pane has no controller, so it can report no caret position");
@@ -136,8 +119,7 @@ private slots:
         qInfo().noquote() << qsl("  the pane reported \"%1\" and the heading reads \"%2\"").arg(lastReport, caretText);
         QVERIFY2(!caretText.isEmpty() && lastReport.contains(caretText) && !caretText.contains(qsl(" | ")),
                  qPrintable(qsl("the caret reading is \"%1\", which is not the front of the code pane's report \"%2\"").arg(caretText, lastReport)));
-        // Only what the pane says before its own debugging tail, since the name
-        // of the command it last ran is in that tail and has "Offset" in it
+        // Cut the debugging tail: it names the last command run, which has "Offset" in it
         const QString reported = lastReport.section(qsl(" | "), 0, 0);
         QVERIFY2(!reported.contains(qsl("Offset")),
                  qPrintable(qsl("the code pane is still reporting a byte offset, which is a debugging reading rather than one a script author uses: \"%1\"").arg(reported)));
@@ -149,8 +131,6 @@ private slots:
         QVERIFY2(message.isEmpty(), qPrintable(qsl("the caret position went out as a status bar message, which is painted over the counts: \"%1\"").arg(message)));
     }
 
-    // ...and being part of the pane, it comes and goes with it rather than
-    // being hidden and shown by hand
     void test_theHeadingGoesWithThePane()
     {
         QSplitterHandle* pHandle = codeHeadingHandle();

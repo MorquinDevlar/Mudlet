@@ -99,8 +99,7 @@ private:
 
     QString bannerText() const { return mpEditor->mpSystemMessageArea->notificationAreaMessageBox->text(); }
 
-    // ...and the same message before the appearance's ink went into its
-    // anchors, which is the shape a dismissal stashes and an undo shows again
+    // The message before its anchors are inked, which is what a dismissal stashes and an undo shows again
     QString bannerContent() const { return mpEditor->systemMessage(); }
 
     void clickBannerCloseButton()
@@ -326,10 +325,8 @@ private slots:
         QCOMPARE(bannerText(), errorText);
     }
 
-    // A QLabel bakes the colour of an anchor into its document the moment its
-    // text is set, so a banner already on screen when the appearance moves has
-    // to be written again - in the ink the design gives every other anchor,
-    // rather than in a colour picked for one of the two themes.
+    // QLabel bakes an anchor's colour into its document at setText(), so a banner
+    // on screen when the appearance changes has to be written again in the new ink
     void testBannerLinksCarryTheAccentInBothAppearances()
     {
         mpEditor->slot_showScripts();

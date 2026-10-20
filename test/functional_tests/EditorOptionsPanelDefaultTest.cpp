@@ -18,28 +18,9 @@
  ***************************************************************************/
 
 /*
- * A trigger's options are one row of its form, and the Options button at the
- * right end of the head row is what opens and closes it. That is a disclosure
- * rather than a preference: the editor opens with the row closed every time,
- * whatever the last session left it at, and whatever an older configuration
- * stored under showAllTriggerControls - a key nothing reads any more and which
- * is cleared on write rather than left behind.
- *
- * The key is seeded to true here before the editor is built, which is what such
- * a configuration carries, so that a default that answered to it would show.
- *
- * What is held here:
- *
- * - The strip and the word leading it are away when the editor opens, and the
- *   button is there and unchecked.
- * - The button stands at the end of the head row, level with the command field
- *   and at its height.
- * - With the strip away the pattern list follows the head row at the grid's own
- *   spacing, so the hidden row costs no gap.
- * - The button opens and closes the strip, and the pattern list moves with it.
- * - The choice is kept for the session: it survives another trigger being
- *   chosen and the view being switched away and back.
- * - Writing the settings leaves no showAllTriggerControls behind.
+ * The trigger options strip opens closed in every session, even under an older
+ * configuration that stored showAllTriggerControls=true, and writing the settings
+ * clears that retired key.
  *
  * Run with: ctest -R EditorOptionsPanelDefaultTest -V
  */
@@ -103,12 +84,8 @@ private slots:
 
         QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
-        // What a configuration written by a version that stored the strip's
-        // state carries. Seeded before the profile is started rather than before
-        // the editor is asked for: loading a profile builds its editor, so this
-        // is the last moment the editor has not read its settings yet. The
-        // window is given room for the strip in the same breath, so that what
-        // is measured below is a choice rather than a want of room.
+        // Seeded before the profile opens: loading a profile builds its editor, which reads its
+        // settings then. The size gives the strip room, so a closed strip is not a squeeze.
         MudletApp::getQSettings()->setValue(qsl("showAllTriggerControls"), true);
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), QSize(1100, 900));
         MudletApp::getQSettings()->sync();
@@ -133,7 +110,6 @@ private slots:
         mSession.stop();
     }
 
-    // The editor opens with the options away whatever the stored key said
     void test_theOptionsOpenClosedDespiteTheStoredSetting()
     {
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow != nullptr, "the trigger form has no options strip");
@@ -144,8 +120,6 @@ private slots:
         QVERIFY2(!mpEditor->mShowAllTriggerControls, "the editor is holding the strip as open in a session that has not opened it");
     }
 
-    // It stands at the end of the row the name and the command are typed on,
-    // level with the field beside it
     void test_theButtonSitsOnTheHeadRowInLineWithTheCommandField()
     {
         QLineEdit* pCommand = form()->lineEdit_trigger_command;
@@ -169,8 +143,7 @@ private slots:
         QCOMPARE(optionsButton()->text(), qsl("Options"));
     }
 
-    // A grid row with nothing on it takes no height and no spacing, so the
-    // patterns sit exactly one gap under the head row while the strip is away
+    // QGridLayout gives a row with no visible widget no height and no spacing
     void test_withTheStripAwayThePatternsFollowTheHeadRowAtTheGridsSpacing()
     {
         mpEditor->setTriggerOptionsShown(false);
@@ -187,7 +160,6 @@ private slots:
         QCOMPARE(gap, pGrid->verticalSpacing());
     }
 
-    // The button is the whole of what opens and closes the strip
     void test_theButtonOpensAndClosesTheStrip()
     {
         mpEditor->setTriggerOptionsShown(false);
@@ -214,8 +186,6 @@ private slots:
         QCOMPARE(topEdgeOf(form()->widget_left), patternsWhenAway);
     }
 
-    // Nothing is stored, but nothing puts it back either: within the one
-    // session the strip stays where it was put
     void test_theChoiceIsKeptForTheSession()
     {
         mpEditor->setTriggerOptionsShown(true);
@@ -236,7 +206,6 @@ private slots:
         settle();
     }
 
-    // Nothing writes the retired key back, and opening the editor clears it
     void test_writingSettingsLeavesNoRetiredKey()
     {
         mpEditor->writeSettings();

@@ -18,27 +18,9 @@
  ***************************************************************************/
 
 /*
- * What the script editor opens at when nothing has been stored for it.
- *
- * It used to be nine tenths of the profile window, which is a size rather than
- * a shape: on a 3008x1692 desktop with the profile window filling it, the
- * editor opened at 2700x1470 and covered everything. What it holds - a form and
- * a page of code - is no more readable for that, so it opens as a companion to
- * the profile window instead, at a fixed size the reader can then drag to
- * whatever they like. A stored size still wins, which is what
- * EditorMinimumSizeTest and EditorPlacementPersistenceTest hold.
- *
- * The profile window is deliberately made larger than that default before the
- * profile is started, so a default that still scaled off it would come out
- * bigger and be caught here.
- *
- * What this cannot catch, on the offscreen platform every ctest run uses: on
- * cocoa the native window must not exist before restoreWindowGeometry() has
- * run, since a resize of a native window that is created but not yet shown is
- * dropped there. The editor's constructor orders its
- * setUnifiedTitleAndToolBarOnMac() call after readSettings() for that reason,
- * and moving it back opens every editor at the .ui file's 636x688 on a Mac
- * while this case stays green.
+ * With nothing stored, the editor opens at a fixed size, not one scaled off the profile window.
+ * Offscreen cannot catch cocoa dropping the restore if setUnifiedTitleAndToolBarOnMac()
+ * moves before readSettings(): every Mac editor opens at 636x688 while this passes.
  *
  * Run with: ctest -R EditorDefaultSizeTest -V
  */
@@ -71,13 +53,11 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorDefaultSize-Test-Profile");
 
-    // Comfortably larger than the default, so that a default scaled off the
-    // profile window would come out larger than the default itself
+    // Larger than the default, so a default scaled off the profile window comes out bigger
     static constexpr int scmProfileWindowWidth = 1600;
     static constexpr int scmProfileWindowHeight = 1000;
-    // Mirrors scmEditorDefaultWidth and scmEditorDefaultHeight, which are
-    // file-local to the editor: written out here so that the size is held to a
-    // figure rather than to whatever the editor happens to answer
+    // Mirrors the editor's file-local scmEditorDefaultWidth/Height, so the size is
+    // held to a figure rather than to whatever the editor answers
     static constexpr int scmCompanionWidth = 1300;
     static constexpr int scmCompanionHeight = 690;
 
@@ -92,13 +72,11 @@ private slots:
 
         QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
-        // Nothing has ever been stored for the editor in this configuration, so
-        // the two keys are named here only to say what this case is about
         QVERIFY2(!MudletApp::getQSettings()->contains(qsl("script_editor_size")), "this configuration already carries a stored editor size, so the default is never reached");
         QVERIFY2(!MudletApp::getQSettings()->contains(qsl("script_editor_pos")), "this configuration already carries a stored editor position");
 
-        // The profile window before the profile is started: loading one builds
-        // its editor, and the editor reads its geometry as it is built
+        // Before the profile opens: loading it builds the editor, which reads
+        // this geometry as it is built
         mudlet::self()->resize(scmProfileWindowWidth, scmProfileWindowHeight);
         QCoreApplication::processEvents();
 
@@ -118,18 +96,14 @@ private slots:
         mSession.stop();
     }
 
-    // With nothing stored, the editor is the companion size whatever the
-    // profile window behind it came to
     void test_theEditorOpensAtItsCompanionSizeRatherThanAtTheProfileWindows()
     {
         const QSize companion(scmCompanionWidth, scmCompanionHeight);
         const QScreen* pScreen = mpEditor->screen() ? mpEditor->screen() : QGuiApplication::primaryScreen();
         const QSize available = pScreen ? pScreen->availableGeometry().size() : QSize();
         const QSize profileWindow = mpHost->mainConsoleView()->window()->size();
-        // restoreWindowGeometry() brings whatever it is handed inside the
-        // desktop and then up to the layout's floor, so a desktop smaller than
-        // the companion size - the 800x800 an offscreen run is given - is held
-        // to what those two leave of it rather than skipped
+        // restoreWindowGeometry() clamps to the desktop, then raises to the
+        // layout's floor; an offscreen run's 800x800 desktop is smaller than the default
         const QSize expected = companion.boundedTo(available).expandedTo(mpEditor->minimumSizeHint().boundedTo(available));
 
         qInfo().noquote() << qsl("  the profile window is %1 on a %2 desktop, and the editor opened at %3 against the %4 it defaults to, floored at %5 - so %6 is what it should come to")

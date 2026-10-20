@@ -1575,11 +1575,7 @@ private slots:
         QVERIFY2(!childItemNamed(rootItem, qsl("dotHolderTable")), "while the table the walk hid stays hidden");
     }
 
-    // ...and that row is untickable, with the reason on it: the save keys
-    // variables by the dotted path, so this one cannot be saved. The tone it is
-    // written in follows from that flag rather than from a brush set here -
-    // VariableTreeDelegate reads the flag and inks the row in the tone an
-    // unavailable word is written in, so a theme change reaches it.
+    // The save keys variables by the dotted path
     void testTheRowOfAGlobalWithADotInItsNameIsRefusedWithAReason()
     {
         execLua(qsl("_G['greyed.global'] = 'value' plainSaveable = 'value'"));

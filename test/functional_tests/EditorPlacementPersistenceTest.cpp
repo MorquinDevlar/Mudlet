@@ -18,22 +18,9 @@
  ***************************************************************************/
 
 /*
- * The script editor has to open where the user last left it, and stay there
- * when it is toggled away and back. It remembered its size but not its
- * position, and the asymmetry named the culprit: the size was only ever read
- * from settings, while the position was overwritten after every show.
- *
- * The editor is a singleton that is hidden and shown rather than built and
- * destroyed, and the slots that show it re-centred it on the profile's screen
- * each time - mudlet::slot_showEditorDialog() with
- * utils::forceRepositionDialogOnParentScreen(), which centres unconditionally,
- * and mudlet::slot_showTriggerDialog() with utils::positionDialogOnParentScreen(),
- * which centres any dialog that is not currently visible, and the singleton is
- * hidden at that point. Neither touched the size, which is exactly the shape of
- * the bug that was reported.
- *
- * This has to be driven through those slots. A test that constructs the editor
- * itself never runs them, which is how the defect survived the geometry work.
+ * The editor must reopen where it was left, also after a hide and show: the
+ * show slots re-centred the hidden singleton. Driven through those slots, since
+ * a test that constructs the editor itself never runs them.
  */
 
 #include <QGuiApplication>
@@ -62,16 +49,14 @@ private:
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorPlacementPersistence-Test-Profile");
 
-    QPoint mSeededPos;  // written to settings before the editor is built
-    QPoint mDraggedPos; // where the test moves it to, standing in for a drag
+    QPoint mSeededPos;
+    QPoint mDraggedPos;
     QSize mSeededSize;
 
     static QString describe(const QPoint& point) { return qsl("(%1,%2)").arg(QString::number(point.x()), QString::number(point.y())); }
 
     static QString describe(const QSize& size) { return qsl("%1x%2").arg(QString::number(size.width()), QString::number(size.height())); }
 
-    // Every measurement the report asks for goes through here, so a run says
-    // where the window was at each step whether it passes or fails
     void report(const char* step) const { qInfo().noquote() << qsl("  %1: pos %2 size %3").arg(QString::fromLatin1(step), describe(mpEditor->pos()), describe(mpEditor->size())); }
 
 private slots:
@@ -87,10 +72,8 @@ private slots:
         QVERIFY(pScreen);
         const QRect availableArea = pScreen->availableGeometry();
 
-        // Both placements sit a little way inside the desktop, so the editor is
-        // reachable at either of them and showEvent() has no reason to move it.
-        // They are far enough apart, and far enough from the centre this used to
-        // snap to, that no rounding can make one look like the other
+        // Inside the desktop, so showEvent() has no reason to move the editor, and
+        // far enough apart and off-centre that no rounding confuses the two
         mSeededPos = availableArea.topLeft() + QPoint(24, 18);
         mDraggedPos = availableArea.topLeft() + QPoint(103, 71);
         mSeededSize = QSize(640, 460).boundedTo(availableArea.size());
@@ -111,8 +94,6 @@ private slots:
         mSession.stop();
     }
 
-    // Shown the way the application shows it - through the slot the menu item
-    // and the keyboard shortcut are wired to, not by constructing it here
     void test_editorOpensAtTheStoredPosition()
     {
         mudlet::self()->slot_showEditorDialog();
@@ -125,9 +106,7 @@ private slots:
         QVERIFY2(mpEditor->pos() == mSeededPos, qPrintable(qsl("The editor was stored at %1 but opened at %2 - showing it moved it").arg(describe(mSeededPos), describe(mpEditor->pos()))));
     }
 
-    // The reported symptom: toggle the editor away and back, and it is centred
-    // again. The size always survived this, which is why it is asserted too -
-    // the two have to behave the same way
+    // Size is asserted too, so position and size are held to the same behaviour
     void test_hidingAndShowingKeepsThePlacement()
     {
         // The move stands in for a drag: moveEvent() cannot tell the two apart,
@@ -146,9 +125,8 @@ private slots:
         QVERIFY2(mpEditor->size() == sizeBefore, qPrintable(qsl("The editor was left at %1 and came back at %2").arg(describe(sizeBefore), describe(mpEditor->size()))));
     }
 
-    // The other slot that shows the singleton reached the same helper by a
-    // different route: it repositions any dialog that is not visible, and the
-    // editor is hidden when it runs
+    // positionDialogOnParentScreen() repositions any dialog that is not visible,
+    // and the editor is hidden when this slot runs
     void test_theTriggerSlotKeepsThePlacementToo()
     {
         mpEditor->move(mDraggedPos);
@@ -162,8 +140,6 @@ private slots:
         QVERIFY2(mpEditor->pos() == mDraggedPos, qPrintable(qsl("The editor was left at %1 and the trigger slot brought it back at %2").arg(describe(mDraggedPos), describe(mpEditor->pos()))));
     }
 
-    // The round trip across instances: closing writes the placement out, and a
-    // brand new editor reads it back
     void test_thePlacementSurvivesAFreshEditor()
     {
         const QSize sizeBefore = mpEditor->size();

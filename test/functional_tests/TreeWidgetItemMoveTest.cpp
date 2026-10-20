@@ -76,19 +76,15 @@ private:
         }
     }
 
-    // A row's state is not an icon it carries: uiDesign::EditorTreeDelegate reads
-    // the item out of its unit on every paint, and hands back the square its
-    // switch can be clicked in only for a row it found there. So a moved row
-    // that still has one is a moved row the delegate still draws from the item -
-    // which is what the icon it used to be given stood for.
+    // dotHitRect() is non-null only for a row the delegate resolved to an item in
+    // its unit, so a moved row that has one still maps to its item
     static bool rowStillDrawsItsSwitch(TTreeWidget* tree, QTreeWidgetItem* item)
     {
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(tree->itemDelegateForIndex(QModelIndex()));
         if (!pDelegate) {
             return false;
         }
-        // The rectangle is measured off the row as the view laid it out, so the
-        // folder it went into has to be open and the layout has to have run
+        // The rectangle is measured off the laid-out row, so the folder must be open and layout must have run
         if (item->parent()) {
             item->parent()->setExpanded(true);
         }

@@ -18,17 +18,9 @@
  ***************************************************************************/
 
 /*
- * The picture beside a notice in the editor.
- *
- * It is tinted through its alpha channel, which keeps the antialiased edges a
- * recolouring of the pixels would harden - but also keeps only the shape that
- * channel carries. The old dialog-*.png bitmaps drew their picture in colour
- * over a solid alpha, so tinting one gave back a filled disc with nothing in
- * it: the information notice was led by a plain blob.
- *
- * The three sources are line glyphs now, and what tells the two apart is a row
- * of pixels across the middle: a ring has transparent pixels between its two
- * sides, a disc has none.
+ * A notice's picture is tinted through its alpha channel, so a source drawn in colour
+ * over solid alpha tints to a filled disc. The middle row tells a ring, transparent
+ * between its two sides, from a disc.
  *
  * Run with: ctest -R EditorNoticeGlyphTest -V
  */
@@ -64,8 +56,6 @@ private:
     // Anything above this is ink rather than the antialiased edge of it
     static constexpr int scmInkAlpha = 128;
 
-    // The row of pixels across the middle of a glyph, as the ink it is drawn in
-    // rather than as colours
     static QString describeMiddleRow(const QImage& glyph)
     {
         QString marks;
@@ -124,8 +114,6 @@ private slots:
                  qPrintable(qsl("the picture beside the information notice is a solid disc rather than a ring - tinting kept only its alpha, and that source's alpha is a filled shape: %1").arg(row)));
     }
 
-    // The other two are drawn from the same three-file set, so a source that
-    // went back to a filled bitmap is caught wherever it happened
     void test_theWarningAndErrorNoticesAreLineGlyphsToo()
     {
         mpEditor->slot_showTriggers();
@@ -149,9 +137,6 @@ private slots:
         }
     }
 
-    // The banner's other picture. It shipped as application-exit.png, a
-    // full-colour bitmap of a red cross - which said "error" on a banner that is
-    // usually a tip, and was the one thing on it not inked from the palette.
     void test_theDismissCrossIsInkedFromThePaletteLikeTheNoticeBesideIt()
     {
         mpEditor->slot_showTriggers();
@@ -164,8 +149,7 @@ private slots:
         const QImage cross = pClose->icon().pixmap(pClose->iconSize()).toImage();
         QVERIFY2(!cross.isNull(), "the banner's close button carries no picture at all");
 
-        // Tinting keeps only the alpha, so every pixel with ink in it is the one
-        // colour. The red cross was full-colour, and would fail on both counts.
+        // Tinting keeps only the alpha, so every inked pixel is the one colour
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSet<QRgb> inks;
         for (int y = 0; y < cross.height(); ++y) {

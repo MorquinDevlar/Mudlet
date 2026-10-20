@@ -998,7 +998,6 @@ nullViewActionKept = next(nullViewActions) ~= nil
 
         const QString firstStyleSheet = qsl("QWidget { color: #111111; }");
         QVERIFY(first->setProfileStyleSheet(firstStyleSheet));
-        // The toolbar carries the design's own sheet with the profile's appended, so the profile's rules come last and win
         QVERIFY2(menuBar->styleSheet() != firstStyleSheet && !toolBar->styleSheet().endsWith(firstStyleSheet) && tabBar->styleSheet() != firstStyleSheet,
                  "A profile that is not the active one restyled the main window.");
 

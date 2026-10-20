@@ -105,28 +105,20 @@ static QStyleOptionGroupBox groupBoxStyleOption(const QGroupBox* pGroupBox)
     return option;
 }
 
-// How far a hairline may read from the one the design mixes, summed over the
-// three channels: a border drawn over a rounded corner is antialiased against
-// what is behind it, so what is measured is nearness rather than a match
+// Summed over three channels: a border over a rounded corner is antialiased
+// against what is behind it, so nearness is measured rather than a match
 static constexpr int scmHairlineInkSlack = 24;
-// ...and how far a pixel inside a mark's box has to be from that box's fill
-// before it counts as part of the mark rather than as the fill's own noise
+// Past this a pixel in a mark's box is part of the mark, not the fill's noise
 static constexpr int scmMarkInkSlack = 40;
 
-// A widget's box in the pixels a grab is made of, which are the widget's own
-// multiplied by whatever the screen doubles them by
 static QRect inTheGrabsPixels(const QImage& shot, const QRect& box)
 {
     const qreal ratio = shot.devicePixelRatio();
     return QRect(QPoint(qRound(box.left() * ratio), qRound(box.top() * ratio)), QPoint(qRound((box.right() + 1) * ratio) - 1, qRound((box.bottom() + 1) * ratio) - 1)).intersected(shot.rect());
 }
 
-// Where a style puts the mark on a check box or a radio button, in the pixels
-// of a grab of the window around it - which a screen that doubles its pixels
-// gives back at twice the widget's own coordinates. Read off the window rather
-// than off the control: a control with no background of its own is grabbed
-// against its own palette, so the card that actually shows through beside the
-// mark is only there in a grab that holds the card too.
+// Read off the window, not the control: a control with no background is grabbed
+// against its own palette, so the card showing through is only in the window's grab
 static QRect markBoxIn(const QAbstractButton* pButton, const QWidget* pWindow, const QImage& shot)
 {
     QStyleOptionButton option;
@@ -137,8 +129,6 @@ static QRect markBoxIn(const QAbstractButton* pButton, const QWidget* pWindow, c
     return inTheGrabsPixels(shot, box);
 }
 
-// The strongest colour the mark's box is outlined in, read against the surface
-// showing through beside it
 static qreal strongestOutlineRatio(const QImage& shot, const QRect& box, const QColor& behind)
 {
     QColor outline = behind;
@@ -151,8 +141,6 @@ static qreal strongestOutlineRatio(const QImage& shot, const QRect& box, const Q
     return contrastRatio(outline, behind);
 }
 
-// How many pixels well inside the box are not the fill it is drawn on: none in
-// an empty box, a good few once a tick, a dash or a dot is in it
 static int markedPixelsIn(const QImage& shot, const QRect& box, const QColor& fill)
 {
     const QRect inside = box.adjusted(box.width() / 4, box.height() / 4, -box.width() / 4, -box.height() / 4);
@@ -225,8 +213,7 @@ private:
         themes.close();
     }
 
-    // The size and family macOS sets its interface in. Elsewhere the family
-    // falls back to the platform's own, at that size, which is no narrower.
+    // macOS's interface font; elsewhere the family falls back to the platform's own, no narrower
     static QFont interfaceFontAt13pt()
     {
         QFont font(qsl(".AppleSystemUIFont"));
@@ -277,9 +264,7 @@ private:
         QCOMPARE(pList->currentRow(), row);
     }
 
-    // A check state written straight to the box rather than clicked: what is
-    // being read is what the three states are drawn as, and one of them is a
-    // state no click can reach
+    // Set rather than clicked: one of the three states is one no click can reach
     QImage grabAfterSetting(QCheckBox* pBox, const Qt::CheckState state) const
     {
         pBox->setCheckState(state);
@@ -287,12 +272,8 @@ private:
         return mpPreferences->grab().toImage();
     }
 
-    // Walks the window from the widest it goes down to the narrowest, a step at
-    // a time so that no width in between is skipped, with the Editor page
-    // showing and with the widest page there is. At every width the page fits
-    // its viewport, and the names are on show exactly while the window holds
-    // them beside the page showing - never beside less than the reading column,
-    // or a page switch would fold them for nothing.
+    // Small steps so no width in between is skipped. The names never fold for less
+    // than the reading column, or a page switch would fold them for nothing.
     void walkTheWindowDown()
     {
         auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
@@ -418,9 +399,8 @@ private slots:
 
         mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
         QVERIFY2(mpHost, "No active host after profile creation");
-        // Asked for outright rather than left to the default, whatever that is:
-        // this file's subject is what the width does to a sidebar that has been
-        // asked for its names, and the default is SettingsSidebarToggleTest's.
+        // Set outright: this file tests what width does to a sidebar asked for its
+        // names, and the default is SettingsSidebarToggleTest's
         MudletApp::getQSettings()->setValue(qsl("settingsSidebarLabelsShown"), true);
     }
 
@@ -638,10 +618,8 @@ private slots:
         QVERIFY2(indicator.width() > 4 && indicator.height() > 4, qPrintable(qsl("the check indicator has no rectangle to sample: %1x%2").arg(indicator.width()).arg(indicator.height())));
 
         const QImage painted = pCard->grab().toImage();
-        // In the grab's own pixels, which a screen that doubles them is twice
-        // the card's: read at the card's coordinates this sampled the padding
-        // above and to the left of the indicator, and answered 1:1 whatever the
-        // indicator was drawn as.
+        // In the grab's pixels: on a doubling screen the card's coordinates sample the
+        // padding above and left of the indicator and read 1:1 whatever it is drawn as
         const QRect drawn = inTheGrabsPixels(painted, indicator);
         // The strongest colour the indicator's box is drawn in, against the
         // page showing through beside it
@@ -659,12 +637,6 @@ private slots:
                  qPrintable(qsl("the dark theme draws the card's check indicator as %1 against %2, a contrast of %3:1").arg(outline.name(), page.name(), QString::number(worst, 'f', 2))));
     }
 
-    // Every card's first line starts on the same left edge, which is the card's
-    // padding: a plain card's title, and a checkable card's check indicator
-    // with its title after it. This used to be measured on the title alone,
-    // with a plain card's inset by the room an indicator takes - which was the
-    // only alignment there was while the titles floated above the frames, and
-    // indents a heading away from its own controls now that they are inside.
     void test_everyCardsFirstLineStartsAtTheSameDistanceFromItsFrame()
     {
         selectCategory(qsl("privacy"));
@@ -685,10 +657,8 @@ private slots:
         QCOMPARE(firstLineLeft(pPlain), firstLineLeft(pCheckable));
     }
 
-    // The title is the card's first line, inside the frame - not a heading
-    // sitting above it. Nothing in a stylesheet reserves room for it, so the
-    // card's top padding is what holds the first control clear of the title;
-    // get that number wrong and the two are drawn on top of each other.
+    // No stylesheet reserves room for a title inside the frame: the card's top
+    // padding alone holds the first control clear of it
     void test_aCardsTitleIsDrawnInsideTheFrameWithItsControlsClearOfIt()
     {
         selectCategory(qsl("privacy"));
@@ -718,20 +688,15 @@ private slots:
                                             .arg(card)
                                             .arg(indicator.right())
                                             .arg(title.left())));
-                // Half a line apart at most: an indicator drawn off the line of
-                // the words beside it is what a title band looks like when the
-                // room for it was guessed rather than measured
+                // Half a line at most: further off, the title band's room was guessed, not measured
                 QVERIFY2(std::abs(indicator.center().y() - title.center().y()) <= title.height() / 2,
                          qPrintable(qsl("the card %1 centres its check indicator at y=%2 and its title at y=%3").arg(card).arg(indicator.center().y()).arg(title.center().y())));
             }
         }
     }
 
-    // The same mark on the ordinary controls of a page, in both appearances:
-    // the platform draws a check box as a grey Fusion square on one and a blue
-    // rounded box on the other, and a box in Qt::PartiallyChecked as a filled
-    // grey square that reads as some third kind of control. The shell draws all
-    // three states itself, and this is the measurement that says so.
+    // Both appearances: unstyled, the platform draws a grey Fusion square on one, a
+    // blue rounded box on the other, and Qt::PartiallyChecked as a filled grey square
     void test_everyChoiceOnAPageCarriesTheOneMark()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -741,8 +706,7 @@ private slots:
 
         QStringList misses;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
-            // Before the dialog is built, because the shell reads the palette
-            // as it assembles its stylesheet
+            // Before the dialog is built: the shell reads the palette as it assembles its stylesheet
             delete mpPreferences;
             mpPreferences = nullptr;
             mudlet::self()->setAppearance(appearance.second);
@@ -764,8 +728,7 @@ private slots:
             QVERIFY2(emptyBox.width() > 4 && emptyBox.height() > 4,
                      qPrintable(qsl("%1: the check box's mark has no rectangle to sample: %2x%3").arg(appearance.first).arg(emptyBox.width()).arg(emptyBox.height())));
 
-            // The card showing through beside the mark, which is what its
-            // outline has to be read against
+            // Beside the mark: the outline is read against the card showing through
             const QColor behind = empty.pixelColor(qMin(emptyBox.right() + emptyBox.width() / 3, empty.width() - 1), emptyBox.center().y());
             const qreal outline = strongestOutlineRatio(empty, emptyBox, behind);
             if (outline < uiDesign::scmQuietMinimumRatio) {
@@ -832,9 +795,6 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // A button on a page is drawn on the same surface language as the fields
-    // beside it rather than as the platform's grey bevel, and the hairline
-    // round it is the one every card and field is drawn with
     void test_aButtonOnAPageIsFramedInTheDesignsHairline()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -856,10 +816,8 @@ private slots:
             const QImage shot = pButton->grab().toImage();
             const int ratio = qMax(1, qRound(shot.devicePixelRatio()));
 
-            // The middle of the top edge, which is a straight run of the
-            // hairline rather than the corner it is rounded through. A screen
-            // that doubles its pixels draws that one line over two rows, so the
-            // nearer of them is what is read.
+            // Mid top edge, a straight run rather than the rounded corner. A doubling
+            // screen draws the hairline over two rows, so the nearer one is read.
             int nearest = 3 * 255;
             QColor read = border;
             for (int row = 0; row < ratio; ++row) {
@@ -878,15 +836,9 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // The accent a mark's hairline and a button's frame take on focus says
-    // where the keyboard is, not what was clicked last: clicking a check box on
-    // and off again used to leave that accent on it until something else in the
-    // window was clicked. QAbstractButton asks QStyle::SH_Button_FocusPolicy
-    // once, in its constructor, and keeps what that style answered, so the
-    // dialog is rebuilt under each appearance - the base style is swapped with
-    // it, Fusion by way of DarkTheme for the dark one and the platform's own
-    // for the light, and a control born under the other one would otherwise
-    // never be measured. What each style answered is reported below.
+    // QAbstractButton reads QStyle::SH_Button_FocusPolicy once, in its constructor,
+    // and the base style swaps with the appearance (DarkTheme's Fusion, the
+    // platform's own), so the dialog is rebuilt under each appearance
     void test_aClickOnAChoiceOrAButtonLeavesTheFocusToTheKeyboard()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
@@ -910,9 +862,8 @@ private slots:
                 pBox->clearFocus();
             });
 
-            // On the mark rather than on the middle of the control: a check box
-            // whose words were moved to a label beside it answers a click over
-            // its indicator and nothing else
+            // On the mark: a check box whose words moved to a label beside it answers
+            // a click over its indicator and nothing else
             QStyleOptionButton option;
             option.initFrom(pBox);
             QTest::mouseClick(pBox, Qt::LeftButton, Qt::NoModifier, pBox->style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, pBox).center());
@@ -921,9 +872,8 @@ private slots:
                 misses << qsl("%1: clicking the check box left it where it was, so nothing here says the click landed").arg(appearance.first);
                 continue;
             }
-            // The dialog's own focus child rather than hasFocus(), which reads
-            // false on any run whose window never became the active one - and
-            // would then pass whatever the focus policy said
+            // focusWidget(), not hasFocus(): that reads false when the window never
+            // became active, and would pass whatever the focus policy said
             if (mpPreferences->focusWidget() == pBox) {
                 misses << qsl("%1: a click left the check box holding the focus, so the accent stayed on its mark").arg(appearance.first);
             }
@@ -939,9 +889,8 @@ private slots:
 
             pBox->clearFocus();
 
-            // Signals blocked rather than a harmless button picked: this one
-            // opens a file dialog, and what is being measured happens in
-            // QApplication's delivery of the press rather than in the slot
+            // Signals blocked: this button opens a file dialog, and what is measured
+            // happens in QApplication's delivery of the press, not in the slot
             QPushButton* pButton = mpPreferences->pushButton_whereToLog;
             QVERIFY2(pButton->isVisible(), "the button this case clicks is not on show");
             const QSignalBlocker noFileDialog(pButton);
@@ -1251,9 +1200,7 @@ private slots:
         auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
         QVERIFY2(pSidebar, "the settings shell has no sidebar to collapse");
         const int fullWidth = pSidebar->width();
-        // Measured off the widest category name rather than held to a number,
-        // so what is asked of it is that it is a list of names rather than the
-        // rail this case is about collapsing into
+        // Measured off the names, so only "wider than a rail" can be asked of it
         QVERIFY2(fullWidth > 100, qPrintable(qsl("the sidebar is only %1px wide at 1060x760, so this case cannot tell a collapse from where it started").arg(fullWidth)));
 
         mpPreferences->resize(780, 560);
@@ -1554,9 +1501,6 @@ private slots:
         QVERIFY2(pCheckBox->checkState() != before, qPrintable(qsl("clicking the words of the '%1' checkbox left it where it was").arg(pCheckBox->accessibleName())));
     }
 
-    // A window dragged wider than the names and the widest page's column need
-    // gives the room to the page: its column and every card on it widen with
-    // the window, and none of it is left as empty strip beside them
     void test_aWindowWiderThanTheShellNeedsWidensThePage()
     {
         selectCategory(qsl("general"));
@@ -1589,7 +1533,6 @@ private slots:
         }
         QVERIFY(!pPage->horizontalScrollBar()->isVisible());
 
-        // Nothing right of the page but the pane's own margin
         auto* pContent = mpPreferences->findChild<QWidget*>(qsl("settingsContent"));
         const int pageRight = pPage->mapTo(mpPreferences, QPoint(pPage->width(), 0)).x();
         const int margin = pContent->layout()->contentsMargins().right();
@@ -1601,18 +1544,12 @@ private slots:
         mpPreferences->resize(1060, 760);
     }
 
-    // Reported against the redesign: narrowing a window from the widest it
-    // would go collapsed the sidebar at the first pixel, on a page narrower than
-    // the widest. The window has no widest now, and the rule is the one
-    // threshold: the names show at every width from it up, on a page narrower
-    // than the reading column and on one a translation has pushed past it, and
-    // the rail below it.
+    // Regression: narrowing the window from its widest folded the names at the first pixel
     void test_theNamesShowAtEveryWidthFromTheThresholdUp()
     {
         delete mpPreferences;
         mpPreferences = nullptr;
-        // German at the 13pt macOS reads the interface at, where some pages are
-        // still wider than the reading column
+        // German at macOS's 13pt, where some pages are still wider than the reading column
         auto* pGerman = new QTranslator(qApp);
         QVERIFY2(pGerman->load(qsl("mudlet_de_DE"), qsl(":/lang")), "no German translation in the binary's resources, so no page is wider than the reading column");
         QVERIFY(qApp->installTranslator(pGerman));
@@ -1665,10 +1602,8 @@ private slots:
     }
 
     // Reported against the redesign: picking a language collapsed the sidebar,
-    // on a window nobody had touched. Longer translated names widen the sidebar
-    // and so the width it collapses below, and the window is widened after them
-    // rather than left under it - which takes a screen with the room, hence the
-    // wide offscreen screen this class is given in CMakeLists.txt.
+    // on a window nobody had touched. The window widens after the longer names,
+    // which needs the wide offscreen screen CMakeLists.txt gives this class.
     void test_aLanguageChangeDoesNotCollapseTheSidebar()
     {
         auto* pSidebar = mpPreferences->findChild<QWidget*>(qsl("settingsSidebar"));
@@ -1693,15 +1628,12 @@ private slots:
         delete pGerman;
 
         QVERIFY2(widthAfter >= widthBefore, qPrintable(qsl("changing the language narrowed the window from %1px to %2px").arg(widthBefore).arg(widthAfter)));
-        // The longer names are drawn in full, so the sidebar is at least as wide as before rather than the rail
         QVERIFY2(!railAfter && sidebarAfter >= fullSidebar,
                  qPrintable(qsl("changing the language collapsed the sidebar from %1px to %2px, on a window %3px wide").arg(fullSidebar).arg(sidebarAfter).arg(widthAfter)));
     }
 
-    // Reported against the redesign: narrowing the window with the sidebar's
-    // names showing cut the cards off on the right and scrolled the page
-    // sideways a few pixels before the names gave way. The Editor page was the
-    // one: its theme preview list grew to the profile's longest item name.
+    // Regression: the Editor page's theme preview list grew to the profile's longest
+    // item name and scrolled the page sideways before the names folded
     void test_theSidebarFoldsBeforeAnyPageScrollsSideways()
     {
         QVERIFY(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl(
@@ -1714,14 +1646,12 @@ private slots:
         if (QTest::currentTestFailed()) {
             return;
         }
-        // ...and the name is no reason to fold the names either
         QWidget* pEditorColumn = pageOf(qsl("editor"))->widget();
         QVERIFY2(pEditorColumn->minimumSizeHint().width() <= 640,
                  qPrintable(qsl("one long item name in the profile widened the Editor page to %1px, past the 640px reading column").arg(pEditorColumn->minimumSizeHint().width())));
     }
 
-    // ...and with a translation that pushes pages past the reading column, which
-    // is where the names have to give way for a page rather than for the column
+    // German pushes pages past the reading column, where the names give way for the page
     void test_theSidebarFoldsBeforeAnyGermanPageScrollsSideways()
     {
         delete mpPreferences;
