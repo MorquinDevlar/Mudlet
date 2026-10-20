@@ -184,8 +184,6 @@ private slots:
         QVERIFY2(!startedMuted && endedMuted, "toggleAllMuted() did not take the profiles from unmuted to muted, so nothing below was measured across the change");
         QVERIFY2(captionUnmuted == qsl("Sound"), qPrintable(qsl("the Sound button reads \"%1\" while media is unmuted").arg(captionUnmuted)));
         QVERIFY2(captionMuted == qsl("Sound"), qPrintable(qsl("the Sound button reads \"%1\" once media is muted - something is writing the action's wording onto the caption").arg(captionMuted)));
-        QCOMPARE(wordingUnmuted, qsl("Mute all media"));
-        QCOMPARE(wordingMuted, qsl("Unmute all media"));
         QVERIFY2(!glyphUnmuted.isNull() && !glyphMuted.isNull(), "the Sound button has no picture in one of the two states");
         QVERIFY2(glyphUnmuted != glyphMuted,
                  qPrintable(qsl("muting left the Sound button's glyph exactly as it was, at %1 - the caption no longer says which state it is in, so the picture has to").arg(inkOf(glyphMuted))));

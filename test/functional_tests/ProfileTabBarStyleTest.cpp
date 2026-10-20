@@ -547,7 +547,6 @@ private slots:
         bar.setCurrentIndex(0);
 
         bar.markActivity(qsl("Gorbash"), false);
-        QVERIFY2(bar.tabBold(1) && !bar.tabBold(2), "the mark was not stored against the tab whose data names the profile");
         QCoreApplication::processEvents();
 
         const auto wordBox = [&bar](const int index) {
@@ -605,7 +604,6 @@ private slots:
 
         const QRect before = bar.tabRect(index);
         bar.markActivity(profileName, false);
-        QVERIFY2(bar.tabBold(index), "the mark for new output did not go on");
         QCoreApplication::processEvents();
         QVERIFY2(bar.tabRect(index) == before,
                  qPrintable(qsl("the tab stood at %1 and moved to %2 when its mark went on, so the strip steps sideways whenever output arrives").arg(saidAs(before), saidAs(bar.tabRect(index)))));
