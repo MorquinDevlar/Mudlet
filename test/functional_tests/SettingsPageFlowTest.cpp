@@ -317,6 +317,8 @@ private:
             return card.pixelColor((QPointF(point) * ratio).toPoint());
         };
         constexpr int inset = 3;
+        constexpr int trailingPadding = 6;
+        QList<int> wordsEnd;
         for (const auto& [pAlpha, pPlain, colour] : wells) {
             QVERIFY2(pAlpha->height() == pPlain->height() && pAlpha->width() == pPlain->width(),
                      qPrintable(qsl("the see-through well '%1' is %2x%3 beside the plain '%4' at %5x%6")
@@ -327,6 +329,11 @@ private:
                                         .arg(pPlain->width())
                                         .arg(pPlain->height())));
             QCOMPARE(pAlpha->text(), qsl("Opacity %1%").arg(qRound(colour.alphaF() * 100)));
+            // Set in the design's fixed-pitch face, so the digits are one width. Its family is what can be read
+            // here: the offscreen platform names that face "monospace", which it does not resolve to one
+            QCOMPARE(pAlpha->font().family(), uiDesign::fixedPitchFont(pPlain->font()).family());
+            // Never narrower than the widest words need, whichever these are
+            QCOMPARE(pAlpha->sizeHint().width(), std::get<0>(wells.first())->sizeHint().width());
 
             const auto over = [&colour](const int ground) {
                 const qreal alpha = colour.alphaF();
@@ -351,6 +358,20 @@ private:
             verifyIs(QPoint(swatch.left(), centre.y()), tokens.border, qsl("the swatch's leading edge"));
             verifyIs(QPoint(swatch.right(), centre.y()), tokens.border, qsl("the swatch's trailing edge"));
             verifyIs(QPoint(centre.x(), swatch.top()), tokens.border, qsl("the swatch's top edge"));
+            // The words end at the trailing padding: the last ink across the well's middle stands there
+            int inkEnd = -1;
+            for (int x = inside.right() - 1; x > swatch.right() && inkEnd < 0; --x) {
+                for (int y = inside.top() + inset; y <= inside.bottom() - inset; ++y) {
+                    if (!near(pixelAt(QPoint(x, y)), tokens.field)) {
+                        inkEnd = x;
+                        break;
+                    }
+                }
+            }
+            const int contentEnd = inside.right() - trailingPadding;
+            QVERIFY2(inkEnd <= contentEnd && inkEnd >= contentEnd - 3,
+                     qPrintable(qsl("the words in '%1' end at %2px, not at the trailing padding at %3px").arg(pAlpha->objectName()).arg(inkEnd - inside.left()).arg(contentEnd - inside.left())));
+            wordsEnd.append(inkEnd);
             // ...and the field all round it
             verifyIs(QPoint(swatch.right() + 2, centre.y()), tokens.field, qsl("just past the swatch"));
             verifyIs(QPoint(centre.x(), inside.top() + 1), tokens.field, qsl("the margin above the swatch"));
@@ -373,6 +394,15 @@ private:
                                         .arg(pAlpha->objectName())
                                         .arg(sawBlack)
                                         .arg(sawWhite)));
+        }
+        // ...so the percent signs of wells one under another stand under each other
+        for (int index = 1; index < wordsEnd.size(); ++index) {
+            const QPushButton* pWell = std::get<0>(wells.at(index));
+            const QPushButton* pFirst = std::get<0>(wells.first());
+            if (pWell->mapTo(pCard, QPoint(0, 0)).x() == pFirst->mapTo(pCard, QPoint(0, 0)).x()) {
+                QVERIFY2(qAbs(wordsEnd.at(index) - wordsEnd.first()) <= 1,
+                         qPrintable(qsl("the words in '%1' end at %2px and in '%3' at %4px").arg(pWell->objectName()).arg(wordsEnd.at(index)).arg(pFirst->objectName()).arg(wordsEnd.first())));
+            }
         }
     }
 

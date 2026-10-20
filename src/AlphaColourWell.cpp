@@ -22,8 +22,10 @@
 #include "uiDesign.h"
 #include "utils.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QEvent>
+#include <QFontMetrics>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
@@ -102,22 +104,45 @@ void AlphaColourWell::applyLook()
     QString words;
     QString sheet;
     if (mColour.isValid()) {
-        //: Words inside a map colour well in the settings, beside a swatch of the colour: how opaque the colour is, %1 being a whole percentage - 100 for a colour that is not see-through at all
-        words = QCoreApplication::translate("AlphaColourWell", "Opacity %1%").arg(qRound(mColour.alphaF() * 100));
+        const auto opacity = [](const int percent) {
+            //: Words inside a map colour well in the settings, beside a swatch of the colour: how opaque the colour is, %1 being a whole percentage - 100 for a colour that is not see-through at all
+            return QCoreApplication::translate("AlphaColourWell", "Opacity %1%").arg(percent);
+        };
+        words = opacity(qRound(mColour.alphaF() * 100));
         const ThemeTokens tokens = themeTokens();
-        // The swatch is the inside of the well less the padding above and
-        // below it, and the words start that padding past it
-        const int swatch = mpButton->fontMetrics().height();
-        sheet = qsl("QPushButton { color: %1; background-color: transparent; border: %2px solid %3; border-radius: %4px; padding: %5px %6px %5px %7px; min-height: 0px; text-align: left; }"
-                    " QPushButton:disabled { color: %8; }")
+        // The words are set in the fixed-pitch face so the digits are one width and the percent signs of a column
+        // of wells stand under each other; the well's own face, the one a plain well is measured in, is the
+        // parent's
+        const QFont plain = mpButton->parentWidget() ? mpButton->parentWidget()->font() : QApplication::font();
+        const QFont fixed = fixedPitchFont(plain);
+        const QFontMetrics plainMetrics(plain);
+        const QFontMetrics fixedMetrics(fixed);
+        // The swatch is the inside of a plain well less the padding above and below it, and the words keep that
+        // padding from it at least
+        const int swatch = plainMetrics.height();
+        // As wide as the widest words would need, whatever these are: the words stand at the trailing edge and
+        // any room past that is left between them and the swatch
+        // Measured the way a push button measures its words, so the two agree to the pixel
+        const auto measured = [&fixedMetrics](const QString& text) {
+            return fixedMetrics.size(Qt::TextShowMnemonic, text).width();
+        };
+        const int shortfall = measured(opacity(100)) - measured(words);
+        // ...and as tall as a plain well, whichever face is the taller
+        const int spare = plainMetrics.height() - fixedMetrics.height();
+        const int top = std::max(0, scmWellPaddingVertical + spare / 2);
+        const int bottom = std::max(0, scmWellPaddingVertical + spare - spare / 2);
+        sheet = qsl("QPushButton { color: %1; background-color: transparent; border: %2px solid %3; border-radius: %4px; font-family: \"%5\";"
+                    " padding: %6px %7px %8px %9px; min-height: 0px; text-align: right; }")
                         .arg(tokens.text.name())
                         .arg(scmInputBorderWidth)
                         .arg(tokens.border.name())
                         .arg(scmRadiusInput)
-                        .arg(scmWellPaddingVertical)
+                        .arg(fixed.family())
+                        .arg(top)
                         .arg(scmInputPaddingHorizontal)
-                        .arg(scmWellPaddingVertical + swatch + scmWellPaddingVertical)
-                        .arg(tokens.disabledText.name());
+                        .arg(bottom)
+                        .arg(scmWellPaddingVertical + swatch + scmWellPaddingVertical + std::max(0, shortfall))
+                + qsl(" QPushButton:disabled { color: %1; }").arg(tokens.disabledText.name());
     }
     // Setting either brings the events that call this back again, so only what differs is set
     if (mpButton->text() != words) {
@@ -184,6 +209,7 @@ bool AlphaColourWell::eventFilter(QObject* pWatched, QEvent* pEvent)
     }
     switch (pEvent->type()) {
     case QEvent::FontChange:
+    case QEvent::ApplicationFontChange:
     case QEvent::LanguageChange:
     case QEvent::PaletteChange:
     case QEvent::ApplicationPaletteChange:

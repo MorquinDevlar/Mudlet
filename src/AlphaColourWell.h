@@ -32,14 +32,16 @@ namespace uiDesign {
 // frame - the same hairline, corner, height and width - and inside it a field:
 // a square swatch at the leading edge with the field showing round it, the
 // colour over a checkerboard so any transparency shows the board through it
-// and a hairline of its own over that, and after it the button's own words
-// saying how opaque the colour is. It is drawn at whatever size the well has.
+// and a hairline of its own over that, and at the trailing edge the button's
+// own words saying how opaque the colour is, in the fixed-pitch face so a
+// column of them lines up. It is drawn at whatever size the well has.
 //
 // The field and the swatch are painted under the button's own drawing rather
 // than handed to it as an icon: a push button's size hint follows its icon,
 // and an icon sized to the button would have the button ask for more room each
 // time it was given some. The words are the button's text, drawn by its
-// stylesheet past the swatch.
+// stylesheet at the trailing edge, with the well never narrower than the
+// widest of them needs.
 class AlphaColourWell : public QObject
 {
 public:
