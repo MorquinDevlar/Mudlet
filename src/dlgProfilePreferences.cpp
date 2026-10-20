@@ -5688,8 +5688,15 @@ void dlgProfilePreferences::setButtonAndProfileColor(QPushButton* button, QColor
         return;
     }
 
+    // The dialog runs an event loop of its own, in which the button or the whole window can go
+    const QPointer<dlgProfilePreferences> pSelf(this);
+    const QPointer<QPushButton> pClicked(button);
     //: Generic pick color dialog title
     auto color = QColorDialog::getColor(presentColor, this, tr("Pick color"), allowAlpha ? QColorDialog::ShowAlphaChannel : QColorDialog::ColorDialogOptions());
+    if (!pSelf) {
+        return;
+    }
+    returnFromColourDialog(pClicked);
     if (color.isValid()) {
         presentColor = color;
 
@@ -9212,14 +9219,33 @@ void dlgProfilePreferences::setPlayerRoomColor(QPushButton* b, QColor& c)
         return;
     }
 
+    // The dialog runs an event loop of its own, in which the button or the whole window can go
+    const QPointer<dlgProfilePreferences> pSelf(this);
+    const QPointer<QPushButton> pClicked(b);
     auto color = QColorDialog::getColor(
             c, this, (b == pushButton_playerRoomPrimaryColor ? tr("Set outer color of player room mark.") : tr("Set inner color of player room mark.")), QColorDialog::ShowAlphaChannel);
+    if (!pSelf) {
+        return;
+    }
+    returnFromColourDialog(pClicked);
     if (color.isValid()) {
         c = color;
 
         // Also sets a contrasting foreground color so text will always be
         // visible and adjusts the saturation of a disabled button:
         setButtonColor(b, color, true);
+    }
+}
+
+void dlgProfilePreferences::returnFromColourDialog(QWidget* pClicked)
+{
+    if (!isVisible()) {
+        return;
+    }
+    raise();
+    activateWindow();
+    if (pClicked) {
+        pClicked->setFocus(Qt::OtherFocusReason);
     }
 }
 

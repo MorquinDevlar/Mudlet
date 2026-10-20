@@ -30,10 +30,10 @@ namespace uiDesign {
 
 // A colour well whose colour may be partly see-through. It has a plain well's
 // frame - the same hairline, corner, height and width - and inside it a field:
-// a square swatch at the leading edge, the colour over a checkerboard so any
-// transparency shows the board through it, and after it the button's own words
-// saying how opaque the colour is. The swatch is the well's inner height on
-// each side and is drawn at whatever size the well has.
+// a square swatch at the leading edge with the field showing round it, the
+// colour over a checkerboard so any transparency shows the board through it
+// and a hairline of its own over that, and after it the button's own words
+// saying how opaque the colour is. It is drawn at whatever size the well has.
 //
 // The field and the swatch are painted under the button's own drawing rather
 // than handed to it as an icon: a push button's size hint follows its icon,

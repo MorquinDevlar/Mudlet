@@ -299,22 +299,24 @@ private:
     }
 
     // Each well that may hold a see-through colour as tall and as wide as the
-    // plain one beside it; inside it a square swatch the well's inner height on
-    // a side, the colour over a checkerboard - both the board's black and its
-    // white showing through a translucent one - and then the field, carrying
-    // the words saying how opaque the colour is
+    // plain one beside it; inside it a square swatch with the field showing
+    // round it by the well's 3px padding, the colour over a checkerboard - both
+    // the board's black and its white showing through a translucent one - under
+    // a hairline in the border token, and then the field again, carrying the
+    // words saying how opaque the colour is
     void verifyAlphaWells(const QList<std::tuple<QPushButton*, QPushButton*, QColor>>& wells)
     {
         QGroupBox* pCard = mpPreferences->groupBox_mapperColors;
         const QImage card = pCard->grab().toImage();
         const qreal ratio = card.devicePixelRatio();
-        const QColor field = uiDesign::themeTokens().field;
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         const auto near = [](const QColor& one, const QColor& other) {
             return qAbs(one.red() - other.red()) <= 3 && qAbs(one.green() - other.green()) <= 3 && qAbs(one.blue() - other.blue()) <= 3;
         };
-        const auto pixelAt = [&card, ratio](const int x, const int y) {
-            return card.pixelColor((QPointF(x, y) * ratio).toPoint());
+        const auto pixelAt = [&card, ratio](const QPoint& point) {
+            return card.pixelColor((QPointF(point) * ratio).toPoint());
         };
+        constexpr int inset = 3;
         for (const auto& [pAlpha, pPlain, colour] : wells) {
             QVERIFY2(pAlpha->height() == pPlain->height() && pAlpha->width() == pPlain->width(),
                      qPrintable(qsl("the see-through well '%1' is %2x%3 beside the plain '%4' at %5x%6")
@@ -332,30 +334,38 @@ private:
             };
             const QColor overBlack = over(0);
             const QColor overWhite = over(255);
-            const auto onTheBoard = [&](const QColor& pixel) {
-                return near(pixel, overBlack) || near(pixel, overWhite);
+            const auto onTheBoard = [&](const QPoint& point) {
+                return near(pixelAt(point), overBlack) || near(pixelAt(point), overWhite);
+            };
+            const auto verifyIs = [&](const QPoint& point, const QColor& wanted, const QString& where) {
+                QVERIFY2(near(pixelAt(point), wanted), qPrintable(qsl("%1 in '%2' is %3 rather than %4").arg(where, pAlpha->objectName(), pixelAt(point).name(), wanted.name())));
             };
             const QPoint origin = pAlpha->mapTo(pCard, QPoint(0, 0));
-            // Inside the hairline
+            // Inside the well's hairline, and the swatch inset in that
             const QRect inside(origin.x() + 1, origin.y() + 1, pAlpha->width() - 2, pAlpha->height() - 2);
-            const int side = inside.height();
-            const int middle = inside.top() + side / 2;
-            QVERIFY2(onTheBoard(pixelAt(inside.left() + side / 2, middle)),
-                     qPrintable(qsl("the middle of the swatch in '%1' is %2, not the colour").arg(pAlpha->objectName(), pixelAt(inside.left() + side / 2, middle).name())));
-            // Square: the colour runs to the swatch's far edge and the field begins just past it
-            QVERIFY2(onTheBoard(pixelAt(inside.left() + side - 2, middle)), qPrintable(qsl("the swatch in '%1' ends before it is as wide as it is tall").arg(pAlpha->objectName())));
-            QVERIFY2(near(pixelAt(inside.left() + side + 2, middle), field),
-                     qPrintable(qsl("just past the swatch in '%1' is %2 rather than the field's %3").arg(pAlpha->objectName(), pixelAt(inside.left() + side + 2, middle).name(), field.name())));
-            if (colour.alpha() == 255) {
+            const QRect swatch(inside.left() + inset, inside.top() + inset, inside.height() - 2 * inset, inside.height() - 2 * inset);
+            const QPoint centre = swatch.center();
+            QVERIFY2(onTheBoard(centre), qPrintable(qsl("the middle of the swatch in '%1' is %2, not the colour").arg(pAlpha->objectName(), pixelAt(centre).name())));
+            // Square: the colour runs to just inside the swatch's far edge, which carries its hairline
+            QVERIFY2(onTheBoard(QPoint(swatch.right() - 1, centre.y())), qPrintable(qsl("the swatch in '%1' ends before it is as wide as it is tall").arg(pAlpha->objectName())));
+            verifyIs(QPoint(swatch.left(), centre.y()), tokens.border, qsl("the swatch's leading edge"));
+            verifyIs(QPoint(swatch.right(), centre.y()), tokens.border, qsl("the swatch's trailing edge"));
+            verifyIs(QPoint(centre.x(), swatch.top()), tokens.border, qsl("the swatch's top edge"));
+            // ...and the field all round it
+            verifyIs(QPoint(swatch.right() + 2, centre.y()), tokens.field, qsl("just past the swatch"));
+            verifyIs(QPoint(centre.x(), inside.top() + 1), tokens.field, qsl("the margin above the swatch"));
+            verifyIs(QPoint(centre.x(), inside.bottom() - 1), tokens.field, qsl("the margin below the swatch"));
+            verifyIs(QPoint(inside.left() + 1, centre.y()), tokens.field, qsl("the margin before the swatch"));
+            if (QTest::currentTestFailed() || colour.alpha() == 255) {
                 continue;
             }
-            // The board shows through: from a corner of the swatch, both of its inks
+            // The board shows through: both of its inks inside the hairline
             bool sawBlack = false;
             bool sawWhite = false;
-            for (int y = inside.top() + 2; y < inside.top() + side - 2; ++y) {
-                for (int x = inside.left() + 2; x < inside.left() + side - 2; ++x) {
-                    sawBlack |= near(pixelAt(x, y), overBlack);
-                    sawWhite |= near(pixelAt(x, y), overWhite);
+            for (int y = swatch.top() + 1; y < swatch.bottom(); ++y) {
+                for (int x = swatch.left() + 1; x < swatch.right(); ++x) {
+                    sawBlack |= near(pixelAt(QPoint(x, y)), overBlack);
+                    sawWhite |= near(pixelAt(QPoint(x, y)), overWhite);
                 }
             }
             QVERIFY2(sawBlack && sawWhite,

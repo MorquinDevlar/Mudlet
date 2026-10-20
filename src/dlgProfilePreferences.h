@@ -64,6 +64,7 @@ class dlgProfilePreferences : public QDialog, public Ui::profile_preferences
 
     // Allow QTest-based test classes to access private members
     friend class SettingsAppearanceTest;
+    friend class SettingsMapControlsTest;
     friend class SettingsPageFlowTest;
     friend class SettingsShellNavigationTest;
 
@@ -249,6 +250,9 @@ private:
     void setColors2();
     void setButtonAndProfileColor(QPushButton*, QColor&, bool allowAlpha = false);
     void setPlayerRoomColor(QPushButton*, QColor&);
+    // After a colour dialog, however it was closed: macOS's native colour panel hands the activation to the
+    // application's main window as it closes, which leaves the settings behind it with nothing focused
+    void returnFromColourDialog(QWidget* pClicked);
     void setButtonColor(QPushButton*, const QColor&, const bool hasAlpha = false);
     void loadEditorTab();
     void populateThemesList();

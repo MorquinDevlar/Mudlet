@@ -26,16 +26,23 @@
 #include <QEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPen>
 #include <QPixmap>
 #include <QPushButton>
+
+#include <algorithm>
 
 namespace uiDesign {
 
 namespace {
 
 // What a plain well leaves above and below its words, so the two kinds of well
-// come out one height - see mudlet::mTEXT_ON_BG_STYLESHEET
+// come out one height - see mudlet::mTEXT_ON_BG_STYLESHEET. It is also the
+// field left showing round the swatch, and between the swatch and the words.
 constexpr int scmWellPaddingVertical = 3;
+// ...and the swatch's corner, an input's corner taken in by that inset so the
+// smaller square keeps the same curve beside the well's own
+constexpr int scmSwatchRadius = std::max(2, scmRadiusInput - scmWellPaddingVertical);
 
 // Black and white squares four pixels on a side. The picture's own squares are
 // three times as tall as they are wide, as it was drawn to be squeezed into a
@@ -98,9 +105,9 @@ void AlphaColourWell::applyLook()
         //: Words inside a map colour well in the settings, beside a swatch of the colour: how opaque the colour is, %1 being a whole percentage - 100 for a colour that is not see-through at all
         words = QCoreApplication::translate("AlphaColourWell", "Opacity %1%").arg(qRound(mColour.alphaF() * 100));
         const ThemeTokens tokens = themeTokens();
-        // The swatch is as tall as the inside of the well, and the words start
-        // the field's padding past it
-        const int swatch = mpButton->fontMetrics().height() + 2 * scmWellPaddingVertical;
+        // The swatch is the inside of the well less the padding above and
+        // below it, and the words start that padding past it
+        const int swatch = mpButton->fontMetrics().height();
         sheet = qsl("QPushButton { color: %1; background-color: transparent; border: %2px solid %3; border-radius: %4px; padding: %5px %6px %5px %7px; min-height: 0px; text-align: left; }"
                     " QPushButton:disabled { color: %8; }")
                         .arg(tokens.text.name())
@@ -109,7 +116,7 @@ void AlphaColourWell::applyLook()
                         .arg(scmRadiusInput)
                         .arg(scmWellPaddingVertical)
                         .arg(scmInputPaddingHorizontal)
-                        .arg(swatch + scmInputPaddingHorizontal)
+                        .arg(scmWellPaddingVertical + swatch + scmWellPaddingVertical)
                         .arg(tokens.disabledText.name());
     }
     // Setting either brings the events that call this back again, so only what differs is set
@@ -136,21 +143,31 @@ void AlphaColourWell::regenerate()
     picture.fill(Qt::transparent);
     QPainter painter(&picture);
     painter.setRenderHint(QPainter::Antialiasing);
+    const ThemeTokens tokens = themeTokens();
+    const bool available = mpButton->isEnabled();
     // The field, cut to the corner inside the hairline
     const qreal innerRadius = scmRadiusInput - scmInputBorderWidth;
     QPainterPath field;
     field.addRoundedRect(QRectF(QPointF(0, 0), QSizeF(size)), innerRadius, innerRadius);
-    painter.fillPath(field, themeTokens().field);
-    // The swatch, square and cut to an input's corner
-    const QRect swatch(0, 0, size.height(), size.height());
-    QPainterPath swatchCorner;
-    swatchCorner.addRoundedRect(QRectF(swatch), scmRadiusInput, scmRadiusInput);
-    painter.setClipPath(swatchCorner.intersected(field));
-    painter.drawTiledPixmap(swatch, checkerboardTile(ratio));
-    const bool available = mpButton->isEnabled();
-    // Unavailable, the colour keeps its hue and loses most of its saturation
-    const QColor shown = available ? mColour : QColor::fromHsl(mColour.hslHue(), mColour.hslSaturation() / 4, mColour.lightness(), mColour.alpha());
-    painter.fillRect(swatch, shown);
+    painter.fillPath(field, tokens.field);
+    // The swatch, square, with the field showing round it
+    const int side = size.height() - 2 * scmWellPaddingVertical;
+    if (side > 0) {
+        const QRect swatch(scmWellPaddingVertical, scmWellPaddingVertical, side, side);
+        QPainterPath swatchCorner;
+        swatchCorner.addRoundedRect(QRectF(swatch), scmSwatchRadius, scmSwatchRadius);
+        painter.setClipPath(swatchCorner);
+        painter.drawTiledPixmap(swatch, checkerboardTile(ratio));
+        // Unavailable, the colour keeps its hue and loses most of its saturation
+        const QColor shown = available ? mColour : QColor::fromHsl(mColour.hslHue(), mColour.hslSaturation() / 4, mColour.lightness(), mColour.alpha());
+        painter.fillRect(swatch, shown);
+        painter.setClipping(false);
+        // A hairline over the colour, so a swatch as light as the field still has an edge
+        painter.setPen(QPen(available ? tokens.border : disabledBorderColour(tokens), scmInputBorderWidth));
+        painter.setBrush(Qt::NoBrush);
+        const qreal half = scmInputBorderWidth / 2.0;
+        painter.drawRoundedRect(QRectF(swatch).adjusted(half, half, -half, -half), scmSwatchRadius - half, scmSwatchRadius - half);
+    }
     painter.end();
     // The unavailable picture has to be given to the icon as the one for its
     // Disabled mode, explicitly: given as the normal one, the built-in icon
