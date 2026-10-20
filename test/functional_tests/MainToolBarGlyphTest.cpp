@@ -44,24 +44,17 @@
 
 #include <QAction>
 #include <QFile>
-#include <QFileInfo>
 #include <QImage>
 #include <QPainter>
 #include <QPalette>
-#include <QSignalSpy>
 #include <QSvgRenderer>
-#include <QTemporaryDir>
 #include <QToolButton>
 #include <QtTest/QtTest>
 
 #include "Host.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
 #include "MudletMedia.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TDetachedWindow.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
@@ -74,11 +67,7 @@ class MainToolBarGlyphTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
+    TestProfile::Session mSession;
     const QString mFirstHostname = qsl("MainToolBarGlyph-First");
     const QString mSecondHostname = qsl("MainToolBarGlyph-Second");
 
@@ -86,12 +75,6 @@ private:
     // resolution they were drawn at and scaled by whatever draws them, so any one
     // size settles it.
     static constexpr int scmComparisonSize = 24;
-
-    // setupConfig() consults portable.txt before the XDG logic
-    static bool portableMarkerPresent()
-    {
-        return QFileInfo::exists(qsl("%1/portable.txt").arg(QCoreApplication::applicationDirPath())) || QFileInfo::exists(qsl("%1/.config/mudlet/portable.txt").arg(QDir::homePath()));
-    }
 
     static QImage drawnAt(const QIcon& icon, const QIcon::State state = QIcon::Off) { return icon.pixmap(QSize(scmComparisonSize, scmComparisonSize), QIcon::Normal, state).toImage(); }
 
@@ -143,74 +126,23 @@ private:
         return drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-triggers.svg")), tokens.mutedText)));
     }
 
-    void startProfile(const QString& hostname)
-    {
-        auto host = TestProfile::create(hostname, mLocalhost, mPort);
-        if (!host) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy connectionSpy(&(host->mTelnet), &cTelnet::signal_connected);
-        if (!connectionSpy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         // The captions below are read as words rather than as pictures
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
-
-        deleteProfileDirectory(mFirstHostname);
-        deleteProfileDirectory(mSecondHostname);
 
         // Two of them, because slot_tabDetachRequested() refuses index 0
-        startProfile(mFirstHostname);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
-        startProfile(mSecondHostname);
+        QVERIFY2(mSession.openProfile(mFirstHostname), qPrintable(mSession.why()));
+        QVERIFY2(mSession.openProfile(mSecondHostname), qPrintable(mSession.why()));
     }
 
-    void cleanupTestCase()
-    {
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mFirstHostname);
-            deleteProfileDirectory(mSecondHostname);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-    }
+    void cleanupTestCase() { mSession.stop(); }
 
     // Every other case here compares one drawn glyph against another built the
     // same way, so a glyph that came out of the SVG empty - a renderer that

@@ -60,7 +60,6 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
-#include <QFileInfo>
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
@@ -68,24 +67,17 @@
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QProgressBar>
-#include <QSignalSpy>
 #include <QTabBar>
-#include <QTemporaryDir>
 #include <QTextCursor>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest/QtTest>
 
-#include <memory>
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgNotepad.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -99,35 +91,15 @@ class NotepadShellTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     Host* mpHost = nullptr;
     dlgNotepad* mpNotepad = nullptr;
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     const QString mProfileName = qsl("NotepadShell-Test-Profile");
 
     // How far a sampled pixel may sit from the colour the tokens mix, per
     // channel. A styled fill is composited rather than blitted, so the two
     // agree to a level or two rather than exactly.
     static constexpr int scmFillTolerance = 6;
-
-    // setupConfig() consults portable.txt before the XDG logic
-    static bool portableMarkerPresent()
-    {
-        return QFileInfo::exists(qsl("%1/portable.txt").arg(QCoreApplication::applicationDirPath())) || QFileInfo::exists(qsl("%1/.config/mudlet/portable.txt").arg(QDir::homePath()));
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
 
     QString centralSheet() const { return mpNotepad->centralwidget->styleSheet(); }
     QString toolBarSheet() const { return mpNotepad->toolBar->styleSheet(); }
@@ -360,38 +332,16 @@ private slots:
 
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        // The glyphs a stylesheet points at are written into the cache
-        // directory, so a run of this test writes nowhere the machine keeps
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         // The words below are read as words rather than as pictures
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
 
-        deleteProfileDirectory(mProfileName);
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
-        QSignalSpy connected(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2s), "Could not connect with the host.");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         // The way mudlet's Notes button opens it
         mudlet::self()->slot_notes();
@@ -414,15 +364,10 @@ private slots:
     {
         mpNotepad = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
         if (mudlet::self()) {
             mudlet::self()->setAppearance(enums::Appearance::systemSetting);
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
     }
 
     // Both sheets exist and are set where they have to be: on the central

@@ -37,7 +37,6 @@
  */
 
 #include <QListWidget>
-#include <QTemporaryDir>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest/QtTest>
@@ -45,11 +44,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -62,14 +57,10 @@ class EditorIconScaleTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorIconScale-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
 
     // What the preference's default has to come out at: the size every other
     // glyph in the editor and in the settings dialog is drawn at
@@ -84,27 +75,6 @@ private:
     // icon sizes apart on a bar of a dozen buttons.
     static constexpr int scmSweepStep = 10;
     static constexpr int scmSweepCeiling = 3000;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     // Whether every button that acts on the profile - Import, Export, Create
     // Module, Save Profile - is still carrying its name. That group is the
@@ -153,29 +123,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showEditorDialog();
         QTest::qWait(100ms);
@@ -189,13 +142,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // The mapping itself: what a profile that has never touched the preference

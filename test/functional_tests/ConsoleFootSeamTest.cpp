@@ -27,19 +27,12 @@
  * Run with: ctest -R ConsoleFootSeamTest -V
  */
 
-#include <QSignalSpy>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 #include "Host.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TCommandLine.h"
 #include "TMainConsole.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
@@ -52,13 +45,9 @@ class ConsoleFootSeamTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     Host* mpHost = nullptr;
     const QString mHostname = qsl("ConsoleFootSeam-Test-Host");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     const QString mMiniConsoleName = qsl("footSeamMiniConsole");
     const QString mColourMiniConsoleName = qsl("footSeamColourMiniConsole");
     QSize mWindowSize;
@@ -86,35 +75,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-
-        QDir(MudletApp::getMudletPath(enums::profileHomePath, mHostname)).removeRecursively();
-        mpHost = TestProfile::create(mHostname, mLocalhost, mPort);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-        QSignalSpy connectedSpy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (mpHost->mTelnet.getConnectionState() != QAbstractSocket::ConnectedState && !connectedSpy.wait(8s)) {
-            QFAIL("Could not connect with the host.");
-        }
+        QVERIFY2(mSession.start(mHostname), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         // Nothing is laid out, let alone painted, until the window is up
         mWindowSize = mudlet::self()->size();
@@ -126,16 +92,12 @@ private slots:
 
     void cleanupTestCase()
     {
-        delete mpServer;
-        mpServer = nullptr;
         mpHost = nullptr;
         if (mudlet::self()) {
             mudlet::self()->hide();
             mudlet::self()->resize(mWindowSize);
-            QDir(MudletApp::getMudletPath(enums::profileHomePath, mHostname)).removeRecursively();
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     void test_theMainCommandLineHasNoFrame()

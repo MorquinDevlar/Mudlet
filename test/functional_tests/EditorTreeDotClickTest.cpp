@@ -33,21 +33,14 @@
  * Run with: ctest -R EditorTreeDotClickTest -V
  */
 
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "EditorTreeDelegate.h"
 #include "Host.h"
-#include "MudletInstanceCoordinator.h"
 #include "TTreeWidget.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
-#include "dlgConnectionProfiles.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -80,36 +73,10 @@ class EditorTreeDotClickTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("TreeDotClick-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        const QString path = MudletApp::getMudletPath(enums::profileHomePath, profileName);
-        QDir dir(path);
-        if (dir.exists() && !dir.removeRecursively()) {
-            qWarning() << "deleteProfileDirectory: could not remove" << path << "- later failures may stem from this stale state";
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy connectedSpy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!connectedSpy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     TTreeWidget* tree() const { return mpEditor->treeWidget_triggers; }
     QWidget* viewport() const { return tree()->viewport(); }
@@ -165,39 +132,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        // A config root of this process's own. Sharing the developer's
-        // ~/.config/mudlet means sharing a profile list, so a second copy of
-        // this test running at the same time is told the name it types is
-        // already in use and never gets an enabled Connect button. Since #9712
-        // the opt-in that makes setupConfig() adopt a directory is
-        // $XDG_CONFIG_HOME/mudlet/profiles, not the mudlet directory alone.
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-        startProfile(mProfileName, mLocalhost, mPort);
-        // QFAIL inside startProfile() only returns from that helper - bail out
-        // here too or the mpHost dereference below crashes and buries the
-        // recorded diagnostic under a segfault
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showScriptDialog();
         QTest::qWait(100ms);
@@ -213,15 +153,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        // Null when initTestCase skipped or failed ahead of mudlet::start(), and
-        // getMudletPath() dereferences the instance rather than checking it
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // Two sibling triggers under the base item, both freshly made, so that every

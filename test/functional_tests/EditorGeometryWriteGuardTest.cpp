@@ -40,17 +40,13 @@
 
 #include <QGuiApplication>
 #include <QScreen>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -63,41 +59,16 @@ class EditorGeometryWriteGuardTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorGeometryWriteGuard-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
 
     // Standing in for the placement a user chose in another profile's editor
     QPoint mSeededPos;
     QSize mSeededSize;
     // ...and for the drag that would replace it
     QPoint mDraggedPos;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     static QString describe(const QPoint& point) { return qsl("(%1,%2)").arg(QString::number(point.x()), QString::number(point.y())); }
 
@@ -110,27 +81,11 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
         const QScreen* pScreen = QGuiApplication::primaryScreen();
         QVERIFY(pScreen);
@@ -146,7 +101,8 @@ private slots:
 
         // Building the profile is what builds the editor, and nothing here ever
         // asks to see it - which is the whole of the case below
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Loading the profile should have built an editor");
     }
@@ -155,13 +111,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // The second profile's editor, in miniature: built by the load, never put

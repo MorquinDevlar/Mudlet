@@ -49,14 +49,9 @@
 
 #include "GroupedTest.h"
 #include "Host.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TDebug.h"
 #include "TDebugFilterBar.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
-#include "dlgConnectionProfiles.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
@@ -67,12 +62,8 @@ class DebugFilterBarGlyphTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     const QString mHostname = qsl("Test-DebugFilterBarGlyph");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // The size the comparison is made at. Both pictures are held at the
     // resolution they were drawn at and scaled by whatever draws them, so any one
@@ -152,33 +143,18 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
-
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
     }
 
-    void cleanupTestCase() { mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg); }
+    void cleanupTestCase() { mSession.stop(); }
 
     void init()
     {
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), "TelnetServerStub failed to bind a loopback port");
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         // The buttons below are found by the words on them
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mHostname);
     }
 
     void cleanup()
@@ -187,10 +163,7 @@ private slots:
         TDebug::discardPausedMessages();
         TDebug::smDebugMode = false;
 
-        delete mpServer;
-        mpServer = nullptr;
-        deleteProfileDirectory(mHostname);
-        delete mudlet::self();
+        mSession.stop();
     }
 
     // The word changes too, but the picture is what is read at a glance - and it
@@ -291,90 +264,16 @@ private:
     // filter bar - into existence, the way toggling Debug in the editor does.
     Host* startDebuggingProfile()
     {
-        startProfile(mHostname, mLocalhost, mPort);
-        auto* host = mudlet::self()->getActiveHost();
+        if (!mSession.openProfile(mHostname)) {
+            QTest::qFail(qPrintable(mSession.why()), __FILE__, __LINE__);
+            return nullptr;
+        }
+        auto* host = mSession.host();
 
         mudlet::self()->attachDebugArea(host->getName());
         TDebug::smDebugMode = true;
         TDebug::flushMessageQueue();
         return host;
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (!dir.exists()) {
-            return;
-        }
-        dir.removeRecursively();
-    }
-
-    // Starts a profile by driving the connection dialog, as a user would.
-    void startProfile(const QString& hostname, const QString& address, const QString& port)
-    {
-        QTimer::singleShot(0, qApp, [hostname, address, port]() {
-            const auto dialog = []() {
-                return mudlet::self()->mpConnectionDialog.data();
-            };
-
-            mudlet::self()->startAutoLogin({});
-
-            if (!QTest::qWaitFor(
-                        [&dialog]() {
-                            return dialog() && dialog()->isVisible();
-                        },
-                        5000)) {
-                qWarning() << "the connection dialog never appeared";
-                return;
-            }
-
-            // Focus is what each step hands to the next, so the field about to
-            // be typed into is the real precondition
-            const auto waitForFocus = [](QWidget* field, const char* name) {
-                if (QTest::qWaitFor(
-                            [field]() {
-                                return QApplication::focusWidget() == field;
-                            },
-                            5000)) {
-                    return true;
-                }
-                qWarning() << "focus never reached the" << name << "field";
-                return false;
-            };
-
-            QTest::mouseClick(dialog()->new_profile_button, Qt::LeftButton);
-            if (!waitForFocus(dialog()->profile_name_entry, "profile name")) {
-                return;
-            }
-            QTest::keyClicks(dialog()->profile_name_entry, hostname);
-            QTest::keyClick(dialog()->profile_name_entry, Qt::Key_Tab);
-
-            if (!waitForFocus(dialog()->host_name_entry, "server address")) {
-                return;
-            }
-            QTest::keyClicks(dialog()->host_name_entry, address);
-            QTest::keyClick(dialog()->host_name_entry, Qt::Key_Tab);
-
-            if (!waitForFocus(dialog()->port_entry, "port")) {
-                return;
-            }
-            QTest::keyClicks(dialog()->port_entry, port);
-            QTest::keyClick(dialog()->port_entry, Qt::Key_Return);
-        });
-
-        QSignalSpy spy(mudlet::self(), &mudlet::signal_profileLoaded);
-        if (!spy.wait(5s)) {
-            QFAIL("Profile took too long to load.");
-        }
-        auto host = mudlet::self()->getActiveHost();
-        if (!host) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy2(&(host->mTelnet), &cTelnet::signal_connected);
-        if (!spy2.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
     }
 };
 

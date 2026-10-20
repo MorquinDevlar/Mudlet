@@ -31,17 +31,13 @@
  * opened at screen height however small the stored geometry was.
  */
 
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -54,42 +50,16 @@ class EditorMinimumSizeTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorMinimumSize-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
     QSize mStoredSize; // seeded in initTestCase() before the editor is built
 
     // Kept in step with the bound the editor is allowed to claim, so a failure
     // reports the offending widgets rather than only the total
     static constexpr int scmMaxMinimumHeight = 600;
     static constexpr int scmMaxMinimumWidth = 900;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        const QString path = MudletApp::getMudletPath(enums::profileHomePath, profileName);
-        QDir dir(path);
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     // Every widget whose own minimum height is at least threshold, deepest
     // first, so the report names the widget that actually carries the number
@@ -118,27 +88,11 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
         // Seeded before the profile is up, because the editor is built with it and
         // what went wrong was decided in that constructor: the size restore reads
@@ -153,7 +107,8 @@ private slots:
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), mStoredSize);
         MudletApp::getQSettings()->remove(qsl("script_editor_pos"));
 
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showScriptDialog();
         QTest::qWait(100ms);
@@ -166,13 +121,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // The floor restoreWindowGeometry() applies to a stored size, and the floor

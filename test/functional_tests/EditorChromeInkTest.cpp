@@ -73,7 +73,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
-#include <QTemporaryDir>
 #include <QTextEdit>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
@@ -83,11 +82,7 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgProfilePreferences.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
@@ -104,17 +99,11 @@ class EditorChromeInkTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorChromeInk-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // Measured over the seven views together and pinned under what the walk
     // actually reaches - 127 things on the dark appearance and 133 on the
@@ -329,14 +318,6 @@ private:
         mpEditor->grab();
     }
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
     void writeFreshEditorThemesFile()
     {
         const QString file = MudletApp::getMudletPath(enums::editorWidgetThemeJsonFile);
@@ -349,35 +330,14 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         writeFreshEditorThemesFile();
-
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
-        QSignalSpy connected(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2s), "Could not connect with the host.");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -407,15 +367,10 @@ private slots:
         mpPreferences = nullptr;
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
         if (mudlet::self()) {
             mudlet::self()->setAppearance(enums::Appearance::systemSetting);
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
     }
 
     // One case for both appearances and all seven views, with one list at the

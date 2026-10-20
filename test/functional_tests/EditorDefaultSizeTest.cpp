@@ -45,20 +45,15 @@
 
 #include <QGuiApplication>
 #include <QScreen>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TConsole.h"
 #include "TMainConsole.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -71,14 +66,10 @@ class EditorDefaultSizeTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorDefaultSize-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // Comfortably larger than the default, so that a default scaled off the
     // profile window would come out larger than the default itself
@@ -90,39 +81,16 @@ private:
     static constexpr int scmCompanionWidth = 1300;
     static constexpr int scmCompanionHeight = 690;
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
     static QString describe(const QSize& size) { return qsl("%1x%2").arg(size.width()).arg(size.height()); }
 
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
         // Nothing has ever been stored for the editor in this configuration, so
         // the two keys are named here only to say what this case is about
@@ -134,10 +102,8 @@ private slots:
         mudlet::self()->resize(scmProfileWindowWidth, scmProfileWindowHeight);
         QCoreApplication::processEvents();
 
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost != nullptr, "No active host available for the test.");
-        QSignalSpy connected(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2s), "Could not connect with the host.");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -149,13 +115,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // With nothing stored, the editor is the companion size whatever the

@@ -68,17 +68,13 @@
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 
-#include <memory>
 
 #include "ChipRow.h"
 #include "Host.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TTrigger.h"
-#include "TelnetServerStub.h"
 #include "TriggerUnit.h"
-#include "ctelnet.h"
 #include "dlgPackageExporter.h"
 #include "dlgSystemMessageArea.h"
 #include "mudlet.h"
@@ -94,19 +90,13 @@ class PackageExporterShellTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
+    TestProfile::Session mSession;
     // Where an export writes, through the setting getActualPath() falls back to
     QTemporaryDir mExportDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
-    TelnetServerStub* mpServer = nullptr;
     Host* mpHost = nullptr;
     dlgPackageExporter* mpDialog = nullptr;
     QTimer* mpModalAnswerTimer = nullptr;
     int mBoxesAnswered = 0;
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     const QString mProfileName = qsl("PackageExporterShell-Test-Profile");
     const QString mFolderName = qsl("exporter shell folder");
     // The installed package whose words the picker's entries fill the form in from
@@ -121,20 +111,6 @@ private:
     // is three pixels wide with an antialiased corner at each end, so the other
     // style tests' slack is what is allowed here too.
     static constexpr int scmFillTolerance = 24;
-
-    // setupConfig() consults portable.txt before the XDG logic
-    static bool portableMarkerPresent()
-    {
-        return QFileInfo::exists(qsl("%1/portable.txt").arg(QCoreApplication::applicationDirPath())) || QFileInfo::exists(qsl("%1/.config/mudlet/portable.txt").arg(QDir::homePath()));
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
 
     void settle() const
     {
@@ -305,43 +281,21 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        // The glyphs a stylesheet points at are written into the cache
-        // directory, so a run of this test writes nowhere the machine keeps
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         // The words below are read as words rather than as pictures
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
 
         // getActualPath() falls back to this setting when nothing was browsed
         // for, which is the only way a test steers where a package lands
         QVERIFY(mExportDir.isValid());
         MudletApp::getQSettings()->setValue(qsl("lastFileDialogLocation"), mExportDir.path());
 
-        deleteProfileDirectory(mProfileName);
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
-        QSignalSpy connected(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2000), "Could not connect with the host.");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         // A folder with exactly two triggers in it: ticking the folder ticks all
         // three, which is the count the chip and the hidden group box's title
@@ -385,15 +339,10 @@ private slots:
         mpDialog = nullptr;
         QCoreApplication::processEvents();
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
         if (mudlet::self()) {
             mudlet::self()->setAppearance(enums::Appearance::systemSetting);
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
     }
 
     // Every sheet is on one of the shell's containers and none on the dialog,

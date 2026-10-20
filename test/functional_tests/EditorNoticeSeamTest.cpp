@@ -68,7 +68,6 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSplitterHandle>
-#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <algorithm>
@@ -78,13 +77,8 @@
 #include "GripSplitter.h"
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "SingleLineTextEdit.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "dlgAliasMainArea.h"
 #include "dlgSourceEditorArea.h"
 #include "dlgSystemMessageArea.h"
@@ -104,9 +98,7 @@ class EditorNoticeSeamTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     // The rows the two items these cases edit are on. A fresh profile ships
@@ -114,8 +106,6 @@ private:
     QTreeWidgetItem* mpTriggerRow = nullptr;
     QTreeWidgetItem* mpAliasRow = nullptr;
     const QString mProfileName = qsl("EditorNoticeSeam-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // A drag of the seam, in the small steps a pointer really arrives in
     static constexpr int scmDragTravel = 120;
@@ -142,14 +132,6 @@ private:
     // The window every case here runs in
     static constexpr int scmEditorWidth = 1200;
     static constexpr int scmEditorHeight = 800;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
 
     void settle()
     {
@@ -359,31 +341,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost != nullptr, "No active host available for the test.");
-        QSignalSpy connected(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2s), "Could not connect with the host.");
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -417,13 +380,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // The notice is worth its own height and the gap under it, and nothing

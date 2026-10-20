@@ -47,22 +47,15 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QFileInfo>
 #include <QHoverEvent>
 #include <QImage>
-#include <QSignalSpy>
-#include <QTemporaryDir>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest/QtTest>
 
 #include "Host.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TDetachedWindow.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
@@ -75,13 +68,7 @@ class MainToolBarStyleTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
-    TelnetServerStub* mpServer = nullptr;
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
+    TestProfile::Session mSession;
     const QString mFirstHostname = qsl("MainToolBarStyle-First");
     const QString mSecondHostname = qsl("MainToolBarStyle-Second");
 
@@ -94,33 +81,6 @@ private:
     // where nothing can be sampled
     static constexpr int scmWindowWidth = 1600;
     static constexpr int scmWindowHeight = 600;
-
-    // setupConfig() consults portable.txt before the XDG logic
-    static bool portableMarkerPresent()
-    {
-        return QFileInfo::exists(qsl("%1/portable.txt").arg(QCoreApplication::applicationDirPath())) || QFileInfo::exists(qsl("%1/.config/mudlet/portable.txt").arg(QDir::homePath()));
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& hostname)
-    {
-        auto host = TestProfile::create(hostname, mLocalhost, mPort);
-        if (!host) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy connectionSpy(&(host->mTelnet), &cTelnet::signal_connected);
-        if (!connectionSpy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     // Reached by object name rather than by member: the bar is the window's own
     // and every button on it carries the name of the action it was made from
@@ -301,45 +261,16 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        // The chevron on a split button's menu half is written into the cache
-        // directory, and the rule pointing at it is left out when it cannot be
-        // written - so a run of this test writes nowhere the machine keeps
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
-
-        deleteProfileDirectory(mFirstHostname);
-        deleteProfileDirectory(mSecondHostname);
 
         // Two of them, because slot_tabDetachRequested() refuses index 0
-        startProfile(mFirstHostname);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
-        startProfile(mSecondHostname);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.openProfile(mFirstHostname), qPrintable(mSession.why()));
+        QVERIFY2(mSession.openProfile(mSecondHostname), qPrintable(mSession.why()));
 
         // Nothing on a bar that is not on show can be sampled, and with a
         // profile loaded the shipped default is to keep it off
@@ -355,16 +286,10 @@ private slots:
 
     void cleanupTestCase()
     {
-        delete mpServer;
-        mpServer = nullptr;
         if (mudlet::self()) {
             mudlet::self()->setAppearance(enums::Appearance::systemSetting);
-            deleteProfileDirectory(mFirstHostname);
-            deleteProfileDirectory(mSecondHostname);
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
     }
 
     // The design's rules are on the bar, and a profile's own sheet is composed

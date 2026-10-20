@@ -41,7 +41,6 @@
 #include <QImage>
 #include <QMouseEvent>
 #include <QStyleOptionViewItem>
-#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -49,10 +48,7 @@
 #include "EditorTreeDelegate.h"
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TAction.h"
 #include "TAlias.h"
 #include "TKey.h"
@@ -60,8 +56,6 @@
 #include "TTimer.h"
 #include "TTreeWidget.h"
 #include "TTrigger.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -75,14 +69,10 @@ class EditorTreeRowHeightTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorTreeRowHeight-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // The size the delegate draws every row's mark at, which is also the size
     // the tree's heading glyph is drawn at. Written out here rather than shared:
@@ -114,27 +104,6 @@ private:
     int mActionItemId = 0;
     int mKeyFolderId = 0;
     int mKeyItemId = 0;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     // Built into the profile before the editor is opened, so that the rows come
     // out of the editor's own fillout_form() rather than being posted into the
@@ -374,31 +343,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         buildTheProfilesItems();
 
@@ -468,13 +418,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // The whole point: a tree's heading, a folder in it and an item in that

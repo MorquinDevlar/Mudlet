@@ -32,9 +32,8 @@
  * Run with: ctest -R ConnectionDialogStyleTest -V
  */
 
-#include "PortableModeTestHelper.h"
-#include "MudletInstanceCoordinator.h"
 #include "MudletApp.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgConnectionProfiles.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -66,15 +65,12 @@ class ConnectionDialogStyleTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mXdgDir;
-    QByteArray mSavedXdg;
+    TestProfile::Session mSession;
 
     const QString mProfile = qsl("Aardvark-ConnDialogFieldStyle");
 
     // a saved profile keeps the first-launch tutorial invitation - which hides
     // the whole connection form - out of the way
-    bool makeProfileFolder(const QString& name) const { return QDir().mkpath(qsl("%1/mudlet/profiles/%2").arg(mXdgDir.path(), name)); }
-
     dlgConnectionProfiles* dialog() const { return mudlet::self()->mpConnectionDialog.data(); }
 
     // The fields only carry text, and the validator only runs, once a profile
@@ -152,22 +148,11 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - cannot redirect the config dir for this test");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        QVERIFY(mXdgDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mXdgDir.path()))); // profiles/ = XDG opt-in
-        QVERIFY(makeProfileFolder(mProfile));
-        qputenv("XDG_CONFIG_HOME", mXdgDir.path().toUtf8());
-
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QVERIFY(MudletApp::getMudletPath(enums::profilesPath).startsWith(mXdgDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
+        QVERIFY2(mSession.startMudlet({mProfile}), qPrintable(mSession.why()));
 
         // The macOS theme registers a font of its own for labels and checkboxes,
         // and offscreen registers none. Built rather than copied from the
@@ -187,11 +172,7 @@ private slots:
                 5000));
     }
 
-    void cleanupTestCase()
-    {
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        delete mudlet::self();
-    }
+    void cleanupTestCase() { mSession.stop(); }
 
     void test_theTabsFieldsAreDrawnFromTheDesign()
     {

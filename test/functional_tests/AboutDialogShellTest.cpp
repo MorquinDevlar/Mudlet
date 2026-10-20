@@ -50,16 +50,13 @@
 
 #include <QApplication>
 #include <QClipboard>
-#include <QFileInfo>
 #include <QGroupBox>
 #include <QImage>
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QSignalSpy>
 #include <QStackedWidget>
-#include <QTemporaryDir>
 #include <QTextBrowser>
 #include <QToolButton>
 #include <QtTest/QtTest>
@@ -67,10 +64,7 @@
 #include "AboutSupporterBanner.h"
 #include "Host.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgAboutDialog.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -84,12 +78,8 @@ class AboutDialogShellTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgAboutDialog* mpDialog = nullptr;
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     const QString mProfileName = qsl("AboutDialogShell-Test-Profile");
 
     // How far the two lists of supporters run, so that the banners can be
@@ -97,20 +87,6 @@ private:
     // reading them off what is on screen would pass a page with nothing on it.
     static constexpr int scmSwordsSupporters = 6;
     static constexpr int scmPlaqueSupporters = 2;
-
-    // setupConfig() consults portable.txt before the XDG logic
-    static bool portableMarkerPresent()
-    {
-        return QFileInfo::exists(qsl("%1/portable.txt").arg(QCoreApplication::applicationDirPath())) || QFileInfo::exists(qsl("%1/.config/mudlet/portable.txt").arg(QDir::homePath()));
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
 
     // The way mudlet::slot_showAboutDialog() opens it
     dlgAboutDialog* openDialog()
@@ -134,33 +110,15 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         // The captions below are read as words rather than as pictures
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
 
-        deleteProfileDirectory(mProfileName);
-        auto host = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(host, "No active host after profile creation");
-        QSignalSpy connected(&(host->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2s), "Could not connect with the host.");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
 
         mpDialog = openDialog();
         QVERIFY2(mpDialog, "the About dialog could not be opened");
@@ -170,13 +128,7 @@ private slots:
     {
         delete mpDialog;
         mpDialog = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // The shell itself: the arch keeps a column of its own, and the four tabs

@@ -59,7 +59,6 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSplitter>
-#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <algorithm>
@@ -68,12 +67,9 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TAlias.h"
 #include "TTrigger.h"
-#include "TelnetServerStub.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
 #include "mudlet.h"
@@ -87,14 +83,10 @@ class EditorSplitterRestoreTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorSplitterRestore-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
 
     // Room for a form of eleven pattern rows over a code pane well clear of its
     // floor, so that nothing here ends up measuring the clamp instead of the fit
@@ -140,28 +132,6 @@ private:
                 qsl("mKeyEditorSplitterState"),
                 qsl("mTimerEditorSplitterState"),
                 qsl("mVarEditorSplitterState")};
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        const QString path = MudletApp::getMudletPath(enums::profileHomePath, profileName);
-        QDir dir(path);
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
     }
 
     // A QSplitter stores the sizes it was asked for, not the ones it ended up
@@ -271,27 +241,11 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
         // Seeded before the profile is up, which is what builds the editor: the
         // configuration a returning user arrives with, carrying the split their
@@ -304,10 +258,8 @@ private slots:
         MudletApp::getQSettings()->remove(qsl("script_editor_pos"));
         MudletApp::getQSettings()->sync();
 
-        startProfile(mProfileName, mLocalhost, mPort);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Loading the profile did not build an editor");
@@ -374,13 +326,7 @@ private slots:
         mpPatterns = nullptr;
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // Each case is its own session as far as the splitter is concerned: a

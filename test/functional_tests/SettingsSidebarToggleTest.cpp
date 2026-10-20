@@ -43,7 +43,6 @@
 #include <QAbstractButton>
 #include <QColor>
 #include <QComboBox>
-#include <QDir>
 #include <QIcon>
 #include <QImage>
 #include <QLabel>
@@ -55,18 +54,14 @@
 #include <QStyle>
 #include <QStyleFactory>
 #include <QStyleOptionViewItem>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "SettingsTestHelper.h"
 #include "SidebarToggle.h"
-#include "TelnetServerStub.h"
 #include "dlgProfilePreferences.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -134,17 +129,11 @@ class SettingsSidebarToggleTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
+    TestProfile::Session mSession;
     QByteArray mSavedNoThemeDownload;
-    TelnetServerStub* mpServer = nullptr;
     Host* mpHost = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
     const QString mProfileName = qsl("SettingsSidebarToggle-Test");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
     // The size the dialog refuses to go below, which is well under the width
     // the names need
     const QSize mTooNarrow = QSize(780, 560);
@@ -351,36 +340,15 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        // A config root of this process's own, so that the preference this is
-        // about starts out unwritten however the machine's own is set
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
         mSavedNoThemeDownload = qgetenv("MUDLET_TEST_NO_THEME_DOWNLOAD");
         qputenv("MUDLET_TEST_NO_THEME_DOWNLOAD", "1");
 
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        TestSettings::deleteProfileDirectory(mProfileName);
-
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
         QVERIFY2(!anythingStored(), "the sidebar preference was already written before a dialog was ever opened, so the default below proves nothing");
 
         openPreferences();
@@ -391,14 +359,7 @@ private slots:
         delete mpPreferences;
         mpPreferences = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            TestSettings::deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
         mSavedNoThemeDownload.isNull() ? qunsetenv("MUDLET_TEST_NO_THEME_DOWNLOAD") : qputenv("MUDLET_TEST_NO_THEME_DOWNLOAD", mSavedNoThemeDownload);
     }
 

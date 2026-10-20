@@ -37,21 +37,15 @@
 #include <QFontInfo>
 #include <QLabel>
 #include <QRegularExpression>
-#include <QTemporaryDir>
 #include <QTimeEdit>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TTimer.h"
-#include "TelnetServerStub.h"
 #include "TimerUnit.h"
-#include "ctelnet.h"
 #include "dlgSourceEditorArea.h"
 #include "dlgTimersMainArea.h"
 #include "dlgTriggerEditor.h"
@@ -66,16 +60,12 @@ class EditorTimerIntervalTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     QTreeWidgetItem* mpTimerItem = nullptr;
     QTreeWidgetItem* mpOffsetItem = nullptr;
     const QString mProfileName = qsl("EditorTimerInterval-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // The two sentences the row is built from, as dlgTriggerEditor writes them
     static QString everySentence() { return qsl("Fires every %1 h %2 min %3 s %4 ms"); }
@@ -87,26 +77,6 @@ private:
     {
         static const QRegularExpression placeholder(qsl("%\\d"));
         return QString(sentence).remove(placeholder).simplified();
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
     }
 
     QWidget* row() const { return mpEditor->mpWidget_timerInterval; }
@@ -170,28 +140,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -226,13 +180,7 @@ private slots:
         mpOffsetItem = nullptr;
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     // One row, four fields in the order they are read in, at the type the form
