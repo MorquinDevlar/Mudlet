@@ -350,6 +350,7 @@ private:
     void addCardRow(QGroupBox* pCard, QWidget* pLabel, QWidget* pControl);
     void retitleCards();
     void reflowWideCards();
+    void reflowMapperCards();
     void reflowDisplayOptionsCard();
     void reflowCompatibilityCard();
     void capColumnWidth(QScrollArea* pScrollArea);

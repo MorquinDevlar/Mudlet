@@ -27,6 +27,7 @@
 
 #include "CredentialManager.h"
 #include "EditorAutoCompleteFocusHandler.h"
+#include "FlowLayout.h"
 #include "GMCPAuthenticator.h"
 #include "Host.h"
 #include "HostDialogs.h"
@@ -203,6 +204,16 @@ static uiDesign::SidebarMetrics settingsSidebarMetrics(const int expandedWidth)
 // line inside the frame rather than a heading above it, how far in from the
 // frame the title starts as well
 static constexpr int scmCardPadding = 16;
+
+// Between a label and the control it names on a row that flows, and between
+// two lines of one
+static constexpr int scmFlowRowGap = 8;
+// ...between two columns of check boxes, so they read as two columns rather
+// than as one line of words running across
+static constexpr int scmChoiceGroupGap = 40;
+// ...and between two label-and-stepper pairs, wider than the gap inside a pair
+// so each label is read with its own stepper
+static constexpr int scmFieldPairGap = 24;
 
 // ...which, with the property the rules select on and the two variants this
 // dialog has that the editor's column does not, is the whole of what its cards
@@ -848,6 +859,7 @@ void dlgProfilePreferences::buildShell()
 
     retitleCards();
     reflowWideCards();
+    reflowMapperCards();
 
     auto* pCard_systemIntegration = createCard(qsl("card_systemIntegration"));
     moveIntoCard(pCard_systemIntegration, {telnetHandlerEnabled, checkBox_showIconsOnMenus});
@@ -2086,6 +2098,49 @@ static void takeOutOfLayout(QLayout* pLayout, const QList<QWidget*>& widgets)
     }
 }
 
+// A label and the controls it names, each at its own width, on one line while
+// they fit and wrapping after the last piece that does. A grid sizes every
+// column by its longest member, so one long translation widened every row.
+static QWidget* makeFlowRow(QWidget* pParent,
+                            const QString& objectName,
+                            const QList<QWidget*>& pieces,
+                            const int gapAcross = scmFlowRowGap,
+                            const uiDesign::FlowLayout::LineAlignment alignment = uiDesign::FlowLayout::LineAlignment::Centre)
+{
+    auto* pRow = new QWidget(pParent);
+    pRow->setObjectName(objectName);
+    auto* pFlow = new uiDesign::FlowLayout(pRow, gapAcross, scmFlowRowGap);
+    pFlow->setContentsMargins(0, 0, 0, 0);
+    // A row in the reading column must not widen it by the length of the line
+    pFlow->setWidthPolicy(uiDesign::FlowLayout::Width::WidestItem);
+    pFlow->setLineAlignment(alignment);
+    // A layout whose height depends on its width is only asked for one if the widget carrying it says so
+    QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    policy.setHeightForWidth(true);
+    pRow->setSizePolicy(policy);
+    for (auto* pPiece : pieces) {
+        detachFromLayout(pPiece);
+        pFlow->addWidget(pPiece);
+    }
+    return pRow;
+}
+
+// Controls that belong together - a label and its stepper, a column of check
+// boxes - as one piece, which a flow moves to the next line whole
+static QWidget* makeFlowPiece(QWidget* pParent, const QString& objectName, const QBoxLayout::Direction direction, const QList<QWidget*>& controls)
+{
+    auto* pPiece = new QWidget(pParent);
+    pPiece->setObjectName(objectName);
+    auto* pLayout = new QBoxLayout(direction, pPiece);
+    pLayout->setContentsMargins(0, 0, 0, 0);
+    pLayout->setSpacing(scmFlowRowGap);
+    for (auto* pControl : controls) {
+        detachFromLayout(pControl);
+        pLayout->addWidget(pControl);
+    }
+    return pPiece;
+}
+
 // The .ui laid these grids across a tab's full width, in rows of three or four cells too wide for the reading column
 void dlgProfilePreferences::reflowWideCards()
 {
@@ -2096,45 +2151,6 @@ void dlgProfilePreferences::reflowWideCards()
         qobject_cast<QHBoxLayout*>(pFrame->layout())->addStretch(1);
         verticalLayout_groupBox_wrapping->insertWidget(wrappingRow++, pFrame);
     }
-
-    const QList<QWidget*> mapViewOptions{
-            mMapperUseAntiAlias, checkBox_drawUpperLowerLevels, checkbox_mMapperShowRoomBorders, checkBox_invertMapZoom, checkBox_largeAreaExitArrows, checkBox_showDefaultArea};
-    takeOutOfLayout(gridLayout_groupBox_mapViewOptions, mapViewOptions + QList<QWidget*>{label_mapStyle, comboBox_mapStyle, gridGroupBox, groupBox_mapSymbols});
-    for (int i = 0, total = mapViewOptions.size(); i < total; ++i) {
-        gridLayout_groupBox_mapViewOptions->addWidget(mapViewOptions.at(i), i / 2, i % 2);
-    }
-#if defined(INCLUDE_3DMAPPER)
-    auto* pMapStyleRow = new QHBoxLayout();
-    pMapStyleRow->addWidget(label_mapStyle);
-    pMapStyleRow->addWidget(comboBox_mapStyle);
-    pMapStyleRow->addStretch(1);
-    gridLayout_groupBox_mapViewOptions->addLayout(pMapStyleRow, 3, 0, 1, 2);
-#else
-    label_mapStyle->hide();
-    comboBox_mapStyle->hide();
-#endif
-    gridLayout_groupBox_mapViewOptions->addWidget(gridGroupBox, 4, 0, 1, 2);
-    gridLayout_groupBox_mapViewOptions->addWidget(groupBox_mapSymbols, 5, 0, 1, 2);
-
-    // A column of three, leaving free the two cells initWithHost() appends the scaling factor to
-    const QList<QWidget*> mapSymbolRows{label_mapSymbolsFont, fontComboBox_mapSymbols, pushButton_showGlyphUsage, checkBox_isOnlyMapSymbolFontToBeUsed};
-    takeOutOfLayout(gridLayout_groupBox_mapSymbols, mapSymbolRows);
-    gridLayout_groupBox_mapSymbols->addWidget(label_mapSymbolsFont, 0, 0);
-    gridLayout_groupBox_mapSymbols->addWidget(fontComboBox_mapSymbols, 0, 1);
-    gridLayout_groupBox_mapSymbols->addWidget(checkBox_isOnlyMapSymbolFontToBeUsed, 1, 0, 1, 2);
-    gridLayout_groupBox_mapSymbols->addWidget(pushButton_showGlyphUsage, 2, 0, 1, 1, Qt::AlignLeft);
-
-    const QList<QWidget*> featureSizes{label_roomSize, spinBox_roomSize, label_exitSize, spinBox_exitSize, label_borderSize, spinBox_borderSize, label_gridSize, doubleSpinBox_gridSize};
-    takeOutOfLayout(groupBox_sizing, featureSizes);
-    // Two pairs per row, the second starting halfway across, to line up with the two checkbox columns above
-    for (int i = 0, total = featureSizes.size(); i < total; ++i) {
-        const int pair = i / 2;
-        groupBox_sizing->addWidget(featureSizes.at(i), pair / 2, (pair % 2) * 3 + (i % 2));
-    }
-    // Spin boxes expand, and across a card's width would read as text fields; the empty column ending each
-    // half takes the slack instead, and equal stretch keeps the halves side by side
-    groupBox_sizing->setColumnStretch(2, 1);
-    groupBox_sizing->setColumnStretch(5, 1);
 
     const QList<QWidget*> discordRows{radioButton_discordGameDetails,
                                       radioButton_discordMudletOnly,
@@ -2223,6 +2239,114 @@ void dlgProfilePreferences::reflowWideCards()
     // setting the column's minimum width
     label_mapFileActionResult->setWordWrap(true);
     label_password_migration_notification->setWordWrap(true);
+}
+
+// The .ui's grids sized every column by its longest member, which in German widened the Mapper page's cards far
+// past the reading column. Each card's grid is kept as a single column of rows that flow.
+void dlgProfilePreferences::reflowMapperCards()
+{
+    takeOutOfLayout(gridLayout_groupBox_mapFiles, {line, label_mapFileActionResult});
+    const QList<QWidget*> mapFileRows{makeFlowRow(groupBox_mapFiles, qsl("settingsMapperRow_saveMap"), {label_saveMap, pushButton_saveMap, checkBox_reportMapIssuesOnScreen}),
+                                      makeFlowRow(groupBox_mapFiles, qsl("settingsMapperRow_loadMap"), {label_loadMap, pushButton_loadMap}),
+                                      makeFlowRow(groupBox_mapFiles, qsl("settingsMapperRow_loadHistoricMap"), {label_loadHistoricMap, comboBox_mapHistory, pushButton_loadHistoricMap}),
+                                      line,
+                                      makeFlowRow(groupBox_mapFiles, qsl("settingsMapperRow_deleteMap"), {label_deleteMap, pushButton_deleteMap}),
+                                      makeFlowRow(groupBox_mapFiles, qsl("settingsMapperRow_copyMap"), {label_copyMap, pushButton_chooseProfiles, pushButton_copyMap}),
+                                      makeFlowRow(groupBox_mapFiles, qsl("settingsMapperRow_mapFileSaveFormatVersion"), {label_mapFileSaveFormatVersion, comboBox_mapFileSaveFormatVersion}),
+                                      label_mapFileActionResult};
+    for (int row = 0, rows = mapFileRows.size(); row < rows; ++row) {
+        gridLayout_groupBox_mapFiles->addWidget(mapFileRows.at(row), row, 0);
+    }
+    gridLayout_groupBox_mapFiles->setVerticalSpacing(scmFlowRowGap);
+
+    // Turned on its side here rather than by setCardDescription(), which would nest the row in a row of its own
+    hBoxLayout_groupBox_downloadMapOptions->setDirection(QBoxLayout::TopToBottom);
+    hBoxLayout_groupBox_downloadMapOptions->addWidget(makeFlowRow(groupBox_downloadMapOptions, qsl("settingsMapperRow_downloadMap"), {label_11, buttonDownloadMap}));
+
+    // Two columns of three, each as wide as its own longest words; the second goes under the first, whole,
+    // once they no longer fit side by side, and lines up with the top of the first while they do
+    QWidget* pLeadingChoices =
+            makeFlowPiece(groupBox_mapViewOptions, qsl("settingsMapViewLeadingChoices"), QBoxLayout::TopToBottom, {mMapperUseAntiAlias, checkBox_drawUpperLowerLevels, checkBox_invertMapZoom});
+    QWidget* pTrailingChoices = makeFlowPiece(
+            groupBox_mapViewOptions, qsl("settingsMapViewTrailingChoices"), QBoxLayout::TopToBottom, {checkbox_mMapperShowRoomBorders, checkBox_largeAreaExitArrows, checkBox_showDefaultArea});
+    QList<QWidget*> mapViewRows{makeFlowRow(groupBox_mapViewOptions, qsl("settingsMapViewChoices"), {pLeadingChoices, pTrailingChoices}, scmChoiceGroupGap, uiDesign::FlowLayout::LineAlignment::Top)};
+#if defined(INCLUDE_3DMAPPER)
+    mapViewRows.append(makeFlowRow(groupBox_mapViewOptions, qsl("settingsMapperRow_mapStyle"), {label_mapStyle, comboBox_mapStyle}));
+#else
+    takeOutOfLayout(gridLayout_groupBox_mapViewOptions, {label_mapStyle, comboBox_mapStyle});
+    label_mapStyle->hide();
+    comboBox_mapStyle->hide();
+#endif
+    takeOutOfLayout(gridLayout_groupBox_mapViewOptions, {gridGroupBox, groupBox_mapSymbols});
+    mapViewRows.append({gridGroupBox, groupBox_mapSymbols});
+    for (int row = 0, rows = mapViewRows.size(); row < rows; ++row) {
+        gridLayout_groupBox_mapViewOptions->addWidget(mapViewRows.at(row), row, 0);
+    }
+    gridLayout_groupBox_mapViewOptions->setVerticalSpacing(scmFlowRowGap);
+
+    const QList<QWidget*> featureSizes{makeFlowPiece(gridGroupBox, qsl("settingsMapperFeatureSize_room"), QBoxLayout::LeftToRight, {label_roomSize, spinBox_roomSize}),
+                                       makeFlowPiece(gridGroupBox, qsl("settingsMapperFeatureSize_exit"), QBoxLayout::LeftToRight, {label_exitSize, spinBox_exitSize}),
+                                       makeFlowPiece(gridGroupBox, qsl("settingsMapperFeatureSize_border"), QBoxLayout::LeftToRight, {label_borderSize, spinBox_borderSize}),
+                                       makeFlowPiece(gridGroupBox, qsl("settingsMapperFeatureSize_grid"), QBoxLayout::LeftToRight, {label_gridSize, doubleSpinBox_gridSize})};
+    groupBox_sizing->addWidget(makeFlowRow(gridGroupBox, qsl("settingsMapperFeatureSizes"), featureSizes, scmFieldPairGap), 0, 0);
+
+    // initWithHost() appends the scaling factor's row under these two
+    QWidget* pSymbolFontRow = makeFlowRow(groupBox_mapSymbols, qsl("settingsMapperRow_mapSymbolsFont"), {label_mapSymbolsFont, fontComboBox_mapSymbols, pushButton_showGlyphUsage});
+    takeOutOfLayout(gridLayout_groupBox_mapSymbols, {checkBox_isOnlyMapSymbolFontToBeUsed});
+    gridLayout_groupBox_mapSymbols->addWidget(pSymbolFontRow, 0, 0);
+    gridLayout_groupBox_mapSymbols->addWidget(checkBox_isOnlyMapSymbolFontToBeUsed, 1, 0);
+    gridLayout_groupBox_mapSymbols->setVerticalSpacing(scmFlowRowGap);
+
+    // Each colour glued to the word naming it, as many pairs to a line as fit, in the order the grid read them
+    const QList<std::pair<QLabel*, QPushButton*>> mapColours{{label_39, pushButton_foreground_color_2},
+                                                             {label_40, pushButton_background_color_2},
+                                                             {label_4, pushButton_roomBorderColor},
+                                                             {label_mapInfoBg, pushButton_mapInfoBg},
+                                                             {label_lowerLevelColor, pushButton_lowerLevelColor},
+                                                             {label_upperLevelColor, pushButton_upperLevelColor},
+                                                             {label_pushButton_roomCollisionBorderColor, pushButton_roomCollisionBorderColor},
+                                                             {label_mapGridColor, pushButton_mapGridColor}};
+    const QList<std::pair<QLabel*, QPushButton*>> ansiColours{{label_17, pushButton_black_2},
+                                                              {label_49, pushButton_Lblack_2},
+                                                              {label_42, pushButton_red_2},
+                                                              {label_50, pushButton_Lred_2},
+                                                              {label_43, pushButton_green_2},
+                                                              {label_51, pushButton_Lgreen_2},
+                                                              {label_48, pushButton_yellow_2},
+                                                              {label_52, pushButton_Lyellow_2},
+                                                              {label_44, pushButton_blue_2},
+                                                              {label_53, pushButton_Lblue_2},
+                                                              {label_45, pushButton_magenta_2},
+                                                              {label_54, pushButton_Lmagenta_2},
+                                                              {label_46, pushButton_cyan_2},
+                                                              {label_55, pushButton_Lcyan_2},
+                                                              {label_47, pushButton_white_2},
+                                                              {label_56, pushButton_Lwhite_2}};
+    const auto colourPairs = [this](const QList<std::pair<QLabel*, QPushButton*>>& pairs) {
+        QList<QWidget*> pieces;
+        for (const auto& [pLabel, pWell] : pairs) {
+            pieces.append(makeFlowPiece(groupBox_mapperColors, qsl("settingsMapColour_%1").arg(pWell->objectName()), QBoxLayout::LeftToRight, {pLabel, pWell}));
+        }
+        return pieces;
+    };
+    takeOutOfLayout(gridLayout_groupBox_mapperColors, {line_mapperColorsSeparator, reset_colors_button_2});
+    gridLayout_groupBox_mapperColors->addWidget(makeFlowRow(groupBox_mapperColors, qsl("settingsMapColours"), colourPairs(mapColours), scmFieldPairGap), 0, 0);
+    gridLayout_groupBox_mapperColors->addWidget(line_mapperColorsSeparator, 1, 0);
+    gridLayout_groupBox_mapperColors->addWidget(makeFlowRow(groupBox_mapperColors, qsl("settingsMapAnsiColours"), colourPairs(ansiColours), scmFieldPairGap), 2, 0);
+    gridLayout_groupBox_mapperColors->addWidget(reset_colors_button_2, 3, 0, Qt::AlignRight);
+    gridLayout_groupBox_mapperColors->setVerticalSpacing(scmFlowRowGap);
+
+    // A row like the Map files rows, so the list can drop under its label: glued into one piece, the two were
+    // wider than the reading column in German
+    gridLayout_groupBox_playerRoomStyle->addWidget(makeFlowRow(groupBox_playerRoomStyle, qsl("settingsMapperRow_playerRoomStyle"), {label_playerRoomStyle, comboBox_playerRoomStyle}), 0, 0);
+    gridLayout_groupBox_playerRoomStyle->addWidget(
+            makeFlowRow(groupBox_playerRoomStyle,
+                        qsl("settingsPlayerRoomMarker"),
+                        {pushButton_playerRoomPrimaryColor, pushButton_playerRoomSecondaryColor, spinBox_playerRoomOuterDiameter, spinBox_playerRoomInnerDiameter},
+                        scmFieldPairGap),
+            1,
+            0);
+    gridLayout_groupBox_playerRoomStyle->setVerticalSpacing(scmFlowRowGap);
 }
 
 // Other pages took three of this card's checkboxes and the double-click controls joined it, leaving the .ui
@@ -4323,9 +4447,8 @@ void dlgProfilePreferences::initWithHost(Host* pHost)
             mpDoubleSpinBox_mapSymbolFontFudge->setDecimals(3);
             auto* pSymbolsLayout = qobject_cast<QGridLayout*>(groupBox_mapSymbols->layout());
             if (pSymbolsLayout) {
-                const int existingRows = pSymbolsLayout->rowCount();
-                pSymbolsLayout->addWidget(pLabel_mapSymbolFontFudge, existingRows, 0);
-                pSymbolsLayout->addWidget(mpDoubleSpinBox_mapSymbolFontFudge, existingRows, 1);
+                pSymbolsLayout->addWidget(
+                        makeFlowRow(groupBox_mapSymbols, qsl("settingsMapperRow_mapSymbolFontFudge"), {pLabel_mapSymbolFontFudge, mpDoubleSpinBox_mapSymbolFontFudge}), pSymbolsLayout->rowCount(), 0);
             } else {
                 qWarning()
                         << "dlgProfilePreferences::initWithHost(...) WARNING - Unable to cast groupBox_mapSymbols layout to expected QGridLayout - someone has messed with the profile_preferences.ui "

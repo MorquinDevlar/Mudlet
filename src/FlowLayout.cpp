@@ -61,6 +61,15 @@ void FlowLayout::setWidthPolicy(const Width policy)
     invalidate();
 }
 
+void FlowLayout::setLineAlignment(const LineAlignment alignment)
+{
+    if (mLineAlignment == alignment) {
+        return;
+    }
+    mLineAlignment = alignment;
+    invalidate();
+}
+
 int FlowLayout::count() const
 {
     return mItems.count();
@@ -174,6 +183,18 @@ int FlowLayout::runItems(const QRect& rect, const bool place) const
     int x = content.x();
     int y = content.y();
     int lineHeight = 0;
+    // An item is centred on a line whose height is only known once the line
+    // is full, so what is on it waits until then to be placed
+    QList<QPair<QLayoutItem*, QRect>> line;
+    const auto placeLine = [this, &line, &y, &lineHeight]() {
+        for (auto& [pItem, geometry] : line) {
+            if (mLineAlignment == LineAlignment::Centre) {
+                geometry.moveTop(y + (lineHeight - geometry.height()) / 2);
+            }
+            pItem->setGeometry(geometry);
+        }
+        line.clear();
+    };
 
     for (QLayoutItem* pItem : mItems) {
         if (pItem->isEmpty()) {
@@ -183,15 +204,21 @@ int FlowLayout::runItems(const QRect& rect, const bool place) const
         // A line with nothing on it yet takes the item however wide it is: a
         // chip wider than the row is drawn over the edge rather than dropped
         if (lineHeight > 0 && x + hint.width() > content.right() + 1) {
+            if (place) {
+                placeLine();
+            }
             x = content.x();
             y += lineHeight + gapDown;
             lineHeight = 0;
         }
         if (place) {
-            pItem->setGeometry(QRect(QPoint(x, y), hint));
+            line.append({pItem, QRect(QPoint(x, y), hint)});
         }
         x += hint.width() + gapAcross;
         lineHeight = std::max(lineHeight, hint.height());
+    }
+    if (place) {
+        placeLine();
     }
 
     return y + lineHeight - rect.y() + margins.bottom();

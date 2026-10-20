@@ -46,6 +46,15 @@ public:
         WidestItem,
     };
 
+    // Where an item shorter than its line stands on it. A row of chips is one
+    // height throughout and reads from the top; a row of a form puts a label
+    // beside a button and a check box, which read as one line only about one
+    // middle.
+    enum class LineAlignment {
+        Top,
+        Centre,
+    };
+
     Q_DISABLE_COPY(FlowLayout)
     // A spacing of -1 takes the style's own idea of what goes between two
     // controls, which is what a layout the caller says nothing about should be
@@ -65,6 +74,7 @@ public:
     void invalidate() override;
 
     void setWidthPolicy(const Width policy);
+    void setLineAlignment(const LineAlignment alignment);
 
     [[nodiscard]] int horizontalSpacing() const;
     [[nodiscard]] int verticalSpacing() const;
@@ -80,6 +90,7 @@ private:
     int mHorizontalSpacing = -1;
     int mVerticalSpacing = -1;
     Width mWidthPolicy = Width::OneLine;
+    LineAlignment mLineAlignment = LineAlignment::Top;
     // The last width heightForWidth() was asked about and what it answered: a
     // single layout pass asks two or three times running with the same number.
     mutable int mCachedWidth = -1;

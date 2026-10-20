@@ -358,6 +358,7 @@ set(SETTINGS_GROUP_TEST_SOURCES
     SettingsInstantApplyTest.cpp
     SettingsLiveSyncTest.cpp
     SettingsMapControlsTest.cpp
+    SettingsMapperPageLayoutTest.cpp
     SettingsMmcpFlagsTest.cpp
     SettingsRoundTripTest.cpp
     SettingsSearchTest.cpp
@@ -772,6 +773,7 @@ set_tests_properties(SettingsAppearanceTest
                      SettingsInstantApplyTest
                      SettingsLiveSyncTest
                      SettingsMapControlsTest
+                     SettingsMapperPageLayoutTest
                      SettingsRoundTripTest
                      SettingsSearchTest
                      SettingsShellNavigationTest

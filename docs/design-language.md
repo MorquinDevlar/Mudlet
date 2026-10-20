@@ -759,7 +759,12 @@ Content is grouped into cards: a `QGroupBox` carrying the `settingsCard` dynamic
 property, styled with a background, a 1px border, a `scmRadiusPanel` radius and
 16px padding. Pages are a single column of cards with 16px spacing
 (`createScrollPage()`, `buildPage()`). The script editor has no cards: its forms
-are rows.
+are rows. On the Mapper page every row of every card is a `uiDesign::FlowLayout`
+with its items centred on the line (`reflowMapperCards()`), so a label and its
+controls keep their own widths and the row wraps where it runs out of room
+rather than widening the column, each map colour is its word and its well as one
+piece that wraps whole, and the six map view check boxes are two columns of
+three that stand side by side while both fit and stack whole when they do not.
 
 The card is one component for both windows, the way the sidebar is.
 `cardStyleSheet(metrics, tokens)` draws the frame and the title inside it, and
