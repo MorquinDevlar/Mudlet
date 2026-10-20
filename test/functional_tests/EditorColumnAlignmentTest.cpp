@@ -18,18 +18,9 @@
  ***************************************************************************/
 
 /*
- * The editor's three columns start on one line.
- *
- * The top edge of the sidebar's first row, of the search field heading the panel
- * of items, and of whatever leads the column an item is edited in - the notice
- * when one is showing, the name row when it is not - are the same y. The
- * measured drift before this was guarded: the search field sat at 0 while the
- * sidebar's first row sat at 12, and the notice at 21, because each column
- * carried its own top margin and one of them was the style's default.
- *
- * All three now come off scmEditorColumnTopInset, so the cases below compare the
- * columns against each other rather than against that number: a column that
- * stops using it is what this is here to catch.
+ * The sidebar's first row, the search field and the edit column's lead (notice or
+ * name row) start at one y. The columns are compared with each other, not with
+ * scmEditorColumnTopInset, so a column that stops using the inset fails.
  *
  * Run with: ctest -R EditorColumnAlignmentTest -V
  */
@@ -37,17 +28,12 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QListWidget>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgSystemMessageArea.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
@@ -62,42 +48,15 @@ class EditorColumnAlignmentTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorColumnAlignment-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    // In the window's own coordinates, which is the one frame all three columns
-    // can be compared in - each of them is inset from a different parent
+    // The window is the one frame all three columns share; each is inset from a different parent
     int topEdgeOf(QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
 
-    // The pill the first row is drawn as, which is what the reader sees the
-    // column start at - not the list widget carrying it
+    // The first row's pill, not the list widget carrying it, is where the reader sees the column start
     int sidebarFirstRowTop() const
     {
         QListWidget* pSidebar = mpEditor->mpListWidget_editorSidebar;
@@ -111,8 +70,6 @@ private:
 
     int noticeTop() const { return topEdgeOf(mpEditor->mpSystemMessageArea->frame_notificationArea); }
 
-    // The row an item's name is typed on, which leads the column when there is
-    // no notice over it
     int nameRowTop() const { return topEdgeOf(mpEditor->mpTriggersMainArea->widget_top); }
 
     static QString drift(const QString& what, const int measured, const int sidebar) { return qsl("%1 starts at %2 and the sidebar's first row at %3").arg(what).arg(measured).arg(sidebar); }
@@ -120,27 +77,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -148,8 +90,7 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1000, 800);
 
-        // A trigger to edit, so the column an item is edited in is the one a
-        // user looks at rather than an empty form
+        // Something to edit, so the column shows the trigger form rather than an empty page
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         QTest::qWait(100ms);
@@ -159,16 +100,9 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The two columns that are always there, whatever the third one is showing
     void test_theSearchFieldStartsWhereTheSidebarDoes()
     {
         mpEditor->hideSystemMessageArea();
@@ -181,7 +115,6 @@ private slots:
         QVERIFY2(searchFieldTop() == sidebar, qPrintable(drift(qsl("the search field"), searchFieldTop(), sidebar)));
     }
 
-    // ...and the column an item is edited in, with nothing over the form
     void test_theNameRowStartsWhereTheSidebarDoesWithNoNotice()
     {
         mpEditor->hideSystemMessageArea();
@@ -192,7 +125,6 @@ private slots:
         QVERIFY2(nameRowTop() == sidebar, qPrintable(drift(qsl("the name row"), nameRowTop(), sidebar)));
     }
 
-    // ...and with one, since the notice is then what leads it
     void test_theNoticeStartsWhereTheSidebarDoes()
     {
         mpEditor->showInfo(qsl("A notice, so that the column an item is edited in is led by one"));

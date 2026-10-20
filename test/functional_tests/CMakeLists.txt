@@ -207,8 +207,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     EdbeeReinitTest.cpp
     EditorAutoCompleteFocusTest.cpp
     EditorCaretReadingTest.cpp
-    EditorChromeInkTest.cpp
-    EditorChromeShapeTest.cpp
+    EditorChromeTest.cpp
     EditorClipboardXmlTest.cpp
     EditorBannerViewSwitchTest.cpp
     EditorCodeHeadingTest.cpp
@@ -224,17 +223,14 @@ set(EDITOR_GROUP_TEST_SOURCES
     ColorTriggerDialogTest.cpp
     EditorKeyCaptureTest.cpp
     EditorKeyGrabShortcutsTest.cpp
-    EditorMenuStyleTest.cpp
     EditorMinimumSizeTest.cpp
     EditorNoticeGlyphTest.cpp
     EditorNoticeSeamTest.cpp
     EditorOptionsPanelDefaultTest.cpp
     EditorPlacementPersistenceTest.cpp
     EditorReshowTest.cpp
-    EditorSidebarCollapseTest.cpp
     EditorSplitterRestoreTest.cpp
     EditorStatusBarTest.cpp
-    EditorSurfaceToneTest.cpp
     EditorTabAtStartTest.cpp
     EditorTimerIntervalTest.cpp
     EditorToolBarOverflowTest.cpp
@@ -363,9 +359,9 @@ set(SETTINGS_GROUP_TEST_SOURCES
     SettingsRoundTripTest.cpp
     SettingsSearchTest.cpp
     SettingsShellNavigationTest.cpp
-    SettingsSidebarToggleTest.cpp
     SettingsSpellCheckEnableTest.cpp
     SettingsThemeFetchErrorTest.cpp
+    SidebarToggleTest.cpp
 )
 
 # Teardown: who owns a profile's dialogs and windows, and what becomes of them when it closes

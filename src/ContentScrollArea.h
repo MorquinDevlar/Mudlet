@@ -24,16 +24,9 @@
 
 namespace uiDesign {
 
-// A scroll area sized by what it holds rather than by its own scroll bars.
-//
-// QScrollArea answers sizeHint() with its widget's hint as it stood the first
-// time anyone asked, and minimumSizeHint() with room for both scroll bars
-// whether or not either is showing. Under a form held to its contents both are
-// wrong: the first sizes the area for the rows some earlier item had, and the
-// second holds it a scroll bar's row taller than the rows it shows, which is
-// empty space under the last of them. This one asks its widget each time, and
-// its minimum height is its frame alone - an explicit minimum set on it still
-// holds, since a layout reads that first.
+// QScrollArea caches its widget's sizeHint() from the first ask, and its
+// minimumSizeHint() reserves both scroll bars even when neither shows; under a
+// form held to its contents that sizes it for an earlier item and a bar too tall.
 class ContentScrollArea : public QScrollArea
 {
     Q_OBJECT
@@ -46,11 +39,8 @@ public:
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 protected:
-    // A hint that follows the widget's has to say when it has moved: the widget
-    // is laid out afresh by a request posted to itself, which is heard here
-    // through the filter QScrollArea already keeps on it, and passed up as this
-    // area's own geometry having changed - or the layout holding this area
-    // would go on using the answer it cached
+    // Passes the widget's LayoutRequest up as updateGeometry(), or the layout
+    // holding this area keeps the hint it cached
     bool eventFilter(QObject* pWatched, QEvent* pEvent) override;
 };
 

@@ -27,11 +27,8 @@ namespace eventNames {
 
 bool fromGame(const QString& name)
 {
-    // The tables a protocol fills in, and the events raised as it is filled:
-    // one per level of a GMCP key (gmcp.Char, then gmcp.Char.Vitals), msdp.ROOM,
-    // mssp.PLAYERS, mxp.entity. ATCP is here for its table's name alone -
-    // cTelnet::setATCPVariables() takes the dots out and raises the variable's
-    // own name, so there is no atcp.* event to tell from a script's.
+    // Protocol prefixes nothing else in a profile uses. ATCP is here for its table's name alone:
+    // cTelnet::setATCPVariables() takes the dots out, so no atcp.* event is raised.
     static const QStringList protocols{qsl("gmcp"), qsl("msdp"), qsl("mssp"), qsl("mxp"), qsl("atcp")};
     for (const QString& protocol : protocols) {
         if (name == protocol) {
@@ -46,15 +43,9 @@ bool fromGame(const QString& name)
 
 QStringList systemEvents()
 {
-    // By hand, and so out of date the moment a new event is raised without
-    // being added here. To gather the candidates again, grep the tree for the
-    // literals beside the two places an event is put together:
-    //   grep -rEn '"sys[A-Za-z0-9]+"' src/*.cpp src/mudlet-lua/lua | \
-    //     grep -E 'mArgumentList.append|raiseEvent\(|raiseProtocolEvent\('
-    // The five speedwalk events are raised by Mudlet's own Lua rather than by
-    // its C++; the rest come from src/*.cpp. Not every name starts with sys:
-    // the map, the speech and the channel 102 events are Mudlet's too. Sorted without regard to case,
-    // which is the order they are offered in.
+    // Kept by hand, so a newly raised event must be added here. To gather the candidates again:
+    //   grep -rEn '"sys[A-Za-z0-9]+"' src/*.cpp src/mudlet-lua/lua | grep -E 'mArgumentList.append|raiseEvent\(|raiseProtocolEvent\('
+    // The map, speech and channel 102 events do not start with sys. Sorted without regard to case, which is the order they are offered in.
     static const QStringList names{qsl("channel102Message"),
                                    qsl("mapModeChangeEvent"),
                                    qsl("mapOpenEvent"),
@@ -150,15 +141,9 @@ QStringList systemEvents()
 
 QStringList namesInCode(const QString& code)
 {
-    // Two shapes in one pass, so that the names come out in the order they are
-    // written rather than one call's before the other's. The closing quote is a
-    // back-reference to the opening one, which is what keeps an apostrophe
-    // inside a double-quoted name from ending it, and the newline the class
-    // bars is what stops a run-on match swallowing half the file when a quote
-    // is left unclosed. registerNamedEventHandler names the event third, and
-    // the two arguments skipped over are matched loosely - anything but a
-    // comma, a bracket or a line end - since either may be a literal or a
-    // variable.
+    // One pass keeps the names in written order. The closing quote back-references the opening
+    // one so an apostrophe inside "..." does not end a name; barring \n stops an unclosed quote
+    // swallowing the file. registerNamedEventHandler's skipped arguments may be literals or variables.
     static const QRegularExpression regex{qsl(R"((?:\b(?:raiseEvent|raiseGlobalEvent|registerAnonymousEventHandler)\s*\(\s*(["'])([^\n]*?)\1)"
                                               R"()|(?:\bregisterNamedEventHandler\s*\(\s*[^,()\n]+,\s*[^,()\n]+,\s*(["'])([^\n]*?)\3))")};
 

@@ -61,10 +61,6 @@ struct aboutMaker
     QString description;
 };
 
-// One component Mudlet ships that somebody else wrote: what it is called, whose
-// it is, which licence it comes under - the chip at the end of its row - and
-// that licence as shipped. The body is never translated: only the English form
-// of a licence is the legally definitive one.
 struct aboutThirdParty
 {
     QString name;
@@ -81,34 +77,26 @@ public:
     Q_DISABLE_COPY(dlgAboutDialog)
     explicit dlgAboutDialog(QWidget* parent = nullptr);
 
-    // The two lists the pages are built from, which are data rather than
-    // layout: public so that a test can hold the rows it can see against what
-    // this build actually ships, rather than repeating the #if blocks itself
+    // Public so a test can check the rows against this build without repeating the #if blocks
     static QVector<aboutThirdParty> thirdPartyComponents();
     static QList<QPair<QString, QString>> buildInfoRows();
 
-    // The picture this dialog is showing. getSplashScreen() answers a random
-    // Easter egg on 1 April, so asking it a second time is not a way to find
-    // out what is on screen.
+    // getSplashScreen() answers a random Easter egg on 1 April, so asking it again
+    // does not say what is on screen
     const QImage& splashImage() const { return mSplash; }
 
 protected:
     void resizeEvent(QResizeEvent* pEvent) override;
-    // A move to a screen of another ratio arrives here, and every glyph and the
-    // artwork are rasterised for the ratio they were built at
     bool event(QEvent* pEvent) override;
 
 private slots:
-    // The nav, the footer's licence link and the tests all come in through here
     void showPage(const QString& key);
     void slot_copyBuildInformation();
     void slot_restoreCopyButton();
     void slot_applyAppearance();
 
 private:
-    // A chip drawn as rich text, which is the only way a QLabel reaches a glyph
-    // tinted at runtime - so what it was made of is kept to make it again when
-    // the theme moves
+    // Rich text bakes the tinted glyph in, so the chip is rebuilt on a theme change
     struct ContactChip
     {
         QPointer<QLabel> pLabel;
@@ -133,8 +121,7 @@ private:
     QWidget* createSeparatorLine(QWidget* pParent);
     QPushButton* createCopyButton(const QString& objectName, const QString& label, QWidget* pParent);
     QLabel* createParagraph(const QString& text, QWidget* pParent);
-    // Every label that can hold a link goes through here: the colour of an
-    // anchor is written into the text rather than answered by a palette
+    // Every label that can hold a link must go through here: anchors bake their colour in
     void setRichText(QLabel* pLabel, const QString& text);
 
     void applyShellStyle();
@@ -164,17 +151,10 @@ private:
     QList<QPushButton*> mCopyButtons;
     QList<ContactChip> mContactChips;
 
-    // The picture as getSplashScreen() hands it over, kept so that the label can
-    // be redrawn at the column's other width and with the theme's own hairline
+    // Kept unscaled, to redraw at the column's other width and the theme's hairline
     QImage mSplash;
     bool mNarrow = false;
-    // Whether the link cards have been put in the grid at all. The art column's
-    // width only has to be re-done when the mode changes, but the first pass
-    // has to happen whatever the mode started as.
     bool mArtColumnPlaced = false;
-    // What the anchors currently carry, and what the licence was last set in:
-    // both are written into text rather than answered by a palette, so re-doing
-    // them costs a re-parse of every label and of the whole GPL
     QColor mInkedLinkColour;
     QString mLicenceInkKey;
 };

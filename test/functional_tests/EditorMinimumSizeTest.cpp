@@ -18,30 +18,18 @@
  ***************************************************************************/
 
 /*
- * The script editor has to open at the size the user last left it at, and to
- * be dragged small again afterwards. Both are decided by the minimum its
- * layout reports: the size restore floors a stored size with it, and Qt gives
- * the same figure to the window as its minimum size.
- *
- * That minimum used to be measured before it meant anything. The editor's
- * seven main areas are hidden in the constructor, but hiding a widget only
- * propagates upwards while it is still visible, so their containers went on
- * reporting a minimum measured with all seven stacked on screen - around
- * 1600px. No event loop runs before the size restore reads it, so the editor
- * opened at screen height however small the stored geometry was.
+ * The editor must open at its stored size and drag small again. Its seven main
+ * areas are hidden in the constructor, but a hide only propagates upwards while
+ * the widget is visible, so the size restore was floored by a ~1600px minimum.
  */
 
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -54,46 +42,18 @@ class EditorMinimumSizeTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorMinimumSize-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
-    QSize mStoredSize; // seeded in initTestCase() before the editor is built
+    QSize mStoredSize;
 
-    // Kept in step with the bound the editor is allowed to claim, so a failure
-    // reports the offending widgets rather than only the total
+    // Kept in step with the bound the editor is allowed to claim
     static constexpr int scmMaxMinimumHeight = 600;
     static constexpr int scmMaxMinimumWidth = 900;
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        const QString path = MudletApp::getMudletPath(enums::profileHomePath, profileName);
-        QDir dir(path);
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    // Every widget whose own minimum height is at least threshold, deepest
-    // first, so the report names the widget that actually carries the number
-    // rather than only the ancestors that inherit it
+    // Every widget over the threshold, so the report names the one carrying the
+    // number rather than only the ancestors that inherit it
     QString tallWidgetReport(const int threshold) const
     {
         QString report;
@@ -118,42 +78,25 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        // Seeded before the profile is up, because the editor is built with it and
-        // what went wrong was decided in that constructor: the size restore reads
-        // this, and the layout pass right after it used to overrule what it read
+        // Before the profile opens: the editor's constructor reads this, and the
+        // layout pass right after it is what could overrule it
         const QScreen* pScreen = QGuiApplication::primaryScreen();
         QVERIFY(pScreen);
-        // The size restore deliberately keeps a stored size inside the desktop it
-        // opens on, and the offscreen platform's screen is smaller than a real
-        // one, so ask for a size this screen can actually hold
+        // The size restore clamps a stored size to the desktop, and the offscreen
+        // platform's screen is smaller than a real one
         mStoredSize = QSize(989, 643).boundedTo(pScreen->availableGeometry().size());
         QVERIFY2(mStoredSize.height() >= 400, "The screen is too small for this test to say anything");
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), mStoredSize);
         MudletApp::getQSettings()->remove(qsl("script_editor_pos"));
 
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showScriptDialog();
         QTest::qWait(100ms);
@@ -166,17 +109,11 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The floor restoreWindowGeometry() applies to a stored size, and the floor
-    // a window manager applies to a drag, are both this hint
+    // restoreWindowGeometry() floors a stored size, and a window manager a drag,
+    // with this hint
     void test_editorMinimumSizeHintStaysSmall()
     {
         const QSize hint = mpEditor->minimumSizeHint();
@@ -193,11 +130,6 @@ private slots:
                                     .arg(QString::number(hint.width()), QString::number(scmMaxMinimumWidth))));
     }
 
-    // The editor has to open at the size it was left at. It used to open at
-    // screen height instead: the seven main areas are hidden in the constructor,
-    // but their containers kept a minimum measured while all seven were on
-    // screen, and the first layout pass gave the window that as its minimum
-    // height - overruling the stored size before anyone could see it.
     void test_editorOpensAtStoredSize()
     {
         QVERIFY2(mpEditor->size() == mStoredSize,
@@ -211,10 +143,8 @@ private slots:
                                          QString::number(mpEditor->minimumSize().height()))));
     }
 
-    // Whatever the hint says, the window has to actually go there: the size a
-    // user can drag it to is the one Qt derived from the layout, and a resize
-    // that comes back larger than it was asked for is a minimum standing in
-    // the way. Restores the opening size afterwards, for cases that follow.
+    // The draggable minimum is the one Qt derives from the layout, not the hint.
+    // Restores the opening size for the cases that follow.
     void test_editorResizesDownToASmallWindow()
     {
         const QSize small(700, 500);

@@ -222,6 +222,7 @@ set(mudlet_app_SRCS
     EditorAutoCompleteFocusHandler.cpp
     EditorPlaceholderButton.cpp
     EditorTreeDelegate.cpp
+    EditorTreeRowDelegate.cpp
     EditorTreeRowMetrics.cpp
     exitstreewidget.cpp
     ExporterTreeDelegate.cpp
@@ -552,6 +553,7 @@ set(mudlet_app_HDRS
     EditorAutoCompleteFocusHandler.h
     EditorPlaceholderButton.h
     EditorTreeDelegate.h
+    EditorTreeRowDelegate.h
     EditorTreeRowMetrics.h
     exitstreewidget.h
     ExporterTreeDelegate.h

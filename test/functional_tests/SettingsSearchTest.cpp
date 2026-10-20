@@ -461,10 +461,8 @@ private slots:
         QImage carried;
         QVERIFY(carried.loadFromData(QByteArray::fromBase64(mainDisplayGlyph.toLatin1()), "PNG"));
         // Tinting replaces the colour and keeps the alpha, so the shape is what
-        // survives out of the file and into the header. The glyph has to come
-        // through glyphPixmap() rather than straight off the path: reading the
-        // SVG as an image would draw it at the file's own size and at Lucide's
-        // stroke width, neither of which is what the window carries.
+        // survives out of the file and into the header. Read via glyphPixmap():
+        // the raw SVG renders at its file's size and Lucide's stroke width.
         const QImage expected = uiDesign::glyphPixmap(qsl(":/icons/settings-display.svg")).toImage();
         QCOMPARE(carried.size(), expected.size());
         QImage carriedShape = carried.convertToFormat(QImage::Format_Alpha8);

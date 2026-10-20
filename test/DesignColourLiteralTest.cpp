@@ -18,37 +18,9 @@
  ***************************************************************************/
 
 /*
- * Every colour on a surface that has adopted the design language comes from
- * uiDesign::themeTokens(), which mixes it from the palette in force. A colour
- * written out instead is right in whichever theme it was picked in and wrong in
- * the other one, and nothing says so until somebody opens the window in the
- * other appearance and reads grey on grey.
- *
- * So this reads the sources of those surfaces and fails on a colour that is
- * written rather than mixed, in whichever shape it was written in: a hex, the
- * channels of an rgb() or rgba(), a Qt colour name, a QColor built from any of
- * those, a CSS colour word inside a declaration, or a literal that is a colour
- * name and nothing else - which is how one reaches a sheet through .arg(). It
- * links nothing: the src/ path arrives at configure time through
- * MUDLET_SRC_DIR, the way CMakeListsConsistencyTest and DiscordTest take it.
- *
- * A colour that genuinely does not follow the theme - a well showing the colour
- * the user chose, a console's own ANSI table, another application's brand in a
- * picture of its window - carries "theme-fixed:" and the reason why, which
- * exempts it. The reason travels with the code rather than living in a list
- * here.
- *
- * The second case reads the same surfaces for the other half of the same rule.
- * A sheet names a font size only through uiDesign::typeSize(), which reaches it
- * as a pt value: Qt's stylesheet parser reads pt and px for font-size and
- * nothing else, so a percentage is a rule that reads as though it sets a size
- * and sets none - and a written number is a size somebody picked rather than
- * one of the four steps the design has. The same "theme-fixed:" marker exempts
- * a block that is a picture of another application, whose sizes are as fixed as
- * its colours.
- *
- * Adding a window to the design language means adding its files to
- * scannedFiles() below.
+ * Guards that a designed surface takes its colours from uiDesign::themeTokens()
+ * and its font sizes from uiDesign::typeSize(): a written colour is wrong in the
+ * other theme, and nothing shows it until somebody opens the window in it.
  *
  * Run with: ctest -R DesignColourLiteralTest -V
  */
@@ -67,8 +39,8 @@
 
 #include <algorithm>
 
-// QStringLiteral rather than utils.h's qsl(): like its two siblings this test
-// links no Mudlet code, so that header is not on its include path.
+// QStringLiteral rather than qsl(): this test links no Mudlet code, so utils.h
+// is not on its include path.
 
 class DesignColourLiteralTest : public QObject
 {
@@ -84,11 +56,8 @@ class DesignColourLiteralTest : public QObject
 
     static QString srcDir() { return QStringLiteral(MUDLET_SRC_DIR); }
 
-    // The surfaces the design language has reached, and nothing else: a window
-    // that has not been through it still writes colours out, and failing on
-    // those would say nothing about whether the design holds where it is meant
-    // to. The .ui files are here because Designer writes colours as elements
-    // and stylesheets of its own, which no C++ rule below would ever see.
+    // Only adopted surfaces: an unadopted window still writes colours out. The
+    // .ui files are listed because Designer writes colours no C++ rule would see.
     static QStringList scannedFiles()
     {
         QStringList files{QStringLiteral("uiDesign.cpp"),
@@ -99,6 +68,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("dlgProfilePreferences.h"),
                           QStringLiteral("EditorTreeDelegate.cpp"),
                           QStringLiteral("EditorTreeDelegate.h"),
+                          QStringLiteral("EditorTreeRowDelegate.cpp"),
+                          QStringLiteral("EditorTreeRowDelegate.h"),
                           QStringLiteral("EditorTreeRowMetrics.cpp"),
                           QStringLiteral("EditorTreeRowMetrics.h"),
                           QStringLiteral("VariableTreeDelegate.cpp"),
@@ -160,8 +131,7 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("ui/notes_editor.ui"),
                           QStringLiteral("ui/dlgPackageExporter.ui"),
                           QStringLiteral("ui/about_dialog.ui")};
-        // The settings dialog is one .ui file today and may not stay one, so
-        // its pages are taken by pattern rather than named
+        // Taken by pattern: the settings dialog may not stay one .ui file
         const QDir uiDir(srcDir() + QStringLiteral("/ui"));
         for (const QString& page : uiDir.entryList({QStringLiteral("profile_preferences*.ui")}, QDir::Files, QDir::Name)) {
             files.append(QStringLiteral("ui/%1").arg(page));
@@ -169,17 +139,12 @@ class DesignColourLiteralTest : public QObject
         return files;
     }
 
-    // What exempts a line, and how far it reaches. Trailing on a line it is
-    // that line's; on a line of its own it covers the run of lines under it, up
-    // to the next blank one - which is the only way to mark a block such as a
-    // table of ANSI defaults without repeating the reason on every row of it.
+    // Trailing, it exempts its line; on a line of its own, the lines under it up
+    // to the next blank one, so a block such as an ANSI table is marked once.
     static constexpr char scmMarker[] = "theme-fixed:";
 
-    // Every colour name Qt itself knows, taken off QColor at run time rather
-    // than written out here: a list kept by hand is a list of the names
-    // somebody thought of, and "lightsalmon" is a colour whether or not anybody
-    // did. "transparent" is not one of them - it is the absence of a colour,
-    // and every sheet in the tree that clears a background says it.
+    // Taken off QColor at run time: a hand-kept list misses names nobody thought
+    // of. "transparent" is left out, as every sheet clearing a background says it.
     static const QSet<QString>& namedColours()
     {
         static const QSet<QString> names = [] {
@@ -194,9 +159,7 @@ class DesignColourLiteralTest : public QObject
         return names;
     }
 
-    // ...and the same set as one alternation, for reading a name out of the
-    // middle of a declaration. Longest first, so that "darkgreen" is read whole
-    // rather than as "green" with a tail left over.
+    // Longest first, so that "darkgreen" is read whole rather than as "green"
     static const QRegularExpression& cssColourName()
     {
         static const QRegularExpression pattern = [] {
@@ -209,21 +172,15 @@ class DesignColourLiteralTest : public QObject
         return pattern;
     }
 
-    // The colour names Qt's own enum carries, which is the other half of the
-    // same list
     static QString qtColourNames() { return QStringLiteral("white|black|red|green|blue|cyan|magenta|yellow|gray|darkGray|lightGray|darkRed|darkGreen|darkBlue|darkCyan|darkMagenta|darkYellow"); }
 
-    // Qt::white, Qt::black and Qt::transparent are the ends of the scale rather
-    // than colours of a theme, so they are let through where they are used as
-    // such - see exemptEndpoints() - and caught everywhere else.
     static const QRegularExpression& qtColourName()
     {
         static const QRegularExpression pattern(QStringLiteral("Qt::(%1)\\b").arg(qtColourNames()));
         return pattern;
     }
 
-    // A hex colour is three, four, six or eight digits; anything else after a
-    // "#" is an issue number, an object name or a CSS id
+    // Any other run of digits after a "#" is an issue number, an object name or a CSS id
     static QString hexColourIn(const QString& text)
     {
         for (qsizetype start = text.indexOf(QLatin1Char('#')); start >= 0; start = text.indexOf(QLatin1Char('#'), start + 1)) {
@@ -239,19 +196,14 @@ class DesignColourLiteralTest : public QObject
         return QString();
     }
 
-    // A string literal, and whether it is copy. What tr() is handed is read by
-    // a person, and a stylesheet value is never translated - so a translated
-    // literal reading "Black" is the name of a thing rather than a colour on
-    // its way into a sheet, while a declaration written inside one still is.
+    // A stylesheet value is never translated, so a tr() literal reading "Black"
+    // names a thing rather than a colour; a declaration inside one still counts.
     struct Literal
     {
         QString text;
         bool translated = false;
     };
 
-    // What is inside the double quotes on a line, which is where a colour that
-    // reaches a stylesheet has to be written. A line of a raw string literal is
-    // handed here whole instead, by the caller.
     static QList<Literal> stringLiteralsIn(const QString& line)
     {
         static const QRegularExpression translating(QStringLiteral("\\b(?:tr|translate|QT_TR_NOOP|QT_TRANSLATE_NOOP)\\s*\\(\\s*$"));
@@ -281,25 +233,19 @@ class DesignColourLiteralTest : public QObject
         return literals;
     }
 
-    // Channels written out into a string - rgb(64, 60, 40), rgba(255, 254,
-    // 215, 0.5) - which no hex rule sees. A digit has to follow the paren, so
-    // the format template uiDesign::rgba() fills in, "rgba(%1, %2, %3, %4)",
-    // is not one of these.
+    // A digit has to follow the paren, so the template uiDesign::rgba() fills
+    // in, "rgba(%1, %2, %3, %4)", is not caught
     static const QRegularExpression& channelsInString()
     {
         static const QRegularExpression pattern(QStringLiteral("\\brgba?\\s*\\(\\s*\\d"));
         return pattern;
     }
 
-    // A literal that is a colour name and nothing else, which is how a name
-    // reaches a sheet through .arg() - qsl("lightsalmon") - with the
-    // declaration it lands in written somewhere else entirely.
+    // How a name reaches a sheet through .arg(), with the declaration elsewhere
     static bool wholeLiteralIsAColourName(const QString& literal) { return namedColours().contains(literal.trimmed().toLower()); }
 
-    // A colour written into a stylesheet: the hex, the channels, a literal that
-    // is a colour name outright, or the name in a declaration that is about
-    // colour at all - "black" in the middle of a sentence is as likely to be a
-    // word as a colour.
+    // A colour name inside a longer literal counts only in a colour or background
+    // declaration: in a sentence "black" is as likely to be a word.
     static QString colourInStrings(const QList<Literal>& literals)
     {
         for (const Literal& literal : literals) {
@@ -322,19 +268,8 @@ class DesignColourLiteralTest : public QObject
         return QString();
     }
 
-    // A size written into a stylesheet, in either of the two shapes that are
-    // not a step of the scale.
-    //
-    // A percentage, because Qt's stylesheet parser reads pt and px for
-    // font-size and nothing else: it drops a percentage without a word, which
-    // is how 28 rules across three windows came to say nothing at all while
-    // reading as though they set a size.
-    //
-    // And a number, because a written point size is a size somebody picked, and
-    // the next person picks a different one a pixel away from it. The four the
-    // design has are uiDesign::typeSize(), which reaches a sheet through .arg()
-    // - so "font-size: %1pt" is what a rule naming a size looks like, and
-    // anything with a digit or a per cent sign after the colon is not.
+    // A digit after the colon is a hand-picked size: the design's steps reach a
+    // sheet from uiDesign::typeSize() through .arg(), as "font-size: %1pt".
     static const QRegularExpression& writtenFontSize()
     {
         static const QRegularExpression pattern(QStringLiteral("font-size\\s*:\\s*[0-9]"));
@@ -365,10 +300,8 @@ class DesignColourLiteralTest : public QObject
         return QString();
     }
 
-    // Qt::transparent is never a theme colour wherever it appears, and the two
-    // ends of the lightness scale are not one where they are what something is
-    // mixed towards or a mask is cleared with. Read off the line rather than
-    // allowed outright, so that Qt::white as an ink is still caught.
+    // White and black pass only in blend() or fill(), as what a colour is mixed
+    // towards or a mask cleared with, so that Qt::white as an ink is still caught.
     static QString exemptEndpoints(const QString& line)
     {
         QString probe = line;
@@ -388,15 +321,13 @@ class DesignColourLiteralTest : public QObject
         if (fromQtName.match(probe).hasMatch()) {
             return QStringLiteral("a QColor built from a Qt colour name");
         }
-        // A Qt colour name reaching anything that paints with it. The call and
-        // the name are looked for separately because the two are routinely a
-        // couple of nested calls apart - setForeground(0, QBrush(Qt::gray)).
+        // Call and name are matched separately: they are routinely nested calls
+        // apart, as in setForeground(0, QBrush(Qt::gray))
         static const QRegularExpression painter(QStringLiteral("\\b(?:QColor|QBrush|QPen|setPen|setColor|setForeground|setBackground)\\s*\\("));
         if (const QRegularExpressionMatch named = qtColourName().match(probe); named.hasMatch() && painter.match(probe).hasMatch()) {
             return QStringLiteral("Qt::%1 handed to something that paints with it").arg(named.captured(1));
         }
-        // ...and one assigned rather than handed to anything, which reaches a
-        // painter on some later line the call above never sees
+        // An assigned name reaches a painter on a later line the rule above never sees
         static const QRegularExpression assigned(QStringLiteral("(?<![=!<>])=\\s*Qt::(%1)\\b").arg(qtColourNames()));
         if (const QRegularExpressionMatch named = assigned.match(probe); named.hasMatch()) {
             return QStringLiteral("Qt::%1 assigned outright").arg(named.captured(1));
@@ -405,15 +336,13 @@ class DesignColourLiteralTest : public QObject
         if (fromString.match(probe).hasMatch()) {
             return QStringLiteral("a QColor built from a written colour");
         }
-        // fromHslF() and fromHsvF() are deliberately not here: a semantic state
-        // hue is made that way, with the lightness taken off the page it will
-        // be drawn on
+        // fromHslF() and fromHsvF() are deliberately not here: a semantic state hue
+        // is made that way, with the lightness taken off the page it is drawn on
         static const QRegularExpression fromChannels(QStringLiteral("QColor::fromRgb\\s*\\(|QColor\\s*\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+"));
         if (fromChannels.match(probe).hasMatch()) {
             return QStringLiteral("a QColor built from written channel values");
         }
-        // All three channels in one number - QColor(0xff8800) - which the
-        // reading of a "#" never sees and the channel rule above does not either
+        // QColor(0xff8800): neither the "#" reading nor the channel rule sees it
         static const QRegularExpression fromPacked(QStringLiteral("QColor\\s*\\(\\s*(0x[0-9a-fA-F]{6,8})\\s*\\)"));
         if (const QRegularExpressionMatch packed = fromPacked.match(probe); packed.hasMatch()) {
             return QStringLiteral("a QColor built from the written %1").arg(packed.captured(1));
@@ -425,10 +354,8 @@ class DesignColourLiteralTest : public QObject
         return QString();
     }
 
-    // Which line an exemption for this one would have to be written on. A
-    // colour inside a raw string literal cannot carry a comment of its own -
-    // anything after the opening delimiter is content - so the literal is
-    // marked where it opens, and one marker covers all of it.
+    // A raw string literal cannot carry a comment inside it, so it is marked on
+    // the line it opens on and one marker covers all of it.
     static int anchorOf(const QStringList& lines, const int line)
     {
         int anchor = line;
@@ -455,7 +382,6 @@ class DesignColourLiteralTest : public QObject
         if (lines.at(line - 1).contains(QLatin1String(scmMarker))) {
             return true;
         }
-        // Up from the marked line to the blank one that ends the run it is in
         for (int at = anchorOf(lines, line); at >= 1; --at) {
             const QString& text = lines.at(at - 1);
             if (text.trimmed().isEmpty()) {
@@ -468,8 +394,6 @@ class DesignColourLiteralTest : public QObject
         return false;
     }
 
-    // The two things a designed surface is read for, one traversal apiece: what
-    // a colour is mixed from, and what a size is named by
     enum class Looking { Colours, Sizes };
 
     static void scanSource(const QString& file, const QStringList& lines, QList<Hit>& hits, const Looking looking)
@@ -484,8 +408,7 @@ class DesignColourLiteralTest : public QObject
                 insideRawString = true;
             }
 
-            // Inside a raw string every character is content, so the whole line
-            // is read as one literal rather than picked apart by its quotes
+            // Inside a raw string every character is content, quotes included
             const QList<Literal> literals = wasInsideRawString ? QList<Literal>{{raw, false}} : stringLiteralsIn(raw);
             QString reason = looking == Looking::Sizes ? sizeInStrings(literals) : colourInStrings(literals);
             if (looking == Looking::Colours && reason.isEmpty() && !wasInsideRawString) {
@@ -504,8 +427,7 @@ class DesignColourLiteralTest : public QObject
         for (int number = 1; number <= lines.size(); ++number) {
             const QString& raw = lines.at(number - 1);
             QString reason;
-            // A colour Designer wrote as a palette entry, which is three
-            // channel elements under a <color> of its own
+            // Designer writes a palette colour as channel elements under a <color>
             if (looking == Looking::Colours && raw.contains(QStringLiteral("<color"))) {
                 for (qsizetype ahead = number; ahead < std::min<qsizetype>(number + 5, lines.size()); ++ahead) {
                     if (lines.at(ahead).contains(QStringLiteral("<red>"))) {
@@ -530,9 +452,8 @@ class DesignColourLiteralTest : public QObject
         }
     }
 
-    // Walking every scanned file once, gathering what the caller is looking
-    // for. Returns false and says which file could not be read, since a file
-    // renamed off the list is a surface that stopped being checked.
+    // Fails on an unreadable file: one renamed off the list is a surface that
+    // stopped being checked.
     static bool gather(const Looking looking, QList<Hit>& hits, int& scannedLines, QString& failure)
     {
         for (const QString& file : scannedFiles()) {
@@ -552,9 +473,8 @@ class DesignColourLiteralTest : public QObject
         return true;
     }
 
-    // Printed one to a line as well as gathered into the failure: QtTest cuts a
-    // failure message off at a few hundred characters, and a run that named
-    // three of forty would take thirteen runs to clear
+    // QtTest cuts a failure message off at a few hundred characters, so each
+    // hit is printed on a line of its own
     static void report(const QList<Hit>& hits)
     {
         for (const Hit& hit : hits) {
@@ -563,8 +483,8 @@ class DesignColourLiteralTest : public QObject
     }
 
 private slots:
-    // One case, one list: a run that stopped at the first colour would take as
-    // many runs to clear as there are colours
+    // One list rather than a failure per hit: stopping at the first would take a
+    // run per colour to clear
     void test_everyColourOnADesignedSurfaceComesFromTheTokens()
     {
         const QStringList files = scannedFiles();
@@ -584,8 +504,6 @@ private slots:
                                     .arg(QString::number(hits.size()))));
     }
 
-    // ...and the same surfaces read for the other half of the same rule: a
-    // stylesheet names a size only through uiDesign::typeSize()
     void test_everyFontSizeOnADesignedSurfaceComesFromTheScale()
     {
         QList<Hit> hits;

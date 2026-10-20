@@ -22,33 +22,23 @@
 
 #include <QStringList>
 
-// Where the names a script can listen for are come by, so that typing one into
-// the editor can be a search rather than a recollection.
 namespace eventNames {
 
-// Where a name is from, which is the one word set beside it in the editor's list
 enum class Source { Mudlet, Game, Script };
 
-// One name the editor can offer, and where it is from
 struct Entry
 {
     QString name;
     Source source;
 };
 
-// Whether a name is one the game sent: the protocol tables' own naming,
-// gmcp.Char.Vitals and the like, which nothing else in a profile uses
 bool fromGame(const QString& name);
 
-// Every event Mudlet raises itself, sorted, for the editor to offer. Does not
-// include the protocol events (gmcp.*, msdp.*, mssp.*, mxp.*) since those are
-// named after whatever the game sends; see fromGame().
+// Leaves out gmcp.*, msdp.*, mssp.* and mxp.*: the game names those, see fromGame()
 QStringList systemEvents();
 
-// The event names a piece of Lua raises or registers a handler for, read off
-// its string literals: raiseEvent("x"), raiseGlobalEvent('x'),
-// registerAnonymousEventHandler("x", ...), registerNamedEventHandler(user, handler, "x", ...).
-// Unique, in order of first appearance. A name built at runtime is not found.
+// Read off string literals only, so a name built at runtime is not found.
+// Unique, in order of first appearance.
 QStringList namesInCode(const QString& code);
 
 } // namespace eventNames

@@ -284,29 +284,35 @@ private slots:
         const auto indexOf = [this](QTreeWidgetItem* pItem) {
             return mpEditor->mpFolderTree->indexFromItem(pItem);
         };
+        const auto stateOf = [pDelegate, indexOf](QTreeWidgetItem* pItem) {
+            return pDelegate->stateOf(indexOf(pItem));
+        };
+        const auto dotHitRect = [pDelegate, indexOf](QTreeWidgetItem* pItem) {
+            const QModelIndex index = indexOf(pItem);
+            return pDelegate->dotHitRect(pDelegate->rowOption(index), index);
+        };
         mpEditor->resize(1280, 800);
         pCombat->setExpanded(true);
         QTest::qWait(50ms);
 
         TAlias* pAlias = mpHost->getAliasUnit()->getAlias(pKill->data(0, dlgTriggerEditor::FolderPartsRole).toStringList().constFirst().split(QLatin1Char(':')).constLast().toInt());
         QVERIFY(pAlias);
-        QCOMPARE(pDelegate->markOf(indexOf(pKill)), uiDesign::EditorTreeDelegate::RowMark::None);
-        // Read off the alias as the row is drawn, as an alias tree's own row is
-        const auto dotBefore = pDelegate->dotStateOf(indexOf(pKill));
+        QCOMPARE(stateOf(pKill).mark, uiDesign::EditorTreeDelegate::RowMark::None);
+        const auto dotBefore = stateOf(pKill).dot;
         const bool wasActive = pAlias->isActive();
         pAlias->setIsActive(!wasActive);
-        const auto dotAfter = pDelegate->dotStateOf(indexOf(pKill));
+        const auto dotAfter = stateOf(pKill).dot;
         pAlias->setIsActive(wasActive);
         QVERIFY2(dotAfter != dotBefore, "an alias's row in the Folders view does not follow the alias's own state");
-        QVERIFY2(!pDelegate->dotHitRect(indexOf(pKill)).isEmpty(), "an alias in the Folders view has no dot to switch it with");
-        QCOMPARE(pDelegate->markOf(indexOf(pOther)), uiDesign::EditorTreeDelegate::RowMark::Folder);
-        QVERIFY2(!pDelegate->dotHitRect(indexOf(pOther)).isEmpty(), "a folder of one item type lost the dot its own tree draws it with");
-        QCOMPARE(pDelegate->markOf(indexOf(pCombat)), uiDesign::EditorTreeDelegate::RowMark::Folder);
-        QVERIFY2(pDelegate->dotHitRect(indexOf(pCombat)).isEmpty(), "a merged folder offered one switch for folders of several types");
-        QVERIFY2(!pDelegate->chevronHitRect(indexOf(pCombat)).isEmpty(), "a top-level folder of the Folders view cannot be folded away");
+        QVERIFY2(!dotHitRect(pKill).isEmpty(), "an alias in the Folders view has no dot to switch it with");
+        QCOMPARE(stateOf(pOther).mark, uiDesign::EditorTreeDelegate::RowMark::Folder);
+        QVERIFY2(!dotHitRect(pOther).isEmpty(), "a folder of one item type lost the dot its own tree draws it with");
+        QCOMPARE(stateOf(pCombat).mark, uiDesign::EditorTreeDelegate::RowMark::Folder);
+        QVERIFY2(dotHitRect(pCombat).isEmpty(), "a merged folder offered one switch for folders of several types");
+        QVERIFY2(!pDelegate->chevronHitRect(pDelegate->rowOption(indexOf(pCombat)), indexOf(pCombat)).isEmpty(), "a top-level folder of the Folders view cannot be folded away");
         QTreeWidgetItem* pLoose = mpEditor->mFolderTreeNodes.value(qsl("loose"));
         QVERIFY(pLoose);
-        QCOMPARE(pDelegate->markOf(indexOf(pLoose)), uiDesign::EditorTreeDelegate::RowMark::Folder);
+        QCOMPARE(stateOf(pLoose).mark, uiDesign::EditorTreeDelegate::RowMark::Folder);
     }
 
     void test_aDotClickInTheFoldersViewTogglesTheItem()
@@ -322,7 +328,8 @@ private slots:
         QTest::qWait(50ms);
         auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(mpEditor->mpFolderTree->itemDelegate());
         QVERIFY(pDelegate);
-        const QRect dot = pDelegate->dotHitRect(mpEditor->mpFolderTree->indexFromItem(pHit));
+        const QModelIndex hitIndex = mpEditor->mpFolderTree->indexFromItem(pHit);
+        const QRect dot = pDelegate->dotHitRect(pDelegate->rowOption(hitIndex), hitIndex);
         QVERIFY(!dot.isEmpty());
         TTrigger* pTrigger = mpHost->getTriggerUnit()->getTrigger(pHit->data(0, dlgTriggerEditor::FolderPartsRole).toStringList().constFirst().split(QLatin1Char(':')).constLast().toInt());
         QVERIFY(pTrigger);

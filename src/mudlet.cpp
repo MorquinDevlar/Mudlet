@@ -1527,18 +1527,9 @@ void mudlet::init()
         qDebug().nospace().noquote() << "mudlet::mudlet() INFO - '" << mDefaultStyle << "' has been detected as the style factory in use - no styling fixes applied.";
     }
 
-    // A button showing a colour is a well rather than a button: the design's
-    // input corner and a hairline round it, with the tone left to say what it
-    // is. Which style factory is in force has nothing to say about that, so
-    // unlike the sheet above this one is the same everywhere - and neither
-    // colour in it can be baked in here, the hairline's because it follows the
-    // theme and the fill's because it is the value being shown. The corner and
-    // the room round the words can be, and are: QString::arg() fills the lowest
-    // numbered marker it finds, so the two the caller passes are %2 and %3.
-    // The height is named, and named as none: a well is as tall as the row it
-    // is on, not as tall as a form control. Left unsaid, the shared button rule
-    // of whichever window the well is on would answer it instead, and a well
-    // that grew to a field's height stopped sharing its line's centre.
+    // QString::arg() fills the lowest-numbered marker, so the corner is %1 here and the
+    // caller's colours are %2 to %4. min-height: 0px stops a window's shared button rule
+    // growing the well to a field's height.
     mTEXT_ON_BG_STYLESHEET = qsl("QPushButton {color: %2; background-color: %3; border: 1px solid %4; border-radius: %1px; padding: 3px 8px; min-height: 0px;}").arg(uiDesign::scmRadiusInput);
 
     setupUi(this);
@@ -1592,8 +1583,7 @@ void mudlet::init()
     auto layoutTopLevel = new QVBoxLayout(frame);
     layoutTopLevel->setContentsMargins(0, 0, 0, 0);
     layoutTopLevel->setSpacing(0);
-    // QTabBar starts its first tab at x = 0 and ignores its own contents
-    // margins, so the inset the row of chips begins at is the layout's to give
+    // QTabBar lays its first tab out at x = 0 and ignores its own contents margins
     auto pTabStrip = new QHBoxLayout;
     pTabStrip->setContentsMargins(uiDesign::scmTabStripInset, 0, 0, 0);
     pTabStrip->setSpacing(0);
@@ -1852,11 +1842,6 @@ void mudlet::init()
     mpMainToolBar->addAction(mpActionFullScreenView);
     mpMainToolBar->widgetForAction(mpActionFullScreenView)->setObjectName(mpActionFullScreenView->objectName());
 
-    // Every picture on the toolbar is a monochrome glyph inked from the palette,
-    // which restyleToolBarIcons() redoes whenever the theme moves. The seven
-    // editor concepts take the editor's own files, so that a trigger is the same
-    // picture wherever it is offered. The two checkable pairs carry a second
-    // file for their On state.
     mToolBarGlyphs = {{mpActionConnect, qsl(":/icons/toolbar-connect.svg"), QString()},
                       {mpActionTriggers, qsl(":/icons/editor-triggers.svg"), QString()},
                       {mpActionAliases, qsl(":/icons/editor-aliases.svg"), QString()},
@@ -2202,11 +2187,8 @@ void mudlet::init()
     //    });
 }
 
-// The fill is the colour the button stands for and the hairline round it is the
-// theme's, so only one of the two can be settled ahead of time - which is why
-// the sheet is mixed on every call rather than kept as a string built once.
-// Whether there is a hairline at all is the style factory's business, settled
-// once in init() above.
+// The windowsvista and macOS style factories drop a QPushButton's frame once a sheet fills it,
+// so a hairline draws it back; mixed per call because that hairline follows the theme
 QString mudlet::backgroundOnlyStyleSheet(const QColor& fill) const
 {
     if (!mStyleDropsButtonFrame) {
@@ -4956,10 +4938,7 @@ void mudlet::setToolBarIconSize(const int s)
     applyToolBarStyleToAddonCommands();
 }
 
-// QToolButton::MenuButtonPopup is 1, and a property selector is how Qt's own
-// documentation reaches those buttons. The padding is the room the words are
-// held clear of the half by, which is why it is written here rather than in the
-// recipe: it is the bar's own horizontal padding plus the half's width.
+// popupMode="1" is QToolButton::MenuButtonPopup
 static QString splitToolBarButtonRules(const QString& barSelector, const uiDesign::ThemeTokens& tokens)
 {
     const QString splitSelector = barSelector + qsl(" QToolButton[popupMode=\"1\"]");
@@ -4967,42 +4946,27 @@ static QString splitToolBarButtonRules(const QString& barSelector, const uiDesig
            + uiDesign::splitButtonMenuHalfStyleSheet(splitSelector, uiDesign::scmToolBarButtonRadius, tokens);
 }
 
-// The size the glyphs are drawn at is QToolBar's business, taken from the 128px
-// source: this is only ever about the colour they are inked in, so it runs when
-// the palette moves and not when the buttons grow. The bar under them is mixed
-// from the same palette, so it is redrawn here too.
+// Colour only: QToolBar scales the 128px glyphs itself, so an icon size change need not call this
 void mudlet::restyleToolBarIcons()
 {
     uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
     restyleMainToolBar();
 }
 
-// static
 QString mudlet::toolBarShellStyleSheet(const QString& barSelector)
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
     return uiDesign::toolBarStyleSheet(barSelector, uiDesign::ToolBarSeam::Bottom, tokens)
-           // Qt's own overflow button, which only a window narrower than the bar
-           // can reach. Drawn as a control rather than as the pair of faint
-           // arrowheads a style leaves on the page there: a card lifted off the
-           // bar, with the hairline every other box carries.
+           // qt_toolbar_ext_button is Qt's own overflow button
            + barSelector + qsl(" QToolButton#qt_toolbar_ext_button { border: 1px solid %1; background-color: %2; padding: 1px 3px; }").arg(tokens.border.name(), tokens.card.name()) + barSelector
            + qsl(" QToolButton#qt_toolbar_ext_button:hover { border-color: %1; background-color: %2; }").arg(tokens.accentText.name(), tokens.hoverSoft)
-           // Connect, Sound and Packages act on what they name and open a menu
-           // from the half beside it, so they are drawn as the splits they are -
-           // by the same recipe the editor's Save Profile takes, at the bar's
-           // own corner. Picked out by that popup mode rather than by name:
-           // there are three of them here, a detached window builds its own
-           // copies, and an addon's command button can be a fourth.
+           // By popup mode, not name: a detached window builds copies and an addon command can be one
            + splitToolBarButtonRules(barSelector, tokens);
 }
 
-// The bar's own look, composed rather than written: the design's rules first and
-// the profile's Lua stylesheet last, because that sheet is assigned to this very
-// widget. Where the two name the same property the more specific selector wins
-// and a tie goes to the later rule, so a profile that wants a bar of its own
-// says so by naming it - "QToolBar#mpMainToolBar QToolButton { ... }".
+// The profile's Lua sheet belongs to this same widget, so it goes after the design's rules;
+// a profile overrides them by naming the bar: "QToolBar#mpMainToolBar QToolButton { ... }"
 void mudlet::restyleMainToolBar()
 {
     if (!mpMainToolBar) {
@@ -5010,15 +4974,12 @@ void mudlet::restyleMainToolBar()
     }
 
     const QString mainSheet = toolBarShellStyleSheet(qsl("QToolBar#mpMainToolBar")) + mMainToolBarProfileStyleSheet;
-    // Setting a sheet re-polishes the bar and everything on it, and this runs on
-    // every palette change and every profile switch
+    // setStyleSheet() re-polishes the whole bar, and this runs on every palette change and profile switch
     if (mpMainToolBar->styleSheet() != mainSheet) {
         mpMainToolBar->setStyleSheet(mainSheet);
     }
 
     if (mpToolBarReplay) {
-        // The bar a replay runs on stands beside the main one and carries no
-        // profile sheet of its own
         const QString replaySheet = toolBarShellStyleSheet(qsl("QToolBar#mpToolBarReplay"));
         if (mpToolBarReplay->styleSheet() != replaySheet) {
             mpToolBarReplay->setStyleSheet(replaySheet);
@@ -6991,9 +6952,7 @@ void mudlet::slot_muteSet(const bool apiNotGame, const bool muted)
         toolbarAction->setText(muted ? tr("Unmute sounds from the game (MCMP, MSP)") : tr("Mute sounds from the game (MCMP, MSP)"));
     }
 
-    // What the action says is what it will do next - the wording a menu entry and
-    // a screen reader read. The button under the icon stays "Sound" whichever way
-    // round that is, and the glyph is the whole of what says which.
+    // Action text is what menus and screen readers read; the button stays "Sound" and its glyph shows the state
     const bool isMediaMuted = mHostManager.media().allMuted();
     mpActionMuteMedia->setText(isMediaMuted ? tr("Unmute all media") : tr("Mute all media"));
     mpActionMuteMedia->setChecked(isMediaMuted);
@@ -7238,8 +7197,7 @@ void mudlet::slot_replayStarted()
     dactionReplay->setToolTip(mpActionReplay->toolTip());
 
     mpToolBarReplay = new QToolBar(this);
-    // Named so the design's rules can be scoped to it the way the main bar's
-    // are, and so Qt has something to write into a saved window layout
+    // For the sheet's selector, and QMainWindow::saveState() needs an objectName
     mpToolBarReplay->setObjectName(qsl("mpToolBarReplay"));
     mpToolBarReplay->setIconSize(QSize(8 * mToolbarIconSize, 8 * mToolbarIconSize));
     mpToolBarReplay->setToolButtonStyle(mpMainToolBar->toolButtonStyle());
@@ -7277,9 +7235,7 @@ void mudlet::slot_replayStarted()
     mpToolBarReplay->addAction(mpActionReplaySpeedDown);
     mpToolBarReplay->widgetForAction(mpActionReplaySpeedDown)->setObjectName(mpActionReplaySpeedDown->objectName());
 
-    // The replay bar is built each time a replay runs, so its glyphs join the
-    // ledger here rather than with the rest. Pause is checked while the replay
-    // is held, so its On glyph is the one that offers to resume.
+    // Pause is checked while the replay is held, so its On glyph offers to resume
     mToolBarGlyphs.append({mpActionReplayPause, qsl(":/icons/toolbar-replay-pause.svg"), qsl(":/icons/toolbar-replay-resume.svg")});
     mToolBarGlyphs.append({mpActionReplayStop, qsl(":/icons/toolbar-replay-stop.svg"), QString()});
     mToolBarGlyphs.append({mpActionReplaySpeedUp, qsl(":/icons/toolbar-replay-faster.svg"), QString()});
@@ -7406,8 +7362,7 @@ void mudlet::slot_replayOver()
     mpToolBarReplay->removeAction(mpActionReplaySpeedUp);
     mpToolBarReplay->removeAction(mpActionReplaySpeedDown);
     mpToolBarReplay->removeAction(mpActionSpeedDisplay);
-    // ...and out of the ledger, which slot_replayStarted() adds them to: it would
-    // otherwise gain four dead entries for every replay run in the session
+    // slot_replayStarted() appends these on every replay; left in they would dangle
     mToolBarGlyphs.removeIf([this](const uiDesign::ActionGlyph& glyph) {
         return glyph.pAction == mpActionReplayPause || glyph.pAction == mpActionReplayStop || glyph.pAction == mpActionReplaySpeedUp || glyph.pAction == mpActionReplaySpeedDown;
     });

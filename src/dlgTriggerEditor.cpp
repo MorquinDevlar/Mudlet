@@ -120,8 +120,6 @@
 #include <QVBoxLayout>
 
 
-// Forward declarations for the toolbar fit's helpers (defined beside it, later
-// in this file)
 static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*>& actions, const bool shown);
 static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink);
 
@@ -138,121 +136,61 @@ using namespace std::chrono_literals;
 // and then reenables the colorizer function (and we "grey out" the color while
 // it is disabled):
 static const char* cButtonBaseColor = "baseColor";
-// The whole path the sound file field stands for. The field shows the file's
-// name, since a path drawn into it is the tail of a directory nobody typed, and
-// the save and load paths read this.
+// The sound file field shows only the file name; the full path saving and loading need is kept here
 static const char* cSoundFilePath = "editorSoundFilePath";
 
 // Separates the XML packages of individually copied items on the clipboard so
 // that pasting can import and place each one
 static const QString cMultiItemPasteSeparator = qsl("\n<!--MUDLET_MULTI_ITEM_SEPARATOR-->\n");
 
-// What the message area's label was given, before an appearance's ink went into
-// its anchors - the editor's name for what dlgAboutDialog calls aboutRichText
-// and dlgProfilePreferences settingsRichText
+// The message label's text before link ink was baked into its anchors, so a theme change can re-ink it
 static constexpr char scmProp_editorRichText[] = "editorRichText";
 
-// The column an item is edited in - the form, the strip that heads the code
-// pane and the pane itself - is one surface, held away from the window's edges
-// by this and by nothing else. Set on the frame that carries all three rather
-// than on each of them, so that everything down the column lines up by
-// construction.
+// Set once on the frame carrying the form, the code heading and the code pane, so all three line up
 static constexpr int scmEditorColumnPaddingHorizontal = 14;
-// Where the first thing in every one of the window's three columns starts: the
-// sidebar's first row, the search field heading the panel of items, and
-// whatever leads the column an item is edited in - the notice when one is
-// showing, the name row when it is not. One number rather than three that agree
-// today, because three drift apart the next time one column's margins are
-// touched. The settings dialog's columns start further down (16px, 24px inside
-// a page), so this is the editor's own measurement rather than the design
-// language's.
+// One number for all three columns' first rows, so they cannot drift apart when one column's margins change
 static constexpr int scmEditorColumnTopInset = 12;
-// ...and what one piece of that column is held away from the next by
 static constexpr int scmEditorColumnSpacing = 12;
 
-// The sidebar down the left of the editor, drawn by uiDesign::sidebarStyleSheet()
-// from the settings dialog's rules and the measurements the two windows share
 static constexpr int scmEditorSidebarPadding = uiDesign::scmSidebarPadding;
-// Above and below its rows, which is where the first of them starts - the same
-// line the other two columns start on. This one is the editor's own: it is that
-// inset rather than a number the sidebar has an opinion about.
 static constexpr int scmEditorSidebarVerticalPadding = scmEditorColumnTopInset;
 static constexpr int scmEditorSidebarMaximumWidth = 180;
 static constexpr int scmEditorSidebarRailWidth = uiDesign::scmSidebarRailWidth;
 static constexpr int scmEditorSidebarRailPadding = uiDesign::scmSidebarRailPadding;
 static constexpr int scmEditorSidebarSeparatorInset = uiDesign::scmSidebarSeparatorInset;
 static constexpr int scmEditorSidebarRowHeight = uiDesign::scmSidebarRowHeight;
-// "Icon size toolbars" is a step from 1 to 4 rather than a pixel count, and 3 is
-// what a profile that has never touched it holds. Six pixels a step is what
-// makes that default the 18px the design language draws a glyph at everywhere
-// else in this window; eight, which it used to be, made it 24px - a third again
-// as large as the sidebar beside it, and wide enough that the toolbar started
-// posting actions into its overflow menu on windows with room to spare. The
-// steps either side of the default are still there for anyone who needs a
-// bigger target: 1 to 4 now spans 6px to 24px, the top of which is what the
-// default used to draw.
+// "Icon size toolbars" is a step from 1 to 4 and defaults to 3, which this makes the 18px glyph size
 static constexpr int scmEditorIconSizeStep = 6;
-// The chevron on Qt's own overflow button. That fold is only reachable on a
-// window narrower than a bar with every name already given up - see
-// docs/design-language.md - and the two faint arrowheads a style hands out for
-// it are barely on the page, so the mark is drawn here instead: the same stroke
-// the sidebar's toggle and a tree's rows are opened by.
+// Drawn here because the style's own overflow arrowheads are too faint to see
 static constexpr int scmEditorOverflowChevronExtent = 12;
 static constexpr qreal scmEditorOverflowChevronArm = 3.0;
 static constexpr qreal scmEditorOverflowChevronPenWidth = 1.5;
 
-// How much room the bar has to have left over before a group that gave its
-// names up is allowed them back. Taking them away costs nothing to spare and
-// giving them back costs this, so the band between the two is where a drag
-// across the breakpoint lands - without it the same pixel would both fit and
-// not fit and the bar would flicker under the pointer.
+// Hysteresis: without it a drag across the breakpoint both fits and does not fit, and the bar flickers
 static constexpr int scmEditorToolBarRestoreMargin = 16;
-// The narrowest the editor is worth showing its names beside - a floor for the
-// breakpoint, not a width anything is held to
+// A floor for the toolbar's label breakpoint, not a width the column is held to
 static constexpr int scmEditorContentColumnWidth = 640;
 
-// The ID beside an item's name, drawn as a pill: a monospace word a size down
-// from the form around it - uiDesign::chipFont(), the same type the event chips
-// beside a script's name are set in - in a box whose corner is half its height
 static constexpr int scmEditorIdChipPaddingVertical = 3;
-// What the pill leaves round the two words it holds. The .ui files that were
-// never redesigned hold them off by three pixels, which inside a drawn box
-// reads as the word touching it.
+// The .ui files' 3px reads as the word touching the drawn pill
 static constexpr int scmEditorIdChipPaddingHorizontal = 9;
 static constexpr int scmEditorIdChipGap = 4;
 
-// The row an item's name is typed on, taken from the trigger form so that the
-// six forms shelled over their .ui grids come out at its measurements: the
-// gaps inside the head row, and the ones the grid under it lays its rows out
-// with.
 static constexpr int scmEditorFormHeadRowSpacing = 10;
 static constexpr int scmEditorFormGridSpacingHorizontal = 14;
 static constexpr int scmEditorFormGridSpacingVertical = 12;
-// A lead label is in the grid's first column while the name beside it is in the
-// head row, and the two are laid out with different gaps - so the name's label
-// is given this much over the lead labels' width and both fields start at the
-// same place.
+// The name label sits in the head row, the lead labels in the grid; this evens their gaps so the fields align
 static constexpr int scmEditorFormNameLabelExtra = scmEditorFormGridSpacingHorizontal - scmEditorFormHeadRowSpacing;
 
-// What is left round the word on one of the two segments a trigger's matching
-// mode is chosen with. Their height is not left to these: a min-height in a
-// stylesheet is what the contents are given and the style then adds its own
-// margins on top, so a segment is set to the fields' height outright instead.
+// A segment's height is set outright: a stylesheet min-height sizes the contents and the style adds margins on top
 static constexpr int scmEditorSegmentPaddingVertical = 5;
 static constexpr int scmEditorSegmentPaddingHorizontal = 12;
 
-// How far an outlined control the reader can press draws its hairline towards
-// the words while the pointer is on it
 static constexpr qreal scmEditorHoveredBorderWeight = 0.35;
 
-// What a row of one of those trees holds its contents off its leading edge by.
-// The accent bar down a chosen row is a border cut out of this rather than a
-// gap added to it, so a row's contents sit where they did with or without one.
+// The chosen row's accent bar is cut out of this gutter, not added to it, so the row's contents never shift
 static constexpr int scmEditorTreeRowGutter = 4;
 
-// The one measurement of that sidebar which is not a constant is what it is
-// drawn at with the names showing, since that is the longest of the names -
-// see editorSidebarWidths()
 static uiDesign::SidebarMetrics editorSidebarMetrics(const int expandedWidth)
 {
     return {.expandedWidth = expandedWidth,
@@ -263,131 +201,66 @@ static uiDesign::SidebarMetrics editorSidebarMetrics(const int expandedWidth)
             .separatorInset = scmEditorSidebarSeparatorInset};
 }
 
-// A match row is stepped in from the heading naming the item it was found in -
-// far enough to read as belonging to it, and no further, because the panel is
-// narrow and the line the match is on is what the row is there to show
 static constexpr int scmEditorSearchResultIndent = 14;
 
-// The heading strip the Lua editor sits under, which is the splitter's handle
 static constexpr int scmEditorCodeHeaderGlyphSize = 13;
-// What the heading is set in from the code pane's own left edge
 static constexpr int scmEditorCodeHeaderInset = 4;
 static constexpr int scmEditorCompileDotDiameter = 8;
 
-// A colour button says what it is by the colour it is filled with, so it is
-// sized as a well rather than as a word
 static constexpr int scmEditorColorWellHeight = 22;
 static constexpr int scmEditorColorWellWidth = 40;
-// What a control and the words belonging with it are spaced by, wherever a form
-// row holds more than the one thing
 static constexpr int scmEditorRowControlGap = 8;
-// ...and what stands between two such groups on the trigger form's options
-// strip, which is what says they are separate things rather than one sentence
-// running on. Wider than the gap inside a group by enough to read as the join
-// it is, since the strip is one line of short words with no rule between them.
 static constexpr int scmEditorOptionRowGap = 24;
-// What the editor opens at with nothing stored: a companion to the profile
-// window, sized for a form and a page of code rather than for the screen. It
-// used to be nine tenths of the profile window, which on a desktop of any size
-// opened a window that covered it - and what the editor holds does not get any
-// more readable for being 2700px across. Wide enough for the toolbar to keep
-// its names and for a trigger's options strip to stay on one line; the height
-// is a form and a page of code. restoreWindowGeometry() brings it inside a
-// smaller desktop.
+// Wide enough for the toolbar's labels and the trigger options strip on one line; restoreWindowGeometry()
+// fits it to a smaller desktop
 static constexpr int scmEditorDefaultWidth = 1300;
 static constexpr int scmEditorDefaultHeight = 690;
-// What a number box keeps between its last digit and the arrows beside it, on
-// top of the field's own padding: a digit drawn hard against the stepper column
-// reads as touching it
 static constexpr int scmEditorOptionsSpinBoxSlack = 2;
-// The field naming the sound a trigger plays. Wide enough for a file name and
-// no wider: the path it stands for is in the tooltip, since a path drawn in a
-// field this size is a few characters of a directory nobody typed.
 static constexpr int scmEditorSoundFileWidth = 150;
-// ...and what a field leaves round the words in it, which the name is elided to
-// fit inside
 static constexpr int scmEditorSoundFileTextInset = 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth);
-// How many lines the AND mode can be asked to match within. Nothing in TTrigger
-// bounds mConditionLineDelta, so the number is only a question of what is worth
-// typing - but the visible spin box and the hidden spinBox_lineMargin it writes
-// into have to agree on it, or the hidden one clamps what was typed and echoes
-// the clamped value straight back, eating keystrokes.
+// The hidden spinBox_lineMargin must allow the same maximum, or it clamps what was typed and echoes it back,
+// eating keystrokes
 static constexpr int scmEditorMatchWithinLinesMax = 999;
-// The cross that dismisses a banner, inside the 16px button the .ui fixes. The
-// picture beside the words is uiDesign::scmNoticeGlyphSize, since the notice
-// draws that one itself.
 static constexpr int scmEditorBannerCloseSize = 12;
 
-// A trigger's pattern rows. A row is as tall as the profile's display font asks
-// for, since that is the font the pattern itself is read in - but never shorter
-// than a field elsewhere on the form plus what the row's layout insets its
-// controls by, or the pattern and the type beside it would be the two controls
-// in the window drawn a size down from the rest. This is what the row's layout
-// leaves above and below its controls together, and has to stay the sum of
-// trigger_pattern_edit.ui's top and bottom margins.
+// Must stay the sum of trigger_pattern_edit.ui's top and bottom margins
 static constexpr int scmEditorPatternRowMargins = 8;
 static constexpr int scmEditorPatternRowMinimumHeight = uiDesign::scmInputHeight + scmEditorPatternRowMargins;
-// ...and what a row has to be, over the line of the display font it holds, for
-// that line to sit inside the pattern field with its descenders: the row's own
-// margins, and the frame, the padding and the document margin the field puts
-// round its text
 static constexpr int scmEditorPatternRowPadding = scmEditorPatternRowMargins + 2 * (uiDesign::scmInputBorderWidth + uiDesign::scmInputPaddingVertical + SingleLineTextEdit::scmDocumentMargin);
-// How far the row is taken towards the text on it while the mouse is there -
-// the same wash every other hovered row in the two windows gets
 static constexpr qreal scmEditorPatternHoverStrength = 0.07;
-// What the type combo box costs beside the longest of the names it offers: the
-// swatch it draws each name against, its arrow, and the style's own padding
 static constexpr int scmEditorPatternTypeChrome = 60;
-// Room for the two digits of the highest row number there can be
 static constexpr int scmEditorPatternNumberDigits = 2;
 static constexpr int scmEditorPatternDeleteButtonSize = 22;
 static constexpr int scmEditorPatternDeleteGlyphSize = 13;
-// The line drawn across the row a dragged one would land on
 static constexpr int scmEditorPatternDropIndicatorHeight = 2;
-// Past this much movement the press on a row's grip is a drag rather than a click
 static constexpr int scmEditorPatternDragThreshold = 4;
-// As many patterns as one trigger is allowed to hold
 static constexpr int scmEditorPatternRowLimit = 50;
-// The swatch each pattern type is named beside: a small rounded square, drawn at
-// the weight the rest of the row is drawn at
 static constexpr int scmEditorPatternSwatchSize = 12;
 static constexpr qreal scmEditorPatternSwatchRadius = 3.0;
 static constexpr qreal scmEditorPatternSwatchSaturation = 0.55;
-// Off the page the swatch lies on, the way every other coloured mark in the two
-// windows is: a hue says which type, the page says how light it is drawn
 static constexpr qreal scmEditorPatternSwatchLightnessOnDark = 0.58;
 static constexpr qreal scmEditorPatternSwatchLightnessOnLight = 0.45;
-// The grip at the left of a pattern row: two columns of three dots
 static constexpr qreal scmEditorPatternGripDotDiameter = 2.0;
 static constexpr qreal scmEditorPatternGripPitch = 3.0;
 static constexpr int scmEditorPatternGripColumns = 2;
 static constexpr int scmEditorPatternGripRows = 3;
-// The dots are a target of five pixels across; what the pointer has to hit is
-// the column they are centred in
+// Wider than the dots: this is the hit target they are centred in
 static constexpr int scmEditorPatternGripWidth = 12;
-// What the dashed frame of the button adding a pattern is held away from the row
-// above it and the edge below by. Named rather than written into the sheet
-// alone, because the button paints its own frame and has to inset by the same.
+// Shared with the button's own painted frame, which has to inset by the same
 static constexpr int scmEditorAddPatternMarginTop = 4;
 static constexpr int scmEditorAddPatternMarginBottom = 2;
-// Carrying a row up or down without the mouse. Not Ctrl+Shift+Up/Down, which is
-// already how the first and the last pattern are jumped to.
+// Not Ctrl+Shift+Up/Down, which already jumps to the first and the last pattern
 static constexpr auto scmEditorPatternMoveUpKeys = Qt::CTRL | Qt::ALT | Qt::Key_Up;
 static constexpr auto scmEditorPatternMoveDownKeys = Qt::CTRL | Qt::ALT | Qt::Key_Down;
 
-// What the sidebar keeps on each of its rows: the action the row stands for,
-// and the view that action leaves the editor showing (cmUnknownView for the
-// rows that run a one-off action instead of changing the view)
+// The view role holds cmUnknownView on rows that run a one-off action rather than switch the view
 static constexpr int scmRole_editorSidebarAction = Qt::UserRole;
 static constexpr int scmRole_editorSidebarView = Qt::UserRole + 1;
 // The Folders view shows items of every type, so its row names no one view
 static constexpr int scmRole_editorSidebarFolders = Qt::UserRole + 2;
 
-// One swatch per entry of mPatternList, in that order, and the hues are the ones
-// the eight types have always been told apart by. A hue below zero is a type
-// with no colour of its own - the plain substring and the colour trigger, whose
-// own two wells say what it matches - and those are mixed off the page instead,
-// at the weight that keeps the pair apart from each other.
+// One per mPatternList entry, in that order. A negative hue is a type with no colour of its own, mixed from
+// the page at neutralWeight instead.
 struct EditorPatternSwatch
 {
     qreal hue;
@@ -405,8 +278,6 @@ static constexpr EditorPatternSwatch scmEditorPatternSwatches[]{
         {0.13, 0.0},  // prompt
 };
 
-// Drawn at the screen's own ratio, so the rounded corners stay corners rather
-// than becoming steps on a retina display
 static QIcon editorPatternSwatchIcon(const QColor& fill, const QColor& outline, const qreal ratio)
 {
     QPixmap swatch(qRound(scmEditorPatternSwatchSize * ratio), qRound(scmEditorPatternSwatchSize * ratio));
@@ -415,8 +286,7 @@ static QIcon editorPatternSwatchIcon(const QColor& fill, const QColor& outline, 
 
     QPainter painter(&swatch);
     painter.setRenderHint(QPainter::Antialiasing, true);
-    // Half a pen in on every side: a rectangle stroked on its own path would
-    // otherwise lose half the line off the edge of the pixmap
+    // Inset half a pen, or the stroke loses half its width off the pixmap's edge
     const QRectF body(0.5, 0.5, scmEditorPatternSwatchSize - 1.0, scmEditorPatternSwatchSize - 1.0);
     painter.setPen(QPen(outline, 1.0));
     painter.setBrush(fill);
@@ -425,9 +295,7 @@ static QIcon editorPatternSwatchIcon(const QColor& fill, const QColor& outline, 
     return QIcon(swatch);
 }
 
-// The grip a pattern row is dragged by. Painted rather than written as U+22EE
-// twice over: a grid of dots is what the rest of the editor's chrome is drawn
-// at, and no interface font has to be asked whether it has the character.
+// Painted rather than U+22EE twice, which not every interface font carries
 static QPixmap editorPatternGripGlyph(const QColor& color, const qreal ratio)
 {
     const qreal width = (scmEditorPatternGripColumns - 1) * scmEditorPatternGripPitch + scmEditorPatternGripDotDiameter;
@@ -688,15 +556,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     setStatusBar(statusBar);
     statusBar->show();
 
-    // On the message side, so that it sits at the leading edge; the editor's
-    // own temporary messages hide it for the seconds they are shown, which is
-    // what a status bar does with anything but a permanent widget
+    // A plain widget, which QStatusBar hides while a temporary message shows
     mpLabel_statusCounts = new QLabel(statusBar);
     mpLabel_statusCounts->setObjectName(qsl("editorStatusCounts"));
     statusBar->addWidget(mpLabel_statusCounts);
-    // The last save is the one permanent widget, which is the only thing that
-    // keeps it at the trailing edge: a status bar hides its plain widgets for as
-    // long as a message stands and leaves the permanent ones showing
+    // Permanent, which is the only way QStatusBar keeps a widget at the trailing edge and showing during messages
     mpLabel_statusAutosave = new QLabel(statusBar);
     mpLabel_statusAutosave->setObjectName(qsl("editorStatusAutosave"));
     statusBar->addPermanentWidget(mpLabel_statusAutosave);
@@ -706,26 +570,15 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpTimer_statusCounts->setInterval(200ms);
     connect(mpTimer_statusCounts, &QTimer::timeout, this, &dlgTriggerEditor::updateEditorItemCounts);
 
-    // The column an item is edited in is inset once, on the frame that carries
-    // the form, the code pane and the strip between them - so the name at the
-    // top of the form, the patterns under it and the first character of the
-    // Lua all start at the same place. Everything inside is flush with it.
     if (QLayout* pColumnLayout = frame_right->layout()) {
         pColumnLayout->setContentsMargins(scmEditorColumnPaddingHorizontal, scmEditorColumnTopInset, scmEditorColumnPaddingHorizontal, 0);
     }
 
     mpNonCodeWidgets = new QWidget(this);
-    // Anything changing the height of what the column holds asks the column to
-    // lay itself out again, which in the views held to their contents is also a
-    // different split - see applyFormPaneSeamPolicy()
+    // A change in the column's height can mean a different split - see applyFormPaneSeamPolicy()
     mpNonCodeWidgets->installEventFilter(this);
     auto* layoutColumn = new QVBoxLayout(mpNonCodeWidgets);
-    // The last row of the form is held off the heading of the code pane under it
-    // by the same gap the notice is held off the form: the column's own bottom
-    // margin, which is in the height the column asks for, so a form held to its
-    // contents carries the gap down with it. The strip the heading is on begins
-    // at the column's very edge, and without this a form that is a fixed set of
-    // fields ended with its last field touching that strip.
+    // A margin is part of the column's size hint, so a form held to its contents keeps the gap above the code heading
     layoutColumn->setContentsMargins(0, 0, 0, scmEditorColumnSpacing);
     layoutColumn->setSpacing(scmEditorColumnSpacing);
     splitter_right->addWidget(mpNonCodeWidgets);
@@ -733,16 +586,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // system message area
     mpSystemMessageArea = new dlgSystemMessageArea(this);
     mpSystemMessageArea->setObjectName(qsl("mpSystemMessageArea"));
-    // Ignored across, so that the wrapped label's guess at a good width for its
-    // words cannot widen the column; Maximum down it, so that the height the
-    // notice asks for - the height of those words at this width, see
-    // dlgSystemMessageArea::sizeHint() - is also the most it can be given.
+    // Ignored across, or the wrapped label's width guess widens the column; Maximum down, so the
+    // height-for-width in dlgSystemMessageArea::sizeHint() is also the most it gets
     mpSystemMessageArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
-    // The notice is the first thing in the column when it is showing, so it
-    // starts on the same line as the sidebar's first row and the search field.
-    // Its own .ui file leaves the style's default margin round it, which is what
-    // used to push it below both; the column it is in is what holds it off the
-    // window's edges, as it does for the form that leads the column otherwise.
+    // The .ui's default margin would push the notice below the other two columns' first rows
     if (QLayout* pMessageAreaLayout = mpSystemMessageArea->layout()) {
         pMessageAreaLayout->setContentsMargins(0, 0, 0, 0);
     }
@@ -761,12 +608,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mpTriggersMainArea->checkBox_triggerColorizer, &QCheckBox::clicked, this, &dlgTriggerEditor::slot_toggleGroupBoxColorizeTrigger);
     connect(mpTriggersMainArea->toolButton_clearSoundFile, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_clearSoundFile);
 
-    // The five forms that are a fixed set of fields take no stretch: they are
-    // held to the height those fields ask for, so spare room in the column is
-    // never theirs. It goes to the trailing stretch below instead, which is
-    // what keeps them leading the pane where there is no code pane to cap them
-    // against. The trigger's and the button's forms do use the room - the
-    // pattern list and the stylesheet editor grow into it - so they keep theirs.
+    // Fixed-field forms take no stretch, so spare room goes to the trailing stretch and they stay at the top;
+    // the trigger and button forms grow their pattern list and stylesheet editor into it
     mpTimersMainArea = new dlgTimersMainArea(this);
     layoutColumn->addWidget(mpTimersMainArea, 0);
 
@@ -790,17 +633,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpScriptsMainArea = new dlgScriptsMainArea(this);
     layoutColumn->addWidget(mpScriptsMainArea, 0);
 
-    // Whatever room is left over goes here rather than into the notice or a
-    // form that is a fixed set of fields. It is what keeps a lone notice, and a
-    // form with no code pane under it, at the top of the pane rather than
-    // stretched down it.
     layoutColumn->addStretch(0);
 
     // source editor area
     mpSourceEditorArea = new dlgSourceEditorArea(this);
-    // The floor the seam keeps for the code pane whenever it places it, made a
-    // minimum here so that a drag of the heading stops at it as well rather
-    // than at whatever the pane's widgets would shrink to
+    // Also a minimum, so a drag of the heading stops at the seam's floor rather than the widgets' own minimum
     mpSourceEditorArea->setMinimumHeight(scmEditorSourcePaneFloor);
     splitter_right->addWidget(mpSourceEditorArea);
 
@@ -810,11 +647,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpSourceEditorEdbee->setPlaceholderText(tr("-- add your Lua code here"));
     mpSourceEditorEdbeeDocument = mpSourceEditorEdbee->textDocument();
 
-    // Update the heading over the code pane on changes
     connect(mpSourceEditorEdbee->controller(), &edbee::TextEditorController::updateStatusTextSignal, this, &dlgTriggerEditor::slot_updateCaretPosition);
-    // The caret readout speaks for the code pane, so it goes when the pane does
-    // - a table, a function or a root row leaves nothing under it to have a
-    // caret in - and is asked for again when the pane comes back
+    // The caret readout hides and returns with the code pane
     mpSourceEditorArea->installEventFilter(this);
     mpSourceEditorEdbee->controller()->setAutoScrollToCaret(edbee::TextEditorController::AutoScrollWhenFocus);
 
@@ -1138,13 +972,8 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mpErrorConsole->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     splitter_right->addWidget(mpErrorConsole);
 
-    // The room a window has over and above what the panes need belongs to the
-    // code, which is the one pane with no natural height of its own: the form
-    // above it is as tall as the item's fields, and the errors box below it
-    // opens at its floor and is dragged from there when it is wanted. Sharing
-    // the surplus out instead left the code starting a long way down the
-    // window, under a form stretched past anything it had to show. Both are
-    // still dragged to any size the handles allow, and neither can collapse.
+    // Spare height goes to the code alone, the one pane with no natural height; sharing it out stretched
+    // the form and pushed the code far down the window
     splitter_right->setStretchFactor(0, 0); // mpNonCodeWidgets
     splitter_right->setCollapsible(0, false);
     splitter_right->setStretchFactor(1, 1); // mpSourceEditorArea
@@ -1154,32 +983,20 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     mpErrorConsole->hide();
 
-    // Every pane the right hand splitter stacks is in place, so the handle
-    // between the first two exists to be given its heading
+    // After every pane is added, so the splitter handle between the first two exists
     setupEditorCodeHeader();
 
-    // The trigger form's own options, as one strip between its head row and its
-    // pattern list
     buildTriggerOptionsStrip();
 
-    // The events a script listens for, in the cell the .ui file leaves beside
-    // the "Events" label. Before the head rows, so that the row it goes into is
-    // carried down with the rest of the grid.
+    // These row builders run before buildEditorFormHeadRows(), so the rows they fill are carried down with
+    // the rest of the grid
     buildScriptEventRow();
 
-    // ...the timer's interval as a sentence and the key's binding as a field
-    // that listens, both in the cells their .ui grids already lay out, and both
-    // before the head rows for the same reason
     buildTimerIntervalRow();
     buildKeyBindingRow();
-    // ...and the variable's two type pickers as one row, for the same reason
     buildVariableTypeRows();
-    // ...and the button's rotation and its push-down switch onto one row, out
-    // of the group boxes the Buttons form was three columns of
     buildActionRows();
 
-    // ...and the row the other six forms lead with, shelled over the grids
-    // their .ui files lay them out in
     buildEditorFormHeadRows();
 
     connect(splitter_right, &QSplitter::splitterMoved, this, &dlgTriggerEditor::slot_rightSplitterMoved);
@@ -1240,8 +1057,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     treeWidget_scripts->setRootIsDecorated(false);
     treeWidget_scripts->setContextMenuPolicy(Qt::ActionsContextMenu);
 
-    // A TTreeWidget for the row option EditorTreeDelegate measures against; nothing is dragged
-    // in it or chosen alongside another row, as it is built from the type trees
+    // A TTreeWidget for the row option EditorTreeDelegate measures against; built from the type trees, so no drag
     mpFolderTree = new TTreeWidget(frame_left);
     mpFolderTree->setObjectName(qsl("treeWidget_folders"));
     //: Accessible name of the editor's Folders view, which lists every item type grouped by folder
@@ -1406,9 +1222,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(treeWidget_keys, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
 
 
-    // The wording on this and on the three below follows the view, and so does
-    // the tooltip that stands in for it once the bar is too narrow to write it
-    // out - both are set by changeView() through updateEditorItemActionToolTips()
+    // Text and tooltip of this and the three below follow the view: see updateEditorItemActionToolTips()
     mAddItem = new QAction(QIcon(qsl(":/icons/document-new.png")), QString(), this);
     mAddItem->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     mAddItem->setShortcut(QKeySequence(QKeySequence::New));
@@ -1444,9 +1258,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     treeWidget_scripts->addAction(copyAction);
     treeWidget_actions->addAction(copyAction);
     treeWidget_keys->addAction(copyAction);
-    // The trees are hidden while the panel is showing search results, and a
-    // shortcut on a hidden widget is not one the window can reach - so the
-    // panel itself carries the pair too, the way add and delete already do
+    // A hidden widget's shortcuts do not fire, and the trees hide behind search results, so the panel carries the pair too
     frame_left->addAction(copyAction);
     mpFolderTree->addAction(copyAction);
     connect(copyAction, &QAction::triggered, this, &dlgTriggerEditor::slot_copyXml);
@@ -1494,9 +1306,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         widget->addAction(separator2);
     }
 
-    // Switching an item on and off is otherwise only offered by the dot at the
-    // head of its row, which is a 9px target and says nothing about itself.
-    // Variables are left out: there is nothing there to switch.
+    // Variables are left out: there is nothing there to switch
     const QList<QTreeWidget*> itemTreeWidgets = {treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, mpFolderTree};
     for (QTreeWidget* widget : itemTreeWidgets) {
         widget->addAction(mpAction_toggleActive);
@@ -1512,8 +1322,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     mpCreateModuleAction = new QAction(QIcon(qsl(":/icons/package-exporter.png")), tr("Create Module"), this);
     mpCreateModuleAction->setEnabled(true);
-    // Led by the words on the button, which is what is left of it once the bar
-    // is too narrow to write them out beside the picture
+    // Led by the button's text, which the tooltip stands in for once the bar drops its labels
     mpCreateModuleAction->setToolTip(qsl("<p>%1</p>%2").arg(mpCreateModuleAction->text(), tr("<p>Create a module from selected items</p>")));
     connect(mpCreateModuleAction, &QAction::triggered, this, &dlgTriggerEditor::slot_createModule);
 
@@ -1569,18 +1378,15 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     //: This is the toolbar that is initially placed at the top of the editor.
     toolBar->setWindowTitle(tr("Editor Toolbar - %1 - Actions").arg(hostName));
 
-    // Grouped by what the buttons do to the item being worked on, with what
-    // acts on the profile as a whole pushed to the far end
     toolBar->addAction(mAddItem);
     toolBar->addAction(mAddGroup);
     toolBar->addAction(mSaveItem);
     toolBar->addAction(mDeleteItem);
-    // Smart undo/redo toolbar buttons (route based on focus)
+    // Add smart undo/redo toolbar buttons (route based on focus)
     toolBar->addAction(mpUndoAction);
     toolBar->addAction(mpRedoAction);
 
-    // A toolbar has no notion of an alignment, so an expanding blank is what
-    // separates the item half from the profile half
+    // QToolBar has no alignment, so an expanding blank separates the item half from the profile half
     auto* pToolBarSpacer = new QWidget(toolBar);
     pToolBarSpacer->setObjectName(qsl("editorToolbarSpacer"));
     pToolBarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -1591,9 +1397,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     toolBar->addAction(mpCreateModuleAction);
     toolBar->addAction(mProfileSaveAction);
 
-    // Every picture an action carries, on the toolbar and in the trees' context
-    // menu alike, is drawn from a monochrome glyph tinted to the palette, which
-    // restyleEditorIcons() redoes whenever the theme changes
     mEditorActionGlyphs = {{mAddItem, qsl(":/icons/editor-add.svg")},
                            {mAddGroup, qsl(":/icons/editor-add-group.svg")},
                            {mSaveItem, qsl(":/icons/editor-save-item.svg")},
@@ -1610,32 +1413,21 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
                            {copyAction, qsl(":/icons/editor-copy.svg")},
                            {pasteAction, qsl(":/icons/editor-paste.svg")}};
 
-    // Saving the profile under another name is the rarer of the pair, so it
-    // hangs off the button beside it rather than taking a place of its own
     if (auto* pButton_saveProfile = qobject_cast<QToolButton*>(toolBar->widgetForAction(mProfileSaveAction))) {
         auto* pMenu_saveProfile = new QMenu(pButton_saveProfile);
         pMenu_saveProfile->addAction(mProfileSaveAsAction);
         pButton_saveProfile->setMenu(pMenu_saveProfile);
         pButton_saveProfile->setPopupMode(QToolButton::MenuButtonPopup);
-        // The one button on the bar that is two click areas rather than one, so
-        // the rules that draw the split have something to name it by. Every
-        // other button on the bar has no menu half for them to reach anyway,
-        // but the padding the words are held clear by would reach all of them.
+        // Named so the stylesheet's split-button padding reaches this button and no other
         pButton_saveProfile->setObjectName(qsl("editorSaveProfileButton"));
     }
 
-    // A bar too narrow for every name gives them up a group at a time rather
-    // than posting its tail into a drop-down. What acts on the profile goes
-    // first - those four are the ones a player reaches for least often, and the
-    // ones whose pictures say the most on their own - and what acts on the item
-    // being edited holds its names longest.
+    // In the order the groups give up their labels: profile actions first, item actions last
     mEditorToolBarGroups.append(EditorToolBarGroup{{importAction, mpExportAction, mpCreateModuleAction, mProfileSaveAction}, true});
     mEditorToolBarGroups.append(EditorToolBarGroup{{mAddItem, mAddGroup, mSaveItem, mDeleteItem}, true});
-    // The bar is the only thing the window tells when it has more or less room
-    // to offer, so its own resize is what the fit runs on
+    // The fit runs on the bar's own resize, the one event that reports its room changing
     toolBar->installEventFilter(this);
-    // Docking the bar at a side turns its overflow button the other way round,
-    // and turning it puts the style's own picture back on it
+    // Re-orienting the bar puts the style's own arrow back on its overflow button
     connect(toolBar, &QToolBar::orientationChanged, this, [this]() {
         inkEditorOverflowChevron(toolBar, uiDesign::themeTokens().accentText);
     });
@@ -1646,10 +1438,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     connect(mpVarsMainArea->checkBox_variable_hidden, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_hideVariable);
 
-    // What the editor is showing is chosen from the sidebar down its left,
-    // where a vertical strip of pictures used to be. The names read as one
-    // list, so the seven things a profile is made of come first and the three
-    // that run a one-off action are put below a rule.
     buildEditorSidebar();
     addEditorSidebarRow(viewTriggerAction, EditorViewType::cmTriggerView, qsl(":/icons/editor-triggers.svg"));
     addEditorSidebarRow(viewAliasAction, EditorViewType::cmAliasView, qsl(":/icons/editor-aliases.svg"));
@@ -1658,7 +1446,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     addEditorSidebarRow(viewKeysAction, EditorViewType::cmKeysView, qsl(":/icons/editor-keys.svg"));
     addEditorSidebarRow(viewActionAction, EditorViewType::cmActionView, qsl(":/icons/editor-buttons.svg"));
     addEditorSidebarRow(viewVarsAction, EditorViewType::cmVarsView, qsl(":/icons/editor-variables.svg"));
-    // Shown only while the profile's setting offers the view - see setFolderViewAvailable()
     mpSidebarItem_folders = addEditorSidebarRow(mpViewFoldersAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-folder.svg"));
     mpSidebarItem_folders->setData(scmRole_editorSidebarFolders, true);
     mpSidebarItem_folders->setHidden(!mpViewFoldersAction->isVisible());
@@ -1667,16 +1454,10 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     addEditorSidebarRow(viewStatsAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-statistics.svg"));
     addEditorSidebarRow(showDebugAreaAction, EditorViewType::cmUnknownView, qsl(":/icons/editor-debug.svg"));
 
-    // A toolbar used to be what these actions were held by, which is what put
-    // their Ctrl+1 to Ctrl+0 shortcuts within reach of the window; a sidebar
-    // row is a piece of data rather than a widget an action can live on, so the
-    // window holds them itself
+    // A sidebar row cannot hold an action, so the window does, or the Ctrl+1 to Ctrl+0 shortcuts are unreachable
     addActions(mEditorViewActions);
 
-    // The sidebar is the window's leftmost column rather than a piece of the
-    // .ui file's layout, so what that file makes the central widget moves in
-    // beside it. Taken rather than reparented, or the main window would be left
-    // holding a central widget that has gone elsewhere.
+    // Taken rather than reparented, or the main window would keep a central widget that has gone elsewhere
     auto* pShell = new QWidget(this);
     pShell->setObjectName(qsl("editorShell"));
     auto* pShellLayout = new QHBoxLayout(pShell);
@@ -1690,10 +1471,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     }
     QMainWindow::setCentralWidget(pShell);
 
-    // The control that gives the sidebar's names up rides on the seam between
-    // the sidebar and the rest of the window, so it is a child of the shell
-    // holding both rather than of either of them - and of the toolbar least of
-    // all, which the user can drag to another edge of the window or float.
+    // A child of the shell, as it rides the seam between sidebar and body; not of the toolbar, which can be moved or floated
     mpToggle_editorSidebar = new uiDesign::SidebarToggle(mpWidget_editorSidebarPane, pShell);
     connect(mpToggle_editorSidebar, &QAbstractButton::clicked, this, [this]() {
         setEditorSidebarLabelsShown(!mEditorSidebarLabelsShown);
@@ -1702,7 +1480,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     QMainWindow::addToolBar(Qt::TopToolBarArea, toolBar);
 
-    // (Top) "Actions" toolbar - the only one left to lose:
+    // (Top) "Actions" toolbar:
     //: This will restore that toolbar in the editor window, after a user has hidden it or moved it to another docking location or floated it elsewhere.
     mpAction_restoreEditorActionsToolbar = new QAction(tr("Restore Actions toolbar"), this);
 
@@ -1718,16 +1496,13 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     treeWidget_keys->addAction(mpAction_restoreEditorActionsToolbar);
     mpFolderTree->addAction(mpAction_restoreEditorActionsToolbar);
 
-    // This only has to be shown should the toolbar get hidden, and by default
-    // the starting state for that is a visible one so it needs to be hidden at
-    // the start:
+    // Only needed once the toolbar is hidden, and it starts visible
     mpAction_restoreEditorActionsToolbar->setVisible(false);
 
     setupEditorPanel();
     applyEditorShellStyle();
 
-    // Adding, deleting and activating all reach the tree through its model, so
-    // that is the one place the counts can be kept up to date from
+    // Adding, deleting and activating all reach the tree through its model, the one place to track the counts from
     for (QTreeWidget* pTreeWidget : {treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys}) {
         connect(pTreeWidget->model(), &QAbstractItemModel::rowsInserted, this, &dlgTriggerEditor::scheduleEditorItemCountUpdate);
         connect(pTreeWidget->model(), &QAbstractItemModel::rowsRemoved, this, &dlgTriggerEditor::scheduleEditorItemCountUpdate);
@@ -1743,19 +1518,14 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     config->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     config->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     config->setAutocompleteMinimalCharacters(3);
-    // A byte offset is a debugging reading rather than one a script author
-    // uses, and every document the pane is handed brings a configuration of
-    // its own - so it is turned off per document rather than once
+    // Every document handed to edbee brings its own config, so this is repeated per document
     config->setShowCaretOffset(false);
     config->endChanges();
 
     connect(comboBox_searchTerms, qOverload<int>(&QComboBox::activated), this, &dlgTriggerEditor::slot_searchMudletItems);
 
-    // The per-type selection slots reload the whole form unconditionally, so a stray
-    // clicked() on the row that is already loaded would throw away unsaved edits. Only
-    // the first click on a row has to reach them - itemSelectionChanged() has already
-    // loaded that row by the time clicked() arrives - so drop same-row emissions here,
-    // which keeps a click on a control inside the current row inert by construction.
+    // The selection slots reload the form unconditionally, so a clicked() on the already loaded row would discard
+    // unsaved edits; itemSelectionChanged() has loaded a newly clicked row before clicked() arrives
     auto connectSelectionOnClick = [this](QTreeWidget* pTreeWidget, QTreeWidgetItem* const& pCurrentItem, void (dlgTriggerEditor::*pSelectionSlot)(QTreeWidgetItem*)) {
         connect(pTreeWidget, &QTreeWidget::itemClicked, this, [this, &pCurrentItem, pSelectionSlot](QTreeWidgetItem* pItem) {
             if (pItem != pCurrentItem) {
@@ -1865,8 +1635,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mpActionsMainArea->comboBox_action_button_rotation, qOverload<int>(&QComboBox::currentIndexChanged), this, &dlgTriggerEditor::slot_saveProperty_ActionButtonRotation);
     connect(mpActionsMainArea->plainTextEdit_action_css, &QPlainTextEdit::textChanged, this, &dlgTriggerEditor::slot_saveProperty_ActionCSS);
 
-    // The clear button needs no handler of its own: it empties the field, and an
-    // empty field is what puts the results away - see the textChanged() below
+    // No handler needed: an emptied field puts the results away - see the textChanged() below
     comboBox_searchTerms->lineEdit()->setClearButtonEnabled(true);
     auto pLineEdit_searchTerm = comboBox_searchTerms->lineEdit();
     //: Placeholder in the editor's search field, which searches the profile's own triggers, aliases, scripts and the rest
@@ -1907,17 +1676,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
 
     mpAction_searchOptions->setMenu(pMenu_searchOptions);
-    // The shell's style pass has already run by the time this menu exists, so
-    // it is drawn here as well as there
     styleSearchOptionsMenu();
 
     pLineEdit_searchTerm->addAction(mpAction_searchOptions, QLineEdit::LeadingPosition);
 
-    // The box's own drop-down is given no width by the shell stylesheet, so that
-    // the row reads as a field rather than as a list to pick from. The searches
-    // already run are still in it, and Alt+Down still opens them - this is the
-    // same door for the mouse, and it is only there once there is a search to go
-    // back to.
+    // The stylesheet gives the combo box's own drop-down no width, so this is the mouse's way into the history
     mpAction_searchHistory = pLineEdit_searchTerm->addAction(QIcon(), QLineEdit::TrailingPosition);
     mpAction_searchHistory->setObjectName(qsl("mpAction_searchHistory"));
     //: Tooltip on the small chevron at the right of the editor's search field, which reopens what was searched for before
@@ -1949,15 +1712,9 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     treeWidget_keys->hide();
     treeWidget_variables->hide();
 
-    // Hiding a widget invalidates the layout measurement Qt caches for it, but
-    // that invalidation only travels up to its containers while the widget is
-    // still visible. Everything hidden just above therefore leaves the
-    // containers still holding a minimum height measured while all seven main
-    // areas were on screen at once - their heights stacked, around 1600px. No
-    // event loop runs between here and readSettings(), so that stale figure is
-    // the one the first layout pass hands the window as its minimum height, and
-    // the editor opens at screen height however small the geometry the user
-    // left behind. Re-measuring the containers makes the minimum honest.
+    // Qt only passes a hidden widget's layout invalidation up while it is still visible, so the containers keep
+    // the ~1600px minimum of all seven areas stacked; with no event loop before readSettings(), the editor
+    // would open at screen height
     const QList<QWidget*> justHidden{mpTriggersMainArea,
                                      mpTimersMainArea,
                                      mpScriptsMainArea,
@@ -1983,18 +1740,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     readSettings();
 
-    // On macOS this creates the native window there and then, at whatever size
-    // the widget has at that moment, and cocoa does not resize a native window
-    // that is created but not yet shown - a move lands, a resize is dropped.
-    // So it comes after readSettings() has put the window at its stored or
-    // default size, rather than before the constructor has decided one: called
-    // earlier it opened every editor at the 636x688 the .ui file happens to
-    // name, whatever was stored.
+    // After readSettings(): on macOS this creates the native window at its current size, and cocoa drops a resize
+    // of a native window that is created but not yet shown
     setUnifiedTitleAndToolBarOnMac(true);
 
-    // The options strip is a disclosure rather than a preference: the editor
-    // opens with it closed whatever the last session left it at, so nothing
-    // read above has a say in this
+    // A disclosure, not a preference: it opens closed whatever readSettings() restored
     slot_showAllTriggerControls(false);
 
     comboBox_searchTerms->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -2004,32 +1754,16 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     QVBoxLayout* searchLayout = new QVBoxLayout(searchContainer);
     searchLayout->addWidget(treeWidget_searchResults);
 
-    // What is typed leads the panel rather than trailing it: the field belongs
-    // with the trees it narrows down, not underneath the results it last
-    // produced. The combo box keeps the row the .ui file gives it - it is the
-    // row that moves, so no widget changes hands and the search behaviour is
-    // untouched.
     verticalLayout_frame_left->removeWidget(widget_searchTerm);
     verticalLayout_frame_left->insertWidget(0, widget_searchTerm);
-    // ...and being the first thing in its column, it starts on the line the
-    // other two columns start on. The row's own layout is what holds it down,
-    // since the pane behind it is painted to the top of the window.
+    // On the row's own layout, since the pane behind it is painted to the top of the window
     if (QLayout* pSearchRowLayout = widget_searchTerm->layout()) {
         const QMargins searchRowMargins = pSearchRowLayout->contentsMargins();
         pSearchRowLayout->setContentsMargins(searchRowMargins.left(), scmEditorColumnTopInset, searchRowMargins.right(), searchRowMargins.bottom());
     }
 
-    // Which variables are listed narrows what a search of them turns up, so it
-    // stays reachable while the results are the thing on show: it sits with the
-    // search row in the part of the panel that does not take turns, rather than
-    // inside the pane of trees that goes away. What shows it is unchanged - it
-    // is still the Variables view alone.
-    //
-    // The column itself is flush with the window, and what holds the search
-    // field off its edge is that row's own layout - so the switch is given a row
-    // with the same margins and starts on the line the field above it and the
-    // tree rows below it start on. A layout rather than a widget, so that the
-    // row takes no height of its own in the six views the switch is hidden in.
+    // Outside the trees pane, so it stays reachable while search results show, since it narrows them too. A layout
+    // rather than a widget, so the row takes no height while the switch is hidden.
     verticalLayout_frame_left->removeWidget(checkBox_displayAllVariables);
     auto* pHiddenVariablesRow = new QHBoxLayout();
     if (QLayout* pSearchRowLayout = widget_searchTerm->layout()) {
@@ -2037,9 +1771,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         pHiddenVariablesRow->setContentsMargins(searchRowMargins.left(), 0, searchRowMargins.right(), 0);
     }
     pHiddenVariablesRow->addWidget(checkBox_displayAllVariables);
-    // ...and how many the switch would add, at the trailing end of that row: a
-    // quiet reading rather than a control, in the same monospace the ID beside
-    // an item's name is set in. Nothing is said while there is nothing hidden.
     mpLabel_hiddenVariablesCount = new QLabel(this);
     mpLabel_hiddenVariablesCount->setObjectName(qsl("editorHiddenVariablesCount"));
     mpLabel_hiddenVariablesCount->setFont(uiDesign::chipFont(this));
@@ -2048,8 +1779,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     pHiddenVariablesRow->addWidget(mpLabel_hiddenVariablesCount);
     verticalLayout_frame_left->insertLayout(1, pHiddenVariablesRow);
 
-    // The two panes take turns rather than sharing the height, so there is no
-    // split for the reader to place and none to remember
     searchSplitter = new QSplitter(Qt::Vertical);
 
     QFrame* itemContainer = new QFrame();
@@ -2065,23 +1794,17 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     itemLayout->addWidget(treeWidget_variables);
     itemLayout->addWidget(mpFolderTree);
 
-    // No stretch factors and no handle to place: a splitter hands everything it
-    // has to its one visible pane, and the other is always hidden
+    // No stretch factors: one pane is always hidden, and a splitter gives all its room to the visible one
     searchSplitter->addWidget(itemContainer);
     searchSplitter->addWidget(searchContainer);
 
     verticalLayout_frame_left->addWidget(searchSplitter);
-    // The search row keeps its own height and the splitter takes the rest
     verticalLayout_frame_left->setStretchFactor(searchSplitter, 1);
 
-    // Results and trees take turns in the panel: nothing has been searched for
-    // yet, so the trees have it
     setSearchResultsShown(false);
 
-    // Escape gives the panel back to the trees. The filter is on the field
-    // itself rather than on the combo box, so that an open history popup gets
-    // the key first and closes without the search being cleared out from under
-    // it.
+    // Escape gives the panel back to the trees; filtered on the line edit, not the combo box, so an open history
+    // popup takes the key first and closes without clearing the search
     comboBox_searchTerms->lineEdit()->installEventFilter(this);
     connect(comboBox_searchTerms->lineEdit(), &QLineEdit::textChanged, this, [this](const QString& text) {
         if (text.isEmpty()) {
@@ -2089,16 +1812,11 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         }
     });
 
-    // The trigger form's options strip wraps to the width the form is given,
-    // and the form is the one thing told when that width changes
+    // The options strip rewraps on the form's resize, the one event that reports its width
     mpTriggersMainArea->installEventFilter(this);
 
     mpScrollArea = mpTriggersMainArea->scrollArea;
-    // The pattern rows are part of the form, not a well sunk into it. A
-    // QAbstractScrollArea fills its viewport with QPalette::Base - the colour a
-    // field is filled with - which drew the whole edit column as a darker box
-    // laid over the page. Nothing here is typed into, so it carries the surface
-    // it sits on instead, and loses the frame that outlined it as separate.
+    // QAbstractScrollArea fills its viewport with QPalette::Base, which drew the pattern rows as a field-coloured box
     mpScrollArea->setObjectName(qsl("editorPatternScroll"));
     mpScrollArea->setFrameShape(QFrame::NoFrame);
     mpScrollArea->viewport()->setAutoFillBackground(false);
@@ -2108,26 +1826,18 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     lay1->setContentsMargins(0, 0, 0, 0);
     lay1->setSpacing(0);
     mpScrollArea->setWidget(mpWidget_triggerItems);
-    // After setWidget(), which turns the fill back on for whatever it is handed.
-    // The widget takes QPalette::Base as its background role off the viewport it
-    // is reparented into, so left filled it would carry the field colour. The
-    // named rule below holds it off as things stand - a styled background is
-    // painted in place of the palette brush, not over it - but that rule is
-    // written by applyEditorShellStyle(), which the first paint can beat and a
-    // guarded early return can skip.
+    // After setWidget(), which turns autofill on and hands the widget the viewport's Base role; the stylesheet rule
+    // from applyEditorShellStyle() can lose the race to the first paint or be skipped by its early return
     mpWidget_triggerItems->setAutoFillBackground(false);
 
     lay1->addStretch();
 
     mPatternList << tr("substring") << tr("perl regex") << tr("start of line") << tr("exact match") << tr("lua function") << tr("line spacer") << tr("color trigger") << tr("prompt");
 
-    // No row exists yet, so this only cuts the eight swatches; restyleEditorIcons()
-    // is what re-cuts them and hands them round once there are rows
     restylePatternTypeIcons();
 
     setupAddPatternButton();
 
-    // One empty row, and the Add pattern button under it for the next one
     showPatternItems(1);
     setupPatternNavigationShortcuts();
     updatePatternTabOrder();
@@ -2169,8 +1879,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     // fire this now as the theme has already been set and we need the syntax highlighter to pick it up
     mpHost->editorThemeChanged();
 
-    // force the minimum size of the scroll area for the trigger items to be one
-    // and a half trigger item widgets:
     const int triggerWidgetItemMinHeight = qRound(mTriggerPatternEdit.at(0)->minimumSizeHint().height() * 1.5);
     mpScrollArea->setMinimumHeight(triggerWidgetItemMinHeight);
 
@@ -2392,25 +2100,18 @@ void dlgTriggerEditor::applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWid
 
     patternWidget->singleLineTextEdit_pattern->setTheme(mpHost->getEditorTheme());
     patternWidget->applyThemePalette(referencePalette);
-    // After the row's palette pass, which hands every control the one the form
-    // is drawn with: a pattern is typed into a field like the name above it, so
-    // it is filled and written in the window's own colours whatever the syntax
-    // theme says. The theme is left to say what a group or a quantifier is
-    // coloured, and only once those colours read on this field.
+    // After the palette pass: a pattern field takes the window's field colours whatever the syntax theme says
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     patternWidget->singleLineTextEdit_pattern->setFieldColors(tokens.field, tokens.text);
 
-    // A pattern is game text rather than interface text, so it is read in the
-    // font the script beside it is read in: a space is then as wide as a
-    // letter, and what would match is what is on the row
+    // Game text, so set in the editor's font, where a space is as wide as a letter
     const QFont patternFont = mpHost->getEditorFont();
     patternWidget->singleLineTextEdit_pattern->setFont(patternFont);
     patternWidget->label_patternNumber->setFont(patternFont);
 
     const QFontMetrics patternMetrics(patternFont);
     patternWidget->label_patternNumber->setFixedWidth(patternMetrics.horizontalAdvance(QString(scmEditorPatternNumberDigits, QLatin1Char('0'))));
-    // The .ui file's heights are for a row of interface text; what the row holds
-    // now is a line of the editor's font, which is whatever the profile set it to
+    // The .ui's heights are for interface text; the row holds a line of the profile's editor font
     const int rowHeight = std::max(scmEditorPatternRowMinimumHeight, patternMetrics.height() + scmEditorPatternRowPadding);
     patternWidget->setFixedHeight(rowHeight);
     const QMargins rowMargins = patternWidget->layout()->contentsMargins();
@@ -2426,8 +2127,6 @@ void dlgTriggerEditor::applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWid
 
     patternWidget->comboBox_patternType->setFixedWidth(patternTypeColumnWidth(patternWidget->comboBox_patternType->font()));
 
-    // Mixed once and handed to every row: fifty rows are fifty tints and fifty
-    // tinted pictures otherwise
     if (mPatternDeleteIcon.isNull()) {
         mPatternDeleteIcon = patternDeleteIcon();
     }
@@ -2438,10 +2137,7 @@ void dlgTriggerEditor::applyPatternWidgetStyle(dlgTriggerPatternEdit* patternWid
     patternWidget->setHoverTint(mPatternHoverTint);
 }
 
-// Wide enough for the longest type name in whatever language the editor is in,
-// so that the pattern beside it starts at the same place on every row. The names
-// and the font they are drawn in are the same on every row, so the answer is
-// taken once and thrown away by whatever moves either of them.
+// The longest translated type name, so every row's pattern starts at the same place
 int dlgTriggerEditor::patternTypeColumnWidth(const QFont& typeFont) const
 {
     if (mPatternTypeColumnWidth > 0) {
@@ -2456,9 +2152,6 @@ int dlgTriggerEditor::patternTypeColumnWidth(const QFont& typeFont) const
     return mPatternTypeColumnWidth;
 }
 
-// Tinted from the palette the way the toolbar's pictures are. The row only
-// draws it while the mouse is over the row, so the button is chrome the column
-// of patterns is not made to carry fifty times over.
 QIcon dlgTriggerEditor::patternDeleteIcon() const
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -2468,15 +2161,10 @@ QIcon dlgTriggerEditor::patternDeleteIcon() const
     return deleteGlyph;
 }
 
-// The eight swatches, and the grip every row draws, cut once for the theme in
-// force and handed to every row - a trigger can hold fifty of them, and mixing
-// either per row is fifty times the same answer
 void dlgTriggerEditor::restylePatternTypeIcons()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     const qreal ratio = devicePixelRatioF();
-    // Enough of a hairline to hold a pale swatch against a light page without
-    // reading as a second colour
     const QColor outline = uiDesign::blend(tokens.page, tokens.text, 0.35);
     const qreal lightness = tokens.darkPage ? scmEditorPatternSwatchLightnessOnDark : scmEditorPatternSwatchLightnessOnLight;
 
@@ -2498,8 +2186,7 @@ void dlgTriggerEditor::restylePatternTypeIcons()
     }
 }
 
-// At the size they were cut at rather than blown up to whatever a platform
-// style's default icon size happens to be
+// Sized explicitly, or the platform style's default icon size scales the swatches up
 void dlgTriggerEditor::applyPatternTypeIcons(QComboBox* pBox) const
 {
     if (!pBox) {
@@ -2516,8 +2203,6 @@ void dlgTriggerEditor::applyPatternGripGlyph(QLabel* pHandle) const
     if (!pHandle) {
         return;
     }
-    // The dots are the whole of what the label shows: the .ui file's text is
-    // cleared rather than drawn under them
     pHandle->setText(QString());
     pHandle->setPixmap(mPatternGripGlyph);
     pHandle->setFixedWidth(scmEditorPatternGripWidth);
@@ -2525,18 +2210,14 @@ void dlgTriggerEditor::applyPatternGripGlyph(QLabel* pHandle) const
 
 void dlgTriggerEditor::createPatternItem(int index)
 {
-    // Made without a parent and given one by the layout inside a lift: under
-    // a stylesheet setParent() hands a new widget the application font rather
-    // than its parent's, and the rows come and go as triggers are shown (see
-    // StyleSheetFontLift)
+    // Parentless until the layout adopts it inside a lift: under a stylesheet setParent() gives a new widget the
+    // application font rather than its parent's (see StyleSheetFontLift)
     auto* pItem = new dlgTriggerPatternEdit(nullptr);
     QComboBox* pBox = pItem->comboBox_patternType;
     pBox->addItems(mPatternList);
     pBox->setItemData(0, QVariant(index));
     applyPatternTypeIcons(pBox);
-    // Before the row is ever dropped down: the see-through window a rounded
-    // list needs is made at the popup's first show and kept for the rest of the
-    // session
+    // Before the first drop-down: the translucent window a rounded list needs is made at the popup's first show
     uiDesign::letPopupsTakeTheFieldsCorner(pBox);
     applyPatternGripGlyph(pItem->label_dragHandle);
     connect(pBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &dlgTriggerEditor::slot_setupPatternControls);
@@ -2550,16 +2231,13 @@ void dlgTriggerEditor::createPatternItem(int index)
     connect(pItem->toolButton_deletePattern, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_deletePatternRow);
 
     auto* pLayout = static_cast<QVBoxLayout*>(mpWidget_triggerItems->layout());
-    // Under the rows already there and over the button that adds one more, which
-    // is what keeps that button beneath the last row on show
     const int insertIndex = mpButton_addPattern ? pLayout->indexOf(mpButton_addPattern) : pLayout->count() - 1;
     {
         const uiDesign::StyleSheetFontLift lift(mpWidget_triggerItems);
         pLayout->insertWidget(insertIndex, pItem);
     }
-    // Polishing resolves a widget with a class font - a label or a button on
-    // macOS - against that font, past its parent: polish now, then resolve
-    // the row again
+    // Polishing resolves a class-font widget (a label, or a button on macOS) against that font past its parent,
+    // so resolve again after it
     pItem->ensurePolished();
     uiDesign::resolveFontsUnderStyleSheets(pItem);
 
@@ -2582,8 +2260,7 @@ void dlgTriggerEditor::createPatternItem(int index)
     pItem->toolButton_deletePattern->setToolTip(utils::richText(tr("Delete this pattern")));
     //: Name of a pattern row's delete button as a screen reader speaks it. %1 is the number of the row it belongs to.
     pItem->toolButton_deletePattern->setAccessibleName(tr("Delete pattern %1").arg(index + 1));
-    // The glyph is only drawn under the mouse, so the keyboard needs a way in of
-    // its own - and the row shows the glyph while the button holds focus
+    // Its glyph only shows under the mouse, so the keyboard needs its own way in
     pItem->toolButton_deletePattern->setFocusPolicy(Qt::TabFocus);
     pItem->toolButton_deletePattern->setFixedSize(scmEditorPatternDeleteButtonSize, scmEditorPatternDeleteButtonSize);
     pItem->toolButton_deletePattern->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
@@ -2591,8 +2268,7 @@ void dlgTriggerEditor::createPatternItem(int index)
     lineEditShouldMarkSpaces[pItem->singleLineTextEdit_pattern] = false;
 
     pItem->singleLineTextEdit_pattern->installEventFilter(this);
-    // The grip has no press of its own: what a drag from it means is a matter of
-    // where the other rows are, which only the editor knows
+    // What a drag from the grip means depends on where the other rows are, which only the editor knows
     pItem->label_dragHandle->installEventFilter(this);
     applyPatternWidgetStyle(pItem);
     pItem->spinBox_lineSpacer->installEventFilter(this);
@@ -2722,9 +2398,7 @@ void dlgTriggerEditor::setupPatternNavigationShortcuts()
         focusPatternItem(mVisiblePatternCount - 1, Qt::ShortcutFocusReason);
     });
 
-    // Dragging a row's grip is the only way to reorder patterns with a mouse, so
-    // these two are the only way to reorder them without one. Kept in the list
-    // changeView() switches on and off with the trigger view.
+    // In mPatternNavigationShortcuts, so changeView() enables them with the trigger view only
     auto addReorderShortcut = [this](const QKeySequence& keys, const int offset) {
         auto* pShortcut = new QShortcut(keys, mpTriggersMainArea);
         pShortcut->setContext(Qt::WidgetWithChildrenShortcut);
@@ -2750,9 +2424,6 @@ void dlgTriggerEditor::setupPatternNavigationShortcuts()
     }
 }
 
-// Which of the pattern rows the keyboard is in. The focus can be on any of a
-// row's controls, or on the row itself, so the answer is whichever row is an
-// ancestor of what holds it.
 int dlgTriggerEditor::focusedPatternRow() const
 {
     for (const QWidget* pFocused = QApplication::focusWidget(); pFocused; pFocused = pFocused->parentWidget()) {
@@ -2776,15 +2447,10 @@ void dlgTriggerEditor::movePatternRowByKeyboard(const int offset)
     }
 
     movePatternRowContent(from, to);
-    // The rows are a pool that is never reordered, so the focus stayed where it
-    // was while what it was on moved - it follows the contents rather than the
-    // widget, which is what makes a second press carry the same pattern further
+    // The row widgets never reorder, so the focus follows the content for a second press to carry it further
     focusPatternItem(to, Qt::ShortcutFocusReason);
 }
 
-// The row after the last one is always empty and typing in it adds another, so
-// this is the same thing said out loud - and the one way to reach a row from the
-// keyboard without having typed in the one before it
 void dlgTriggerEditor::setupAddPatternButton()
 {
     mpButton_addPattern = new uiDesign::PlaceholderButton(mpWidget_triggerItems);
@@ -2793,28 +2459,24 @@ void dlgTriggerEditor::setupAddPatternButton()
     //: Button under a trigger's patterns that gives it one more
     mpButton_addPattern->setText(tr("Add pattern"));
     mpButton_addPattern->setCursor(Qt::PointingHandCursor);
-    // The button paints the dashed frame it is read as a placeholder by, and
-    // auto-raise would have the style draw a second one over it under the mouse
+    // The button paints its own dashed frame; auto-raise would have the style draw a second one under the mouse
     mpButton_addPattern->setAutoRaise(false);
     mpButton_addPattern->setFrameMargins(QMargins(0, scmEditorAddPatternMarginTop, 0, scmEditorAddPatternMarginBottom));
     mpButton_addPattern->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     connect(mpButton_addPattern, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_addPattern);
 
     auto* pLayout = static_cast<QVBoxLayout*>(mpWidget_triggerItems->layout());
-    // Over the stretch that holds the rows up against the top of the area, and
-    // under every row: createPatternItem() puts each new one above this button
+    // Above the trailing stretch; createPatternItem() inserts each new row above this button
     pLayout->insertWidget(pLayout->count() - 1, mpButton_addPattern, 0, Qt::AlignLeft);
 
-    // Out of the layout on purpose: it is put over whichever row a dragged one
-    // would land on, which is a place no layout has a slot for
+    // Out of the layout: it is laid over whichever row a drag would land on, which no layout has a slot for
     mpFrame_patternDropIndicator = new QFrame(mpWidget_triggerItems);
     mpFrame_patternDropIndicator->setObjectName(qsl("editorPatternDropIndicator"));
     mpFrame_patternDropIndicator->setFixedHeight(scmEditorPatternDropIndicatorHeight);
     mpFrame_patternDropIndicator->setAttribute(Qt::WA_TransparentForMouseEvents);
     mpFrame_patternDropIndicator->hide();
 
-    // The button comes into being after the shell has been styled, so it asks
-    // for its own picture rather than waiting for the next appearance change
+    // Created after the shell was styled, so it asks for its own glyph
     restyleAddPatternIcon();
     updateAddPatternButton();
 }
@@ -2833,12 +2495,8 @@ void dlgTriggerEditor::restyleAddPatternIcon()
     const int addGlyphSize = qRound(mpButton_addPattern->fontMetrics().height() * 0.9);
     mpButton_addPattern->setIconSize(QSize(addGlyphSize, addGlyphSize));
 
-    // The dashed frame is the only thing saying that one more pattern goes
-    // there, so it is held to what a control needs rather than to the hairline a
-    // card border gets away with; the card border it used to borrow is 1.3:1.
+    // Control contrast rather than a card hairline: the frame is the only sign one more pattern goes there
     const QColor restingFrame = uiDesign::blend(tokens.card, tokens.text, 0.45);
-    // ...and once the trigger holds as many patterns as it can, the frame drops
-    // back to the hairline a card is edged with: there is nothing to click
     const QColor disabledFrame = uiDesign::blend(tokens.card, tokens.text, 0.22);
     mpButton_addPattern->setFrameColors(restingFrame, tokens.accent, disabledFrame);
 }
@@ -2867,8 +2525,7 @@ void dlgTriggerEditor::slot_addPattern()
     }
 
     showPatternItems(mVisiblePatternCount + 1);
-    // The list is one row longer than the pane was sized for, and the pane's new
-    // height is what the scroll to the new row below is measured against
+    // Before focusing: the scroll to the new row is measured against the pane's new height
     fitFormPaneToItsContents();
     focusPatternItem(mVisiblePatternCount - 1);
 }
@@ -2913,22 +2570,17 @@ void dlgTriggerEditor::setPatternRowContent(dlgTriggerPatternEdit* patternItem, 
         return;
     }
 
-    // Held quiet for the whole of this, setupPatternControls() included: a row
-    // told what it now holds is one row of a shift that is still under way, and
-    // the count of what is filled in is only worth redoing once it has finished
+    // Quiet through setupPatternControls() too: this row is one step of a shift that is still under way
     const bool patternWasBlocked = patternItem->singleLineTextEdit_pattern->blockSignals(true);
     {
         const QSignalBlocker typeBlocker(patternItem->comboBox_patternType);
         const QSignalBlocker spacerBlocker(patternItem->spinBox_lineSpacer);
-        // The text goes in before the type does: a colour pattern's text is
-        // written by the type change when the row looks empty to it
+        // Text before type: a type change writes a colour pattern's text when the row looks empty
         patternItem->singleLineTextEdit_pattern->setPlainText(content.pattern);
         patternItem->comboBox_patternType->setCurrentIndex(content.type);
         patternItem->spinBox_lineSpacer->setValue(content.lineSpacerValue);
     }
-    // What the two colour buttons say and are filled with is read off the
-    // pattern text when a trigger is loaded, so it travels with the row rather
-    // than being worked out again here
+    // Carried with the row: the colour buttons are only worked out from the pattern text when a trigger loads
     patternItem->pushButton_fgColor->setStyleSheet(content.foregroundStyleSheet);
     patternItem->pushButton_fgColor->setText(content.foregroundText);
     patternItem->pushButton_bgColor->setStyleSheet(content.backgroundStyleSheet);
@@ -2939,9 +2591,7 @@ void dlgTriggerEditor::setPatternRowContent(dlgTriggerPatternEdit* patternItem, 
     patternItem->singleLineTextEdit_pattern->blockSignals(patternWasBlocked);
 }
 
-// The last row a move or a delete may write to. mTriggerPatternEdit is a pool of
-// up to fifty rows of which only the first mVisiblePatternCount are on show, so
-// bounding against the pool would let content land in a row nobody can see.
+// Not bounded by the pool's size, or content could land in a hidden row
 int dlgTriggerEditor::lastVisiblePatternRow() const
 {
     return std::min(mVisiblePatternCount, static_cast<int>(mTriggerPatternEdit.size())) - 1;
@@ -2955,8 +2605,6 @@ void dlgTriggerEditor::movePatternRowContent(const int from, const int to)
     }
 
     const PatternRowContent moved = patternRowContent(mTriggerPatternEdit.at(from));
-    // Each row the shift passes over is one step of one edit, so the chrome that
-    // depends on all of them is left until the shift has finished
     mPatternBulkEdit = true;
     if (from < to) {
         for (int i = from; i < to; ++i) {
@@ -2975,8 +2623,7 @@ void dlgTriggerEditor::movePatternRowContent(const int from, const int to)
     updatePatternTabOrder();
 }
 
-// The row widgets are a pool that is never reordered, so a row is taken away by
-// pulling what every row below it holds up one place and emptying the last
+// The row widgets are a pool that is never reordered, so a delete shifts content up and empties the last row
 void dlgTriggerEditor::deletePatternRow(const int row)
 {
     const int lastRow = lastVisiblePatternRow();
@@ -2992,7 +2639,6 @@ void dlgTriggerEditor::deletePatternRow(const int row)
     mPatternBulkEdit = false;
 
     slot_itemEdited();
-    // Which is what collapses the rows the delete left empty at the bottom
     compactPatternRows();
     updatePatternTabOrder();
 }
@@ -3027,8 +2673,6 @@ void dlgTriggerEditor::showPatternDropIndicator(const int targetRow)
         return;
     }
 
-    // The edge the dragged row would come to rest against: over the target when
-    // it is being carried up the list, under it when it is going down
     const QRect rowRect = patternItem->geometry();
     const int indicatorTop = targetRow < mPatternDragSourceRow ? rowRect.top() : rowRect.bottom() - scmEditorPatternDropIndicatorHeight;
     mpFrame_patternDropIndicator->setGeometry(rowRect.left(), indicatorTop, rowRect.width(), scmEditorPatternDropIndicatorHeight);
@@ -3053,9 +2697,7 @@ void dlgTriggerEditor::endPatternRowDrag(const bool dropped)
     }
 }
 
-// A press on a row's grip is followed until it is let go: the rows are a pool
-// that is never reordered, so there is no widget for QDrag to carry - what moves
-// between two places is what the rows hold.
+// Tracked by hand rather than with QDrag: the rows never reorder, so there is no widget to carry, only content
 bool dlgTriggerEditor::handlePatternHandleEvent(QObject* watched, QEvent* event)
 {
     auto* pHandle = qobject_cast<QLabel*>(watched);
@@ -3123,9 +2765,7 @@ void dlgTriggerEditor::slot_hideVariable(bool status)
         } else {
             vu->removeHidden(var);
         }
-        // The row is still in the tree until the variables are read again, so
-        // the mark that says it is hidden goes on or comes off it here - and the
-        // reading beside the switch over the tree changes with it
+        // The row stays in the tree until the variables are reread, so its hidden mark is updated here
         refreshVariableRow(mpCurrentVarItem);
         updateHiddenVariablesCount();
     }
@@ -3159,27 +2799,20 @@ void dlgTriggerEditor::slot_setToolBarIconSize(const int s)
         return;
     }
 
-    // The actions toolbar keeps its own arrangement whatever the icon size is:
-    // a row of names beside pictures is what its grouping is read from
     applyEditorToolbarButtonStyles();
 
-    // One scale for the whole editor rather than a toolbar that honours the
-    // preference beside a sidebar that does not: the two bars sit against each
-    // other, and a window where one set of glyphs is bigger than the other
-    // reads as a mistake whichever size is chosen
+    // One scale for toolbar and sidebar, since the two bars sit against each other
     mEditorIconSize = s * scmEditorIconSizeStep;
     toolBar->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
     // This runs from the constructor as well, before there is a sidebar to size
     if (mpListWidget_editorSidebar) {
         mpListWidget_editorSidebar->setIconSize(QSize(mEditorIconSize, mEditorIconSize));
-        // A wider glyph is a wider row, which is the breakpoint the names are
-        // given up at
+        // A wider glyph widens the rows, which moves the label breakpoint
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
     }
 
-    // ...and a wider glyph is a wider button, which moves the width the bar
-    // gives its names up at as well
+    // Wider buttons move the toolbar's label breakpoint too
     fitEditorToolBarToItsLength();
 }
 
@@ -3202,8 +2835,6 @@ void dlgTriggerEditor::slot_setTreeWidgetIconSize(const int s)
 
 void dlgTriggerEditor::closeEvent(QCloseEvent* event)
 {
-    // A grab puts a filter on the whole application and takes the editor's own
-    // shortcuts away, neither of which may outlive the window it was armed in
     endKeyGrab();
     emit editorClosing();
     writeSettings();
@@ -3212,15 +2843,11 @@ void dlgTriggerEditor::closeEvent(QCloseEvent* event)
 
 void dlgTriggerEditor::hideEvent(QHideEvent* event)
 {
-    // ...and the editor is hidden rather than closed on several paths, the
-    // profile going away among them
+    // The editor is hidden rather than closed on several paths, profile teardown among them
     endKeyGrab();
     QMainWindow::hideEvent(event);
 }
 
-// The strip along the top of a window that can be grabbed with the mouse: as
-// long as enough of it lands on a screen that is attached now, the window can
-// be reached and moved, whatever the rest of it hangs over
 static bool windowPlacementReachable(const QPoint& topLeft, const QSize& windowSize)
 {
     constexpr int titleBarHeight = 30;
@@ -3283,9 +2910,7 @@ void dlgTriggerEditor::restoreWindowGeometry()
 
     const QSize storedSize = settings.value(qsl("script_editor_size")).toSize();
     QSize targetSize = (storedSize.isValid() && !storedSize.isEmpty()) ? storedSize : defaultEditorSize();
-    // A size stored before this layout existed, or on a screen that is no
-    // longer attached, is bigger than the desktop it is about to open on -
-    // bring it back inside that desktop rather than open off the bottom of it
+    // A size stored on a larger or detached screen would open off the bottom of this desktop
     targetSize = targetSize.boundedTo(availableArea.size()).expandedTo(minimumSizeHint().boundedTo(availableArea.size()));
     resize(targetSize);
 
@@ -3300,8 +2925,6 @@ void dlgTriggerEditor::restoreWindowGeometry()
         }
     }
 
-    // Nothing stored, or what was stored points at a screen that has gone:
-    // open with the profile the editor belongs to instead
     repositionOnProfileScreen();
 }
 
@@ -3313,9 +2936,6 @@ void dlgTriggerEditor::readSettings()
 
     mAutosaveInterval = settings.value("autosaveIntervalMinutes", 2).toInt();
 
-    // Named for what it is: the sidebar has no closed state to remember, only
-    // whether its rows are labelled. A profile that has never touched the
-    // toolbar's toggle starts with them on.
     mEditorSidebarLabelsShown = settings.value(qsl("editorSidebarLabelsShown"), true).toBool();
     updateEditorSidebarMode();
 }
@@ -3323,33 +2943,20 @@ void dlgTriggerEditor::readSettings()
 void dlgTriggerEditor::writeSettings()
 {
     QSettings& settings = *MudletApp::getQSettings();
-    // Every profile builds an editor as it loads, and script_editor_pos and
-    // script_editor_size are one pair for the whole application - so an editor
-    // that was never put on screen has nothing to say about where the editor
-    // belongs, and saying it anyway is how a second profile's unopened editor
-    // overwrote the placement the user chose in the first one's. Its geometry
-    // at that point is whatever restoreWindowGeometry() and the layout left it
-    // at, not a placement anybody picked.
+    // Every profile builds an editor as it loads and script_editor_pos/size are one pair for the whole
+    // application, so an editor never shown must not overwrite the placement chosen in another profile
     if (mHasBeenShown) {
-        // A maximized or full-screen window would otherwise store the size of the
-        // whole screen and reopen at it for good, so what is stored is the geometry
-        // it would return to
+        // The normal geometry, or a maximized window would reopen at screen size for good
         const QRect normalArea = normalGeometry();
         const QRect storedArea = ((isMaximized() || isFullScreen()) && normalArea.isValid()) ? normalArea : QRect(pos(), size());
         settings.setValue(qsl("script_editor_pos"), storedArea.topLeft());
         settings.setValue(qsl("script_editor_size"), storedArea.size());
     }
     settings.setValue("autosaveIntervalMinutes", mAutosaveInterval);
-    // Only the toolbar's toggle writes this - a window too narrow for the names
-    // never touches it, so a session spent working in a small window does not
-    // decide what the next one opens with
+    // Only the toggle changes this; a window too narrow for the labels folds them without touching it
     settings.setValue(qsl("editorSidebarLabelsShown"), mEditorSidebarLabelsShown);
 
-    // A dragged split is the reader's for as long as the session lasts and no
-    // longer - a form left tall for one item was the wrong height for the next
-    // one on the restart after - so the seven keys each view stored its own
-    // split under are cleared rather than left in every configuration that has
-    // one, saying something nothing reads any more
+    // A dragged split lasts only for the session, so the per-view split keys are obsolete
     for (const QString& retired : {qsl("mTriggerEditorSplitterState"),
                                    qsl("mAliasEditorSplitterState"),
                                    qsl("mScriptEditorSplitterState"),
@@ -3360,10 +2967,7 @@ void dlgTriggerEditor::writeSettings()
         settings.remove(retired);
     }
 
-    // Whether the trigger form's options were on show used to be a stored
-    // preference. They are a disclosure the editor opens closed every time now,
-    // so the key is cleared rather than left behind in every configuration that
-    // has one, saying something nothing reads any more
+    // Obsolete: the options strip always opens closed
     settings.remove(qsl("showAllTriggerControls"));
 }
 
@@ -3552,12 +3156,8 @@ void dlgTriggerEditor::slot_itemSelectedInSearchResults(QTreeWidgetItem* pItem)
                     mpScriptsMainArea->lineEdit_script_name->setCursorPosition(pItem->data(0, PositionRole).toInt());
                     break;
                 case SearchResultIsEventHandler: {
-                    // The row of chips does not scroll, so pointing at the one
-                    // that matched is the whole of the jump - by name rather
-                    // than by the number the search counted to, since the row
-                    // shows neither an empty name nor a repeated one and its
-                    // chips are therefore not the script's list position for
-                    // position
+                    // By name, not by the searched index: the chip row skips empty and repeated names, so chip
+                    // positions are not list positions
                     TScript* pScript = mpHost->getScriptUnit()->getScript(idSearch);
                     const QString handler = pScript ? pScript->getEventHandlerList().value(pItem->data(0, PatternOrLineRole).toInt()) : QString();
                     mpChipRow_scriptEvents->focusItem(mpChipRow_scriptEvents->indexOf(handler));
@@ -3791,31 +3391,19 @@ void dlgTriggerEditor::slot_itemSelectedInSearchResults(QTreeWidgetItem* pItem)
     } // End of switch()
 }
 
-// The line a match is on, as one row of it can be shown: whitespace that a row
-// has no room for taken out of it, and the match moved along by however much
-// that shifted it. A tab is a problem in both directions - it is advanced to the
-// next tab stop when the line is drawn but measured as a single glyph when the
-// marker under the match is sized - and a line break would put letters outside
-// the row altogether. Returns where the match starts in the flattened line,
-// which is no longer where it starts in the item itself.
+// A tab is drawn to the next tab stop but measured as one glyph when the match marker is sized, and a line break
+// escapes the row. Returns the match's start in the flattened line.
 static int flattenSnippet(QString& snippet, const int matchStart)
 {
-    // One QChar for one QChar, so nothing before the match moves...
+    // One QChar for one, so nothing before the match moves
     snippet.replace(QChar(QChar::LineFeed), QChar(QChar::Space));
     snippet.replace(QChar(QChar::CarriageReturn), QChar(QChar::Space));
-    // ...whereas each tab widened into two spaces pushes the match one QChar
-    // further along the line that is shown
     const int widened = snippet.left(std::max(0, matchStart)).count(QChar::Tabulation);
     snippet.replace(QChar(QChar::Tabulation), QString(QChar::Space).repeated(2));
     return matchStart + widened;
 }
 
-// Every result row goes through here, so that the navigation data the click
-// handler reads and the presentation data the delegate draws from are written
-// out in one place and cannot drift apart. The heading row keeps the first
-// match's navigation data as well as its own: clicking a heading goes where the
-// first of the matches under it goes, which is what clicking the row for that
-// match used to do before the headings existed.
+// The heading also carries its first match's navigation data, so clicking it goes where that match goes
 void dlgTriggerEditor::addSearchResult(QTreeWidgetItem*& pParent, const SearchResultRow& row)
 {
     const bool variable = (row.view == EditorViewType::cmVarsView);
@@ -3834,8 +3422,7 @@ void dlgTriggerEditor::addSearchResult(QTreeWidgetItem*& pParent, const SearchRe
         pParent->setData(0, uiDesign::SearchResultDelegate::TypeLabelRole, row.typeLabel);
         //: Read out for a search result heading: %1 is the kind of thing it is (Trigger, Alias...) and %2 its name
         pParent->setData(0, Qt::AccessibleTextRole, tr("%1 %2").arg(row.typeLabel, row.title));
-        // The name is cut to the width of the panel when it is drawn, so the
-        // whole of it is a hover away
+        // The delegate elides the name to the panel's width
         pParent->setToolTip(0, row.title);
         treeWidget_searchResults->addTopLevelItem(pParent);
         pParent->setExpanded(true);
@@ -3884,8 +3471,6 @@ void dlgTriggerEditor::slot_searchMudletItems(const int index)
     }
 
     if (!treeWidget_searchResults->topLevelItemCount()) {
-        // A row rather than a panel of its own: an empty list says nothing about
-        // whether the search ran
         //: Shown in place of search results when a search found nothing: %1 is what was typed into the search field, in the quotation marks the locale uses
         auto* pNotice = new QTreeWidgetItem(QStringList{tr("No matches for %1").arg(QLocale().quoteString(s))});
         pNotice->setData(0, uiDesign::SearchResultDelegate::RowKindRole, static_cast<int>(uiDesign::SearchResultDelegate::NoticeRow));
@@ -3904,11 +3489,6 @@ void dlgTriggerEditor::slot_searchMudletItems(const int index)
     mpSourceEditorEdbee->controller()->update();
 }
 
-// The panel down the left shows one of two things: the profile's items, or what
-// the last search found. Results stay up once they are there - clicking one
-// opens the item it names in the pane to the right without putting the trees
-// back - so that a list of matches can be worked through one at a time. Clearing
-// the field, pressing Escape in it, or emptying it is what hands the panel back.
 void dlgTriggerEditor::setSearchResultsShown(const bool shown)
 {
     if (!mpWidget_searchResultsPane || !mpWidget_itemTreesPane) {
@@ -3924,8 +3504,7 @@ void dlgTriggerEditor::setSearchResultsShown(const bool shown)
     if (shown) {
         return;
     }
-    // A tree scrolls nothing while it is off screen, so whatever was chosen from
-    // the results while it was away is brought into view now that it is back
+    // scrollToItem() does nothing on a hidden tree, so catch up on what was chosen from the results meanwhile
     for (QTreeWidget* pTreeWidget : {treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables, mpFolderTree}) {
         if (pTreeWidget->isVisibleTo(mpWidget_itemTreesPane) && pTreeWidget->currentItem()) {
             pTreeWidget->scrollToItem(pTreeWidget->currentItem());
@@ -3933,11 +3512,7 @@ void dlgTriggerEditor::setSearchResultsShown(const bool shown)
     }
 }
 
-// Switching views while the results are up leaves the trees off screen, and
-// setFocus() on a widget that is not visible does nothing - which would leave
-// the panel with no focus at all, and the panel's own shortcuts with nowhere to
-// fire from. What the reader is looking at is the results, so that is what takes
-// it instead.
+// setFocus() on a hidden tree does nothing, which would leave the panel's shortcuts nowhere to fire from
 void dlgTriggerEditor::focusPanelTree(QWidget* pTreeWidget)
 {
     if (mpWidget_itemTreesPane && !mpWidget_itemTreesPane->isVisibleTo(searchSplitter)) {
@@ -4009,8 +3584,7 @@ void dlgTriggerEditor::searchVariables(const QString& text)
             SearchResultRow row;
             row.view = EditorViewType::cmVarsView;
             row.typeLabel = tr("Variable");
-            // A variable is reached by the expression that names it rather than
-            // by the bare name its parent table knows it as
+            // Titled by the expression that reaches it, not the bare key its parent table knows it by
             row.title = idString;
             row.name = name;
             row.variableId = vu->shortVarName(varDecendent);
@@ -5627,11 +5201,8 @@ void dlgTriggerEditor::slot_itemMoved(int itemID, int oldParentID, int newParent
         if (pT) {
             viewType = EditorViewType::cmTimerView;
             itemName = pT->getName();
-            // Dropped onto another timer, this one has just become an offset
-            // timer - or has stopped being one - which is a different sentence
-            // beside the same four fields. Deferred because the tree announces
-            // the move before the timer unit has carried it out, so what the
-            // timer's parent is, is only settled once this has returned.
+            // Becoming or ceasing to be an offset timer changes the interval sentence; deferred because the tree
+            // announces the move before the timer unit has carried it out
             if (mpCurrentTimerItem && mpCurrentTimerItem->data(0, Qt::UserRole).toInt() == itemID) {
                 QTimer::singleShot(0ms, this, &dlgTriggerEditor::refreshShownTimerIntervalSentence);
             }
@@ -6162,8 +5733,7 @@ void dlgTriggerEditor::children_icon_action(QTreeWidgetItem* pWidgetItemParent)
         if (pT->state()) {
             if (pT->isFolder()) {
                 itemDescription = (itemActive ? descActiveFolder : descInactiveFolder);
-                // A folder carrying a package name is a module's or a package's
-                // master folder, which has no parent to be held inactive by
+                // A folder with a package name is a module's or package's master folder, with no parent to be held inactive by
                 if (pT->mPackageName.isEmpty() && itemActive && !pT->ancestorsActive()) {
                     itemDescription = descInactiveParent.arg(itemDescription);
                 }
@@ -6613,9 +6183,8 @@ void dlgTriggerEditor::addKey(bool isFolder)
         pParentItem->setExpanded(true);
     }
 
-    // Reset UI. A new key answers no keystroke yet, which the field says by
-    // standing empty behind its placeholder rather than by holding those words
-    // as if they were one.
+    // Reset UI
+    // The binding stands empty behind its placeholder; words in it would read as a key
     mpKeysMainArea->lineEdit_key_command->clear();
     mpKeysMainArea->lineEdit_key_binding->clear();
     clearDocument(mpSourceEditorEdbee); // New Key
@@ -7537,9 +7106,8 @@ bool dlgTriggerEditor::aliasSubstitutionLoops(const QString& regex, const QStrin
     return rx.match(substitution).capturedStart() != -1;
 }
 
-// The tree delegate reads a row's state off its unit as it paints, so a refresh
-// changes the row's description and nothing else. True when it changed, which is
-// also when the row is repainted: setData() with an equal value emits nothing.
+// The delegate paints a row's state off its unit, so only the description is set here.
+// True when it changed, which is also when the row repaints: setData() with an equal value emits nothing.
 static bool setRowDescription(QTreeWidgetItem* pItem, const QString& description)
 {
     if (pItem->data(0, Qt::AccessibleDescriptionRole).toString() == description) {
@@ -7549,8 +7117,6 @@ static bool setRowDescription(QTreeWidgetItem* pItem, const QString& description
     return true;
 }
 
-// Computes the accessible description for a non-error alias, shared by the
-// explicit save and the per-property autosave paths.
 void dlgTriggerEditor::computeAliasDescription(TAlias* pT, QString& itemDescription) const
 {
     if (pT->isFolder()) {
@@ -7612,8 +7178,6 @@ void dlgTriggerEditor::showAliasLoopWarning(QTreeWidgetItem* pItem, const QStrin
                    tr("Alias <em>%1</em> has an infinite loop - substitution matches its own pattern. Please fix it - this alias isn't good as it'll call itself forever.").arg(name.toHtmlEscaped()));
 }
 
-// Reflects the alias's compile state on its tree item: the normal reading when
-// the pattern compiles, faulty-regex error otherwise.
 void dlgTriggerEditor::applyAliasState(QTreeWidgetItem* pItem, TAlias* pT, bool touchNotification, bool respectNewState)
 {
     if (pT->state()) {
@@ -7694,8 +7258,7 @@ void dlgTriggerEditor::paintAliasItem(QTreeWidgetItem* pItem, TAlias* pT, bool t
     // A profile's aliases stay TAlias::mIsNew until explicitly saved in the
     // editor, so respecting that here would mark every Lua-toggled alias
     // "unsaved" instead of reporting its actual state.
-    // setAliasNormalState()/showAliasError() bump mAliasIconPaintCount
-    // themselves, when the row's reading changes.
+    // setAliasNormalState()/showAliasError() bump mAliasIconPaintCount themselves, only when the row changes
     applyAliasState(pItem, pT, touchNotification, false);
 }
 
@@ -7771,8 +7334,7 @@ void dlgTriggerEditor::saveAction()
         if (pA->isFolder()) {
             itemDescription = (itemActive ? descActiveFolder : descInactiveFolder);
             // A folder carrying a package name is a module's master folder,
-            // which has no parent to be held inactive by; the rest are toolbars
-            // and menus, which do
+            // which has no parent to be held inactive by
             if (pA->mPackageName.isEmpty() && itemActive && !pA->ancestorsActive()) {
                 itemDescription = descInactiveParent.arg(itemDescription);
             }
@@ -8450,17 +8012,14 @@ void dlgTriggerEditor::saveKey()
         return;
     }
 
-    // Saving is one of the ways out of a grab: the toolbar's buttons take no
-    // focus, so a click on Save item with one armed would otherwise leave it
-    // armed - and read the emptied field below as the key's name
+    // The toolbar's buttons take no focus, so Save with a grab armed would
+    // otherwise leave it armed and read the emptied field below as the name
     endKeyGrab();
 
     mpKeysMainArea->trimName();
     QString name = mpKeysMainArea->lineEdit_key_name->text();
     if (name.isEmpty() || name == tr("New key")) {
-        // A key with no keystroke leaves that field empty behind its
-        // placeholder, and an item named after it is named by what the reader
-        // sees there rather than by nothing at all
+        // An empty binding field shows its placeholder, so name the item by what the reader sees there
         name = mpKeysMainArea->lineEdit_key_binding->text();
         if (name.isEmpty()) {
             name = mpKeysMainArea->lineEdit_key_binding->placeholderText();
@@ -8620,9 +8179,8 @@ void dlgTriggerEditor::setupPatternControls(const int type, dlgTriggerPatternEdi
         break;
     }
 
-    // All three walk every row, so during a move or a delete - which set one row
-    // after another - they would run once per row for an answer only the last
-    // row makes true. The bulk operation runs them itself once it has finished.
+    // All three walk every row, so a move or delete, which sets one row after
+    // another, runs them itself once it has finished
     if (mPatternBulkEdit) {
         return;
     }
@@ -8632,19 +8190,14 @@ void dlgTriggerEditor::setupPatternControls(const int type, dlgTriggerPatternEdi
     updatePatternPlaceholders();
 }
 
-// Typing in a row changes what the form says about the patterns, not how many
-// rows there are: a row is added by the Add pattern button (or by Return in the
-// last row) and taken away by its own delete button, so nothing appears under
-// the cursor or vanishes from under it while the user is filling one in
+// Typing never adds or removes rows, so nothing appears or vanishes under the cursor
 void dlgTriggerEditor::handlePatternChange()
 {
     checkForMoreThanOneTriggerItem();
     updatePatternPlaceholders();
 }
 
-// A move or a delete shifts what every row below the one it touched holds, so
-// the rows the shift emptied at the bottom are the ones to take away. One row
-// always stays: an empty trigger is one waiting for its first pattern.
+// One row always stays: an empty trigger is one waiting for its first pattern
 void dlgTriggerEditor::compactPatternRows()
 {
     checkForMoreThanOneTriggerItem();
@@ -8672,9 +8225,7 @@ void dlgTriggerEditor::compactPatternRows()
     const int desiredCount = qMax(lastActive + 1, 1);
     if (desiredCount != mVisiblePatternCount) {
         showPatternItems(desiredCount);
-        // The rows the delete or the move left over are gone, so the room they
-        // were being shown in goes back to the code pane rather than standing
-        // empty until the trigger is chosen afresh
+        // Give the freed room back to the code pane now, not when the trigger is next chosen
         fitFormPaneToItsContents();
     } else {
         updatePatternPlaceholders();
@@ -8794,13 +8345,8 @@ void dlgTriggerEditor::updatePatternTabOrder()
         previous = next;
     };
 
-    // The head row first - the ID pill is a label and takes no focus - then the
-    // options strip, read left to right, and the pattern rows under it. With
-    // the strip closed its controls are not visible to the form, which
-    // addToChain() takes as reason enough to leave them out, so the chain runs
-    // from the Options button straight to the patterns. spinBox_lineMargin is
-    // left out for the same reason whichever way the strip stands: it is
-    // hidden, and the two segments are how the mode it holds is reached.
+    // The ID pill is a label and takes no focus. spinBox_lineMargin is always
+    // hidden: the two segments are how the mode it holds is reached.
     addToChain(mpTriggersMainArea->lineEdit_trigger_command);
     addToChain(mpTriggersMainArea->toolButton_toggleExtraControls);
     addToChain(mpRadioButton_matchAny);
@@ -8811,7 +8357,6 @@ void dlgTriggerEditor::updatePatternTabOrder()
     addToChain(mpTriggersMainArea->checkBox_filterTrigger);
     addToChain(mpTriggersMainArea->checkBox_soundTrigger);
     addToChain(mpTriggersMainArea->lineEdit_soundFile);
-    // Only there while there is a file to forget
     addToChain(mpTriggersMainArea->toolButton_clearSoundFile);
     addToChain(mpTriggersMainArea->checkBox_triggerColorizer);
     addToChain(mpTriggersMainArea->pushButtonFgColor);
@@ -8838,12 +8383,10 @@ void dlgTriggerEditor::updatePatternTabOrder()
         if (item->comboBox_patternType->isVisible()) {
             addToChain(item->comboBox_patternType);
         }
-        // Drawn only under the mouse, but the row shows the glyph while this
-        // holds focus, so tabbing to it is not tabbing to nothing
+        // Drawn only under the mouse, but the row shows it while it holds focus
         addToChain(item->toolButton_deletePattern);
     }
-    // The grip is the one part of the row chrome the keyboard does not reach:
-    // reordering is on Ctrl+Alt+Up and Ctrl+Alt+Down instead
+    // The grip is left out: Ctrl+Alt+Up and Ctrl+Alt+Down reorder from the keyboard
     addToChain(mpButton_addPattern);
     addToChain(mpSourceEditorEdbee);
 }
@@ -9002,8 +8545,7 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
             return;
         }
 
-        // Exactly what the trigger holds, and no trailing empty row: the Add
-        // pattern button is what one more is asked for with
+        // No trailing empty row: the Add pattern button asks for one more
         showPatternItems(qMax(static_cast<int>(patternList.size()), 1));
         for (int i = 0; i < patternList.size() && i < mTriggerPatternEdit.size(); i++) {
             if (i >= pT->mColorPatternList.size()) {
@@ -9083,10 +8625,7 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
             patternItem->spinBox_lineSpacer->hide();
             patternItem->comboBox_patternType->setCurrentIndex(0);
         }
-        // A trigger with more rows than the pane has room for opens at its
-        // first pattern, which is what the reader came to see - it used to open
-        // scrolled to the empty row after the last one, with the first rows out
-        // of sight. Add pattern still scrolls to the row it adds.
+        // Otherwise a long trigger opens scrolled away from its first patterns
         mpScrollArea->verticalScrollBar()->setValue(0);
         const QString command = pT->getCommand();
         mpTriggersMainArea->lineEdit_trigger_name->setText(pItem->text(0));
@@ -9137,9 +8676,6 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9207,9 +8743,6 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9254,9 +8787,6 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
         mpKeysMainArea->lineEdit_key_command->setText(command);
         mpKeysMainArea->lineEdit_key_name->setText(name);
         mpKeysMainArea->label_idNumber->setText(QString::number(ID));
-        // The keystroke, the words beside it, and whether the row is there at
-        // all: TKey::match() never matches a group, so a keystroke on one is a
-        // setting that cannot do anything
         showKeyBinding();
 
         clearDocument(mpSourceEditorEdbee, pT->getScript());
@@ -9278,9 +8808,6 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
 
     // Unblock property saves now that item loading is complete
     mBlockPropertySave = false;
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9384,15 +8911,9 @@ void dlgTriggerEditor::slot_variableChanged(QTreeWidgetItem* pItem)
     }
 }
 
-// What a click on the square at the head of a variable's row asks for. The
-// square is drawn by VariableTreeDelegate, which makes the row the tree's
-// current one before asking - so there is nothing here to be handed.
-//
-// Qt's tristate cascade ticks every member of a table the tick reaches,
-// including the ones VarUnit refuses to save: a function, a reference, a table
-// past the size limit. Those are put back afterwards, which is what the check
-// box this replaces did (#9957). The saving itself is left where it was - every
-// one of these ticks reaches slot_variableChanged().
+// VariableTreeDelegate makes the clicked row current before calling this. Qt's
+// tristate cascade also ticks members VarUnit refuses to save (functions,
+// references, oversized tables), so those are unticked again afterwards.
 void dlgTriggerEditor::slot_toggleVariableKept()
 {
     QTreeWidgetItem* pItem = treeWidget_variables->currentItem();
@@ -9403,8 +8924,7 @@ void dlgTriggerEditor::slot_toggleVariableKept()
         pItem->setCheckState(0, Qt::Unchecked);
         return;
     }
-    // A partly ticked table is one the reader is asking to keep the whole of,
-    // which is the reading Qt gives a box that is not user-tristate
+    // A partly ticked table goes to ticked, as Qt does for a box that is not user-tristate
     pItem->setCheckState(0, Qt::Checked);
     QList<QTreeWidgetItem*> members;
     treeWidget_variables->getAllChildren(pItem, members);
@@ -9625,16 +9145,10 @@ void dlgTriggerEditor::slot_variableSelected(QTreeWidgetItem* pItem)
                        "Its value may show up blank for the same reason. A script can still change it.")
                             .arg(var->getName().toHtmlEscaped()));
     }
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
-// A row of a form is a word and whatever it leads, laid into the grid as two
-// items rather than one - so showing or hiding either alone leaves a word with
-// nothing beside it, or a control with nothing naming it. A grid row is only
-// out of the way when everything on it is.
+// A label and its control are two grid items, and a grid row only collapses once everything on it is hidden
 static void showEditorFormRow(const bool visible, const QList<QWidget*>& row)
 {
     for (QWidget* pWidget : row) {
@@ -9716,13 +9230,8 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
         mpActionsMainArea->spinBox_action_bar_columns->setValue(pT->getButtonColumns());
         mpActionsMainArea->spinBox_action_bar_offsetToFirstButton->setValue(pT->getButtonFillerOffset());
         mpActionsMainArea->plainTextEdit_action_css->setPlainText(pT->css);
-        // Which rows this item has is what the item is. A folder carrying a
-        // package name is a module's master folder (Tree<T>::mModuleName is
-        // NEVER used but Tree<T>::mPackageName is for both) - neither pressed
-        // nor laid out, and left with only the stylesheet the module is drawn
-        // with. A folder with no parent, or one whose parent is a module master
-        // folder, is a toolbar; any other folder is a menu; anything that is
-        // not a folder at all is a button.
+        // A folder carrying a package name is a module's master folder:
+        // Tree<T>::mModuleName is NEVER used, Tree<T>::mPackageName is for both
         const bool moduleMasterFolder = pT->isFolder() && !pT->mPackageName.isEmpty();
         const bool toolbar = pT->isFolder() && !moduleMasterFolder && (!pT->getParent() || !pT->getParent()->mPackageName.isEmpty());
         const bool menu = pT->isFolder() && !moduleMasterFolder && !toolbar;
@@ -9734,8 +9243,7 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
         mpSourceEditorArea->setVisible(!moduleMasterFolder);
 
         showEditorFormRow(menu || button, {mpActionsMainArea->label_action_button_rotation, mpWidget_actionRotationRow});
-        // On that row rather than one of its own, and only for a button: a menu
-        // is drawn like one but is never pressed down
+        // Only for a button: a menu is drawn like one but is never pressed down
         mpActionsMainArea->checkBox_action_button_isPushDown->setVisible(button);
         showEditorFormRow(button, {mpActionsMainArea->label_action_button_command_down, mpActionsMainArea->lineEdit_action_button_command_down});
         showEditorFormRow(button && pT->isPushDownButton(), {mpActionsMainArea->label_action_button_command_up, mpActionsMainArea->lineEdit_action_button_command_up});
@@ -9743,12 +9251,8 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
         showEditorFormRow(toolbar, {mpActionsMainArea->label_action_bar_location, mpActionsMainArea->comboBox_action_bar_location});
         showEditorFormRow(toolbar, {mpActionsMainArea->label_action_bar_orientation, mpActionsMainArea->comboBox_action_bar_orientation});
         showEditorFormRow(toolbar, {mpActionsMainArea->label_action_bar_columns, mpActionsMainArea->spinBox_action_bar_columns});
-        // There is nowhere to offset the first button into where the bar is not
-        // laid out in lines, which is the question
-        // dlgActionMainArea::slot_setMaximumValueForOffset() answers as the
-        // count is typed. The group box that used to take the whole of the
-        // toolbar's rows away has gone, so the row is asked that same question
-        // here rather than being shown outright.
+        // No first-button offset unless the bar is laid out in lines, the same
+        // test dlgActionMainArea::slot_setMaximumValueForOffset() applies
         showEditorFormRow(toolbar && mpActionsMainArea->spinBox_action_bar_columns->value() > 0,
                           {mpActionsMainArea->label_action_bar_offsetToFirstButton, mpActionsMainArea->spinBox_action_bar_offsetToFirstButton});
 
@@ -9765,9 +9269,6 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9805,8 +9306,6 @@ void dlgTriggerEditor::slot_treeSelectionChanged()
 }
 
 
-// The word set beside each offered event name, which is where the profile's
-// reading of its own names is put into the user's
 static QList<uiDesign::Suggestion> eventSuggestions(const QList<eventNames::Entry>& known)
 {
     QList<uiDesign::Suggestion> suggestions;
@@ -9895,9 +9394,6 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -9945,9 +9441,6 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
         mpTimersMainArea->lineEdit_timer_command->setText(command);
         mpTimersMainArea->lineEdit_timer_name->setText(name);
         mpTimersMainArea->label_idNumber->setText(QString::number(ID));
-        // A timer held inside another timer fires once after the one above it
-        // rather than every interval, and the sentence beside the fields is
-        // where the form says so
         showTimerIntervalSentence(pT->isOffsetTimer());
         const QTime time = pT->getTime();
         mpTimersMainArea->timeEdit_timer_hours->setTime(QTime(time.hour(), 0, 0, 0));
@@ -9970,9 +9463,6 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
     }
 
     mBlockPropertySave = false;
-    // The item just loaded is not the one the panes were last divided for -
-    // the next one along can hold eleven pattern rows where the last held
-    // three - so the form is snapped to what this one asks for
     fitFormPaneToItsContents();
 }
 
@@ -10024,9 +9514,7 @@ void dlgTriggerEditor::fillout_form()
     mpKeyBaseItem->setExpanded(true);
     treeWidget_keys->setCurrentItem(mpKeyBaseItem);
 
-    // The six rows above are the six rows of the sidebar, so they carry the
-    // same glyphs - which are tinted to the palette rather than read off disk,
-    // and so cannot be set where the rows are made
+    // The headings carry the sidebar's palette-tinted glyphs, so they are not set where the rows are made
     restyleEditorTreeHeadingIcons();
 
     // Clear undo stack after initial profile loading (only on first call)
@@ -10678,8 +10166,7 @@ void dlgTriggerEditor::repopulateVars()
     treeWidget_variables->clearVariableRows();
     mpCurrentVarItem = nullptr;
     treeWidget_variables->insertTopLevelItem(0, mpVarBaseItem);
-    // This row is made afresh every time the variables are read, so the glyph
-    // it shares with the sidebar has to be put back on it every time
+    // The heading row is made afresh on every read, so its glyph is set again
     restyleEditorTreeHeadingIcons();
     mpVarBaseItem->setExpanded(true);
     LuaInterface* lI = mpHost->getLuaInterface();
@@ -10692,11 +10179,8 @@ void dlgTriggerEditor::repopulateVars()
     updateHiddenVariablesCount();
 }
 
-// A row of the Variables view carries what it is drawn from: the value's type,
-// the preview at its trailing edge, whether its key is a place in a list rather
-// than a name, and whether it is hidden. Nothing re-derives those once they are
-// set, so every path that writes a variable back comes through here - which is
-// what keeps painting a tree of several thousand rows off Lua's own tree.
+// Nothing re-derives a row's drawn data once set, so every path that writes a
+// variable back must come through here; painting never reads Lua's tree.
 void dlgTriggerEditor::refreshVariableRow(QTreeWidgetItem* pItem)
 {
     if (!pItem) {
@@ -10714,10 +10198,8 @@ void dlgTriggerEditor::refreshVariableRow(QTreeWidgetItem* pItem)
     uiDesign::VariableTreeDelegate::setVariableRowData(pItem, var, vu->isHidden(var));
 }
 
-// How many of the profile's globals the switch over the tree would bring into
-// it. Counted off Lua's own tree rather than off the rows, since the rows are
-// exactly what is missing while the switch is off; and only the globals, since
-// what the switch adds to the tree is top-level rows.
+// Counted off Lua's tree, not the rows, which are what is missing while the switch
+// is off; only globals, since the switch adds top-level rows.
 void dlgTriggerEditor::updateHiddenVariablesCount()
 {
     if (!mpLabel_hiddenVariablesCount) {
@@ -11166,8 +10648,7 @@ void dlgTriggerEditor::rebuildStaleTrees()
     treeWidget_actions->clear();
     treeWidget_keys->clear();
     treeWidget_variables->clear();
-    // The clear freed the Variables heading, which only repopulateVars() makes
-    // again, and fillout_form() restyles every heading it is still pointed at
+    // The clear deleted the Variables heading, and fillout_form() restyles every heading still pointed at
     mpVarBaseItem = nullptr;
     fillout_form();
     mNeedUpdateData = false;
@@ -11235,38 +10716,24 @@ void dlgTriggerEditor::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
 
-    // The breakpoint the sidebar collapses at is measured off splitter_main's
-    // minimum size hint, and a splitter that has never been shown reports the
-    // hint of a layout that has never been run - a few hundred pixels short of
-    // what the editor actually needs. The first measurement worth keeping is
-    // therefore the first one taken with the window on screen.
+    // A splitter never shown reports the minimum size hint of a layout never run,
+    // a few hundred pixels short, so the sidebar breakpoint is measured again here
     if (!mHasBeenShown) {
         mHasBeenShown = true;
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
-        // The bar has a length to be measured against from this moment on, and
-        // the resize that gave it one may already have gone past
+        // The resize that gave the bar its length may already have gone past
         fitEditorToolBarToItsLength();
 
-        // The first item goes into the form before the editor is put on screen -
-        // mudlet::slot_showEditorDialog() picks it, then shows the window - so
-        // the fit that ran with it was dividing up a splitter that had no
-        // height yet and did nothing. This is the first moment the panes have
-        // real ones. It is asked twice because the show may not have laid them
-        // out yet either, and the second answer costs nothing when the first
-        // one was already right.
+        // mudlet::slot_showEditorDialog() loads the first item before the window is
+        // shown, when the splitter has no height. Asked again on the next turn in
+        // case the show has not laid the panes out yet.
         fitFormPaneToItsContents();
         QTimer::singleShot(0ms, this, [this]() {
             fitFormPaneToItsContents();
         });
     }
 
-    // A placement the user chose is theirs to keep, so the editor is only moved
-    // when it could not be used where it is - its screen unplugged, or the
-    // desktop it was left on resized away from underneath it - or when it has
-    // no chosen placement yet and the profile it belongs to is on another
-    // screen, which is the reattachment case this used to re-centre for on
-    // every single show
     if (!windowPlacementReachable(pos(), size()) || (!mEditorPlacementChosen && !onSameScreenAsProfile())) {
         repositionOnProfileScreen();
     }
@@ -11285,8 +10752,6 @@ void dlgTriggerEditor::moveEvent(QMoveEvent* event)
 {
     QMainWindow::moveEvent(event);
 
-    // Where the user drags the window to is a placement to keep; a move the
-    // editor made itself is not one
     if (isVisible() && !mRepositioningEditorWindow) {
         mEditorPlacementChosen = true;
     }
@@ -11294,9 +10759,8 @@ void dlgTriggerEditor::moveEvent(QMoveEvent* event)
 
 void dlgTriggerEditor::changeView(EditorViewType view)
 {
-    // Before anything is read off the form: hiding the keys form further down
-    // does end a grab, through the field's own FocusOut, but by then the save
-    // below has already read the field the grab left empty
+    // Before the save reads the form: hiding the keys form ends a grab through the
+    // field's FocusOut, but only after the save has read the field the grab emptied
     endKeyGrab();
 
     saveOpenChanges();
@@ -11403,14 +10867,11 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     mpVarsMainArea->setVisible(view == EditorViewType::cmVarsView);
     treeWidget_variables->setVisible(view == EditorViewType::cmVarsView);
     checkBox_displayAllVariables->setVisible(view == EditorViewType::cmVarsView);
-    // The reading beside that switch goes with it. Only the hiding is said here:
-    // inside the Variables view it is updateHiddenVariablesCount() that decides,
-    // and there is nothing to read out while nothing is hidden.
+    // Only hidden here: inside the Variables view updateHiddenVariablesCount() decides
     if (mpLabel_hiddenVariablesCount && view != EditorViewType::cmVarsView) {
         mpLabel_hiddenVariablesCount->hide();
     }
 
-    // ...and what the pane under the heading holds changes with it
     if (mpLabel_editorCodeHeaderTitle) {
         mpLabel_editorCodeHeaderTitle->setText(codeHeaderTitleFor(view));
     }
@@ -11501,22 +10962,16 @@ void dlgTriggerEditor::changeView(EditorViewType view)
         qDebug() << "ERROR: dlgTriggerEditor::changeView() undefined view";
     }
 
-    // Which of the two the code pane's heading is in this view - a heading that
-    // also drags, or only a heading - and the column's own height either way
     applyFormPaneSeamPolicy();
 
-    // Four buttons on the bar have just been renamed, and their names are what
-    // they cost it - so the tooltips that stand in for those names are rebuilt
-    // and the fit is taken again against the new wording
+    // Four buttons were just renamed, which changes their tooltips and the bar's length
     updateEditorItemActionToolTips();
     fitEditorToolBarToItsLength();
 
     // Update undo/redo button states when changing views
     slot_updateUndoRedoButtonStates();
 
-    // Every way into a view comes through here - the sidebar, a shortcut, a
-    // search result, a deep link - so this is the one place the chosen row can
-    // be kept telling the truth
+    // Every way into a view (sidebar, shortcut, search result, deep link) comes through here
     syncEditorSidebarSelection();
 
     updateEditorItemCounts();
@@ -11533,12 +10988,7 @@ void dlgTriggerEditor::changeView(EditorViewType view)
     }
 }
 
-// Whether the heading over the code pane is a handle as well as a heading. The
-// trigger form holds a list of patterns and the button form a stylesheet
-// editor, and both can use whatever room the reader is willing to give them.
-// The other five are a fixed set of fields: a column dragged taller than those
-// is empty space under them, so the heading there resizes nothing and the
-// column is exactly as tall as what it holds.
+// Only the pattern list and the stylesheet editor use extra room; the other forms are fixed sets of fields
 static bool formPaneResizes(const EditorViewType view)
 {
     switch (view) {
@@ -11557,31 +11007,21 @@ static bool formPaneResizes(const EditorViewType view)
     return true;
 }
 
-// The form column of a fixed view is held to the height its contents ask for,
-// which is the one place the "only ever grown" rule below does not hold: the
-// cap comes down as well as up, so an item with fewer rows than the last one
-// gives the room back rather than keeping it. The cap is on the column itself
-// rather than only in the sizes, because that is what a window resize is laid
-// out against - QSplitter shares its space out inside each pane's maximum.
+// The cap goes on the column, not only into the sizes: QSplitter shares a window
+// resize out inside each pane's maximum.
 void dlgTriggerEditor::applyFormPaneSeamPolicy()
 {
     if (!splitter_right || !mpNonCodeWidgets || mHoldingFormPaneToItsContents) {
         return;
     }
-    // Measuring the column delivers the layout requests it is waiting on, and
-    // the cap this puts on posts another - which is heard by the same filter
-    // that called this. Barred from re-entering itself, the pass settles in one
-    // go and the request it posted finds nothing left to change.
+    // Measuring delivers pending layout requests and the new cap posts another,
+    // which reaches the event filter that called this
     mHoldingFormPaneToItsContents = true;
     holdFormPaneToItsContents();
     mHoldingFormPaneToItsContents = false;
 }
 
-// The height the column asks for at the width it actually has. A size hint is
-// answered at whatever width the layout would like, and the notice's wrapping
-// label would like a narrow one - so its hint is the height those words take in
-// a column a fraction of this one's width. Height-for-width asks the question
-// the reader is looking at.
+// Not sizeHint(): the notice's wrapping label hints at a narrow width, so the hint overstates its height
 int dlgTriggerEditor::formColumnHeightForItsWidth() const
 {
     QLayout* pLayout = mpNonCodeWidgets ? mpNonCodeWidgets->layout() : nullptr;
@@ -11597,9 +11037,6 @@ int dlgTriggerEditor::formColumnHeightForItsWidth() const
     return mpNonCodeWidgets->sizeHint().height();
 }
 
-// What the notice at the top of the column costs the form under it: its own
-// height at the column's width, and the gap between the two. Nothing while it
-// is away.
 int dlgTriggerEditor::noticeRoomInFormColumn() const
 {
     if (!mpSystemMessageArea || mpSystemMessageArea->isHidden() || !mpNonCodeWidgets) {
@@ -11611,8 +11048,7 @@ int dlgTriggerEditor::noticeRoomInFormColumn() const
 
 void dlgTriggerEditor::holdFormPaneToItsContents()
 {
-    // Index 1 is the handle over mpSourceEditorArea, which is the one carrying
-    // the code pane's heading
+    // Handle 1 sits over mpSourceEditorArea and carries the code pane's heading
     const bool resizes = formPaneResizes(mCurrentView);
     splitter_right->setHandleResizes(1, resizes);
 
@@ -11622,50 +11058,32 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
 
     if (resizes) {
         mpNonCodeWidgets->setMaximumHeight(QWIDGETSIZE_MAX);
-        // A notice put up or taken down is the one change to these two views'
-        // columns that comes without an item change, so nothing else measures
-        // them again. The seam moves by what the notice costs rather than the
-        // column being measured afresh, which is also what leaves a height the
-        // reader dragged where they put it.
+        // A notice is the one change to these columns without an item change; moving
+        // the seam by its cost, not re-measuring, leaves a dragged height where it was
         moveSeamByNoticeChange(noticeChange);
         return;
     }
 
-    // A row shown or hidden posts a layout request rather than sending one, so
-    // the column is measured after that request has been delivered - the same
-    // order fitFormPaneToItsContents() reads its own answer in
+    // A row shown or hidden posts its layout request, so deliver it before measuring
     uiDesign::invalidateLayoutsUpTo(currentFormArea(), mpNonCodeWidgets);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
     if (QLayout* pLayout = mpNonCodeWidgets->layout()) {
         pLayout->activate();
     }
     if (mpSourceEditorArea->isHidden()) {
-        // Nothing to edit under the column - no item chosen, or one with no
-        // value of its own, such as a Lua table - so the column has the pane to
-        // itself and there is no seam to hold it off. Capped it would be a lone
-        // child shorter than what holds it, and a splitter centres one of
-        // those, which is what put the notice, and then the form under it, half
-        // way down the window. The trailing stretch keeps what the column holds
-        // at the top of it. isHidden() rather than isVisible(), so that a pass
-        // running while the whole editor is off screen reads the same answer.
+        // Uncapped: QSplitter centres a lone child shorter than itself. isHidden(),
+        // not isVisible(), so a pass while the editor is off screen reads the same.
         mpNonCodeWidgets->setMaximumHeight(QWIDGETSIZE_MAX);
         return;
     }
     const int wanted = formColumnHeightForItsWidth();
     if (wanted <= 0) {
-        // Everything in the column is hidden - a moment between two views, not
-        // a height to hold it to
+        // Everything hidden: a moment between two views, not a height to hold to
         return;
     }
 
     QList<int> sizes = splitter_right->sizes();
     const int paneTotal = sizes.size() < 2 ? 0 : sizes.at(0) + sizes.at(1);
-    // The column takes what it asks for out of what the two panes have between
-    // them, and the code pane keeps its share of the rest - the way
-    // formPaneHeightForItsContents() shares the same pair out. Clamped to the
-    // total alone, a window too short for both left the code pane with nothing.
-    // The cap carries the same number as the sizes do, since the cap is what a
-    // window resize is laid out against.
     const int paneHeight = paneTotal <= 0 ? wanted : std::clamp(wanted, 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
     mpNonCodeWidgets->setMaximumHeight(paneHeight);
     if (paneTotal <= 0 || sizes.at(0) == paneHeight) {
@@ -11676,11 +11094,8 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
     splitter_right->setSizes(sizes);
 }
 
-// The seam gives the notice the room it has just taken, or takes back the room
-// it has just given up, and leaves the rest of the split alone. That is why the
-// hard floor and not codePaneFloor() is what stops it here: this moves the seam
-// by one number and no other, and a split the reader dragged past the share the
-// code pane is otherwise held to is theirs until the seam is next placed.
+// Clamped to the hard floor, not codePaneFloor(): a split the reader dragged past
+// the code pane's third stays theirs until the seam is next placed
 void dlgTriggerEditor::moveSeamByNoticeChange(const int noticeChange)
 {
     if (noticeChange == 0 || mpSourceEditorArea->isHidden()) {
@@ -11703,16 +11118,12 @@ void dlgTriggerEditor::moveSeamByNoticeChange(const int noticeChange)
     splitter_right->setSizes(sizes);
 }
 
-// Whichever of the seven forms the view being shown puts in the column, so that
-// a measurement of the column starts inside the form that is actually in it -
-// a row hidden deeper than the column tells only its own parent
+// A row hidden deeper than the column invalidates only its own parent's layout
 QWidget* dlgTriggerEditor::currentFormArea() const
 {
     switch (mCurrentView) {
     case EditorViewType::cmTriggerView:
-        // The last of the form's own rows, which is as deep as a row hidden
-        // inside the form goes: the pattern list under it is measured by the
-        // column itself
+        // The deepest row that hides; the pattern list under it is measured by the column
         return mpWidget_triggerOptionsRow;
     case EditorViewType::cmTimerView:
         return mpTimersMainArea;
@@ -11732,64 +11143,33 @@ QWidget* dlgTriggerEditor::currentFormArea() const
     return mpNonCodeWidgets;
 }
 
-// What the code pane keeps out of the two panes wherever the seam is placed
-// rather than dragged. A third of them, and never less than the floor below
-// which the pane stops being one anything can be typed into.
-//
-// A form column is not owed everything it asks for. A trigger with a long list
-// of patterns and an options strip wrapped onto several lines asks for more
-// than any ordinary window has - given it, the form took the pane down to the
-// bare floor and left six lines of Lua under it. The column is held to two
-// thirds instead and the pattern list scrolls inside what it is given, which is
-// what it is in a scroll area for. A drag by the reader is theirs and is
-// not held to this; the third is taken back the next time the seam is placed.
+// A long trigger asks for more than any window has; held to two thirds, its pattern list scrolls instead
 int dlgTriggerEditor::codePaneFloor(const int paneTotal) const
 {
     return std::max(scmEditorSourcePaneFloor, paneTotal / 3);
 }
 
-// The height the form column is asking for, kept inside what the two panes have
-// between them: however much the form wants, the code pane keeps its share.
 int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
 {
-    // The form's height changes without a view switch - a trigger's options
-    // strip wraps onto another line, its pattern list gains or loses a row -
-    // and a change inside a widget only invalidates the layout of its immediate
-    // parent, so the chain up to the column is told first from both, or this
-    // measures the form as it was before the change
+    // A change inside a widget only invalidates its immediate parent's layout, so
+    // without this the form is measured as it was before the change
     uiDesign::invalidateLayoutsUpTo(mpWidget_triggerOptionsRow, mpNonCodeWidgets);
     uiDesign::invalidateLayoutsUpTo(mpScrollArea, mpNonCodeWidgets);
     int wanted = formColumnHeightForItsWidth();
-    // The pattern rows scroll, and the area they scroll in answers with their
-    // height only up to the cap Qt puts on a scroll area's hint - a couple of
-    // dozen lines of text - so what the rows want over that is asked for on top.
-    // This is what stops a long trigger opening with some of its patterns on
-    // show and a scroll bar beside them, under a code pane with the rest of the
-    // window to itself.
+    // Qt caps a scroll area's size hint at a couple of dozen lines of text, so
+    // what the pattern rows want beyond that is asked for on top
     if (mpScrollArea && mpWidget_triggerItems && mpTriggersMainArea->isVisible()) {
         wanted += std::max(0, mpWidget_triggerItems->sizeHint().height() - mpScrollArea->sizeHint().height());
     }
     return std::clamp(wanted, 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
 }
 
-// The form pane snaps to the height its contents ask for, shrinking as readily
-// as growing, whenever the item being edited changes, whenever a view is
-// entered, and once the window has been shown and the panes have real heights.
-// What it takes comes off the code pane, which formPaneHeightForItsContents()
-// has already left its share.
-//
-// The one exception is a view whose handle the user has dragged in this
-// session. Only a drag emits QSplitter::splitterMoved(), so only a drag records
-// a height here, and only the view it was made in keeps one: switching to a
-// view that was never dragged still snaps there.
 void dlgTriggerEditor::fitFormPaneToItsContents()
 {
     if (!splitter_right || !mpNonCodeWidgets || !mpNonCodeWidgets->isVisible()) {
         return;
     }
     if (!formPaneResizes(mCurrentView)) {
-        // A view whose form cannot be dragged taller has no split of its own to
-        // keep: the column is its contents' height, up or down
         applyFormPaneSeamPolicy();
         return;
     }
@@ -11801,13 +11181,9 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     if (paneTotal <= 0) {
         return;
     }
-    // A row shown or hidden posts a layout request rather than sending one, and
-    // it is that request arriving which clears the scrolling pattern area's
-    // cached idea of how tall its contents are. Until it does, the form answers
-    // with the height the item before this one needed - which is the whole of
-    // why a trigger with three rows opened after one with a single row was left
-    // scrolling. Only that one kind of event is flushed, so nothing else the
-    // selection has queued runs in the middle of it.
+    // Until the posted LayoutRequest arrives, the pattern scroll area answers with
+    // the previous item's height. Only that event type is flushed, so nothing else
+    // the selection queued runs in the middle of this.
     QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
     if (QLayout* pLayout = mpNonCodeWidgets->layout()) {
         pLayout->activate();
@@ -11816,10 +11192,7 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     int wanted = 0;
     const auto dragged = mDraggedFormPaneHeights.constFind(mCurrentView);
     if (dragged != mDraggedFormPaneHeights.constEnd()) {
-        // The height the user put this view's handle at is the base. It is held
-        // net of any notice, so whatever one is up now is added back rather than
-        // taken out of what the form was dragged to; see
-        // slot_rightSplitterMoved().
+        // Stored net of any notice (see slot_rightSplitterMoved()), so the one up now is added back
         wanted = std::clamp(dragged.value() + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
     } else {
         wanted = formPaneHeightForItsContents(paneTotal);
@@ -11845,8 +11218,6 @@ void dlgTriggerEditor::slot_showTimers()
         mpSourceEditorArea->show();
         slot_timerSelected(treeWidget_timers->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusItemTree(treeWidget_timers);
 }
@@ -11883,8 +11254,6 @@ void dlgTriggerEditor::slot_showTriggers()
         mpSourceEditorArea->show();
         slot_triggerSelected(treeWidget_triggers->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusItemTree(treeWidget_triggers);
 }
@@ -11902,8 +11271,6 @@ void dlgTriggerEditor::slot_showScripts()
         mpSourceEditorArea->show();
         slot_scriptsSelected(treeWidget_scripts->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusItemTree(treeWidget_scripts);
 }
@@ -11921,8 +11288,6 @@ void dlgTriggerEditor::slot_showKeys()
         mpSourceEditorArea->show();
         slot_keySelected(treeWidget_keys->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusItemTree(treeWidget_keys);
 }
@@ -11944,8 +11309,6 @@ void dlgTriggerEditor::slot_showVariables()
         mpSourceEditorArea->show();
         slot_variableSelected(treeWidget_variables->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusPanelTree(treeWidget_variables);
 }
@@ -11984,16 +11347,11 @@ void dlgTriggerEditor::slot_showAliases()
         mpSourceEditorArea->show();
         slot_aliasSelected(treeWidget_aliases->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusItemTree(treeWidget_aliases);
 }
 
-// The banner for what has nowhere else to be said: an activation the engine
-// refused, a warning about a package. What the compiler made of the item in the
-// editor is not one of those - the heading over the code pane says that, and
-// reportCompileError() is the way to it.
+// A compile error of the item in the editor goes to reportCompileError(), not here
 void dlgTriggerEditor::showError(const QString& text)
 {
     // A still-running undo-toast expiry timer would hide this message when it
@@ -12006,8 +11364,7 @@ void dlgTriggerEditor::showError(const QString& text)
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
 
-    // Reconnect close button to normal hide behavior (neither a banner dismiss
-    // nor the package warning, whose close button remembers being pressed)
+    // Reconnect close button to normal hide behavior (not banner dismiss or package warning)
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
     connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
@@ -12017,23 +11374,16 @@ void dlgTriggerEditor::showError(const QString& text)
     }
 }
 
-// What the compiler made of the item the editor is holding, which is the
-// heading's to say and the banner's never: the heading speaks for the pane
-// under it, and the note there goes when the item does.
 void dlgTriggerEditor::reportCompileError(const QString& error)
 {
     if (mEditorSaveErrorCaptureOpen) {
-        // A save reaches this once at most, and the bracket writes the heading
-        // from what it collected when it closes - so a save that passed clears
-        // the note the last failed one left rather than leaving it standing
         mEditorSaveErrorCaptured = error;
     } else {
         mEditorCompileMessage = error;
         updateEditorCodeHeading();
     }
 
-    // A note on a strip is nothing a screen reader comes across on its own, so
-    // it is still said out loud - the way showError() says what it raises
+    // A screen reader does not come across the heading's note on its own
     if (!mpHost->mIsProfileLoadingSequence) {
         mudlet::self()->announce(error);
     }
@@ -12051,8 +11401,7 @@ void dlgTriggerEditor::showWarning(const QString& text, bool announce)
     mpSystemMessageArea->show();
     mCurrentBannerKey.clear();
 
-    // Reconnect close button to normal hide behavior (neither a banner dismiss
-    // nor the package warning, whose close button remembers being pressed)
+    // Reconnect close button to normal hide behavior (not banner dismiss or package warning)
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_bannerDismissClicked);
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
     connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
@@ -12062,18 +11411,14 @@ void dlgTriggerEditor::showWarning(const QString& text, bool announce)
     }
 }
 
-// Every item of a package raises the same warning, and switching between them
-// used to raise it again for each one. It is said once per package instead, and
-// the close button puts it away for as long as the editor is open: the message
-// is about the package, not about the item that happened to be clicked.
+// Said once per package: the message is about the package, not the item that was clicked
 void dlgTriggerEditor::showPackageWarning(const QString& packageName, QTreeWidgetItem* pItem)
 {
     if (packageName.isEmpty()) {
         return;
     }
 
-    // What a screen reader reads out after the item's name is a property of the
-    // item, so it is set whether or not the banner is raised over it
+    // The screen-reader description belongs to the item, so it is set even when no banner is raised
     if (pItem) {
         updatePackageItemAccessibility(pItem, pItem->data(0, Qt::AccessibleDescriptionRole).toString());
     }
@@ -12086,8 +11431,7 @@ void dlgTriggerEditor::showPackageWarning(const QString& packageName, QTreeWidge
     //: Warning banner shown in the editor when the item being looked at came from a package
     showWarning(tr("This item is part of a package. To best preserve your changes, copy this item before editing as package upgrades may overwrite modifications."), false);
 
-    // showWarning() wires the close button to the plain hide, which forgets
-    // that it was this that was closed
+    // showWarning() wired the plain hide, which would not remember this dismissal
     disconnect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::hideSystemMessageArea);
     connect(mpSystemMessageArea->messageAreaCloseButton, &QAbstractButton::clicked, this, &dlgTriggerEditor::slot_packageWarningDismissed);
 
@@ -12098,8 +11442,6 @@ void dlgTriggerEditor::showPackageWarning(const QString& packageName, QTreeWidge
     }
 }
 
-// Closing the package warning by hand is taken as "yes, understood": it stays
-// away for the rest of this editor's life, however many packages are opened
 void dlgTriggerEditor::slot_packageWarningDismissed()
 {
     mPackageWarningsDismissed = true;
@@ -12119,27 +11461,20 @@ void dlgTriggerEditor::showInfo(const QString& text)
     }
 }
 
-// The ink a link in a banner or a toast is written in, which is the ink every
-// other anchor in the design carries.
 static QString themedBannerLinkColor()
 {
     return uiDesign::themeTokens().accentText.name();
 }
 
-// What the anchors are written with. Qt's rich text does not understand
-// 'color: inherit' - a QLabel bakes an anchor's colour into its document the
-// moment the text is set, and an unhandled value leaves it at Qt's own blue -
-// so the word stands in the sheet as the place the theme's ink goes. The
-// message is kept in this shape and inked on the way to the label, which is
-// what lets the appearance move under a banner already on screen.
+// QLabel bakes an anchor's colour in at setText() and leaves 'color: inherit' at
+// Qt's own blue, so the placeholder is inked here; the uninked message is kept so
+// a theme change can re-ink a banner already on screen.
 static QString inkedSystemMessage(const QString& content)
 {
     return QString(content).replace(qsl("color: inherit"), qsl("color: %1").arg(themedBannerLinkColor()));
 }
 
-// The label's own text() is the message with a colour written into it, so what
-// it was given is kept beside it - the way settingsRichText and aboutRichText
-// do in the other two windows
+// text() holds the inked copy, so the message as given is kept for re-inking
 void dlgTriggerEditor::setSystemMessage(const QString& content)
 {
     auto* pMessageBox = mpSystemMessageArea->notificationAreaMessageBox;
@@ -12296,8 +11631,6 @@ void dlgTriggerEditor::slot_showActions()
         mpSourceEditorArea->show();
         slot_actionSelected(treeWidget_actions->currentItem());
     }
-    // The view being entered has an item in its form that the pane was not
-    // sized for - or no item at all, and a placeholder in its place
     fitFormPaneToItsContents();
     focusItemTree(treeWidget_actions);
 }
@@ -14361,26 +13694,18 @@ void dlgTriggerEditor::slot_profileSaveAsAction()
 
 bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
 {
-    // The bar is the only thing told what room the window has left it, so its
-    // own resize is where the fit is taken. Ahead of the key grab below, which
-    // otherwise swallows every event that is not a key while a key is grabbed.
+    // Before the key grab below, which swallows every event that is not a key while a key is grabbed
     if (watched == toolBar && event->type() == QEvent::Resize) {
         fitEditorToolBarToItsLength();
         return false;
     }
 
-    // What the compile note has room for is whatever the strip has left over
-    // once the title and the caret reading have had theirs, and the reading
-    // takes more of it the moment a digit is added to what it says - so the
-    // words are cut again to the label's own width rather than to the strip's.
-    // This cannot come back round: QLabel::setText does nothing when the text
-    // is what it already was, and the label asks for no width of its own.
+    // Cut to the label's own width, not the strip's: the caret reading beside it widens with every digit.
+    // No resize loop: QLabel::setText() does nothing for unchanged text, and the label asks for no width.
     if (watched == mpLabel_editorCompileMessage && event->type() == QEvent::Resize) {
         elideCompileNote();
     }
 
-    // The note is a link, and a link the mouse can follow is one the keyboard
-    // has to reach as well
     if (watched == mpWidget_editorCompileNote && event->type() == QEvent::KeyPress) {
         switch (static_cast<QKeyEvent*>(event)->key()) {
         case Qt::Key_Return:
@@ -14393,10 +13718,8 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         }
     }
 
-    // The field a keystroke is grabbed in: it is watched whether or not a grab
-    // is armed, since arming one is what a click on it does. While one is
-    // armed this filter is on the application as well, and both passes name
-    // the field as the object the event was sent to.
+    // Watched with no grab armed too, since a click on it is what arms one. While armed this filter is also on
+    // the application, and both passes name the field as `watched`.
     if (mpTriggersMainArea && watched == mpTriggersMainArea->lineEdit_soundFile && handleSoundFileFieldEvent(event)) {
         return true;
     }
@@ -14427,10 +13750,8 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         return true;
     }
 
-    // What the status bar says about the caret belongs to the code pane, and
-    // there is no caret while the pane is away. edbee is asked to say it again
-    // rather than the last reading being put back: the document under the pane
-    // has changed by the time it returns.
+    // No caret while the pane is away. On return edbee reports again rather than the old reading being put
+    // back: the document under the pane has changed by then.
     if (watched == mpSourceEditorArea) {
         if (event->type() == QEvent::Hide) {
             QMainWindow::statusBar()->clearMessage();
@@ -14439,61 +13760,43 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
         }
     }
 
-    // Whatever changed the column's height - a notice put up or taken down, an
-    // item chosen, a row of a form shown or hidden - says so by asking the
-    // column to lay itself out again. In the views whose column is held to its
-    // contents, that is also a different split.
+    // Any change to the column's height (a notice, an item chosen, a form row shown or hidden) arrives as this
     if (watched == mpNonCodeWidgets && event->type() == QEvent::LayoutRequest) {
         applyFormPaneSeamPolicy();
     }
 
-    // ...and what the trigger form is given across is what says how many lines
-    // its options strip has wrapped onto, which is a different height for the
-    // column. A window dragged narrower, a splitter taking the column in, or the
-    // form arriving in the view at a width it was not laid out at all reach it
-    // as this one event. Only a change in the width is that: the height changes
-    // under the rows belong to the seam.
-    //
-    // No loop: the refit moves the seam, which changes what the form is given
-    // down the page and never what it is given across.
+    // The form's width decides how many lines its options strip wraps onto, so only a width change refits.
+    // No loop: the refit moves the seam, which changes the form's height and never its width.
     if (watched == mpTriggersMainArea && event->type() == QEvent::Resize) {
         const auto* pResize = static_cast<QResizeEvent*>(event);
         if (pResize->size().width() != pResize->oldSize().width()) {
-            // Answered once the resize has finished rather than in the middle of
-            // it: this event is delivered from inside the right hand splitter
-            // handing its panes their new geometry, and the refit moves the seam
-            // between those same two panes
+            // Deferred: this arrives while the right hand splitter is handing its panes their geometry, and the
+            // refit moves the seam between those same panes
             QTimer::singleShot(0ms, this, [this]() {
                 fitFormPaneToItsContents();
             });
         }
     }
 
-    // Styling the sidebar's rows takes its native focus rectangle away with
-    // them; a property puts it back, since a QSS rule cannot ask whether the
-    // widget a subcontrol belongs to has the focus
+    // Styling the rows drops the native focus rectangle, and a QSS rule cannot ask whether the widget a
+    // subcontrol belongs to has the focus
     if (watched == mpListWidget_editorSidebar && (event->type() == QEvent::FocusIn || event->type() == QEvent::FocusOut)) {
         mpListWidget_editorSidebar->setProperty(uiDesign::scmProp_focused, event->type() == QEvent::FocusIn);
         mpListWidget_editorSidebar->style()->polish(mpListWidget_editorSidebar);
     }
 
-    // Escape in the search field gives the panel back to the trees. While the
-    // field's history is open the key belongs to the popup, which takes it
-    // before this is reached - but a style that lets it through anyway would
-    // otherwise close the list and clear the search in one keystroke.
+    // While the history popup is open Escape is its; a style that lets it through would otherwise close the
+    // list and clear the search in one keystroke
     if (event->type() == QEvent::KeyPress && comboBox_searchTerms && watched == comboBox_searchTerms->lineEdit() && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
         if (comboBox_searchTerms->view() && comboBox_searchTerms->view()->isVisible()) {
             return false;
         }
-        // Emptying the field is the whole of it: the textChanged() handler put
-        // on the field is what takes the results down, however they are emptied
+        // The field's textChanged() handler takes the results down
         comboBox_searchTerms->lineEdit()->clear();
         return true;
     }
 
-    // Return in the last pattern gives the trigger one more and puts the cursor
-    // in it: the keyboard's way to what the Add pattern button does. A pattern
-    // field takes no line break of its own, so the key is free for this.
+    // A pattern field takes no line break, so Return in the last one is free to add the next pattern
     if (event->type() == QEvent::KeyPress) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         const bool plainReturn =
@@ -14564,8 +13867,7 @@ bool dlgTriggerEditor::event(QEvent* event)
     }
 
     if (event->type() == QEvent::ApplicationFontChange) {
-        // A new application font reaches a window by this event, and the
-        // window resolving its own font again is what carries it down
+        // Handling this re-resolves the window's font; the lift carries it past the stylesheets
         const uiDesign::StyleSheetFontLift lift(this);
         return QMainWindow::event(event);
     }
@@ -14590,27 +13892,21 @@ void dlgTriggerEditor::slot_keyGrab()
     mIsGrabKey = true;
     suspendShortcuts();
     QCoreApplication::instance()->installEventFilter(this);
-    // Reaching for the keystroke is an edit to the key, the way the button this
-    // replaced was
     slot_itemEdited();
     showKeyBindingListening();
 }
 
-// The actions a key grab has to silence: the ones on the editor's toolbar, and
-// the view switchers - no longer a toolbar's actions, but their shortcuts are
-// still the ones a keybinding has to be able to take away
+// The view switchers are not on the toolbar, but a key grab must silence their shortcuts too
 QList<QAction*> dlgTriggerEditor::toolbarActions() const
 {
     return toolBar->actions() + mEditorViewActions;
 }
 
-// Take the editor's own shortcuts away for the duration of a key grab, so a
-// keystroke like Ctrl+S reaches the grab rather than the action
+// So a keystroke like Ctrl+S reaches the key grab rather than the action
 void dlgTriggerEditor::suspendShortcuts()
 {
     for (auto* action : toolbarActions()) {
-        // A second click on Grab Key while one is armed finds every shortcut
-        // gone already and records nothing, so the first grab's record stands
+        // A second arm finds every shortcut already empty, so the first grab's record stands
         if (const QKeySequence shortcut = action->shortcut(); !shortcut.isEmpty()) {
             mKeyGrabSuspendedShortcuts.insert(action, shortcut);
             action->setShortcut(QKeySequence());
@@ -14618,7 +13914,6 @@ void dlgTriggerEditor::suspendShortcuts()
     }
 }
 
-// Put back exactly what suspendShortcuts() took
 void dlgTriggerEditor::restoreShortcuts()
 {
     for (auto* action : toolbarActions()) {
@@ -14658,9 +13953,6 @@ void dlgTriggerEditor::keyGrabCallback(const Qt::Key key, const Qt::KeyboardModi
     }
 }
 
-// A push-down button has a command for each of the two states it can be left
-// in, so the second row appears with the switch. Nothing is retitled with it
-// any more: each row leads with the word saying which command it holds.
 void dlgTriggerEditor::slot_toggleIsPushDownButton(const int state)
 {
     showEditorFormRow(state == Qt::Checked, {mpActionsMainArea->label_action_button_command_up, mpActionsMainArea->lineEdit_action_button_command_up});
@@ -14707,7 +13999,6 @@ void dlgTriggerEditor::slot_colorizeTriggerSetFgColor()
         mpTriggersMainArea->pushButtonFgColor->setText(QString());
         mpTriggersMainArea->pushButtonFgColor->setProperty(cButtonBaseColor, color.name());
     } else {
-        // Cancel - nothing was chosen, so nothing is turned on
         return;
     }
     describeColourWell(mpTriggersMainArea->pushButtonFgColor);
@@ -14755,7 +14046,6 @@ void dlgTriggerEditor::slot_colorizeTriggerSetBgColor()
         mpTriggersMainArea->pushButtonBgColor->setText(QString());
         mpTriggersMainArea->pushButtonBgColor->setProperty(cButtonBaseColor, color.name());
     } else {
-        // Cancel - nothing was chosen, so nothing is turned on
         return;
     }
     describeColourWell(mpTriggersMainArea->pushButtonBgColor);
@@ -14783,8 +14073,6 @@ void dlgTriggerEditor::slot_soundTrigger()
                "Windows Media Audio(*.wma);;"
                "All files(*.*)"));
     if (fileName.isEmpty()) {
-        // The dialogue was cancelled, which changes nothing - not the file, and
-        // not whether the trigger plays one
         return;
     }
     lastDir = QFileInfo(fileName).absolutePath();
@@ -14792,17 +14080,13 @@ void dlgTriggerEditor::slot_soundTrigger()
     acceptTriggerSoundFile(fileName);
 }
 
-// What choosing a file in that dialogue comes to, with the dialogue itself left
-// out of it. Two entries on the undo stack, in the order they are read in: the
-// file, and then the trigger playing it.
+// Two undo entries, in this order: the file, then the trigger playing it
 void dlgTriggerEditor::acceptTriggerSoundFile(const QString& fileName)
 {
     showTriggerSoundFile(fileName);
-    // The field is never typed into, so nothing else would ever tell the save
-    // path the file has changed
+    // The field is never typed into, so nothing else tells the save path the file changed
     slot_saveProperty_TriggerSoundFile();
-    // ...and choosing a file is asking for it to be played: the switch beside
-    // the field is what says so, and its own save writes the second entry
+    // Choosing a file asks for it to be played; the switch's own save writes the second undo entry
     if (!mpTriggersMainArea->checkBox_soundTrigger->isChecked()) {
         mpTriggersMainArea->checkBox_soundTrigger->setChecked(true);
     }
@@ -14938,10 +14222,8 @@ void dlgTriggerEditor::slot_colorTriggerBg()
 
 void dlgTriggerEditor::slot_updateCaretPosition(const QString& statusText)
 {
-    // Loading a document into a pane that is not on show still moves the caret,
-    // and a reading of where it is would outlive the pane it belongs to.
-    // isVisibleTo() rather than isVisible(), so that the readout is not held
-    // back by the editor window itself not being up yet.
+    // Loading a document into a hidden pane still moves the caret. isVisibleTo(), not isVisible(), so the
+    // editor window not being shown yet does not hold the reading back.
     if (mpSourceEditorArea && !mpSourceEditorArea->isVisibleTo(this)) {
         return;
     }
@@ -14956,10 +14238,8 @@ void dlgTriggerEditor::slot_updateCaretPosition(const QString& statusText)
         stripped = statusText;
     }
 
-    // Not through QStatusBar::showMessage(): a message with no timeout never
-    // comes down, and hideOrShow() only hides the counts widget for a message
-    // if that widget is already visible - the first caret report arrives before
-    // the window is shown, so the counts stayed up and were painted over.
+    // Not QStatusBar::showMessage(): an untimed message never comes down, and hideOrShow() only hides the
+    // counts widget if it is already visible - the first report arrives before show, so they were painted over.
     if (mpLabel_editorCaretPosition) {
         mpLabel_editorCaretPosition->setText(stripped);
     }
@@ -14982,10 +14262,8 @@ void dlgTriggerEditor::jumpToCompileErrorLine()
     if (!pController || !pController->textDocument()) {
         return;
     }
-    // Lua numbers the lines of what it was handed from one and edbee its own
-    // from zero - and an unclosed block is reported against the trailing "end"
-    // of the wrapper the item is compiled inside, which is a line past the last
-    // one the item has
+    // Lua counts lines from one and edbee from zero; an unclosed block is reported against the wrapper's
+    // trailing "end", one line past the item's last
     const size_t line = qMin(static_cast<size_t>(mEditorCompileErrorLine - 1), pController->textDocument()->lineCount() - 1);
     mpSourceEditorEdbee->setFocus();
     pController->moveCaretTo(line, static_cast<size_t>(0), false);
@@ -15023,9 +14301,8 @@ void dlgTriggerEditor::slot_changeEditorTextOptions(QTextOption::Flags state)
 // made or selected.
 void dlgTriggerEditor::clearDocument(edbee::TextEditorWidget* pEditorWidget, const QString& initialText)
 {
-    // Every item switch comes through here, and the heading over the code pane
-    // speaks for the last save of whatever the pane is holding - so a failure
-    // reported against the item leaving it does not follow the one arriving
+    // Every item switch comes through here, so a failure reported against the item leaving does not follow
+    // the one arriving
     clearCompileState();
 
     mpSourceEditorFindArea->hide();
@@ -15064,9 +14341,7 @@ void dlgTriggerEditor::clearDocument(edbee::TextEditorWidget* pEditorWidget, con
     config->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     config->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     config->setAutocompleteMinimalCharacters(3);
-    // A byte offset is a debugging reading rather than one a script author
-    // uses, and every document the pane is handed brings a configuration of
-    // its own - so it is turned off per document rather than once
+    // Per document, not once: each document the pane is handed brings its own configuration
     config->setShowCaretOffset(false);
     config->endChanges();
 
@@ -15175,24 +14450,15 @@ void dlgTriggerEditor::setThemeAndOtherSettings(const QString& theme)
     localConfig->setAutocompleteAutoShow(mpHost->mEditorAutoComplete);
     localConfig->setRenderBidiContolCharacters(mpHost->getEditorShowBidi());
     localConfig->setAutocompleteMinimalCharacters(3);
-    // A byte offset is a debugging reading rather than one a script author
-    // uses, and every document the pane is handed brings a configuration of
-    // its own - so it is turned off per document rather than once
+    // Per document, not once: each document the pane is handed brings its own configuration
     localConfig->setShowCaretOffset(false);
     localConfig->endChanges();
 }
 
-// The glyph at the leading edge of the search field, which is also the button
-// the options menu drops from. One magnifier in two colours rather than the nine
-// bitmaps a combination of options used to be spelled out in: those said which
-// options were on by the colour of three letters, which is a reading no theme
-// could be made to keep. The menu behind the glyph is where the options are
-// read now - each is a checkable item - and the accent says that any of them is
-// in force, so a search that is quietly narrower than it looks still shows it.
+// The accent says that some option is in force, so a search quietly narrower than it looks still shows it
 void dlgTriggerEditor::createSearchOptionIcon()
 {
-    // The shell is styled once before the search row is built, and a restyle is
-    // what calls this outside of the options changing
+    // A restyle can call this before the search row is built
     if (!mpAction_searchOptions) {
         return;
     }
@@ -15225,8 +14491,6 @@ void dlgTriggerEditor::createSearchOptionIcon()
     }
 }
 
-// Quiet enough that an empty-looking field stays empty-looking, and gone
-// altogether while there is nothing behind it
 void dlgTriggerEditor::updateSearchHistoryAction()
 {
     if (!mpAction_searchHistory) {
@@ -15303,7 +14567,6 @@ void dlgTriggerEditor::slot_clearSearchResults()
     treeWidget_searchResults->clear();
     treeWidget_searchResults->update();
     mSearchTerm.clear();
-    // ...and the panel goes back to the profile's own items
     setSearchResultsShown(false);
 
     // unhighlight all instances of the item that we've searched for.
@@ -15362,8 +14625,7 @@ void dlgTriggerEditor::slot_editorContextMenu()
 
     menu->addAction(formatAction);
 
-    // Built at the moment it is wanted rather than in the style pass, so it is
-    // handed the design's menu and the corner that goes with it here
+    // Built on demand, outside the style pass, so it is styled here
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     menu->setStyleSheet(uiDesign::menuStyleSheet(tokens));
     uiDesign::letPopupsTakeTheFieldsCorner(menu);
@@ -15376,9 +14638,7 @@ void dlgTriggerEditor::slot_editorContextMenu()
 QString dlgTriggerEditor::generateButtonStyleSheet(const QColor& color, const bool isEnabled)
 {
     if (color != QColorConstants::Transparent && color.isValid()) {
-        // The hairline is read here rather than kept with the sheet: a theme
-        // change is one of the things that restyles these wells, and the tone
-        // it is drawn in has moved by the time it does
+        // Read per call: a theme change restyles these wells, and the border tone has moved by then
         const QString hairline = uiDesign::themeTokens().border.name();
         if (isEnabled) {
             // theme-fixed: the fill is the colour the user picked, so the word on it is chosen against that fill rather than against a page
@@ -15521,13 +14781,10 @@ void dlgTriggerEditor::slot_clearSoundFile()
     slot_saveProperty_TriggerSoundFile();
 }
 
-// A colour chosen in either well is asking for the matches to be recoloured, so
-// the switch beside the wells goes on with it - and its own toggled() is what
-// writes the one undo entry, exactly as a click on the switch would
+// The switch's own toggled() writes the one undo entry, exactly as a click on it would
 void dlgTriggerEditor::turnTriggerHighlightOn()
 {
     if (mpTriggersMainArea->checkBox_triggerColorizer->isChecked()) {
-        // Already on: the wells are drawn at full strength as it is
         return;
     }
     mpTriggersMainArea->checkBox_triggerColorizer->setChecked(true);
@@ -15535,25 +14792,18 @@ void dlgTriggerEditor::turnTriggerHighlightOn()
     slot_itemEdited();
 }
 
-// The ID beside a trigger's name, drawn as a pill. The type is set on the two
-// labels here rather than named in the form's stylesheet, because the radius
-// that makes the box a pill is half the height these metrics come to: a size
-// the sheet applied would only be measurable after it had been applied, and a
-// radius named any larger than half the height is clamped into an ellipse
-// rather than rounded further. Answers that height.
+// The font is set here rather than in the sheet: the pill radius is half the height these metrics give, a size the
+// sheet set is only measurable after it applies, and a larger radius clamps into an ellipse. Returns that height.
 static int styleEditorIdChip(QFrame* pFrameId, QLabel* pIdLabel, QLabel* pIdNumber)
 {
     const QFont chipFont = uiDesign::chipFont(pFrameId);
 
     for (QLabel* pLabel : {pIdLabel, pIdNumber}) {
         pLabel->setFont(chipFont);
-        // The .ui files grey the pair out to make them quiet; the chip is quiet
-        // enough on its own, and a disabled label cannot be selected from
+        // The .ui files grey the pair out; the chip is quiet enough, and a disabled label cannot be selected from
         pLabel->setEnabled(true);
     }
 
-    // The ID reads as a quiet label on the item rather than as a second field.
-    // showIDLabels() still decides whether it is there at all.
     pFrameId->setProperty("editorIdChip", true);
     if (QLayout* pChipLayout = pFrameId->layout()) {
         pChipLayout->setContentsMargins(scmEditorIdChipPaddingHorizontal, scmEditorIdChipPaddingVertical, scmEditorIdChipPaddingHorizontal, scmEditorIdChipPaddingVertical);
@@ -15565,12 +14815,7 @@ static int styleEditorIdChip(QFrame* pFrameId, QLabel* pIdLabel, QLabel* pIdNumb
     return chipHeight;
 }
 
-// The strip a trigger's options are read on. A group box rather than a bare
-// widget, and titled with nothing: a screen reader is told a group box is a
-// grouping and is told nothing at all about a plain QWidget, so the word
-// leading the strip - which is a label of the form's, not a title of the box's
-// - would otherwise reach it as loose text. What the box is drawn as is
-// nothing, which the form's stylesheet says through the property set here.
+// A QGroupBox drawn as nothing: a screen reader announces a group box as a grouping, and a plain QWidget not at all
 static QGroupBox* makeEditorOptionRow(QWidget* pParent, const QString& objectName, const QString& accessibleName)
 {
     auto* pRow = new QGroupBox(pParent);
@@ -15580,14 +14825,12 @@ static QGroupBox* makeEditorOptionRow(QWidget* pParent, const QString& objectNam
     pRow->setProperty("editorOptionRow", true);
     auto* pFlow = new uiDesign::FlowLayout(pRow, scmEditorOptionRowGap, scmEditorRowControlGap);
     pFlow->setContentsMargins(0, 0, 0, 0);
-    // A row inside a column must not widen that column by everything it happens
-    // to hold: it asks for its widest group and wraps for the rest
+    // So the row does not widen its column by everything it holds; the rest wraps
     pFlow->setWidthPolicy(uiDesign::FlowLayout::Width::WidestItem);
     return pRow;
 }
 
-// One thing on that strip: a control and whatever words or wells belong with
-// it, which come and go onto the next line together rather than being broken up
+// A control and its words or wells, held together so they wrap onto the next line as one
 static QWidget* makeEditorOptionGroup(QWidget* pRow)
 {
     auto* pGroup = new QWidget(pRow);
@@ -15598,19 +14841,14 @@ static QWidget* makeEditorOptionGroup(QWidget* pRow)
     return pGroup;
 }
 
-// Everything the strip holds is one control tall, whatever it is. A FlowLayout
-// puts each item at the top of the line it lands on, so a 20px check box beside
-// a 30px spin box would be read a few pixels above it; held to the same height,
-// each group's own layout centres what is inside it and the line has one middle.
+// FlowLayout tops each item on its line, so a 20px check box beside a 30px spin box would sit above its middle;
+// at one height each group's own layout centres its contents
 static void holdToOneControlHeight(QWidget* pItem)
 {
     pItem->setFixedHeight(uiDesign::scmInputHeight);
 }
 
-// A screen reader reads a control's own description, and falls back to its
-// tooltip only where there is none - so the rich text every tooltip in this
-// window is written in would be read out with its tags. Both are set from the
-// one sentence here, each in the form its reader wants.
+// A screen reader falls back to the tooltip only where there is no description, and would read its rich-text tags out
 static void describeEditorControl(QWidget* pControl, const QString& name, const QString& tip)
 {
     pControl->setAccessibleName(name);
@@ -15618,15 +14856,7 @@ static void describeEditorControl(QWidget* pControl, const QString& name, const 
     pControl->setToolTip(utils::richText(tip));
 }
 
-// The trigger form's options were a 280px column of four cards beside the
-// pattern list, folded away by the window being short and again by it being
-// narrow. They are one row of the form's own grid now, and it wraps onto
-// another line rather than being squeezed - so a narrow editor costs the
-// options a line instead of costing the pattern rows their width. The Options
-// button on the head row is still what opens and closes the row, and the editor
-// opens with it closed every time. Every word on the strip is as short as it
-// can be said in and still be read; the longer name each control was called by
-// is what a screen reader is given.
+// The strip wraps rather than squeezing, so a narrow editor costs the options a line, not the patterns their width
 void dlgTriggerEditor::buildTriggerOptionsStrip()
 {
     auto* pForm = mpTriggersMainArea;
@@ -15635,14 +14865,9 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
         return;
     }
 
-    // What the two fields on the head row are, said quietly: the words are the
-    // form's scaffolding and the name typed beside them is its content, so
-    // only one of the two is drawn at full strength
     pForm->label_trigger_name->setProperty("editorRowLabel", true);
     pForm->label_trigger_command->setProperty("editorRowLabel", true);
 
-    // The button at the end of that row says what it opens, rather than being
-    // an arrow with nothing on it
     QToolButton* pToggle = pForm->toolButton_toggleExtraControls;
     pToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     //: Button on the head row of a trigger form that shows or hides the trigger's options
@@ -15654,46 +14879,31 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
                           tr("Show or hide the trigger's options: how it matches, how long it keeps firing, its sound and its highlight."));
     const int toggleGlyphSize = qRound(pToggle->fontMetrics().height() * 0.9);
     pToggle->setIconSize(QSize(toggleGlyphSize, toggleGlyphSize));
-    // The stylesheet draws the frame the checked state is read from, which
-    // auto-raise would otherwise take away again
+    // Auto-raise would take away the frame the stylesheet draws the checked state with
     pToggle->setAutoRaise(false);
-    // ...and it stands on the row at the height of the fields beside it
     pToggle->setFixedHeight(uiDesign::scmInputHeight);
     pToggle->setCheckable(true);
     connect(pToggle, &QAbstractButton::clicked, this, &dlgTriggerEditor::setTriggerOptionsShown);
 
-    // spinBox_lineMargin is what the save and load paths read, and its special
-    // first value is what says which of the two modes a trigger is in. The two
-    // segments and the box beside them are a view of it, so it stays here, out
-    // of sight, and neither path has to know the form changed.
-    //
-    // The .ui file leaves it on QSpinBox's default maximum of 99.
+    // Hidden, not removed: save and load read the mode from it (its first value means Any), and the segments are
+    // a view of it. The .ui file leaves it at QSpinBox's default maximum of 99.
     pForm->spinBox_lineMargin->setMaximum(scmEditorMatchWithinLinesMax);
     pForm->spinBox_lineMargin->hide();
 
     //: Word leading the one row of a trigger form that holds everything about the trigger other than its name, its patterns and its script
     mpLabel_optionsRow = new QLabel(tr("Options"), pForm);
-    // One word, held to the width of that word by alignEditorFormLeadLabels(),
-    // and to the height of one control - so that it sits level with the first
-    // line of a strip that has wrapped onto several rather than half way down
-    // the lot
+    // One control tall, so it sits level with the first line of a wrapped strip rather than half way down it
     mpLabel_optionsRow->setWordWrap(false);
     mpLabel_optionsRow->setFixedHeight(uiDesign::scmInputHeight);
 
     QGroupBox* pOptionsRow = makeEditorOptionRow(pForm, qsl("editorOptionsRow"), mpLabel_optionsRow->text());
     mpWidget_triggerOptionsRow = pOptionsRow;
 
-    // The matching mode and the lines it matches within are one thing to read:
-    // the word, the two segments and the count go onto the next line together
-    // or not at all.
     QWidget* pMatchGroup = makeEditorOptionGroup(pOptionsRow);
     auto* pMatchLayout = qobject_cast<QHBoxLayout*>(pMatchGroup->layout());
 
-    // The two matching modes, drawn as one control of two joined segments.
-    // They stay radio buttons: a screen reader then says which of the two is
-    // chosen and how many there are, which nothing drawn out of labels can.
-    // The word before them goes grey with them, since it is half of what the
-    // choice reads as.
+    // Radio buttons, not drawn labels: a screen reader says which of the two is chosen and how many there are.
+    // The word goes grey with them, being half of what the choice reads as.
     mpWidget_matchModeRows = makeEditorOptionGroup(pMatchGroup);
     auto* pSegments = qobject_cast<QHBoxLayout*>(mpWidget_matchModeRows->layout());
     auto* pMatchWord = new QLabel(mpWidget_matchModeRows);
@@ -15701,9 +14911,6 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     pMatchWord->setWordWrap(false);
     //: Word before the Any / All segments on a trigger's options strip
     pMatchWord->setText(tr("Match"));
-    // The two segments are the two halves of one control, so nothing stands
-    // between them; the word before the pair is a word, and takes the gap any
-    // control leaves round the words belonging with it
     pSegments->setSpacing(0);
     pSegments->addWidget(pMatchWord);
     pSegments->addSpacing(scmEditorRowControlGap);
@@ -15731,26 +14938,20 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     mpRadioButton_matchAll->setProperty("editorSegment", true);
     mpRadioButton_matchAll->setProperty("editorSegmentSide", qsl("last"));
     for (QRadioButton* pSegment : {mpRadioButton_matchAny, mpRadioButton_matchAll}) {
-        // A stylesheet's min-height is what the contents are given and the
-        // style adds its own margins on top, so the height is set outright
+        // A QSS min-height sizes the contents and the style adds its margins on top, so the height is set outright
         pSegment->setFixedHeight(uiDesign::scmInputHeight);
         pSegments->addWidget(pSegment);
     }
     pMatchLayout->addWidget(mpWidget_matchModeRows);
 
-    // How many lines the All mode has to see every pattern within. Dimmed
-    // rather than taken away in the Any mode: what it is there for is half of
-    // what the All mode means, and a control that comes and goes with a click
-    // moves everything beside it.
+    // Dimmed rather than hidden in Any mode: a control that comes and goes with a click moves everything beside it
     mpWidget_matchWithinRow = makeEditorOptionGroup(pMatchGroup);
     auto* pWithinLayout = qobject_cast<QHBoxLayout*>(mpWidget_matchWithinRow->layout());
     mpSpinBox_matchWithinLines = new QSpinBox(mpWidget_matchWithinRow);
     mpSpinBox_matchWithinLines->setObjectName(qsl("editorMatchWithinLines"));
     mpSpinBox_matchWithinLines->setRange(0, scmEditorMatchWithinLinesMax);
     mpSpinBox_matchWithinLines->setAlignment(Qt::AlignCenter);
-    // The .ui file gives spinBox_stayOpen a policy that lets it fill its line;
-    // this one is made here and would otherwise stop at its own hint, a size
-    // down from the box beside it
+    // The .ui file gives spinBox_stayOpen a policy that fills its line; this one would stop at its hint, a size smaller
     mpSpinBox_matchWithinLines->setFixedHeight(uiDesign::scmInputHeight);
     describeEditorControl(mpSpinBox_matchWithinLines,
                           //: Accessible name of the box holding how many lines a trigger's patterns must all match within
@@ -15771,8 +14972,6 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
                           tr("Fire once for each place the pattern matches on a line, not only the first."));
     pOptionsRow->layout()->addWidget(pForm->checkBox_perlSlashGOption);
 
-    // How long the trigger goes on firing for, said as a sentence round the
-    // .ui file's own spin box
     QWidget* pStayOpenGroup = makeEditorOptionGroup(pOptionsRow);
     describeEditorControl(pForm->spinBox_stayOpen,
                           //: Accessible name of the box holding how many more lines a trigger keeps firing for
@@ -15783,8 +14982,6 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     uiDesign::buildControlSentenceRow(qobject_cast<QHBoxLayout*>(pStayOpenGroup->layout()), tr("Keep firing %1 more lines"), pForm->spinBox_stayOpen);
     pOptionsRow->layout()->addWidget(pStayOpenGroup);
 
-    // Both number boxes on the strip are now the width of the largest number
-    // they will ever hold
     fitEditorOptionsSpinBoxes();
 
     //: Trigger option, was called "only pass matches": the trigger's children see only the part of the line its pattern matched. Kept short for the options strip; the full name a screen reader hears is set below.
@@ -15796,9 +14993,7 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
                           tr("Child triggers see only the text that matched, not the whole line."));
     pOptionsRow->layout()->addWidget(pForm->checkBox_filterTrigger);
 
-    // The sound the trigger plays, as a switch and the file it names. Unlike
-    // the checkable card this was, the field beside the switch is live while
-    // the switch is off: choosing a file is how the switch is turned on.
+    // The field stays live while the switch is off: choosing a file is how the switch is turned on
     QWidget* pSoundGroup = makeEditorOptionGroup(pOptionsRow);
     auto* pSoundLayout = qobject_cast<QHBoxLayout*>(pSoundGroup->layout());
     //: Trigger option: a sound file is played whenever the trigger fires. One word, since the field naming the file stands beside it; the full name a screen reader hears is set below.
@@ -15835,8 +15030,7 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     pSoundLayout->addWidget(pForm->toolButton_clearSoundFile);
     pOptionsRow->layout()->addWidget(pSoundGroup);
 
-    // ...and the colours the matched text is redrawn in, on the same terms:
-    // choosing one in either well turns the highlight on
+    // The wells stay live too: choosing a colour turns the highlight on
     QWidget* pHighlightGroup = makeEditorOptionGroup(pOptionsRow);
     auto* pHighlightLayout = qobject_cast<QHBoxLayout*>(pHighlightGroup->layout());
     //: Trigger option: the text the trigger matched is redrawn in the colours beside this. One word, since the two wells stand beside it; the full name a screen reader hears is set below.
@@ -15856,9 +15050,6 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
                           tr("Background colour"),
                           //: Tooltip on that well
                           tr("The colour behind the matched text. Choose Keep in the picker to leave the game's own."));
-    // A colour button says what it is by the colour it is filled with, so it is
-    // sized as a well. slot_triggerSelected() still writes "keep" across one
-    // that has no colour to show, which is the only thing it could say.
     for (QPushButton* pWell : {pForm->pushButtonFgColor, pForm->pushButtonBgColor}) {
         pWell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         pWell->setFixedSize(scmEditorColorWellWidth, scmEditorColorWellHeight);
@@ -15867,9 +15058,7 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     pHighlightLayout->insertWidget(0, pForm->checkBox_triggerColorizer);
     pOptionsRow->layout()->addWidget(pHighlightGroup);
 
-    // Last on the strip, and only there while there is nothing to combine:
-    // checkForMoreThanOneTriggerItem() is what shows it, and it says why the
-    // segments at the head of the strip are greyed out
+    // checkForMoreThanOneTriggerItem() shows this while there is only one pattern
     mpLabel_matchModeHint = new QLabel(pOptionsRow);
     mpLabel_matchModeHint->setProperty("editorRowLabel", true);
     mpLabel_matchModeHint->setWordWrap(false);
@@ -15877,16 +15066,12 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
     mpLabel_matchModeHint->setText(tr("Add a second pattern to combine them."));
     pOptionsRow->layout()->addWidget(mpLabel_matchModeHint);
 
-    // The words a sentence is built out of are the form's scaffolding, the way
-    // the labels leading its rows are, and are written in the same quiet ink
     for (QWidget* pRow : {static_cast<QWidget*>(mpWidget_matchWithinRow), pStayOpenGroup}) {
         for (QLabel* pWord : pRow->findChildren<QLabel*>()) {
             pWord->setProperty("editorRowLabel", true);
         }
     }
 
-    // Everything the strip is laid out from, held to the one height a line of
-    // it is - see holdToOneControlHeight()
     for (QWidget* pItem : {pMatchGroup,
                            static_cast<QWidget*>(pForm->checkBox_perlSlashGOption),
                            pStayOpenGroup,
@@ -15897,27 +15082,18 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
         holdToOneControlHeight(pItem);
     }
 
-    // The .ui grid holds the head row at 0 and the pattern list at 1; the
-    // options strip belongs between them, led by its own word in a column of
-    // its own that alignEditorFormLeadLabels() gives the width every other
-    // form's lead column has.
+    // The .ui grid has the head row at 0 and the pattern list at 1; the strip goes between them
     pGrid->removeWidget(pForm->widget_left);
     pGrid->addWidget(mpLabel_optionsRow, 1, 0, Qt::AlignLeft | Qt::AlignTop);
     pGrid->addWidget(pOptionsRow, 1, 1);
     pGrid->addWidget(pForm->widget_left, 2, 0, 1, 2);
     pGrid->setRowStretch(0, 0);
     pGrid->setRowStretch(1, 0);
-    // The pattern list is the one thing on this form that uses whatever room
-    // the reader gives the column
     pGrid->setRowStretch(2, 1);
-    // ...and the cell beside the lead word is the one thing that uses what the
-    // column is given across
     pGrid->setColumnStretch(0, 0);
     pGrid->setColumnStretch(1, 1);
 
-    // The radios write the mode into spinBox_lineMargin, which is where the
-    // trigger is saved from - so slot_saveProperty_TriggerLineMargin and its
-    // undo entry hear about the change exactly as they did from the old control
+    // Through spinBox_lineMargin, so slot_saveProperty_TriggerLineMargin() and its undo entry hear of the change
     connect(mpRadioButton_matchAll, &QAbstractButton::toggled, this, [this](const bool checked) {
         mpTriggersMainArea->spinBox_lineMargin->setValue(checked ? mpSpinBox_matchWithinLines->value() : -1);
     });
@@ -15926,18 +15102,14 @@ void dlgTriggerEditor::buildTriggerOptionsStrip()
             mpTriggersMainArea->spinBox_lineMargin->setValue(value);
         }
     });
-    // ...and the other way round, so that loading a trigger or undoing an edit
-    // shows in the segments without either path knowing they are there
+    // ...and back, so loading a trigger or undoing an edit shows in the segments
     connect(mpTriggersMainArea->spinBox_lineMargin, qOverload<int>(&QSpinBox::valueChanged), this, &dlgTriggerEditor::reflectTriggerMatchMode);
 
     reflectTriggerMatchMode();
     showTriggerSoundFile(QString());
 }
 
-// The row an item's name is typed on, built out of the controls the .ui file
-// already holds: every object name, connection and translated string the move
-// does not touch survives it. What the row holds differs by form, which is the
-// whole of what the caller has to say.
+// Reuses the .ui file's own controls, so their object names, connections and translations survive
 static QWidget* buildEditorFormHeadRow(QWidget* pForm, const QList<QPair<QWidget*, int>>& controls)
 {
     auto* pHeadRow = new QWidget(pForm);
@@ -15947,18 +15119,13 @@ static QWidget* buildEditorFormHeadRow(QWidget* pForm, const QList<QPair<QWidget
     pRowLayout->setContentsMargins(0, 0, 0, 0);
     pRowLayout->setSpacing(scmEditorFormHeadRowSpacing);
     for (const auto& [pControl, stretch] : controls) {
-        // The .ui grid still holds these, and a widget added to a second layout
-        // while a first one has it is a warning per widget on the console
+        // Still in the .ui grid, and adding a widget to a second layout warns once per widget
         uiDesign::detachFromLayout(pControl);
         pRowLayout->addWidget(pControl, stretch);
     }
     return pHeadRow;
 }
 
-// The six forms that are not the trigger form are shelled over their .ui grids
-// the way it was rebuilt over its own: the name, whatever is typed beside it
-// and the ID pill are lifted onto one row at the top, and what is left of the
-// grid follows under it at the trigger form's measurements.
 void dlgTriggerEditor::buildEditorFormHeadRows()
 {
     const QList<QPair<QWidget*, QList<QPair<QWidget*, int>>>> heads{
@@ -15987,30 +15154,23 @@ void dlgTriggerEditor::buildEditorFormHeadRows()
     for (const auto& [pForm, controls] : heads) {
         QWidget* pHeadRow = buildEditorFormHeadRow(pForm, controls);
         if (pForm == mpActionsMainArea) {
-            // The one form whose head row is not always there: a module's
-            // master folder has no name of its own to type and no ID to show
             mpWidget_actionHeadRow = pHeadRow;
         }
         if (auto* pGrid = qobject_cast<QGridLayout*>(pForm->layout())) {
             uiDesign::insertGridRowAtTop(pGrid, pHeadRow);
         } else if (auto* pColumn = qobject_cast<QBoxLayout*>(pForm->layout())) {
-            // The variables form leads with a column rather than a grid, and the
-            // row belongs above everything that column holds
             pColumn->insertWidget(0, pHeadRow);
         }
     }
 
-    // The column an item is edited in is inset once, on the frame that carries
-    // it, so a form of its own adds nothing to that - and what is left between
-    // its rows is the trigger form's, since the two are read as one design
+    // The frame carrying the column already insets it, so the forms add no margin of their own
     const QList<QWidget*> laidOut{mpAliasMainArea,
                                   mpTimersMainArea,
                                   mpKeysMainArea,
                                   mpScriptsMainArea,
                                   mpActionsMainArea,
                                   mpVarsMainArea,
-                                  // The variables form nests its remaining controls in a
-                                  // frame, and that frame's grid is what lays them out
+                                  // The variables form's grid is on this nested frame
                                   mpVarsMainArea->frame_vars_main_area};
     for (QWidget* pWidget : laidOut) {
         QLayout* pLayout = pWidget->layout();
@@ -16023,21 +15183,14 @@ void dlgTriggerEditor::buildEditorFormHeadRows()
         }
     }
 
-    // The words beside the fields are the form's scaffolding and what is typed
-    // into them is its content, so only one of the two is drawn at full strength
     for (QLabel* pLabel : editorFormRowLabels()) {
         pLabel->setProperty("editorRowLabel", true);
-        // Sized at style time rather than by their text, so the fields under one
-        // another start at the same place: a word set against the right hand
-        // edge of a box that wide would sit a long way from the label above it
+        // Left: the labels are widened to one width at style time, and a right-set word would sit far from the one above
         pLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     }
 }
 
-// The events a script is registered for. The .ui file leaves the cell beside
-// the "Events" label empty, because what goes in it is built and thrown away as
-// the script on show changes - and because a row that wraps has to be able to
-// say how tall it has become, which no control Designer offers does.
+// Not in the .ui file: a row that wraps has to report its own height, which no Designer control does
 void dlgTriggerEditor::buildScriptEventRow()
 {
     auto* pGrid = qobject_cast<QGridLayout*>(mpScriptsMainArea->layout());
@@ -16047,30 +15200,16 @@ void dlgTriggerEditor::buildScriptEventRow()
 
     mpChipRow_scriptEvents = new uiDesign::ChipRow(mpScriptsMainArea);
     mpChipRow_scriptEvents->setObjectName(qsl("editorScriptEvents"));
-    // The whole of the row apart from the word leading it, so the chips have
-    // the width the list they replace had and the one the "-" button took
     pGrid->addWidget(mpChipRow_scriptEvents, 1, 1, 1, std::max(1, pGrid->columnCount() - 1));
 
-    // A row of one line or of three: the word leading it belongs level with the
-    // first of them rather than halfway down the lot, so it is pinned to the top
-    // of the cell and held to a single chip's height. alignEditorFormLeadLabels()
-    // sets that height, in the font the window turns out to be running at.
+    // Top-aligned, level with the first line of chips; alignEditorFormLeadLabels() holds it to one chip's height
     QLabel* pLabel = mpScriptsMainArea->label_script_registered_event_handlers;
     pGrid->setAlignment(pLabel, Qt::AlignLeft | Qt::AlignTop);
-    // One word, held to the width of that word - and a line of it high, which
-    // leaves nowhere for a second line to be drawn
     pLabel->setWordWrap(false);
 
-    // Adding, renaming or removing an event is an edit to the script, the way
-    // typing in the name field is
     connect(mpChipRow_scriptEvents, &uiDesign::ChipRow::itemsChanged, this, &dlgTriggerEditor::slot_itemEdited);
 }
 
-// A timer's interval was drawn as a wall clock: four boxes at 30pt with colons
-// between them, the units named above in 8pt, and nothing saying what the whole
-// of it meant. It is one sentence now, in the type the rest of the form is
-// filled in at - the same four fields, with the words that say what each of
-// them is between them, and the whole of it saying what the timer does.
 void dlgTriggerEditor::buildTimerIntervalRow()
 {
     auto* pGrid = qobject_cast<QGridLayout*>(mpTimersMainArea->layout());
@@ -16091,17 +15230,11 @@ void dlgTriggerEditor::buildTimerIntervalRow()
     int rowSpan = 1;
     int columnSpan = 1;
     pGrid->getItemPosition(labelIndex, &row, &column, &rowSpan, &columnSpan);
-    // The whole of the row apart from the word leading it, the way the scripts
-    // form's chips take the width the list they replace had
     pGrid->addWidget(mpWidget_timerInterval, row, column + 1, 1, std::max(1, pGrid->columnCount() - column - 1));
 
     showTimerIntervalSentence(false);
 }
 
-// Which sentence those words are: a timer fires every interval, while a timer
-// held inside another timer - an offset timer - fires once, that far after the
-// one above it. Rebuilt only when the kind changes, since choosing another
-// timer of the same kind has nothing to move.
 void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
 {
     if (!mpWidget_timerInterval || (mTimerIntervalRowBuilt && mTimerIntervalOffset == offsetTimer)) {
@@ -16112,9 +15245,7 @@ void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
 
     const QList<QWidget*> fields{mpTimersMainArea->timeEdit_timer_hours, mpTimersMainArea->timeEdit_timer_minutes, mpTimersMainArea->timeEdit_timer_seconds, mpTimersMainArea->timeEdit_timer_msecs};
 
-    // A screen reader announces a field by its own name and never by the word
-    // standing beside it, and one sentence cannot name four of them - so each
-    // says which part of the interval it holds
+    // A screen reader names a field by its own name, never by the words beside it
     //: Accessible name of the hours field of a timer's interval
     mpTimersMainArea->timeEdit_timer_hours->setAccessibleName(tr("Hours"));
     //: Accessible name of the minutes field of a timer's interval
@@ -16125,8 +15256,6 @@ void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
     mpTimersMainArea->timeEdit_timer_msecs->setAccessibleName(tr("Milliseconds"));
 
     auto* pRow = qobject_cast<QHBoxLayout*>(mpWidget_timerInterval->layout());
-    // The four fields are the form's and stay; the words are this sentence's
-    // own and go out with it
     while (QLayoutItem* pItem = pRow->takeAt(0)) {
         QWidget* pWord = pItem->widget();
         delete pItem;
@@ -16135,9 +15264,7 @@ void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
         }
     }
     for (QWidget* pField : fields) {
-        // The .ui grid still holds these the first time round, and a widget
-        // added to a second layout while a first one has it is a warning per
-        // widget on the console
+        // The .ui grid still holds these the first time, and adding a widget to a second layout warns once per widget
         uiDesign::detachFromLayout(pField);
     }
 
@@ -16150,21 +15277,15 @@ void dlgTriggerEditor::showTimerIntervalSentence(const bool offsetTimer)
         sentence = tr("Fires every %1 h %2 min %3 s %4 ms");
     }
     uiDesign::buildControlSentenceRow(pRow, sentence, fields);
-    // Each field is as wide as its digits and the arrows beside them; what is
-    // left of the row is nothing rather than four boxes stretched across it
     pRow->addStretch(1);
 
-    // The words are the form's scaffolding, the way the labels leading its rows
-    // are, and are written in the same quiet ink
     for (QLabel* pWord : mpWidget_timerInterval->findChildren<QLabel*>()) {
         pWord->setProperty("editorRowLabel", true);
         uiDesign::repolish(pWord);
     }
 }
 
-// Which of the two sentences the timer on show wants, taken from the timer
-// again rather than from what was last drawn: its parent may have changed
-// without the form being told to load it afresh
+// Read from the timer, not from what was drawn: a move can change its parent without the form reloading
 void dlgTriggerEditor::refreshShownTimerIntervalSentence()
 {
     if (!mpCurrentTimerItem) {
@@ -16175,11 +15296,6 @@ void dlgTriggerEditor::refreshShownTimerIntervalSentence()
     }
 }
 
-// The keystroke a key answers was a read-only field with a "Grab New Key"
-// button beside it, and nothing on screen said the editor had started
-// listening. The field is the control now: a click on it - or Return or Space
-// while it holds the keyboard - starts the grab, it carries the accent while it
-// waits, and the word beside it says what happens next.
 void dlgTriggerEditor::buildKeyBindingRow()
 {
     auto* pGrid = qobject_cast<QGridLayout*>(mpKeysMainArea->layout());
@@ -16227,8 +15343,7 @@ void dlgTriggerEditor::buildKeyBindingRow()
     pGrid->getItemPosition(labelIndex, &row, &column, &rowSpan, &columnSpan);
     pGrid->addWidget(pRowWidget, row, column + 1, 1, std::max(1, pGrid->columnCount() - column - 1));
 
-    // Forgetting the keystroke goes through the path a captured one takes, so
-    // it is one entry on the undo stack like any other change to the key
+    // Through the capture path, so forgetting is one undo entry like any other change to the key
     connect(mpButton_keyClear, &QAbstractButton::clicked, this, [this]() {
         endKeyGrab();
         keyGrabCallback(Qt::Key_unknown, Qt::NoModifier);
@@ -16237,12 +15352,6 @@ void dlgTriggerEditor::buildKeyBindingRow()
     });
 }
 
-// A variable's two type pickers were tucked into the right hand columns of the
-// form's grid, each behind a word pointing at it with an arrow. They are one
-// row now, in the place every other form puts the row under its head row, with
-// each box as wide as the longest thing it can say rather than stretched
-// across the column. The switch that keeps the variable out of the tree is the
-// row under them, which the .ui grid already places for itself.
 void dlgTriggerEditor::buildVariableTypeRows()
 {
     auto* pGrid = qobject_cast<QGridLayout*>(mpVarsMainArea->frame_vars_main_area->layout());
@@ -16251,8 +15360,7 @@ void dlgTriggerEditor::buildVariableTypeRows()
         return;
     }
 
-    // Read before anything is taken out of the grid: detaching an item renumbers
-    // the ones after it
+    // Read before anything leaves the grid: detaching an item renumbers the ones after it
     int row = 0;
     int column = 0;
     int rowSpan = 1;
@@ -16269,25 +15377,15 @@ void dlgTriggerEditor::buildVariableTypeRows()
     for (QWidget* pControl : {static_cast<QWidget*>(mpVarsMainArea->comboBox_variable_key_type),
                               static_cast<QWidget*>(mpVarsMainArea->label_variable_value),
                               static_cast<QWidget*>(mpVarsMainArea->comboBox_variable_value_type)}) {
-        // The .ui grid still holds these, and a widget added to a second layout
-        // while a first one has it is a warning per widget on the console
+        // Still in the .ui grid, and adding a widget to a second layout warns once per widget
         uiDesign::detachFromLayout(pControl);
         pRow->addWidget(pControl);
     }
-    // Each box is as wide as the longest reading it can show - which is what its
-    // AdjustToContents policy asks for - so what is left of the row is nothing
-    // rather than two boxes stretched across it
     pRow->addStretch(1);
 
     pGrid->addWidget(pRowWidget, row, column + 1, 1, span);
 }
 
-// The Buttons form was three group boxes - the toolbar's, the button's and the
-// stylesheet's - each with a column of right hand labels of its own, at two
-// different x positions and none of them the one the other six forms type at.
-// They are rows of the form's own grid now. Only the rotation row holds more
-// than one control: the picker and the switch saying whether the button stays
-// down, which are read as one thing about how the button behaves.
 void dlgTriggerEditor::buildActionRows()
 {
     auto* pGrid = qobject_cast<QGridLayout*>(mpActionsMainArea->layout());
@@ -16296,8 +15394,7 @@ void dlgTriggerEditor::buildActionRows()
         return;
     }
 
-    // Read before anything is taken out of the grid: detaching an item
-    // renumbers the ones after it
+    // Read before anything leaves the grid: detaching an item renumbers the ones after it
     int row = 0;
     int column = 0;
     int rowSpan = 1;
@@ -16313,48 +15410,34 @@ void dlgTriggerEditor::buildActionRows()
     pRow->setContentsMargins(0, 0, 0, 0);
     pRow->setSpacing(scmEditorRowControlGap);
     for (QWidget* pControl : {static_cast<QWidget*>(mpActionsMainArea->comboBox_action_button_rotation), static_cast<QWidget*>(mpActionsMainArea->checkBox_action_button_isPushDown)}) {
-        // The .ui grid still holds these, and a widget added to a second layout
-        // while a first one has it is a warning per widget on the console
+        // Still in the .ui grid, and adding a widget to a second layout warns once per widget
         uiDesign::detachFromLayout(pControl);
         pRow->addWidget(pControl);
     }
-    // The picker is as wide as the longest reading it can show, so what is left
-    // of the row is nothing rather than a box stretched across the form
     pRow->addStretch(1);
     pGrid->addWidget(pRowWidget, row, column + 1, 1, span);
 
-    // The stylesheet is the one thing on this form that uses whatever room the
-    // reader gives the column - which is why the Buttons view's seam drags at
-    // all - so the word leading it sits level with its first line rather than
-    // halfway down however tall it has become. The row's stretch is the .ui
-    // file's, and insertGridRowAtTop() carries it down with the row.
+    // The stylesheet field grows with the column, so its label sits level with its first line. The row's stretch
+    // is the .ui file's, and insertGridRowAtTop() carries it down with the row.
     pGrid->setAlignment(mpActionsMainArea->label_action_css, Qt::AlignLeft | Qt::AlignTop);
 }
 
-// The row drawn from what the key holds: the keystroke in the field, or the
-// field left empty behind the words saying there is none, and beside it what a
-// click will do. A key group is offered none of it - TKey::match() never
-// matches a folder, so a keystroke on one is a setting that can do nothing.
+// A key group gets no binding row: TKey::match() never matches a folder
 void dlgTriggerEditor::showKeyBinding()
 {
     if (!mpLabel_keyHint) {
         return;
     }
 
-    // Whatever led here - a toolbar button, another item, another view - the
-    // row is about to say what the key holds, which a grab still waiting for a
-    // keystroke would contradict
+    // A grab still waiting for a keystroke would contradict the row about to say what the key holds
     releaseKeyGrab();
 
-    // Looked up the way slot_keySelected does rather than through
-    // getKeyFromTreeItem(), which answers null for a row with no parent
+    // Not getKeyFromTreeItem(), which answers null for a row with no parent
     TKey* pKey = mpCurrentKeyItem ? mpHost->getKeyUnit()->getKey(mpCurrentKeyItem->data(0, Qt::UserRole).toInt()) : nullptr;
     const bool bindable = pKey && !pKey->isFolder();
     QLineEdit* pField = mpKeysMainArea->lineEdit_key_binding;
     mpKeysMainArea->label_key_binding->setVisible(bindable);
-    // The whole row rather than the three things on it: a widget left visible
-    // holding nothing still takes a row of the grid, and the gap it leaves is
-    // dead height in a column the code pane is measured against
+    // The whole row too: a visible empty widget still takes a grid row, dead height the code pane is measured against
     if (mpWidget_keyBindingRow) {
         mpWidget_keyBindingRow->setVisible(bindable);
     }
@@ -16379,7 +15462,6 @@ void dlgTriggerEditor::showKeyBinding()
         //: Beside the empty key binding field, saying that clicking it is how a keystroke is set
         mpLabel_keyHint->setText(tr("Click to set"));
     }
-    // Nothing to forget until there is a keystroke to forget
     mpButton_keyClear->setVisible(bound);
 }
 
@@ -16397,7 +15479,6 @@ void dlgTriggerEditor::showKeyBindingListening()
     mpLabel_keyHint->setText(tr("Escape keeps the current key"));
     pField->setProperty("editorListening", true);
     uiDesign::repolish(pField);
-    // Pressing rather than clicking is what is wanted now
     pField->setCursor(Qt::ArrowCursor);
 }
 
@@ -16432,10 +15513,8 @@ bool dlgTriggerEditor::handleKeyBindingFieldEvent(QEvent* pEvent)
         return false;
 
     case QEvent::KeyPress:
-        // While the grab is armed every keystroke is the one being taken, and
-        // the field holds the keyboard - so it is handed to the editor's own
-        // event(), which is where a grab is read, rather than left to a
-        // read-only line edit that eats the arrows and Ctrl+A on the way past
+        // The field holds the keyboard while armed, so the key goes to event(), where a grab is read; a read-only
+        // QLineEdit would eat the arrows and Ctrl+A on the way
         if (mIsGrabKey) {
             event(pEvent);
             return true;
@@ -16453,8 +15532,7 @@ bool dlgTriggerEditor::handleKeyBindingFieldEvent(QEvent* pEvent)
         }
 
     case QEvent::FocusOut:
-        // The user went somewhere else with the grab still armed, which is
-        // Escape by another route: the keystroke stands as it was
+        // Leaving the field is Escape by another route: the keystroke stands
         endKeyGrab();
         return false;
 
@@ -16463,10 +15541,6 @@ bool dlgTriggerEditor::handleKeyBindingFieldEvent(QEvent* pEvent)
     }
 }
 
-// Every label naming a field on one of the six shelled forms: the name at the
-// head of each, whatever is typed beside it, and the ones leading the rows
-// under it. All of them are drawn in the quiet ink a form's scaffolding is
-// written in.
 QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
 {
     return {mpLabel_optionsRow,
@@ -16496,10 +15570,6 @@ QList<QLabel*> dlgTriggerEditor::editorFormRowLabels() const
             mpActionsMainArea->label_action_css};
 }
 
-// The first label of every row under a head row, which is what the grid's first
-// column is as wide as. The Buttons form brings most of them: it is the one
-// form with more than a couple of rows, and every one of its words is measured
-// with the rest so that a field is typed at the same x on all seven forms.
 QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
 {
     return {mpLabel_optionsRow,
@@ -16519,15 +15589,8 @@ QList<QLabel*> dlgTriggerEditor::editorFormLeadLabels() const
             mpActionsMainArea->label_action_css};
 }
 
-// A field has to start at the same place whichever row of whichever form it is
-// on, so the labels leading those rows are all one width - the widest of them,
-// and never narrower than the name above them needs. The name's own label is in
-// the head row rather than in the grid's first column, and the two are laid out
-// with different gaps, so it is given the difference on top and both fields
-// come out at the same x.
-//
-// Measured rather than named: what a word is wide is the font the window is
-// running at, which a stylesheet cannot answer for.
+// The name label sits in the head row, laid out with a different gap, so it is given the difference on top.
+// Measured, not named in a stylesheet: a word's width depends on the font the window is running at.
 void dlgTriggerEditor::alignEditorFormLeadLabels()
 {
     if (!mpAliasMainArea) {
@@ -16539,9 +15602,6 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
         leadWidth = std::max(leadWidth, pLabel->fontMetrics().horizontalAdvance(pLabel->text()));
     }
 
-    // The seven forms all lead with the same word, so one measurement answers
-    // for all of them - and the trigger form is measured with them, since its
-    // name field has to start where the other six do
     int nameWidth = 0;
     const QList<QLabel*> nameLabels{mpTriggersMainArea->label_trigger_name,
                                     mpAliasMainArea->label_alias_name,
@@ -16563,20 +15623,11 @@ void dlgTriggerEditor::alignEditorFormLeadLabels()
         pLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     }
 
-    // The one lead label whose row is not one control tall: the chips beside it
-    // wrap, so it is held to a single chip's height at the top of the cell and
-    // its word sits level with the first line of them however many there are
     if (mpChipRow_scriptEvents) {
         mpScriptsMainArea->label_script_registered_event_handlers->setFixedHeight(mpChipRow_scriptEvents->lineHeight());
     }
 }
 
-// The two number boxes on the trigger's options strip are as wide as the
-// largest number they can hold and no wider - measured rather than named, the
-// way the lead labels above are: the widest digit repeated as many times as
-// that number has digits, in the box's own font, plus what the field's rule
-// leaves round the digits and the column of arrows it cuts out of them. A fixed
-// 72px was room for a couple of digits neither box will ever show.
 void dlgTriggerEditor::fitEditorOptionsSpinBoxes()
 {
     if (!mpSpinBox_matchWithinLines || !mpTriggersMainArea) {
@@ -16585,9 +15636,7 @@ void dlgTriggerEditor::fitEditorOptionsSpinBoxes()
 
     for (QSpinBox* pBox : {mpSpinBox_matchWithinLines, mpTriggersMainArea->spinBox_stayOpen}) {
         const QFontMetrics metrics = pBox->fontMetrics();
-        // Zero is the widest digit in most faces but not in all of them, and a
-        // box drawn a pixel short of its own number is the one thing this must
-        // not do
+        // Zero is the widest digit in most faces but not in all
         QChar widest = QLatin1Char('0');
         for (char digit = '0'; digit <= '9'; ++digit) {
             if (metrics.horizontalAdvance(QLatin1Char(digit)) > metrics.horizontalAdvance(widest)) {
@@ -16601,9 +15650,7 @@ void dlgTriggerEditor::fitEditorOptionsSpinBoxes()
     }
 }
 
-// spinBox_lineMargin has changed - by a load, an undo, or the segments beside
-// it - so the view of it catches up. Blocked both ways round: the segments
-// write back into that same spin box.
+// Signals blocked both ways: the segments write back into spinBox_lineMargin
 void dlgTriggerEditor::reflectTriggerMatchMode()
 {
     if (!mpRadioButton_matchAny) {
@@ -16618,18 +15665,12 @@ void dlgTriggerEditor::reflectTriggerMatchMode()
         const QSignalBlocker withinBlocker(mpSpinBox_matchWithinLines);
         mpRadioButton_matchAny->setChecked(!allMode);
         mpRadioButton_matchAll->setChecked(allMode);
-        // The Any mode carries no line count; what the All mode starts from is
-        // what the old spin box stepped up to from its special first value
         mpSpinBox_matchWithinLines->setValue(std::max(0, lineDelta));
     }
-    // Dimmed rather than hidden, and never offered where there is nothing to
-    // combine: checkForMoreThanOneTriggerItem() holds the segments to that, and
-    // the line count is part of the choice they make
+    // Also off while the segments are: checkForMoreThanOneTriggerItem() disables them for a single pattern
     mpWidget_matchWithinRow->setEnabled(allMode && mpWidget_matchModeRows->isEnabled());
 }
 
-// The one way the strip is opened or closed on purpose, so that the answer the
-// session goes on holding and what the form shows are set in the one place
 void dlgTriggerEditor::setTriggerOptionsShown(const bool shown)
 {
     mShowAllTriggerControls = shown;
@@ -16643,25 +15684,19 @@ void dlgTriggerEditor::slot_showAllTriggerControls(const bool isShown)
         pToggle->setChecked(isShown);
     }
 
-    // Set unconditionally: isVisible() is also false while the whole trigger
-    // form is hidden, as it is during construction, which would skip the hide
-    // that keeps the strip away once the form does show
+    // Unconditionally: isVisible() is also false while the whole form is hidden, as during construction, which
+    // would skip the hide that keeps the strip away once the form shows
     showEditorFormRow(isShown, {mpLabel_optionsRow, mpWidget_triggerOptionsRow});
 
     updatePatternTabOrder();
 
-    // The form is a row shorter or a row taller, and the seam over the code
-    // pane follows what the form asks for - but only where the form on show is
-    // the one that changed
     if (mCurrentView == EditorViewType::cmTriggerView) {
         fitFormPaneToItsContents();
     }
 }
 
-// What the sound file field says, which is the file's name, and what it stands
-// for, which is the whole path. The path is what the save and load paths read,
-// so it is kept on the field rather than shown in it: a path drawn into a field
-// this size is the tail of a directory nobody typed.
+// The path, which save and load read, rides on a property: drawn in a field this size it would be the tail of a
+// directory
 void dlgTriggerEditor::showTriggerSoundFile(const QString& path)
 {
     QLineEdit* pField = mpTriggersMainArea->lineEdit_soundFile;
@@ -16671,10 +15706,8 @@ void dlgTriggerEditor::showTriggerSoundFile(const QString& path)
     //: Tooltip on the sound file field, which opens the file chooser when it is clicked
     const QString tip = tr("Choose the sound file to play. Choosing one turns the sound on.");
     pField->setToolTip(utils::richText(path.isEmpty() ? tip : qsl("%1<br>%2").arg(path.toHtmlEscaped(), tip)));
-    // A screen reader is told which file this is rather than the sentence about
-    // choosing one, which the name it already carries says
+    // The file, not the sentence about choosing one, which the accessible name already says
     pField->setAccessibleDescription(path.isEmpty() ? pField->placeholderText() : name);
-    // Nothing to forget until there is a file to forget
     mpTriggersMainArea->toolButton_clearSoundFile->setVisible(!path.isEmpty());
 }
 
@@ -16683,9 +15716,6 @@ QString dlgTriggerEditor::triggerSoundFilePath() const
     return mpTriggersMainArea->lineEdit_soundFile->property(cSoundFilePath).toString();
 }
 
-// The field opens the chooser rather than being typed into, the way the key
-// binding field arms the key grab: a click on it, or Return or Space while it
-// holds the keyboard
 bool dlgTriggerEditor::handleSoundFileFieldEvent(QEvent* pEvent)
 {
     switch (pEvent->type()) {
@@ -16715,9 +15745,7 @@ bool dlgTriggerEditor::handleSoundFileFieldEvent(QEvent* pEvent)
     }
 }
 
-// What a colour well is filled with, said to a screen reader: a well says what
-// it holds by its colour alone, and "keep" is written across it only while it
-// has none to show
+// A well otherwise says what it holds by its colour alone
 void dlgTriggerEditor::describeColourWell(QPushButton* pWell)
 {
     const QString colour = pWell->property(cButtonBaseColor).toString();
@@ -16731,17 +15759,11 @@ void dlgTriggerEditor::describeColourWell(QPushButton* pWell)
 
 void dlgTriggerEditor::slot_rightSplitterMoved(const int, const int)
 {
-    // splitterMoved() comes from a drag and never from setSizes(), so this is
-    // the one place the user's own height for a view is heard. From here on
-    // that view keeps it as items change, until Mudlet is restarted; every
-    // other view goes on snapping to what its item holds.
+    // splitterMoved() comes from a drag, never from setSizes(), so this is the one place a user's height is heard
     const QList<int> movedTo = splitter_right->sizes();
     if (mCurrentView != EditorViewType::cmUnknownView && !movedTo.isEmpty()) {
-        // Net of whatever notice was up while they dragged. A notice is given
-        // its room out of this same pane - moveSeamByNoticeChange() - so a
-        // height written down with one inside it is read back as room the form
-        // asked for, and the next notice takes its own height off the form all
-        // over again.
+        // Net of any notice up during the drag: moveSeamByNoticeChange() gives a notice its room out of this pane,
+        // so a height recorded with one inside would be read back as form room and the next notice taken off twice
         mDraggedFormPaneHeights.insert(mCurrentView, std::max(0, movedTo.constFirst() - mNoticeRoomInFormColumn));
     }
     if (mpSourceEditorFindArea->isVisible()) {
@@ -16778,8 +15800,6 @@ void dlgTriggerEditor::showOrHideRestoreEditorActionsToolbarAction()
     }
 }
 
-// Shows/hides the restore option for the toolbar as the toolbar itself is
-// hidden/shown:
 void dlgTriggerEditor::slot_visibilityChangedEditorActionsToolbar()
 {
     showOrHideRestoreEditorActionsToolbarAction();
@@ -16791,10 +15811,8 @@ void dlgTriggerEditor::slot_floatingChangedEditorActionsToolbar()
 {
     showOrHideRestoreEditorActionsToolbarAction();
 
-    // A bar torn off into a window of its own is given the size of what it
-    // holds, so it starts from every name shown - and the resize that gives it
-    // that size runs the fit again. Left collapsed, it would be sized to the
-    // pictures and could then never find the room to ask for its names back.
+    // A torn-off bar is sized to what it holds, so it starts with every name shown and that resize refits it;
+    // sized to the pictures alone it could never find the room to ask for its names back
     if (toolBar->isFloating()) {
         for (EditorToolBarGroup& group : mEditorToolBarGroups) {
             group.labelsShown = true;
@@ -16924,9 +15942,7 @@ void dlgTriggerEditor::hideSystemMessageArea()
     }
 }
 
-// Modelled on dlgProfilePreferences::buildSidebar() - the same list, the same
-// measurements and the same delegate, so that the two windows read as one
-// design
+// Mirrors dlgProfilePreferences::buildSidebar(), so that the two windows read as one design
 void dlgTriggerEditor::buildEditorSidebar()
 {
     mpWidget_editorSidebarPane = new QWidget(this);
@@ -16949,28 +15965,19 @@ void dlgTriggerEditor::buildEditorSidebar()
     pSidebarLayout->addWidget(mpListWidget_editorSidebar, 1);
 
     connect(mpListWidget_editorSidebar, &QListWidget::currentRowChanged, this, &dlgTriggerEditor::slot_editorSidebarRowChanged);
-    // A row that runs a one-off action rather than changing the view asks for it
-    // outright, so that arrowing past it does not toggle a console. Both signals
-    // are wanted - a click, and Return on a row the keyboard is on - and on a
-    // style that activates on a single click one click sends both, which
-    // slot_editorSidebarItemActivated() is where the second of is dropped.
+    // One-off rows run on a click or Return rather than on the current row, so arrowing past cannot toggle a
+    // console. A style that activates on one click sends both; slot_editorSidebarItemActivated() drops the second.
     connect(mpListWidget_editorSidebar, &QListWidget::itemClicked, this, &dlgTriggerEditor::slot_editorSidebarItemActivated);
     connect(mpListWidget_editorSidebar, &QListWidget::itemActivated, this, &dlgTriggerEditor::slot_editorSidebarItemActivated);
     invalidateEditorSidebarWidths();
 }
 
-// The chevron on the line between the sidebar and the rest of the window. What
-// it is called is what will become of the names - never of the sidebar, which
-// stays: a rail turns every row's name into its tooltip, so a reader who cannot
-// see the control has to be told that much in words.
 void dlgTriggerEditor::updateEditorSidebarToggle()
 {
     if (!mpToggle_editorSidebar) {
         return;
     }
     const bool namesShowing = mEditorSidebarLabelsShown && mEditorSidebarNamesFit;
-    // Pointing the way the sidebar will go: into the seam while the names are
-    // there to be given up, out of it while they are not
     mpToggle_editorSidebar->setPointingLeft(namesShowing);
 
     //: Tooltip and accessible name of the chevron on the line down the right of the script editor's sidebar while the section names are showing. Pressing it leaves the sidebar in place as a rail of icons - it closes nothing - so the wording is about the labels rather than the sidebar.
@@ -16978,39 +15985,31 @@ void dlgTriggerEditor::updateEditorSidebarToggle()
     //: Tooltip and accessible name of that same chevron while the sidebar is a rail of icons. Pressing it puts the section names back beside the icons.
     const QString showLabels = tr("Show the sidebar's labels");
     const QString wording = namesShowing ? minimise : showLabels;
-    // The chevron is drawn rather than written, so its text is the name a
-    // screen reader is given rather than anything on show
+    // The chevron is drawn, so its text is only what a screen reader is given
     mpToggle_editorSidebar->setText(wording);
     mpToggle_editorSidebar->setAccessibleName(wording);
-    // A window with no room for the names cannot be talked into them, so rather
-    // than doing nothing when it is pressed the control says why it will not
+    // In a window too narrow for the names it is disabled with a reason, rather than doing nothing when pressed
     mpToggle_editorSidebar->setEnabled(mEditorSidebarNamesFit);
     //: Tooltip on that same chevron when the editor window is too narrow to fit the section names, which is why pressing it is not offered.
     mpToggle_editorSidebar->setToolTip(utils::richText(mEditorSidebarNamesFit ? wording : tr("The window is too narrow for the sidebar's labels")));
-    // The sidebar's width is what the seam is, and this is called from every
-    // path that can have moved it
+    // Every path that can move the seam comes through here
     mpToggle_editorSidebar->reposition();
 }
 
-// The one place the preference changes, so that the toggle and the session
-// hold the same answer. The space-driven collapse in updateEditorSidebarMode()
-// deliberately does not come through here.
+// The one place the preference changes; the width-driven collapse in updateEditorSidebarMode() bypasses it
 void dlgTriggerEditor::setEditorSidebarLabelsShown(const bool shown)
 {
     mEditorSidebarLabelsShown = shown;
     updateEditorSidebarMode();
 }
 
-// No icon yet: the set is single-colour, so which colour is not known until
-// applyEditorShellStyle() has read the theme off the palette
+// No icon yet: its tint is unknown until applyEditorShellStyle() has read the theme
 QListWidgetItem* dlgTriggerEditor::addEditorSidebarRow(QAction* pAction, const EditorViewType view, const QString& iconFile)
 {
     auto* pItem = new QListWidgetItem(pAction->text(), mpListWidget_editorSidebar);
     pItem->setData(scmRole_editorSidebarAction, QVariant::fromValue(pAction));
     pItem->setData(scmRole_editorSidebarView, static_cast<int>(view));
     pItem->setSizeHint(QSize(0, scmEditorSidebarRowHeight));
-    // The action's own tooltip names the row and gives its shortcut, which is
-    // the whole of what a collapsed sidebar has to offer on hover
     pItem->setToolTip(pAction->toolTip());
     mEditorSidebarGlyphs.append({pItem, iconFile});
     mEditorViewActions.append(pAction);
@@ -17029,7 +16028,6 @@ void dlgTriggerEditor::addEditorSidebarSeparator()
     mpListWidget_editorSidebar->setItemWidget(pItem, pLine);
 }
 
-// Called from restyleEditorIcons() alone, which is where the colours come from
 void dlgTriggerEditor::restyleEditorSidebarIcons(const QColor& normal, const QColor& selected)
 {
     for (const auto& glyph : std::as_const(mEditorSidebarGlyphs)) {
@@ -17041,15 +16039,8 @@ void dlgTriggerEditor::restyleEditorSidebarIcons(const QColor& normal, const QCo
     }
 }
 
-// The row at the top of each tree stands for the same thing as the row beside
-// it in the sidebar - Triggers, Aliases, Scripts - so it carries the same glyph,
-// tinted from the same pair of colours, where it used to carry a bitmap from an
-// icon set nothing else in the window still draws from.
-//
-// Nothing re-derives a QIcon once it is set on a tree item, so every path that
-// makes one of these rows comes back through here: fillout_form() builds six of
-// them, repopulateVars() rebuilds the seventh on every read of the variables,
-// and a theme change reaches all seven from restyleEditorIcons().
+// A QIcon set on a tree item is never re-derived, so every path that makes a heading row calls this:
+// fillout_form(), repopulateVars() for the variables heading, and restyleEditorIcons() on a theme change
 void dlgTriggerEditor::restyleEditorTreeHeadingIcons()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -17066,16 +16057,12 @@ void dlgTriggerEditor::restyleEditorTreeHeadingIcons()
         }
         const QPixmap source = uiDesign::glyphPixmap(heading.second);
         QIcon icon(uiDesign::tintedGlyph(source, tokens.mutedText));
-        // The same pair the sidebar's rows are cut from, so that a chosen
-        // heading and a chosen sidebar row are the one colour
         icon.addPixmap(uiDesign::tintedGlyph(source, tokens.accentText), QIcon::Selected);
         heading.first->setIcon(0, icon);
     }
 }
 
-// The view can be changed from a deep link, a search result or a keyboard
-// shortcut as much as from the sidebar, so the row that is drawn as chosen is
-// set from the view rather than the other way round - see changeView()
+// The view also changes from deep links, search results and shortcuts, so the row follows the view - see changeView()
 void dlgTriggerEditor::syncEditorSidebarSelection()
 {
     if (!mpListWidget_editorSidebar || (mCurrentView == EditorViewType::cmUnknownView && !mFolderViewActive)) {
@@ -17108,8 +16095,7 @@ void dlgTriggerEditor::slot_editorSidebarRowChanged(const int row)
         return;
     }
     const auto view = static_cast<EditorViewType>(pItem->data(scmRole_editorSidebarView).toInt());
-    // A row that runs a one-off action is not somewhere to go, and the view
-    // already on show is not one to rebuild
+    // cmUnknownView marks a one-off action row, which is not somewhere to go
     if (view == EditorViewType::cmUnknownView || (view == mCurrentView && !mFolderViewActive)) {
         return;
     }
@@ -17118,21 +16104,14 @@ void dlgTriggerEditor::slot_editorSidebarRowChanged(const int row)
     }
 }
 
-// Errors, Statistics and Debug are not views to leave the editor on: the first
-// shows and hides the console at the bottom of this window, the second prints a
-// summary onto the profile's own window and raises it, and the third opens the
-// central debug console. So they run on a click or on Enter rather than on the
-// keyboard passing over them, and the chosen row goes back to the view that is
-// actually on show.
+// Errors, Statistics and Debug are actions, not views: they run here and the chosen row goes back to the view on show
 void dlgTriggerEditor::slot_editorSidebarItemActivated(QListWidgetItem* pItem)
 {
     if (!pItem || pItem->data(scmRole_editorSidebarFolders).toBool() || static_cast<EditorViewType>(pItem->data(scmRole_editorSidebarView).toInt()) != EditorViewType::cmUnknownView) {
         return;
     }
-    // A click and an activation both arriving is one click on a style that
-    // activates on one, and the two arrive in the same pass through the event
-    // loop - which is what tells them apart from a Return press, whose
-    // activation arrives on a pass of its own with the guard already let go of
+    // On a style that activates on one click, the click and the activation arrive in the same event-loop pass;
+    // a Return press's activation comes on a pass of its own, after the guard is released
     if (mEditorSidebarActionInFlight) {
         return;
     }
@@ -17152,10 +16131,7 @@ void dlgTriggerEditor::invalidateEditorSidebarWidths()
     mEditorSidebarWidthsKnown = false;
 }
 
-// Measured rather than a number in the source: an interface font, a
-// translation's longer names and the style drawing the rows all move it. Kept
-// once measured, as a resize asks for the answer on every frame of a drag and
-// nothing that would change it can happen in the middle of one.
+// Measured: the interface font, a translation's longer names and the row style all move it
 dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() const
 {
     if (mEditorSidebarWidthsKnown) {
@@ -17163,31 +16139,19 @@ dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() co
     }
 
     EditorSidebarWidths widths;
-    // Zero collapses nothing, which is the right answer for a half-built window
-    // - and not an answer to keep, as the window will not stay half-built
+    // Zero collapses nothing: right for a half-built window, and not an answer to cache
     if (!mpListWidget_editorSidebar) {
         return widths;
     }
-    // What the style in force says each row needs at its own name and glyph,
-    // which is a different number in each appearance - see
-    // uiDesign::sidebarRowWidth()
     int widestRow = 0;
     for (int row = 0, rows = mpListWidget_editorSidebar->count(); row < rows; ++row) {
         widestRow = std::max(widestRow, uiDesign::sidebarRowWidth(mpListWidget_editorSidebar, mpListWidget_editorSidebar->item(row)->text()));
     }
     widths.expanded = std::clamp(2 * scmEditorSidebarPadding + widestRow, scmEditorSidebarRailWidth, scmEditorSidebarMaximumWidth);
 
-    // Deliberately not the width above: held equal, the sidebar had its names at
-    // exactly one window width and the first pixel of a drag inwards took them
-    // away. It is the names plus a comfortable reading column beside them -
-    // floored there rather than capped there, which is what scmEditorContent-
-    // ColumnWidth says it is for. Capped, the breakpoint came out at exactly
-    // the window's own minimum width whenever the body could be drawn narrower
-    // than that column, since a layout's total minimum is the sidebar's fixed
-    // width plus the body's: the test below is strict, so a window that can
-    // never be dragged past its minimum could never reach it and the names were
-    // never given up. Floored, the body keeps its own minimum as the floor for
-    // a form too wide to fit the column.
+    // Not the expanded width: held equal, the first pixel of an inward drag took the names away. Floored at the
+    // content column, not capped: capped, the breakpoint fell at the window's own minimum width, which the strict
+    // test below can never reach.
     const int bodyMinimum = splitter_main ? splitter_main->minimumSizeHint().width() : 0;
     widths.collapseBelow = widths.expanded + std::max(scmEditorContentColumnWidth, bodyMinimum);
 
@@ -17196,11 +16160,6 @@ dlgTriggerEditor::EditorSidebarWidths dlgTriggerEditor::editorSidebarWidths() co
     return widths;
 }
 
-// Two answers decide the sidebar's mode, and only one of them is the user's:
-// the toggle's stored preference says whether the names are wanted, and the
-// window's width says whether there is room to grant it. A window with no room
-// takes them away without writing anything down, so widening it again is
-// settled by the preference alone.
 void dlgTriggerEditor::updateEditorSidebarMode()
 {
     if (!mpWidget_editorSidebarPane) {
@@ -17210,9 +16169,8 @@ void dlgTriggerEditor::updateEditorSidebarMode()
     if (!widths.expanded) {
         return;
     }
-    // The window's width rather than the space left over: the threshold is what
-    // the *expanded* sidebar needs, so collapsing cannot flip the test that
-    // collapsed it and start it oscillating
+    // The window's width, not the space left: the threshold is the expanded sidebar's, so collapsing cannot flip
+    // the test and oscillate
     mEditorSidebarNamesFit = width() >= widths.collapseBelow;
     uiDesign::setSidebarCollapsed(
             mpWidget_editorSidebarPane, mpListWidget_editorSidebar, qsl("editorSidebarSeparator"), !(mEditorSidebarNamesFit && mEditorSidebarLabelsShown), editorSidebarMetrics(widths.expanded));
@@ -17229,8 +16187,6 @@ void dlgTriggerEditor::styleSearchOptionsMenu()
     uiDesign::letPopupsTakeTheFieldsCorner(pMenu_searchOptions);
 }
 
-// Called from applyEditorShellStyle() alone, which is both where the colours
-// come from and the one thing an appearance change runs again
 void dlgTriggerEditor::restyleEditorIcons()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -17243,55 +16199,35 @@ void dlgTriggerEditor::restyleEditorIcons()
         }
         const QPixmap source = uiDesign::glyphPixmap(glyph.second);
         QIcon icon(uiDesign::tintedGlyph(source, quietColor));
-        // Active rather than Selected: a tool button asks for Active while the
-        // pointer is on it and never for Selected, which the sidebar's chosen
-        // row is the one thing in the editor that does ask for
+        // Active, not Selected: a tool button asks for Active under the pointer and never for Selected
         icon.addPixmap(uiDesign::tintedGlyph(source, accentText), QIcon::Active);
         glyph.first->setIcon(icon);
     }
 
-    // The one mark on the bar a style draws rather than the design: Qt's own
-    // overflow button, which a window narrow enough can still reach
+    // Qt's own overflow button is drawn by the style, not from a glyph
     inkEditorOverflowChevron(toolBar, accentText);
 
-    // Quieter than the name beside them, and the accent under a chosen one
     restyleEditorSidebarIcons(quietColor, accentText);
 
-    // ...and the heading row of each tree, which carries the same seven glyphs
     restyleEditorTreeHeadingIcons();
 
-    // ...and the marks the variables tree draws into its own rows: the type
-    // beside each name, the square that says the profile keeps it, the mark on
-    // a hidden row
     if (mpVariableTreeDelegate) {
         mpVariableTreeDelegate->restyle();
     }
 
-    // The button that empties the sound file field. It carries the same tinted
-    // set as the toolbar's actions rather than a green bitmap, and the mode that
-    // matters most here is the disabled one: with no sound file set there is
-    // nothing to take away, which is how the button spends most of its life.
     if (mpTriggersMainArea) {
         QToolButton* pClearSoundFile = mpTriggersMainArea->toolButton_clearSoundFile;
         pClearSoundFile->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.svg"), tokens));
         pClearSoundFile->setIconSize(QSize(scmEditorPatternDeleteGlyphSize, scmEditorPatternDeleteGlyphSize));
 
-        // ...and the sliders the options strip is opened from. One glyph in two
-        // colours rather than an arrow pointing two ways: what the button opens
-        // is named beside it, so the picture only has to say which control it
-        // is and whether it is on
         mpTriggersMainArea->toolButton_toggleExtraControls->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-options.svg"), tokens));
     }
 
-    // The cross on every event chip of the scripts form, and the plus on the
-    // button that opens the field for another one
     if (mpChipRow_scriptEvents) {
         mpChipRow_scriptEvents->restyleGlyphs(tokens);
         mpChipRow_scriptEvents->restyleSuggestions(tokens);
     }
 
-    // ...and the same cross beside a key's keystroke, which is what takes it
-    // away again
     if (mpButton_keyClear) {
         mpButton_keyClear->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-clear.svg"), tokens));
     }
@@ -17304,20 +16240,13 @@ void dlgTriggerEditor::restyleEditorIcons()
         mpLabel_editorCodeHeaderIcon->setPixmap(headerGlyph);
     }
 
-    // The magnifier on the search field, which is also the button its options
-    // drop from, and the chevron that reopens what was searched for before
     createSearchOptionIcon();
     updateSearchHistoryAction();
 
     restyleAddPatternIcon();
 
-    // The eight type swatches and the grip every row is dragged by, both mixed
-    // from the page they lie on
     restylePatternTypeIcons();
 
-    // ...and the same for the picture on every pattern row and the tint the row
-    // itself is washed with under the mouse - both kept here rather than mixed
-    // per row, since a trigger can hold fifty of them
     mPatternDeleteIcon = patternDeleteIcon();
     mPatternHoverTint = patternHoverTint();
     for (auto* patternEdit : std::as_const(mTriggerPatternEdit)) {
@@ -17325,14 +16254,7 @@ void dlgTriggerEditor::restyleEditorIcons()
         patternEdit->setHoverTint(mPatternHoverTint);
     }
 
-    // The three pictures beside the banner's words are the notice's own: it
-    // styles itself from the tokens on every appearance change, so the window
-    // holding it writes nothing onto them.
-    //
-    // The cross that dismisses the banner is this window's, though. The .ui
-    // file shipped it as application-exit.png - a full-colour bitmap of a red
-    // cross, which read as an error on a banner that is usually a tip, and was
-    // the one picture on the banner not inked from the palette.
+    // The notice styles its own pictures from the tokens; only the dismiss cross is this window's
     if (QToolButton* pClose = mpSystemMessageArea ? mpSystemMessageArea->messageAreaCloseButton : nullptr) {
         const qreal glyphRatio = pClose->devicePixelRatioF();
         const auto crossInked = [glyphRatio](const QColor& colour) {
@@ -17342,19 +16264,12 @@ void dlgTriggerEditor::restyleEditorIcons()
             return glyph;
         };
         QIcon cross(crossInked(tokens.mutedText));
-        // Quiet until the pointer is on it: dismissing is not what the banner
-        // is there to offer
         cross.addPixmap(crossInked(tokens.text), QIcon::Active);
         pClose->setIcon(cross);
         pClose->setIconSize(QSize(scmEditorBannerCloseSize, scmEditorBannerCloseSize));
     }
 }
 
-// The six trees a profile's own items live in are the ones a state dot says
-// anything about. The seventh is a view of what Lua holds, so its rows are drawn
-// by a delegate of their own - the same row grammar, with the square that says
-// whether the profile keeps the variable where the dot would be. The results
-// tree is a list of matches and has nothing to switch on or off at all.
 void dlgTriggerEditor::setupEditorPanel()
 {
     const QList<QPair<TTreeWidget*, TreeType>> itemTrees{{treeWidget_triggers, TreeType::Trigger},
@@ -17366,92 +16281,55 @@ void dlgTriggerEditor::setupEditorPanel()
                                                          {mpFolderTree, TreeType::None}};
     for (const auto& itemTree : itemTrees) {
         auto* pDelegate = new uiDesign::EditorTreeDelegate(itemTree.first, itemTree.second, mpHost);
-        // What the delegate reads to mark an item nobody has saved yet - see
-        // setNewDescriptions() for why the three types that also have a
-        // checkIfNew() are not asked it
         pDelegate->setNewDescriptions(descNewItem, descNewFolder);
-        // A click on the dot is answered by the delegate that draws it, and the
-        // switching itself is the same one the trees' itemActivated() reaches
         connect(pDelegate, &uiDesign::EditorTreeDelegate::toggleRequested, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
         itemTree.first->setItemDelegate(pDelegate);
         mEditorTreeDelegates.append(pDelegate);
-        // A long name is cut rather than pushed off the side: a panel this
-        // narrow would otherwise spend its bottom edge on a scrollbar that
-        // reaches text nobody was looking for
+        // Cut rather than scrolled: a panel this narrow would spend its bottom edge on a scrollbar
         itemTree.first->setTextElideMode(Qt::ElideRight);
         itemTree.first->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     }
-    // ...and the seventh, whose rows say something else but are held to the same
-    // grammar: one height, the room its depth holds it in and the chevron that
-    // folds it drawn here rather than by the view, and the accent bar down a
-    // chosen row painted over the pill rather than bent round its corner
     mpVariableTreeDelegate = new uiDesign::VariableTreeDelegate(treeWidget_variables);
     connect(mpVariableTreeDelegate, &uiDesign::VariableTreeDelegate::keptToggleRequested, this, &dlgTriggerEditor::slot_toggleVariableKept);
     treeWidget_variables->setItemDelegate(mpVariableTreeDelegate);
     treeWidget_variables->setTextElideMode(Qt::ElideRight);
     treeWidget_variables->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    // The mark that says which row the keyboard is on is drawn once for the
-    // whole row while a tree shows focus across all its columns - and
-    // QTreeView::drawRow draws that one through the style with no widget to
-    // look a rule up on, so the "outline: none" the trees carry cannot reach
-    // it and the platform draws its own square hairline round the row. Over
-    // the rounded pill a chosen row is filled with, that reads as a selection
-    // with square corners and an outline the hovered row beside it does not
-    // have. Told to mark the current item instead, the same rectangle is asked
-    // for from the delegate with the widget in hand, where the rule does reach
-    // it - and every tree here is one column wide but the variables one, so
-    // there is nothing the row-wide mark was saying that the item's does not.
-    // The .ui file asks for the row-wide one on all but the results tree, which
-    // is listed here so that all nine are settled in one place.
+    // With allColumnsShowFocus, QTreeView::drawRow() asks the style for the focus rect with no widget, so the trees'
+    // "outline: none" cannot reach it and a square hairline is drawn round the rounded pill; per item, the delegate
+    // asks with the widget in hand. The .ui sets it on all but the results tree, listed so all nine are settled here.
     const QList<QTreeWidget*> focusMarkedTrees{
             treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables, mpFolderTree, treeWidget_searchResults};
     for (QTreeWidget* pTreeWidget : focusMarkedTrees) {
         pTreeWidget->setAllColumnsShowFocus(false);
     }
 
-    // A match is a heading naming the item it was found in, with a row under it
-    // per place inside that item - all of it drawn into one column by
-    // SearchResultDelegate, so there are no column headings left to label
     treeWidget_searchResults->setObjectName(qsl("editorSearchResults"));
     treeWidget_searchResults->setColumnCount(1);
     treeWidget_searchResults->setHeaderHidden(true);
     treeWidget_searchResults->setRootIsDecorated(true);
     treeWidget_searchResults->setIndentation(scmEditorSearchResultIndent);
     treeWidget_searchResults->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    // A heading is taller than the matches under it, and one height for every
-    // row - which is what the .ui file asks for - would flatten the difference
+    // The .ui file asks for uniform heights, but a heading is taller than the matches under it
     treeWidget_searchResults->setUniformRowHeights(false);
-    // The order matches are found in is the order they are read in: a match
-    // further down an item's Lua comes after the ones above it, and a heading
-    // leads where the first row under it leads. Sorting the rows by their text
-    // - which the .ui file also asks for - would undo both.
+    // The .ui file asks for sorting, which would undo the order matches are found and read in
     treeWidget_searchResults->setSortingEnabled(false);
     mpSearchResultDelegate = new uiDesign::SearchResultDelegate(treeWidget_searchResults);
     treeWidget_searchResults->setItemDelegate(mpSearchResultDelegate);
 
-    // The .ui file's name for the search row says which control it holds; the
-    // shell stylesheet selects on it as one of the editor's own surfaces
+    // The shell stylesheet selects on this name
     widget_searchTerm->setObjectName(qsl("editorSearchRow"));
 
-    // The panel of items is one pane from the search row at its head to the
-    // trees under it, so it is named as one thing and painted once - everything
-    // it holds shows it through. The .ui file's name says where the frame is;
-    // this one says what it is.
+    // The shell stylesheet paints the whole item panel once, under this name
     frame_left->setObjectName(qsl("editorItemPane"));
 }
 
-// The gap above the Lua editor is the only chrome that pane has, so it is what
-// says the pane is a Lua one, where the caret is in it and how the last save of
-// it went. It stays the splitter's handle: the strip is told not to take the
-// mouse, so the heading is also what the two panes are resized by.
+// The strip takes no mouse, so the heading is also the splitter handle the two panes are resized by
 void dlgTriggerEditor::setupEditorCodeHeader()
 {
     mpWidget_editorCodeHeader = new QWidget(this);
     mpWidget_editorCodeHeader->setObjectName(qsl("editorCodeHeader"));
     auto* pHeaderLayout = new QHBoxLayout(mpWidget_editorCodeHeader);
-    // The column the strip lies in is already held off the window's edge, so
-    // this is only what the heading is set in from the code under it
     pHeaderLayout->setContentsMargins(scmEditorCodeHeaderInset, 0, scmEditorCodeHeaderInset, 0);
     pHeaderLayout->setSpacing(6);
 
@@ -17466,9 +16344,7 @@ void dlgTriggerEditor::setupEditorCodeHeader()
 
     mpWidget_editorCompileNote = new QWidget(mpWidget_editorCodeHeader);
     mpWidget_editorCompileNote->setObjectName(qsl("editorCompileNote"));
-    // The note is a link, and the strip it is on takes no mouse events - so Tab
-    // is the whole of how a keyboard reaches it, and the keys it answers are
-    // heard through the filter below
+    // The strip takes no mouse, so Tab is how the keyboard reaches the note; its keys come through eventFilter()
     mpWidget_editorCompileNote->setFocusPolicy(Qt::TabFocus);
     mpWidget_editorCompileNote->installEventFilter(this);
     auto* pNoteLayout = new QHBoxLayout(mpWidget_editorCompileNote);
@@ -17480,33 +16356,23 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     pNoteLayout->addWidget(mpLabel_editorCompileDot);
     mpLabel_editorCompileMessage = new QLabel(mpWidget_editorCompileNote);
     mpLabel_editorCompileMessage->setObjectName(qsl("editorCompileMessage"));
-    // Given whatever room is left rather than asking for the room the words
-    // want: a compiler's idea of a sentence is as long as it likes, and what
-    // does not fit is cut off in elideCompileNote()
+    // Ignored: a compiler's sentence is as long as it likes, and elideCompileNote() cuts it to the room left
     mpLabel_editorCompileMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    // The words are cut to whatever this label ends up with, which the caret
-    // reading beside it takes from without the strip itself changing size
     mpLabel_editorCompileMessage->installEventFilter(this);
     pNoteLayout->addWidget(mpLabel_editorCompileMessage, 1);
     pHeaderLayout->addWidget(mpWidget_editorCompileNote, 1);
-    // The note takes the middle of the strip while there is one to show and this
-    // holds that room when there is not, so the caret reading is at the trailing
-    // edge either way - see updateEditorCodeHeading(), which hands the stretch
-    // from one to the other
+    // Holds the middle while there is no note, keeping the caret reading at the trailing edge - see
+    // updateEditorCodeHeading()
     pHeaderLayout->addStretch(0);
 
     mpLabel_editorCaretPosition = new QLabel(mpWidget_editorCodeHeader);
     mpLabel_editorCaretPosition->setObjectName(qsl("editorCodeCaret"));
-    // Held at the width of its own words: where the caret is is short and always
-    // true, so what gives way when the strip runs out of room is the note
     mpLabel_editorCaretPosition->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     pHeaderLayout->addWidget(mpLabel_editorCaretPosition);
 
-    // Index 1 is the handle over mpSourceEditorArea, which is the second of the
-    // three panes the right hand splitter stacks
+    // Index 1: the handle over mpSourceEditorArea, the second of the three panes
     splitter_right->setHeaderHandle(1, mpWidget_editorCodeHeader);
-    // The strip takes no mouse events, so a click on the note is heard by the
-    // handle carrying it
+    // The strip takes no mouse, so the handle carrying it hears the click on the note
     if (auto* pHandle = qobject_cast<uiDesign::GripSplitterHandle*>(mpWidget_editorCodeHeader->parentWidget())) {
         pHandle->setClickable(mpWidget_editorCompileNote);
         connect(pHandle, &uiDesign::GripSplitterHandle::clicked, this, &dlgTriggerEditor::slot_codeHeadingClicked);
@@ -17514,9 +16380,6 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     updateEditorCodeHeading();
 }
 
-// Six of the seven views type Lua under that heading. The variables view does
-// not: the pane there holds the value of whatever the tree has chosen, so the
-// heading names that instead.
 QString dlgTriggerEditor::codeHeaderTitleFor(const EditorViewType view) const
 {
     if (view == EditorViewType::cmVarsView) {
@@ -17527,23 +16390,18 @@ QString dlgTriggerEditor::codeHeaderTitleFor(const EditorViewType view) const
     return tr("Lua script");
 }
 
-// Both what the heading says about the last save and what it is written in, so
-// a theme change and a compile failure arrive at the same place
 void dlgTriggerEditor::updateEditorCodeHeading()
 {
     if (!mpWidget_editorCompileNote || !mpLabel_editorCompileDot || !mpLabel_editorCompileMessage) {
         return;
     }
 
-    // Nothing to report is the whole of what "it compiled" means here, and a
-    // heading with nothing to report says nothing
     const bool compiled = mEditorCompileMessage.isEmpty();
     QString plainMessage;
     mEditorCompileNoteText.clear();
     mEditorCompileErrorLine = 0;
     if (!compiled) {
-        // What the compiler said comes as rich text, and the strip has room for
-        // a line of it at most - the whole of it goes to the tooltip
+        // The compiler's message is rich text; the strip shows one plain line and the tooltip the whole
         plainMessage = QTextDocumentFragment::fromHtml(mEditorCompileMessage).toPlainText().simplified();
         const QRegularExpressionMatch match = csmCompileErrorLineRegex.match(plainMessage);
         if (match.hasMatch()) {
@@ -17555,20 +16413,15 @@ void dlgTriggerEditor::updateEditorCodeHeading()
         }
     }
 
-    // The dot and the words sit on the strip rather than in a chip of their
-    // own, so both are the one red anything broken is drawn in - walked away
-    // from the strip until it can be read on it
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     const QColor noteInk = uiDesign::errorInk(tokens);
     const QString dotRule = qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(noteInk.name(), QString::number(scmEditorCompileDotDiameter / 2));
-    // A border there is nothing to see of at rest, so that taking the focus
-    // paints it rather than moving the words along by a pixel
+    // A transparent border at rest, so focus paints it instead of shifting the words by a pixel
     const QString noteRule = qsl("#editorCompileNote { background: transparent; border: 1px solid transparent; border-radius: %1px; }"
                                  "#editorCompileNote:focus { border-color: %2; }"
                                  "#editorCompileMessage { color: %3; }")
                                      .arg(QString::number(uiDesign::scmRadiusChip), tokens.accent.name(), noteInk.name());
-    // Every item switch comes through here, and setting a stylesheet re-polishes
-    // everything under the widget whether or not the rules changed
+    // setStyleSheet() re-polishes the subtree even for identical rules, and every item switch comes here
     if (mpLabel_editorCompileDot->styleSheet() != dotRule) {
         mpLabel_editorCompileDot->setStyleSheet(dotRule);
     }
@@ -17578,20 +16431,15 @@ void dlgTriggerEditor::updateEditorCodeHeading()
 
     mpWidget_editorCompileNote->setVisible(!compiled);
     if (auto* pHeadingLayout = qobject_cast<QBoxLayout*>(mpWidget_editorCodeHeader ? mpWidget_editorCodeHeader->layout() : nullptr)) {
-        // The middle of the strip belongs to the note while there is one and to
-        // the spacer right after it while there is not
         const int noteIndex = pHeadingLayout->indexOf(mpWidget_editorCompileNote);
         pHeadingLayout->setStretch(noteIndex, compiled ? 0 : 1);
         pHeadingLayout->setStretch(noteIndex + 1, compiled ? 1 : 0);
-        // How wide the words may be is the layout's answer, and it has just been
-        // asked a different question
+        // Settle the new stretch now, so elideCompileNote() reads the label's new width
         pHeadingLayout->activate();
     }
     elideCompileNote();
 
-    // The strip is transparent to the mouse, so that a drag anywhere on it still
-    // resizes - which also puts a tooltip set on it out of the pointer's reach.
-    // The handle carrying the strip is what hears the pointer instead.
+    // The strip is transparent to the mouse so a drag anywhere on it resizes; the tooltip goes on the handle instead
     if (QWidget* pHandle = mpWidget_editorCodeHeader ? mpWidget_editorCodeHeader->parentWidget() : nullptr) {
         pHandle->setToolTip(plainMessage);
     }
@@ -17624,13 +16472,8 @@ void dlgTriggerEditor::endSaveErrorCapture()
     updateEditorCodeHeading();
 }
 
-// The length the bar wants along the way it runs, with the button styles it is
-// carrying at this moment. It is the layout's own hint rather than a sum taken
-// here, so the separators, the grip, the spacing and the padding a stylesheet
-// hands out are all counted the way Qt itself counts them when it decides
-// whether something has to be posted into the overflow. The hint is taken from
-// the items' size hints rather than from the geometry they were last given, so
-// it says the same thing whether or not Qt has already folded the tail away.
+// The layout's own hint, so separators, grip, spacing and sheet padding count the way Qt counts them for the
+// overflow; taken from size hints, not geometry, so it holds whether or not Qt has folded the tail away
 static int toolBarLengthWanted(const QToolBar* pToolBar)
 {
     const QLayout* pLayout = pToolBar->layout();
@@ -17645,22 +16488,15 @@ static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*
             pButton->setToolButtonStyle(shown ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonIconOnly);
         }
     }
-    // A button Qt has already folded away is hidden, and a hidden widget's
-    // updateGeometry() does not reach the layout it is in - so the bar is told
-    // outright rather than through the buttons, or the hint read next would be
-    // the one measured before this ran
+    // A button Qt folded away is hidden, and a hidden widget's updateGeometry() does not reach its layout, so the
+    // layout is invalidated outright or the next hint read would be stale
     if (QLayout* pLayout = pToolBar->layout()) {
         pLayout->invalidate();
     }
 }
 
-// The fold below the fit: on a window narrower than a bar of pictures there is
-// nothing left to give up, and Qt posts the tail of the bar into a drop-down.
-// Its button is left in place - a scrolling host of our own would be a second
-// way of hiding the same buttons - and only made unmistakable: the pill comes
-// from the stylesheet in applyEditorShellStyle(), and the chevron from here,
-// since a QStyle hands the button a picture of its own and a stylesheet cannot
-// recolour one.
+// Qt's overflow button stays: a scrolling host of our own would be a second way of hiding the same buttons. The
+// chevron is inked here because the style hands the button its own picture, which a stylesheet cannot recolour.
 static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink)
 {
     auto* pExtension = pToolBar->findChild<QToolButton*>(qsl("qt_toolbar_ext_button"));
@@ -17680,10 +16516,8 @@ static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink)
     pen.setJoinStyle(Qt::RoundJoin);
     painter.setPen(pen);
 
-    // Pointing the way the bar runs, which is where the buttons it holds went
     const QPointF centre(scmEditorOverflowChevronExtent / 2.0, scmEditorOverflowChevronExtent / 2.0);
-    // The arm across the point is shortened, the way the sidebar's is, so the
-    // mark stays inside its square whichever way round it is drawn
+    // Shortened across the point, as the sidebar's is, so the mark stays inside its square either way round
     const qreal reach = scmEditorOverflowChevronArm / 1.6;
     QPolygonF stroke;
     if (pToolBar->orientation() == Qt::Horizontal) {
@@ -17700,16 +16534,12 @@ static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink)
     pExtension->setIconSize(QSize(scmEditorOverflowChevronExtent, scmEditorOverflowChevronExtent));
 }
 
-// A row of names beside pictures, whatever icon size the preferences ask for:
-// the grouping the toolbar is read by only works if the names are there
 void dlgTriggerEditor::applyEditorToolbarButtonStyles()
 {
     if (!toolBar) {
         return;
     }
     toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    // Two arrows side by side read as one control, and spelling them out costs
-    // more width than the pair is worth
     for (QAction* pAction : {mpUndoAction, mpRedoAction}) {
         if (!pAction) {
             continue;
@@ -17718,40 +16548,24 @@ void dlgTriggerEditor::applyEditorToolbarButtonStyles()
             pButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
         }
     }
-    // The line above is the bar's own style, which every button follows again
-    // the moment it is set - so a group that had already given its names up is
-    // told a second time
+    // Setting the bar's style resets every button's, so a group that gave its names up is told again
     for (const EditorToolBarGroup& group : mEditorToolBarGroups) {
         setToolBarButtonLabelsShown(toolBar, group.actions, group.labelsShown);
     }
 }
 
-// Nothing on this bar is ever put out of reach. Where Qt would post the tail of
-// it into a drop-down whose button is a few pixels of chevron at the far edge,
-// the groups give their names up in turn instead and stand as pictures their
-// tooltips speak for: the profile's four first, the item's four after, in the
-// order mEditorToolBarGroups holds them.
-//
-// They are given back from the other end, and only once the bar would hold them
-// with scmEditorToolBarRestoreMargin left over. Taking a name away costs nothing
-// to spare, so the two tests never agree on the same pixel and a drag across the
-// breakpoint settles instead of flickering.
-//
-// Run on the bar's own resize, on the icon size changing, on the view changing -
-// the item four are renamed there, and what they cost is their names - on a
-// language, style or font change, on the editor's own restyle, and once the
-// window has been shown.
+// Instead of Qt posting the tail into its overflow, the groups give their names up in mEditorToolBarGroups order
+// and get them back in reverse, only with scmEditorToolBarRestoreMargin to spare, so a drag across the breakpoint
+// settles instead of flickering
 void dlgTriggerEditor::fitEditorToolBarToItsLength()
 {
     if (!toolBar || mEditorToolBarGroups.isEmpty() || mEditorToolBarFitting) {
         return;
     }
-    // Along the bar rather than across it: docked at a side it runs downwards,
-    // and the names are then what its height is spent on
+    // Along the bar: docked at a side it runs downwards
     const bool horizontal = toolBar->orientation() == Qt::Horizontal;
     const int available = horizontal ? toolBar->width() : toolBar->height();
-    // A bar that has not been laid out yet has nothing to measure against, and
-    // the answer it would give is one to throw away rather than to act on
+    // A bar not laid out yet has nothing to measure against
     if (available <= 1) {
         return;
     }
@@ -17770,9 +16584,7 @@ void dlgTriggerEditor::fitEditorToolBarToItsLength()
         namesGivenUp = true;
     }
 
-    // Only when nothing was given up in this pass: a bar that has just run out
-    // of room cannot also have room to spare, and asking would set every group
-    // it just collapsed back and forth
+    // Not in a pass that gave names up: asking at once would flip the groups it just collapsed back and forth
     if (!namesGivenUp) {
         for (auto it = mEditorToolBarGroups.rbegin(), end = mEditorToolBarGroups.rend(); it != end; ++it) {
             if (it->labelsShown) {
@@ -17789,10 +16601,7 @@ void dlgTriggerEditor::fitEditorToolBarToItsLength()
     mEditorToolBarFitting = false;
 }
 
-// A button standing as a picture is read by its tooltip alone, so each of these
-// four leads with the words it is carrying rather than with a fixed "Add Item"
-// that says nothing about which of the seven kinds is on show. Their wording is
-// set a few lines up in changeView(), which is the only caller.
+// A button that gave its name up is read by its tooltip alone, so the tooltip leads with the view's wording
 void dlgTriggerEditor::updateEditorItemActionToolTips()
 {
     mAddItem->setToolTip(qsl("<p>%1 (%2)</p>").arg(mAddItem->text(), QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText)));
@@ -17806,53 +16615,27 @@ void dlgTriggerEditor::updateEditorItemActionToolTips()
                                           "so changes will be lost in case of a computer/program crash (but Save Profile to the right will be secure.)</p>")));
 }
 
-// Every colour is mixed from the application palette rather than written out as
-// a literal, so the editor follows whichever appearance is in force.
-//
-// The sheet goes on the regions themselves rather than on this window, because
-// Host::setProfileStyleSheet() assigns the profile's own Lua stylesheet to the
-// window - which would replace this one outright. The application's palette is
-// the one to read rather than this widget's: a stylesheet freezes the palette of
-// what it is set on, and the palette change is an event still undelivered when
-// changeEvent() runs.
-// The pattern rows, which are inside the trigger form and so are drawn by the
-// same sheet. A row is quiet until the mouse is over it: the grip and the button
-// that takes it away are chrome the rows would otherwise be a wall of.
 QString dlgTriggerEditor::patternRowStyleSheet() const
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-    // The colour a button with nothing left to add is drawn in - and, for the
-    // frame that button paints, the one restyleAddPatternIcon() hands it
+    // The add button's disabled ink; restyleAddPatternIcon() hands its frame the same colour
     const QColor quietestText = uiDesign::blend(tokens.card, tokens.text, 0.55);
 
     return qsl("#label_dragHandle { background: transparent; }"
                "#label_patternNumber { color: %2; background: transparent; }"
-               // The words that stand in for a pattern on a row matching the
-               // prompt line, read at the weight the rest of the row's chrome
-               // is - and, where the game sends no Go-Ahead and there is
-               // nothing to match on, at the tone the design writes an
-               // unavailable word in rather than the platform's, which on a
-               // light theme is a shade off the page it is written on
+               // :disabled in the design's tone: the platform's is a shade off the page on a light theme
                "#label_prompt { color: %2; background: transparent; }"
                "#label_prompt:disabled { color: %8; }"
-               // Its own tint over the row's, or the button would be no more
-               // than the row it is already sitting on
                "#toolButton_deletePattern { border: none; border-radius: 4px; background: transparent; }"
                "#toolButton_deletePattern:hover { background-color: %5; }"
-               // The one place in the form that is not a control but a place one
-               // more of them would go. The dashed frame round it is the button's
-               // own painting - see uiDesign::PlaceholderButton - so nothing here
-               // draws a border; the margins it insets that frame by are the ones
-               // named below, and both come from the same two constants.
+               // No border: PlaceholderButton paints its dashed frame, inset by the same two margin constants
                "#editorAddPattern { color: %2; border: none; padding: 4px 10px;"
                " margin: %6px 0px %7px 0px; background: transparent; }"
                "#editorAddPattern:hover { color: %3; }"
                "#editorAddPattern:disabled { color: %1; }"
                "#editorPatternDropIndicator { background-color: %4; border: none; border-radius: 1px; }"
-               // Named outright, so that a profile stylesheet cannot put the
-               // field colour back under the rows: the scroll area, the
-               // viewport Qt gives it, and the widget scrolled inside it. Named
-               // rather than "> QWidget", which would take the scroll bars too.
+               // Named outright so a profile stylesheet cannot put the field colour back under the rows; not
+               // "> QWidget", which would take the scroll bars too
                "#editorPatternScroll, #editorPatternScroll > #qt_scrollarea_viewport, #editorPatternList"
                " { background: transparent; border: none; }")
                    .arg(quietestText.name(),
@@ -17863,19 +16646,12 @@ QString dlgTriggerEditor::patternRowStyleSheet() const
                         QString::number(scmEditorAddPatternMarginTop),
                         QString::number(scmEditorAddPatternMarginBottom),
                         tokens.disabledText.name())
-           // Styling the scroll area at all takes its scroll bar with it, so
-           // the bar is given the same one the trees use
+           // Styling the scroll area at all drops its native scroll bar, so it gets the trees' one
            + uiDesign::scrollBarStyleSheet(qsl("#editorPatternScroll"), tokens);
 }
 
-// What a widget is drawn in, told to its palette outright, for the two kinds of
-// widget a "color:" rule cannot reach: a view, whose rows a stylesheet only
-// gets at through ::item - and a ::item rule reaches the palette for some
-// selectors and not others - and a control that paints itself, which a
-// stylesheet reaches not at all. The one quiet tone the rest of the chrome
-// takes, and the accent for what is chosen. Anything reading those colours off
-// the widget, an accessibility tool among them, is then told what is actually
-// painted.
+// For widgets a "color:" rule cannot reach: a view's rows (::item reaches the palette for some selectors only) and
+// self-painting controls. Readers of the palette, accessibility tools among them, then see what is painted.
 static void inkAsChrome(QWidget* pWidget, const QColor& chrome, const QColor& chosen)
 {
     QPalette palette = pWidget->palette();
@@ -17886,9 +16662,7 @@ static void inkAsChrome(QWidget* pWidget, const QColor& chrome, const QColor& ch
     pWidget->setPalette(palette);
 }
 
-// What a row is washed with while the mouse is on it. Painted by the row rather
-// than left to a stylesheet rule on a property: a property that has to be
-// re-polished re-runs the whole sheet over the row's controls for a tint.
+// Painted by the row, not a QSS property rule: re-polishing re-runs the whole sheet over the row's controls
 QColor dlgTriggerEditor::patternHoverTint() const
 {
     QColor tint = uiDesign::themeTokens().text;
@@ -17908,11 +16682,8 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const QColor textColor = tokens.text;
     const QColor accentColor = tokens.accent;
 
-    // Every rule below, and every glyph restyleEditorIcons() tints, is mixed
-    // from these four and nothing else - so a change event that leaves all
-    // four where they were has nothing to redo. One setProfileStyleSheet()
-    // from Lua sends both a StyleChange and a PaletteChange, which is what this
-    // stops from restyling the whole editor twice over.
+    // Everything below is mixed from these four, so an unchanged set has nothing to redo. One setProfileStyleSheet()
+    // from Lua sends a StyleChange and a PaletteChange, which would otherwise restyle the editor twice.
     const EditorShellStyleInputs styleInputs{tokens.page.rgb(), fieldColor.rgb(), textColor.rgb(), accentColor.rgb()};
     if (mEditorShellStyleApplied && styleInputs == mEditorShellStyleInputs) {
         return;
@@ -17921,9 +16692,6 @@ void dlgTriggerEditor::applyEditorShellStyle()
     mEditorShellStyleApplied = true;
 
     const QColor pageColor = tokens.page;
-    // The panel of items is a pane of its own between two columns drawn on the
-    // page, and what parts one pane from the next is a groove rather than a
-    // hairline
     const QColor paneColor = tokens.pane;
     const QColor separatorColor = tokens.separator;
     const QColor borderColor = tokens.border;
@@ -17932,41 +16700,14 @@ void dlgTriggerEditor::applyEditorShellStyle()
     const QString hoverSoft = tokens.hoverSoft;
     const QString accentSoft = tokens.accentSoft;
     const QColor accentText = tokens.accentText;
-    // Every form in the window is filled in through the same set of controls, so
-    // they are all drawn from one recipe. It goes on each form rather than on the
-    // window: a rule naming QLineEdit on the window would reach the code pane's
-    // find bar and the trees' editors as well as the fields it is meant for.
+    // Set per form: a QLineEdit rule on the window would also reach the find bar and the trees' editors
     const QString inputRules = uiDesign::inputStyleSheet(tokens);
-    // ...and the same for the two things on a form that are not typed into: the
-    // mark a choice is made with, and the button that opens a picker. Carried
-    // by each form for the same reason the fields are - a rule naming
-    // QPushButton on the window would reach the trees' toolbars as well.
+    // Per form for the same reason: a QPushButton rule on the window would reach the trees' toolbars
     const QString choiceRules = uiDesign::choiceStyleSheet(tokens);
     const QString buttonRules = uiDesign::buttonStyleSheet(tokens);
-    // One ink for every word of the editor's chrome, which is the quiet tone
-    // the toolbar's buttons, the sidebar's names and the status bar are already
-    // written in: a label, a check box, a radio button, a card's title and a
-    // button all take it, and the full tone is left to what is typed into a
-    // field - which is the ink inputStyleSheet() writes and setFieldColors()
-    // hands the pattern fields.
-    //
-    // Named class by class rather than once on the form, because a stylesheet's
-    // colour does not pass from a widget down to its children the way CSS's
-    // does; and carried by every form rather than named on the window, which
-    // would reach the code pane's find bar and the trees' inline editors too.
+    // Class by class: a stylesheet colour does not pass from a widget to its children the way CSS's does
     const QString chromeInkRules = qsl("QLabel, QAbstractButton, QGroupBox { color: %1; }").arg(mutedText.name());
-    // An unavailable word is written in the design's own quiet tone rather than
-    // the platform's, which on a light theme is a shade off the card it is
-    // written on. The pattern rows keep a copy of the same rule for
-    // #label_prompt, since that sheet is set on the row rather than on the form
-    // around it.
-    //
-    // The two words in every ID pill are given their type here rather than in
-    // the sheet, because the pill's corner is half the height those metrics
-    // come to: a font-size the sheet applied would only be known after it had
-    // been, and a corner named larger than half the height is clamped into an
-    // ellipse rather than drawn rounder. Six forms carry a pill and the window
-    // has one font, so one measurement answers for all of them.
+    // The window has one font, so the last pill's height answers for all six.
     int idChipHeight = 0;
     const QList<std::tuple<QFrame*, QLabel*, QLabel*>> idChips{{mpTriggersMainArea->frameId, mpTriggersMainArea->label_idLabel, mpTriggersMainArea->label_idNumber},
                                                                {mpAliasMainArea->frameId, mpAliasMainArea->label_idLabel, mpAliasMainArea->label_idNumber},
@@ -17980,40 +16721,22 @@ void dlgTriggerEditor::applyEditorShellStyle()
 
     const QString formRules = inputRules + choiceRules + buttonRules + chromeInkRules
                               + qsl("QLabel:disabled, QCheckBox:disabled, QRadioButton:disabled, QGroupBox:disabled, QPushButton:disabled, QToolButton:disabled { color: %1; }"
-                                    // What a field on a form's own row is, as against what a card's rows
-                                    // hold: read at the size the rest of the row is read at
                                     "QLabel[editorRowLabel=\"true\"] { color: %2; background: transparent; }"
-                                    // The ID reads as a label on the item, not as a second field: a pill,
-                                    // whose corner is half the height its own type comes to. Anything
-                                    // larger is clamped into an ellipse rather than rounded further,
-                                    // which is why the number is measured rather than named.
                                     "#frameId { border: 1px solid %3; border-radius: %4px; background: transparent; }"
                                     "#frameId QLabel { color: %2; background: transparent; }")
                                         .arg(disabledText.name(), mutedText.name(), borderColor.name(), QString::number(idChipHeight / 2));
 
     restyleEditorIcons();
 
-    // The bar the window's actions stand on, drawn by the shared recipe - the
-    // page's surface, the seam under it, the grip, the separators and the flat
-    // buttons - and then the one thing on it that no other bar has.
     const QString toolBarSelector = qsl("QToolBar#editorActionsToolbar");
     const QString toolBarRules = uiDesign::toolBarStyleSheet(toolBarSelector, uiDesign::ToolBarSeam::Bottom, tokens)
                                  + qsl( // Qt's own overflow button, which only a window narrower
-                                           // than a bar of pictures can reach. Drawn as a control
-                                           // rather than as the pair of faint arrowheads a style
-                                           // leaves on the page there: a card lifted off the bar with
-                                           // the hairline every other box in this window carries, and
-                                           // the chevron inkEditorOverflowChevron() puts on it
+                                           // than a bar of pictures can reach; the chevron is inkEditorOverflowChevron()'s
                                            "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button { border: 1px solid %1; background-color: %2; padding: 1px 3px; }"
                                            "QToolBar#editorActionsToolbar QToolButton#qt_toolbar_ext_button:hover { border-color: %3; background-color: %4; }")
                                            .arg(borderColor.name(), cardColor.name(), accentText.name(), hoverSoft);
 
-    // Save Profile is the one button on the bar whose trailing half opens a menu
-    // rather than acting on what it names, so it is drawn as the split it is -
-    // by the same recipe the connection dialog's Copy button is, since a split
-    // button is one control kind wherever it stands. It rounds to the bar's own
-    // corner rather than a form control's, since the face under it is the flat
-    // one toolBarStyleSheet() drew.
+    // The split button recipe, rounded to the bar's corner since the face under it is the flat one toolBarStyleSheet() drew
     const QString saveProfileSelector = toolBarSelector + qsl(" QToolButton#editorSaveProfileButton");
     const QString splitButtonRules = saveProfileSelector + qsl(" { padding-right: %1px; }").arg(QString::number(uiDesign::scmToolBarButtonPaddingHorizontal + uiDesign::scmInputDropDownWidth))
                                      + uiDesign::splitButtonMenuHalfStyleSheet(saveProfileSelector, uiDesign::scmToolBarButtonRadius, tokens);
@@ -18022,68 +16745,37 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                        // Or the platform style draws a sunken frame around
                                        // every widget the bar holds
                                        "QStatusBar#editorStatusBar::item { border: none; }"
-                                       // In the sidebar's hand - the same face, size and ink as the
-                                       // names down the left - so the bar reads as part of the
-                                       // window's chrome rather than as small print under it
                                        "QStatusBar#editorStatusBar QLabel { color: %3; padding: 0px 6px; }")
                                            .arg(pageColor.name(), borderColor.name(), mutedText.name());
 
     const QString shellStyleSheet = toolBarRules + splitButtonRules + statusBarRules;
-    // The menu Save Profile drops hangs off that button, so the bar's own sheet
-    // is what reaches it
+    // Save Profile's menu hangs off its button, so the bar's sheet is what reaches it
     toolBar->setStyleSheet(shellStyleSheet + uiDesign::menuStyleSheet(tokens));
     uiDesign::letPopupsTakeTheFieldsCorner(toolBar);
     if (QStatusBar* pStatusBar = QMainWindow::statusBar()) {
         pStatusBar->setStyleSheet(shellStyleSheet);
     }
 
-    // ...and the options behind the search field hang off the window instead,
-    // so that one is drawn and opened up on its own
     styleSearchOptionsMenu();
 
-    // The window's own surface, painted rather than left to fall back on
-    // QPalette::Window. The toolbar, the status bar, the panel down the left
-    // and the trees on it all name the page colour, while everything from the
-    // frame an item is edited in down to the seven forms inside it is
-    // transparent - so without this the two halves of the window agree only for
-    // as long as the page colour and QPalette::Window do, which is not the case
-    // on a palette that answers the same thing to Window and to Base, macOS in
-    // light appearance among them: themeTokens() steps the page down from Window
-    // there to keep the cards above it, and the edit column would be left a
-    // shade lighter than the panel beside it.
-    //
-    // On the shell rather than on the window, whose stylesheet
-    // Host::setProfileStyleSheet() assigns the profile's Lua one to, and named
-    // outright rather than written as a bare QWidget rule, which would paint
-    // every widget in the window over the top of what draws it.
+    // Painted, not left to QPalette::Window: themeTokens() steps the page down from Window where Window equals Base
+    // (macOS light), and the transparent edit column would be a shade lighter than the panel. Named on the shell: a
+    // bare QWidget rule would paint every widget, and the window's sheet is the profile's.
     if (QWidget* pShell = QMainWindow::centralWidget()) {
         pShell->setStyleSheet(qsl("#editorShell { background-color: %1; }").arg(pageColor.name()));
     }
 
-    // The panel of items, painted once for the whole column: the search row at
-    // its head shows this through, and the trees under it name the same tone.
-    // A pane rather than the page, so that the panel reads as a column of its
-    // own between the sidebar and the column an item is edited in, both of
-    // which are the page.
-    // ...the two words on the panel that are not a row of a tree - the switch
-    // under the variables tree, and the quiet reading beside it of how many
-    // variables that switch would bring into the tree - written in the same
-    // tone as the rows above them. A rule rather than a palette colour, since
-    // the pane's own sheet is what they show through.
+    // The count is coloured by a rule, not the palette: the pane's own sheet is what it shows through
     frame_left->setStyleSheet(qsl("#editorItemPane { background-color: %1; }"
                                   "#editorHiddenVariablesCount { color: %2; background: transparent; }")
                                       .arg(paneColor.name(), mutedText.name())
                               + chromeInkRules);
     if (mpLabel_hiddenVariablesCount) {
-        // Measured off the row it lies on rather than off its own font: a rule
-        // naming the label stops it inheriting anything from what it sits on
+        // The row's font, not the label's: a rule naming the label stops it inheriting from what it sits on
         mpLabel_hiddenVariablesCount->setFont(uiDesign::chipFont(frame_left));
     }
 
-    // What the seam either side of each column is painted with. A handle
-    // carrying no heading draws a hairline and carries each neighbour's own
-    // tone up to it, and a stylesheet is what fills these - so each one says
-    // what it was filled with rather than the handle guessing at it.
+    // A handle with no heading carries each neighbour's tone up to its hairline, and a sheet's fill is invisible to it
     frame_left->setProperty(uiDesign::scmProp_paneTone, paneColor);
     for (QWidget* pPane : {static_cast<QWidget*>(frame_right), static_cast<QWidget*>(mpNonCodeWidgets), static_cast<QWidget*>(mpSourceEditorArea), static_cast<QWidget*>(mpErrorConsole)}) {
         if (pPane) {
@@ -18091,33 +16783,8 @@ void dlgTriggerEditor::applyEditorShellStyle()
         }
     }
 
-    // The trees on that pane. No colour is named for an unselected row: what a
-    // row is drawn in says whether the thing it stands for is running, and
-    // EditorTreeDelegate is what knows that.
-    //
-    // A chosen row is one pill in one tone, cornered like the sidebar's items
-    // and the search field above it. One tone because a wash that fades along
-    // the row reads as two of them at the width a panel this narrow gives it;
-    // one pill because the six item trees are indented by that delegate rather
-    // than by the view, so a row is a single rectangle from edge to edge with
-    // the chevron inside it - where the view's own indentation would have left
-    // the column the chevron stands in painted by the style, in the platform's
-    // saturated selection colour, with the row's pill stuck to the side of it.
-    // ...and the chosen one carries the accent bar down its leading edge that
-    // the sidebar's chosen row does, at the same width, in the same colour and
-    // in the same shape - painted over the pill by EditorTreeDelegate as the
-    // pill's own leading edge, full width down the row and cut to the pill's
-    // corner at both ends, rather than the arc a border-left is bent into by
-    // that corner's radius. The border stays on every row, transparent
-    // and never coloured, because it is what holds the gutter the bar stands in:
-    // the row's own padding gives back what it takes, which is what leaves the
-    // dot, the chevron and the mark the delegate draws where they were.
-    //
-    // All seven trees alike: the tree of Lua variables is drawn by a delegate of
-    // its own, and that one paints the bar down a chosen row the same way.
-    // ...and the rules that say all of that are uiDesign::itemRowStyleSheet(),
-    // since the package manager lists its packages the same way and a second
-    // copy of them is how two lists come to disagree about what a chosen row is
+    // No ink for an unselected row: EditorTreeDelegate draws it by whether the item runs. Shared with the package
+    // manager through itemRowStyleSheet(), so the two lists cannot disagree about a chosen row.
     const QString treeRules = uiDesign::itemRowStyleSheet(qsl("QTreeWidget"), tokens, paneColor, scmEditorTreeRowGutter) + uiDesign::scrollBarStyleSheet(qsl("QTreeWidget"), tokens, paneColor);
 
     const QList<QTreeWidget*> panelTrees{treeWidget_triggers, treeWidget_aliases, treeWidget_timers, treeWidget_scripts, treeWidget_actions, treeWidget_keys, treeWidget_variables, mpFolderTree};
@@ -18130,93 +16797,54 @@ void dlgTriggerEditor::applyEditorShellStyle()
         pDelegate->restyle();
     }
 
-    // The results take the trees' hover and selection so that one panel reads as
-    // one thing; what a row holds is drawn by SearchResultDelegate, which is
-    // where the rest of the look comes from - the heading rows' larger type
-    // among it. The branch column is left to the style here rather than drawn by
-    // the delegate as it is in the item trees: a results list is read and left
-    // rather than lived in, and the arrow the style draws in that column is the
-    // one thing that says a heading is a group the reader can fold away.
+    // The branch column is left to the style here: its arrow is what says a heading can be folded away
     treeWidget_searchResults->setStyleSheet(treeRules + qsl("QTreeWidget#editorSearchResults::item { padding: 0px 2px; }"));
     inkAsChrome(treeWidget_searchResults, mutedText, accentText);
     if (mpSearchResultDelegate) {
         mpSearchResultDelegate->restyle();
     }
 
-    // Only the field is drawn: the row around it is the panel it sits on, so
-    // the box is the one thing here that carries the sunken colour
     widget_searchTerm->setStyleSheet(qsl("#editorSearchRow { background: transparent; }"
-                                         // Taller than a form control and the one thing the panel
-                                         // under it is worked from, so it takes a panel's corner
                                          "#editorSearchRow QComboBox { background-color: %1; border: 1px solid %2; border-radius: %5px; min-height: 32px; padding: 0px 6px; color: %3; }"
                                          "#editorSearchRow QComboBox:focus { border: 1px solid %4; }"
-                                         // A field to type into rather than a list to pick from:
-                                         // what the box holds is the searches already run, which
-                                         // the down arrow key and the field's own completer both
-                                         // still open. The drop-down is given no width at all, so
-                                         // the room goes to the term instead.
+                                         // No drop-down: it is a field to type into, and the history still opens
+                                         // with the down arrow and the completer
                                          "#editorSearchRow QComboBox::drop-down { width: 0px; border: none; background: transparent; }"
                                          "#editorSearchRow QComboBox::down-arrow { width: 0px; height: 0px; image: none; }"
-                                         // Or the field is drawn a second time, in
-                                         // its own frame, inside the one above
+                                         // Or the line edit draws a second frame inside the combo's
                                          "#editorSearchRow QComboBox QLineEdit { background: transparent; border: none; }")
                                              .arg(fieldColor.name(), borderColor.name(), textColor.name(), accentColor.name(), QString::number(uiDesign::scmRadiusProminentInput)));
 
     if (mpWidget_editorCodeHeader) {
-        // Only what the strip holds is drawn: the bar behind it is painted by
-        // the handle carrying it
+        // Transparent: the handle carrying the strip paints the bar
         mpWidget_editorCodeHeader->setStyleSheet(qsl("#editorCodeHeader { background: transparent; }"
                                                      "#editorCodeHeaderTitle { color: %1; font-size: %2pt; }"
-                                                     // The same quiet ink as the title
                                                      "#editorCodeCaret { color: %1; }")
                                                          .arg(mutedText.name(), QString::number(uiDesign::typeSize(uiDesign::TypeStep::Caption))));
         updateEditorCodeHeading();
     }
 
     if (mpTriggersMainArea) {
-        // A control pressed rather than a surface: a segment draws its hairline
-        // a shade nearer the words while the pointer is on it
         const QColor hoveredBorder = uiDesign::blend(borderColor, textColor, scmEditorHoveredBorderWeight);
 
-        // The form's shared rules lead, and this form's own follow: a rule
-        // naming the segment carries one attribute where a shared rule names
-        // only a type, which is a tie once both add a state - and a tie is
-        // settled by which was written last. The segment's indicator is given
-        // no size at all, and the shared mark's ":checked" would otherwise give
-        // it a hairline's worth back and move the pair as the choice changed.
+        // Shared rules first: a segment rule and a shared rule tie on specificity once both add a state, and the
+        // later wins - the shared :checked would give the sizeless indicator a hairline back and move the pair
         mpTriggersMainArea->setStyleSheet(
                 formRules + patternRowStyleSheet()
                 + qsl(
-                          // The groups the options strip is built out of show the form
-                          // through them, named outright so a profile stylesheet cannot
-                          // paint a band across one
+                          // Named outright so a profile stylesheet cannot paint a band across a group
                           "QWidget[editorPanelSurface=\"true\"] { background: transparent; border: none; }"
-                          // The strip is a group box only so that a screen reader is told
-                          // the things on it belong together; the word leading it is the
-                          // form's, so the box itself is drawn as nothing at all
                           "QGroupBox[editorOptionRow=\"true\"] { border: none; margin: 0px; padding: 0px; background: transparent; }"
-                          // The two matching modes, drawn as one control of two joined
-                          // segments. They stay radio buttons - a screen reader then says
-                          // which of the two is chosen and how many there are - so the dot
-                          // each would otherwise carry is given no size and no gap after
-                          // it, and the box round the words is what says which one is on.
                           "QRadioButton[editorSegment=\"true\"] { color: %2; background-color: %7; border: %9px solid %1;"
                           " padding: %10px %11px; spacing: 0px; }"
-                          // Given no size and, so that nothing draws the dot into what is
-                          // left, no border and no fill of its own either: a rule with
-                          // nothing to draw is drawn by the platform style instead
+                          // No border or fill either: an indicator rule with nothing to draw falls back to the platform style
                           "QRadioButton[editorSegment=\"true\"]::indicator { width: 0px; height: 0px; border: none; background: transparent; image: none; }"
                           "QRadioButton[editorSegment=\"true\"]:hover { border-color: %8; }"
                           "QRadioButton[editorSegment=\"true\"]:checked { color: %4; background-color: %5; border-color: %3; }"
                           "QRadioButton[editorSegment=\"true\"]:focus { border-color: %3; }"
                           "QRadioButton[editorSegment=\"true\"]:disabled { color: %12; }"
-                          // ...and the corners and the shared hairline last, so that they
-                          // outlive the states above them: the pair takes the fields'
-                          // corner on its outer edges, and the one hairline down the
-                          // middle belongs to whichever segment is chosen, so that the
-                          // accent goes all the way round it rather than stopping at the
-                          // seam. The segment giving that edge up takes its width back as
-                          // padding, so neither moves when the choice changes.
+                          // Last, to outlive the states above. The middle hairline belongs to the chosen segment so the
+                          // accent goes all round it; the other takes its width back as padding, so neither moves.
                           "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"first\"]"
                           " { border-top-left-radius: %6px; border-bottom-left-radius: %6px; }"
                           "QRadioButton[editorSegment=\"true\"][editorSegmentSide=\"last\"]"
@@ -18228,55 +16856,34 @@ void dlgTriggerEditor::applyEditorShellStyle()
                           .arg(borderColor.name(), mutedText.name(), accentColor.name(), accentText.name(), accentSoft, QString::number(uiDesign::scmRadiusInput))
                           .arg(fieldColor.name(), hoveredBorder.name(), QString::number(uiDesign::scmInputBorderWidth), QString::number(scmEditorSegmentPaddingVertical))
                           .arg(QString::number(scmEditorSegmentPaddingHorizontal), disabledText.name(), QString::number(scmEditorSegmentPaddingHorizontal + uiDesign::scmInputBorderWidth))
-                // The strip is opened and closed from a button rather than
-                // from a word, so it is drawn as the one the design language
-                // gives that job: quiet on the row until the options are on
-                // show, lit in the accent for as long as they are
                 + uiDesign::disclosureButtonStyleSheet(qsl("#toolButton_toggleExtraControls"), tokens)
                 + qsl( // The button that empties the sound file field, drawn as
-                          // the picture alone the way the toolbar's are: a frame
-                          // round a glyph this small reads as a second control
+                          // the picture alone: a frame round a glyph this small reads as a second control
                           "#toolButton_clearSoundFile { border: none; border-radius: %1px; background: transparent; padding: 2px; }"
                           "#toolButton_clearSoundFile:hover { background-color: %2; }")
                           .arg(QString::number(uiDesign::scmRadiusChip), hoverSoft));
     }
 
     if (mpScriptsMainArea) {
-        // The events a script is registered for are a row of chips rather than a
-        // list in a box: nothing on this form scrolls, so the names wrap onto as
-        // many lines as they need and the column follows that height
         mpScriptsMainArea->setStyleSheet(formRules + uiDesign::ChipRow::styleSheetFor(tokens));
     }
 
     if (mpKeysMainArea) {
-        // The field a key's keystroke is set in listens for it rather than
-        // being typed into, and says so by carrying the accent while it waits
         mpKeysMainArea->setStyleSheet(formRules
                                       + qsl("#lineEdit_key_binding[editorListening=\"true\"] { border: %3px solid %1; background-color: %2; }"
-                                            // The cross that forgets the keystroke, drawn as the
-                                            // picture alone the way the toolbar's actions are: a
-                                            // frame round a glyph this small reads as a second
-                                            // control
                                             "#editorKeyClear { border: none; border-radius: %4px; background: transparent; padding: 2px; }"
                                             "#editorKeyClear:hover { background-color: %5; }")
                                                 .arg(accentColor.name(), accentSoft, QString::number(uiDesign::scmInputBorderWidth))
                                                 .arg(QString::number(uiDesign::scmRadiusChip), hoverSoft));
     }
 
-    // The forms that are a fixed set of fields and nothing else: a name, an
-    // interval, a value. The three with a control of their own - the trigger's
-    // cards, the script's chips, the key's listening field - are styled above,
-    // where these same rules lead what else they carry.
     for (QWidget* pMainArea : {static_cast<QWidget*>(mpTimersMainArea), static_cast<QWidget*>(mpAliasMainArea), static_cast<QWidget*>(mpActionsMainArea), static_cast<QWidget*>(mpVarsMainArea)}) {
         if (pMainArea) {
             pMainArea->setStyleSheet(formRules);
         }
     }
 
-    // The accent a mark and a button take on focus is the keyboard's, on every
-    // form the rules above were set on. The options strip's segments are radio
-    // buttons and are covered with the rest, which leaves the arrow keys moving
-    // between them once one of the two is focused.
+    // The segments are radio buttons and covered too; arrow keys still move between them once one is focused
     for (QWidget* pMainArea : {static_cast<QWidget*>(mpTriggersMainArea),
                                static_cast<QWidget*>(mpScriptsMainArea),
                                static_cast<QWidget*>(mpKeysMainArea),
@@ -18285,70 +16892,44 @@ void dlgTriggerEditor::applyEditorShellStyle()
                                static_cast<QWidget*>(mpActionsMainArea),
                                static_cast<QWidget*>(mpVarsMainArea)}) {
         uiDesign::keepClickFocusOffControls(pMainArea);
-        // ...and the corner those rules give a dropped-down list, which only
-        // shows once the window the list is in is see-through. The pattern
-        // rows are made as triggers are shown rather than here, so
-        // createPatternItem() says the same for the box it brings with it.
+        // Pattern rows are made later, so createPatternItem() does the same for its box
         uiDesign::letPopupsTakeTheFieldsCorner(pMainArea);
     }
 
-    // The six forms shelled over their .ui grids keep their lead labels at one
-    // width, which is measured in the font the sheet is being written for.
-    // After the sheets have landed rather than before: the "Events" label is
-    // held to the line the script's chips stand on, and that line is only
-    // known once the form's rule for a field has given the row's field its
-    // height.
+    // After the sheets: the Events label is held to the chips' line height, known only once the field rule has landed
     alignEditorFormLeadLabels();
-    // ...and the width of a number box, which is what its largest number is
-    // wide in that same font
     fitEditorOptionsSpinBoxes();
 
-    // The notice writes its own sheet from the same tokens, on the same
-    // appearance change - see dlgSystemMessageArea::slot_applyAppearance().
-    // Nothing here touches it: a second sheet on that frame is what put the old
-    // near-black band back over the accent hairline.
+    // The notice styles itself in dlgSystemMessageArea::slot_applyAppearance(); a second sheet on its frame covers its
+    // accent hairline
 
     if (!mpWidget_editorSidebarPane) {
         return;
     }
     const EditorSidebarWidths widths = editorSidebarWidths();
     mpWidget_editorSidebarPane->setStyleSheet(qsl("#editorSidebarPane { background-color: %1; border-right: 1px solid %2; }").arg(pageColor.name(), separatorColor.name())
-                                              // The list itself is the settings dialog's sidebar, drawn from the
-                                              // same rules; the names are quieter here, as the rest of the
-                                              // editor's chrome is
                                               + uiDesign::sidebarStyleSheet(qsl("editorSidebar"), qsl("editorSidebarSeparator"), mutedText, editorSidebarMetrics(widths.expanded), tokens)
                                               + uiDesign::scrollBarStyleSheet(qsl("#editorSidebar"), tokens));
 
-    // A different font is a different width for the names, so the breakpoint is
-    // re-measured with the look it belongs to
+    // A different font is a different width for the names, so the breakpoint is measured again
     updateEditorSidebarMode();
 
-    // After that, not before: collapsing the sidebar re-polishes the list, and
-    // a re-polish puts back the palette the rules were applied to
+    // After that: collapsing re-polishes the list, which puts back the palette the rules were applied to
     if (mpListWidget_editorSidebar) {
         inkAsChrome(mpListWidget_editorSidebar, mutedText, accentText);
     }
-    // The chevron on the seam draws its own pill and its own stroke, in the
-    // same quiet tone, and what its text() holds is the name a screen reader is
-    // read rather than anything on show - so its palette is the only place the
-    // ink it is actually drawn in can be found
+    // It paints itself, so its palette is the only place its actual ink can be read from
     if (mpToggle_editorSidebar) {
         inkAsChrome(mpToggle_editorSidebar, mutedText, accentText);
     }
 
-    // The rules above give the toolbar's buttons their padding and the bar its
-    // spacing, so a restyle moves the width the names are given up at. The bar
-    // is sent no resize by it, so the fit is taken here rather than waited for.
+    // The rules move the buttons' padding and the bar's spacing but send no resize, so the fit is taken here
     fitEditorToolBarToItsLength();
 }
 
-// A count is a walk of the whole tree, which filling one out would otherwise
-// pay for once per item added
 void dlgTriggerEditor::scheduleEditorItemCountUpdate()
 {
-    // Left running rather than restarted: a burst of adds is one walk either
-    // way, and pushing the wait back on each of them is how a long import ends
-    // up never counting at all
+    // Not restarted: pushing the wait back on every add is how a long import would never count at all
     if (mpTimer_statusCounts && !mpTimer_statusCounts->isActive()) {
         mpTimer_statusCounts->start();
     }
@@ -18360,10 +16941,6 @@ void dlgTriggerEditor::updateEditorItemCounts()
         return;
     }
 
-    // Which tree is walked, what makes one of its items active, and how the two
-    // numbers are read out: three answers to the one question, so it is asked
-    // once rather than again for every item in the tree. Both are plain function
-    // pointers - what they need is handed to them.
     QTreeWidgetItem* pBaseItem = nullptr;
     bool (*wantedOn)(Host*, const int) = nullptr;
     QString (*countText)(const int, const int) = nullptr;
@@ -18435,8 +17012,6 @@ void dlgTriggerEditor::updateEditorItemCounts()
         };
         break;
     default:
-        // A variable is neither counted nor activated, and the unknown view has
-        // no tree to count at all
         break;
     }
     if (!pBaseItem || mpHost.isNull()) {
@@ -18456,8 +17031,7 @@ void dlgTriggerEditor::updateEditorItemCounts()
             pending.append(pItem->child(i));
         }
         ++total;
-        // What the user switched on, rather than what is running right now: a
-        // trigger inside a closed filter chain is off through no choice of theirs
+        // What the user switched on, not what runs: a trigger in a closed filter chain is off through no choice of theirs
         if (wantedOn(mpHost, pItem->data(0, Qt::UserRole).toInt())) {
             ++active;
         }
@@ -18466,16 +17040,14 @@ void dlgTriggerEditor::updateEditorItemCounts()
     mpLabel_statusCounts->setText(countText(total, active));
 }
 
-// Hides QWidget::setFont(), as dlgMapper and dlgNotepad do
 void dlgTriggerEditor::setFont(const QFont& font)
 {
     const uiDesign::StyleSheetFontLift lift(this);
     QMainWindow::setFont(font);
 }
 
-// Hides QWidget::setStyleSheet(): polishing hands every widget its own
-// pre-sheet font back, resolved against the application font rather than
-// its parent's, as the flag is still on while that happens
+// Polishing hands every widget its pre-sheet font back, resolved against the application font rather than its
+// parent's, as WA_StyleSheet is still set while that happens
 void dlgTriggerEditor::setStyleSheet(const QString& styleSheet)
 {
     QMainWindow::setStyleSheet(styleSheet);
@@ -18487,36 +17059,24 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
 {
     QMainWindow::changeEvent(e);
 
-    // Each of these moves what a sidebar row measures: its name, the font it is
-    // drawn in, or the metrics the style hands out for it - and the mode the
-    // measurement decides is re-taken here rather than left to the next resize,
-    // as the restyle below is now free to skip
+    // These move what a sidebar row measures; re-taken here, since the restyle below may skip as unchanged
     if (e->type() == QEvent::LanguageChange || e->type() == QEvent::StyleChange || e->type() == QEvent::FontChange) {
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
         // The same three move what a toolbar button costs the bar it is on
         fitEditorToolBarToItsLength();
-        // The same three move the widest of the pattern type names, which is
-        // what a row's type column is held to
+        // ...and the widest pattern type name, which a row's type column is held to
         mPatternTypeColumnWidth = 0;
-        // ...and the width every form's rows are led at, which is what its own
-        // words are wide - the "Events" label, pinned in there to the height one
-        // line of chips comes to, among them
         alignEditorFormLeadLabels();
-        // ...and what three digits come to in the number boxes on the options
-        // strip
         fitEditorOptionsSpinBoxes();
     }
 
-    // A search result's row height is measured off the font the results are
-    // drawn in, which the restyle below is not told about: it runs on the
-    // colours changing
+    // Result rows are measured off the font, and the restyle below runs only on a colour change
     if (e->type() == QEvent::FontChange && mpSearchResultDelegate) {
         mpSearchResultDelegate->restyle();
     }
 
-    // the appearance can be switched between light and dark while the editor is
-    // open; restyleEditorIcons() is where every tinted glyph is redone
+    // the appearance can be switched between light and dark while the editor is open
     if ((e->type() == QEvent::StyleChange || e->type() == QEvent::PaletteChange) && mpTriggersMainArea) {
         applyEditorShellStyle();
     }
@@ -18575,17 +17135,11 @@ void dlgTriggerEditor::checkForMoreThanOneTriggerItem()
         }
     }
 
-    // The hidden spin box is where the mode is still saved from; the two
-    // segments that show it are the one thing there is to switch off
     const bool canCombinePatterns = activeItems > 1;
     if (mpWidget_matchModeRows) {
         mpWidget_matchModeRows->setEnabled(canCombinePatterns);
-        // ...and the line count is half of what the All mode means, so it goes
-        // with them
         reflectTriggerMatchMode();
     }
-    // With nothing to combine yet, the caption saying so takes the place of a
-    // pair of greyed-out segments with no explanation
     if (mpLabel_matchModeHint) {
         mpLabel_matchModeHint->setVisible(!canCombinePatterns);
     }
@@ -18602,9 +17156,7 @@ void dlgTriggerEditor::setEditorFont(const QFont& newFont)
     config->setFont(newFont);
     config->endChanges();
 
-    // A pattern is read in the editor's font too, and every measurement a row is
-    // built from - the number column's width, the row's height, what its
-    // controls are capped at - comes off that font's metrics
+    // Patterns are read in the editor's font too, and every row measurement comes off its metrics
     for (auto* patternEdit : std::as_const(mTriggerPatternEdit)) {
         applyPatternWidgetStyle(patternEdit);
     }
@@ -19201,8 +17753,7 @@ void dlgTriggerEditor::handleBannerDismiss()
     }
 
     mLastDismissedBannerView = mCurrentView;
-    // Uninked, so that undoing after an appearance change puts the banner back
-    // in the ink of the appearance it is being put back into
+    // Uninked, so an undo after an appearance change inks the banner for the appearance it returns into
     mLastDismissedBannerContent = systemMessage();
     mLastDismissedBannerKey = mCurrentBannerKey;
 
@@ -19260,11 +17811,8 @@ void dlgTriggerEditor::showBannerUndoToast()
     });
 }
 
-// A QLabel bakes the colour of an anchor into its document when the text is
-// set, so a message already on screen when the appearance moves is written
-// again from the words it was given - which are kept uninked beside it. What
-// was stashed for an undo needs nothing: it is uninked too, and the ink goes in
-// when it is shown again.
+// QLabel bakes an anchor's colour into its document at setText(), so a message on screen is written again from
+// its uninked words. The undo stash is uninked too and is inked when shown again.
 void dlgTriggerEditor::slot_refreshBannerLinkColors()
 {
     if (!mpSystemMessageArea) {

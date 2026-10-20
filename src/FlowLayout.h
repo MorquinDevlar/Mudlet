@@ -27,38 +27,24 @@
 
 namespace uiDesign {
 
-// A row of small things that runs on to the next line when it reaches the edge,
-// the way words do. Every box layout would rather squeeze its items or push the
-// window wider; this one keeps each item at the size it asks for and wraps
-// instead, which is what a set of chips has to do to be readable at any width.
-//
-// The height therefore depends on the width, so this answers heightForWidth()
-// and whatever holds it has to ask - see ChipRow::sizeHint(), which is what
-// carries the wrapped height up to the column the form is in.
+// Wraps rather than squeezing items or widening the window as a box layout would.
+// The height depends on the width, so a holder must ask heightForWidth(); see ChipRow::sizeHint().
 class FlowLayout : public QLayout
 {
 public:
-    // What the row asks for when it is asked how wide it would like to be. A
-    // row that is given its own width wants its items on one line; a row inside
-    // a column must not widen that column by the number of items it happens to
-    // hold, so it asks only for the widest one and wraps for the rest.
+    // WidestItem keeps a row inside a column from widening it by its item count
     enum class Width {
         OneLine,
         WidestItem,
     };
 
-    // Where an item shorter than its line stands on it. A row of chips is one
-    // height throughout and reads from the top; a row of a form puts a label
-    // beside a button and a check box, which read as one line only about one
-    // middle.
     enum class LineAlignment {
         Top,
         Centre,
     };
 
     Q_DISABLE_COPY(FlowLayout)
-    // A spacing of -1 takes the style's own idea of what goes between two
-    // controls, which is what a layout the caller says nothing about should be
+    // A spacing of -1 takes the style's layout spacing
     explicit FlowLayout(QWidget* pParent = nullptr, const int horizontalSpacing = -1, const int verticalSpacing = -1);
     ~FlowLayout() override;
 
@@ -76,18 +62,14 @@ public:
 
     void setWidthPolicy(const Width policy);
     void setLineAlignment(const LineAlignment alignment);
-    // The one item given whatever room is left at the end of the line it lands
-    // on, and what follows it on that line moved along by as much. It is still
-    // wrapped by its own width, and never drawn narrower than that.
+    // Takes the spare room at the end of its line, but still wraps by its own width
     void setStretchWidget(QWidget* pWidget);
 
     [[nodiscard]] int horizontalSpacing() const;
     [[nodiscard]] int verticalSpacing() const;
 
 private:
-    // The one pass everything else is answered from: laying the items out and
-    // measuring what that comes to are the same walk, so a height can never
-    // disagree with the geometry the items are actually given.
+    // Measuring and placing share one walk, so a height never disagrees with the geometry given
     int runItems(const QRect& rect, const bool place) const;
     [[nodiscard]] int styleSpacing(const QStyle::PixelMetric metric) const;
 
@@ -97,8 +79,7 @@ private:
     Width mWidthPolicy = Width::OneLine;
     LineAlignment mLineAlignment = LineAlignment::Top;
     QPointer<QWidget> mpStretchWidget;
-    // The last width heightForWidth() was asked about and what it answered: a
-    // single layout pass asks two or three times running with the same number.
+    // One layout pass asks heightForWidth() two or three times with the same width
     mutable int mCachedWidth = -1;
     mutable int mCachedHeight = 0;
 };

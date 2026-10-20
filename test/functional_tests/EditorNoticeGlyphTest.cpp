@@ -18,36 +18,22 @@
  ***************************************************************************/
 
 /*
- * The picture beside a notice in the editor.
- *
- * It is tinted through its alpha channel, which keeps the antialiased edges a
- * recolouring of the pixels would harden - but also keeps only the shape that
- * channel carries. The old dialog-*.png bitmaps drew their picture in colour
- * over a solid alpha, so tinting one gave back a filled disc with nothing in
- * it: the information notice was led by a plain blob.
- *
- * The three sources are line glyphs now, and what tells the two apart is a row
- * of pixels across the middle: a ring has transparent pixels between its two
- * sides, a disc has none.
+ * A notice's picture is tinted through its alpha channel, so a source drawn in colour
+ * over solid alpha tints to a filled disc. The middle row tells a ring, transparent
+ * between its two sides, from a disc.
  *
  * Run with: ctest -R EditorNoticeGlyphTest -V
  */
 
 #include <QImage>
 #include <QLabel>
-#include <QTemporaryDir>
 #include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgSystemMessageArea.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -62,41 +48,14 @@ class EditorNoticeGlyphTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorNoticeGlyph-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
     // Anything above this is ink rather than the antialiased edge of it
     static constexpr int scmInkAlpha = 128;
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    // The row of pixels across the middle of a glyph, as the ink it is drawn in
-    // rather than as colours
     static QString describeMiddleRow(const QImage& glyph)
     {
         QString marks;
@@ -110,28 +69,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -145,13 +88,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     void test_theInformationNoticeIsLedByARingRatherThanADisc()
@@ -177,8 +114,6 @@ private slots:
                  qPrintable(qsl("the picture beside the information notice is a solid disc rather than a ring - tinting kept only its alpha, and that source's alpha is a filled shape: %1").arg(row)));
     }
 
-    // The other two are drawn from the same three-file set, so a source that
-    // went back to a filled bitmap is caught wherever it happened
     void test_theWarningAndErrorNoticesAreLineGlyphsToo()
     {
         mpEditor->slot_showTriggers();
@@ -202,9 +137,6 @@ private slots:
         }
     }
 
-    // The banner's other picture. It shipped as application-exit.png, a
-    // full-colour bitmap of a red cross - which said "error" on a banner that is
-    // usually a tip, and was the one thing on it not inked from the palette.
     void test_theDismissCrossIsInkedFromThePaletteLikeTheNoticeBesideIt()
     {
         mpEditor->slot_showTriggers();
@@ -217,8 +149,7 @@ private slots:
         const QImage cross = pClose->icon().pixmap(pClose->iconSize()).toImage();
         QVERIFY2(!cross.isNull(), "the banner's close button carries no picture at all");
 
-        // Tinting keeps only the alpha, so every pixel with ink in it is the one
-        // colour. The red cross was full-colour, and would fail on both counts.
+        // Tinting keeps only the alpha, so every inked pixel is the one colour
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
         QSet<QRgb> inks;
         for (int y = 0; y < cross.height(); ++y) {

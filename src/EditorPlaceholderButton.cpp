@@ -25,8 +25,7 @@
 namespace uiDesign {
 
 namespace {
-// Fine enough that the frame reads as one drawn line rather than as a row of
-// blocks: the pattern is in pen widths, so at a 1px pen these are pixels
+// A QPen dash pattern is in pen widths, so at a 1px pen these are pixels
 constexpr qreal scmFramePenWidth = 1.0;
 constexpr qreal scmFrameDashOn = 3.0;
 constexpr qreal scmFrameDashOff = 3.0;
@@ -61,8 +60,7 @@ void PlaceholderButton::setFrameRadius(const qreal radius)
 
 void PlaceholderButton::paintEvent(QPaintEvent* event)
 {
-    // Under the name and the plus sign, which the button draws for itself the
-    // way any other tool button does
+    // Before QToolButton::paintEvent(), so the frame lies under the label and icon
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
@@ -70,8 +68,7 @@ void PlaceholderButton::paintEvent(QPaintEvent* event)
     if (!isEnabled()) {
         frameColor = mDisabledColor;
     } else if (underMouse() || hasFocus()) {
-        // The keyboard gets the same answer as the pointer: this is the only
-        // thing on the form saying where the focus is once it is here
+        // The frame is the only focus indicator this button has
         frameColor = mActiveColor;
     }
 
@@ -80,8 +77,8 @@ void PlaceholderButton::paintEvent(QPaintEvent* event)
     pen.setDashPattern({scmFrameDashOn, scmFrameDashOff});
     painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
-    // Half a pen inside the box, so the stroke lands on the widget rather than
-    // half of it off the edge
+    // A pen is centred on the path, so inset by half of it to keep the stroke on
+    // the widget
     const qreal inset = scmFramePenWidth / 2.0;
     const QRectF frame = QRectF(rect().marginsRemoved(mFrameMargins)).adjusted(inset, inset, -inset, -inset);
     if (frame.isValid()) {

@@ -18,28 +18,9 @@
  ***************************************************************************/
 
 /*
- * A trigger's options are one row of its form, and the Options button at the
- * right end of the head row is what opens and closes it. That is a disclosure
- * rather than a preference: the editor opens with the row closed every time,
- * whatever the last session left it at, and whatever an older configuration
- * stored under showAllTriggerControls - a key nothing reads any more and which
- * is cleared on write rather than left behind.
- *
- * The key is seeded to true here before the editor is built, which is what such
- * a configuration carries, so that a default that answered to it would show.
- *
- * What is held here:
- *
- * - The strip and the word leading it are away when the editor opens, and the
- *   button is there and unchecked.
- * - The button stands at the end of the head row, level with the command field
- *   and at its height.
- * - With the strip away the pattern list follows the head row at the grid's own
- *   spacing, so the hidden row costs no gap.
- * - The button opens and closes the strip, and the pattern list moves with it.
- * - The choice is kept for the session: it survives another trigger being
- *   chosen and the view being switched away and back.
- * - Writing the settings leaves no showAllTriggerControls behind.
+ * The trigger options strip opens closed in every session, even under an older
+ * configuration that stored showAllTriggerControls=true, and writing the settings
+ * clears that retired key.
  *
  * Run with: ctest -R EditorOptionsPanelDefaultTest -V
  */
@@ -47,7 +28,6 @@
 #include <QGridLayout>
 #include <QLineEdit>
 #include <QSettings>
-#include <QTemporaryDir>
 #include <QToolButton>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -55,11 +35,8 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggersMainArea.h"
 #include "mudlet.h"
@@ -73,42 +50,10 @@ class EditorOptionsPanelDefaultTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorOptionsPanelDefault-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    void settle()
-    {
-        QCoreApplication::processEvents();
-        QTest::qWait(80ms);
-        QCoreApplication::processEvents();
-    }
 
     dlgTriggersMainArea* form() const { return mpEditor->mpTriggersMainArea; }
 
@@ -127,41 +72,20 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        // What a configuration written by a version that stored the strip's
-        // state carries. Seeded before the profile is started rather than before
-        // the editor is asked for: loading a profile builds its editor, so this
-        // is the last moment the editor has not read its settings yet. The
-        // window is given room for the strip in the same breath, so that what
-        // is measured below is a choice rather than a want of room.
+        // Seeded before the profile opens: loading a profile builds its editor, which reads its
+        // settings then. The size gives the strip room, so a closed strip is not a squeeze.
         MudletApp::getQSettings()->setValue(qsl("showAllTriggerControls"), true);
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), QSize(1100, 900));
         MudletApp::getQSettings()->sync();
 
-        startProfile(mProfileName, mLocalhost, mPort);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -177,16 +101,9 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The editor opens with the options away whatever the stored key said
     void test_theOptionsOpenClosedDespiteTheStoredSetting()
     {
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow != nullptr, "the trigger form has no options strip");
@@ -197,8 +114,6 @@ private slots:
         QVERIFY2(!mpEditor->mShowAllTriggerControls, "the editor is holding the strip as open in a session that has not opened it");
     }
 
-    // It stands at the end of the row the name and the command are typed on,
-    // level with the field beside it
     void test_theButtonSitsOnTheHeadRowInLineWithTheCommandField()
     {
         QLineEdit* pCommand = form()->lineEdit_trigger_command;
@@ -222,12 +137,11 @@ private slots:
         QCOMPARE(optionsButton()->text(), qsl("Options"));
     }
 
-    // A grid row with nothing on it takes no height and no spacing, so the
-    // patterns sit exactly one gap under the head row while the strip is away
+    // QGridLayout gives a row with no visible widget no height and no spacing
     void test_withTheStripAwayThePatternsFollowTheHeadRowAtTheGridsSpacing()
     {
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
 
         auto* pGrid = qobject_cast<QGridLayout*>(form()->layout());
         QVERIFY2(pGrid != nullptr, "the trigger form is not laid out in a grid");
@@ -240,15 +154,14 @@ private slots:
         QCOMPARE(gap, pGrid->verticalSpacing());
     }
 
-    // The button is the whole of what opens and closes the strip
     void test_theButtonOpensAndClosesTheStrip()
     {
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
         const int patternsWhenAway = topEdgeOf(form()->widget_left);
 
         QTest::mouseClick(optionsButton(), Qt::LeftButton, Qt::NoModifier, optionsButton()->rect().center());
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow->isVisible(), "clicking the Options button did not put the strip on show");
         QVERIFY2(mpEditor->mpLabel_optionsRow->isVisible(), "the strip is on show without the word leading it");
         QVERIFY2(optionsButton()->isChecked(), "the button does not say the strip it opened is open");
@@ -259,7 +172,7 @@ private slots:
                  qPrintable(qsl("the pattern list is at y=%1 with the strip on show, where it was at y=%2 without it - the strip is taking no room").arg(patternsWhenShown).arg(patternsWhenAway)));
 
         QTest::mouseClick(optionsButton(), Qt::LeftButton, Qt::NoModifier, optionsButton()->rect().center());
-        settle();
+        TestPixels::settle();
         QVERIFY2(!mpEditor->mpWidget_triggerOptionsRow->isVisible(), "clicking the Options button again did not put the strip away");
         QVERIFY2(!mpEditor->mpLabel_optionsRow->isVisible(), "the word leading the strip stayed behind after the strip went");
         QVERIFY2(!optionsButton()->isChecked(), "the button says the strip is open after it closed it");
@@ -267,29 +180,26 @@ private slots:
         QCOMPARE(topEdgeOf(form()->widget_left), patternsWhenAway);
     }
 
-    // Nothing is stored, but nothing puts it back either: within the one
-    // session the strip stays where it was put
     void test_theChoiceIsKeptForTheSession()
     {
         mpEditor->setTriggerOptionsShown(true);
-        settle();
+        TestPixels::settle();
 
         mpEditor->addTrigger(false);
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow->isVisible(), "choosing another trigger put the options strip away");
         QVERIFY2(optionsButton()->isChecked(), "choosing another trigger left the button saying the strip is closed");
 
         mpEditor->slot_showAliases();
         mpEditor->slot_showTriggers();
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->mpWidget_triggerOptionsRow->isVisible(), "leaving the Triggers view and coming back put the options strip away");
         QVERIFY2(optionsButton()->isChecked(), "coming back to the Triggers view left the button saying the strip is closed");
 
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
     }
 
-    // Nothing writes the retired key back, and opening the editor clears it
     void test_writingSettingsLeavesNoRetiredKey()
     {
         mpEditor->writeSettings();

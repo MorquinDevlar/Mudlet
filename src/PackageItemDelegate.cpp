@@ -36,28 +36,20 @@ PackageItemDelegate::PackageItemDelegate(QObject* parent)
 
 void PackageItemDelegate::restyle(const uiDesign::ThemeTokens& tokens)
 {
-    // The name is the value on the row - what the package is called - so it
-    // takes the ink a typed value does; the summary under it is chrome
     mNameInk = tokens.text;
     mSummaryInk = tokens.mutedText;
-    // A chosen row is washed in the accent and both its lines are written in
-    // that wash's ink: a row where only the name lit would read as half chosen
+    // Both lines of a chosen row take the wash's ink: only the name lit would read as half chosen
     mChosenInk = tokens.accentText;
     mAccentBar = tokens.accent;
     mCaptionSize = uiDesign::typeSize(uiDesign::TypeStep::Caption);
 
-    // The version at the trailing edge of a row is the same reading the head of
-    // the details column carries: the design's ok tone, the blue a running
-    // item's dot in the editor's trees is filled in, walked until it can be read
-    // on what it stands on. Twice, because a chosen row is not the pane - it is filled with the
-    // accent's wash, the one itemRowStyleSheet() writes - and a blue walked
-    // against the pane can be lost on that fill.
+    // Walked twice: a blue readable on the pane can be lost on the accent wash
+    // itemRowStyleSheet() fills a chosen row with
     const QColor okTone = uiDesign::stateColor(uiDesign::scmStateHue_ok, tokens.darkPage);
     mVersionInk = uiDesign::readableOn(tokens.pane, okTone, tokens.text, uiDesign::scmTextMinimumRatio);
     mChosenVersionInk = uiDesign::readableOn(uiDesign::blend(tokens.pane, tokens.accent, uiDesign::scmAccentWashStrength), okTone, tokens.text, uiDesign::scmTextMinimumRatio);
 
-    // Cut at the ratio of the window the list is in, so the glyph is drawn at
-    // the screen's resolution rather than blown up from a 16px square
+    // At the owner's device pixel ratio, or the glyph is blown up from a 16px square
     const auto* pOwner = qobject_cast<const QWidget*>(parent());
     const qreal ratio = pOwner ? pOwner->devicePixelRatioF() : 1.0;
     const auto glyphInked = [ratio](const QColor& colour) {
@@ -73,9 +65,7 @@ void PackageItemDelegate::restyle(const uiDesign::ThemeTokens& tokens)
 void PackageItemDelegate::initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const
 {
     QStyledItemDelegate::initStyleOption(option, index);
-    // Everything on the row is drawn below, so the base is left with the row's
-    // surface: the corner, the hover wash and the accent wash the sheet gives
-    // it, and nothing on top of them
+    // paint() draws the text and icon itself; the base paints only the sheet's row surface
     option->text.clear();
     option->icon = QIcon();
     option->features &= ~QStyleOptionViewItem::HasDecoration;
@@ -87,7 +77,6 @@ void PackageItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
         return;
     }
 
-    // The row's surface, which is the shared recipe's doing
     QStyledItemDelegate::paint(painter, option, index);
 
     const bool chosen = option.state & QStyle::State_Selected;
@@ -99,8 +88,6 @@ void PackageItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
 
     const RowMetrics metrics = measureRow(option, index);
     if (icon.isNull()) {
-        // A package that ships no picture of its own is drawn with the design's
-        // package glyph rather than with a gap where one would be
         painter->drawPixmap(metrics.icon, chosen ? mChosenGlyph : mQuietGlyph);
     } else {
         icon.paint(painter, metrics.icon, Qt::AlignCenter);
@@ -123,9 +110,6 @@ void PackageItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
         painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, nameMetrics.elidedText(name, Qt::ElideRight, metrics.nameWidth));
     }
 
-    // The version stands at the far end of the name's own line, flush with what
-    // the row leaves clear at its trailing edge, on the caption step and
-    // centred on the line the name is written on.
     if (!metrics.version.isEmpty()) {
         painter->setFont(summaryFont);
         painter->setPen(versionInk(chosen));
@@ -141,9 +125,7 @@ void PackageItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& o
 
     painter->restore();
 
-    // Over the wash the sheet has just filled the chosen row with, as the
-    // leading edge of it: the same bar, at the same width and in the same
-    // shape, the editor's trees carry
+    // After the base paint, so the bar lies over the sheet's accent wash
     if (chosen && !option.rect.isEmpty()) {
         uiDesign::paintAccentBar(painter, option.rect, mAccentBar, uiDesign::scmRadiusPanel);
     }
@@ -173,8 +155,6 @@ PackageItemDelegate::RowMetrics PackageItemDelegate::measureRow(const QStyleOpti
     if (version.isEmpty()) {
         return metrics;
     }
-    // The version takes its own width out of the name's line and the air before
-    // it as well, so the two never touch however long the name is
     const int versionWidth = QFontMetrics(captionFont(option.font)).horizontalAdvance(version);
     metrics.version = version;
     metrics.versionRect = QRect(option.rect.right() - cRowPaddingTrailing - versionWidth, option.rect.top(), versionWidth, option.rect.height());

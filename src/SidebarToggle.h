@@ -27,34 +27,21 @@
 
 namespace uiDesign {
 
-// The control that gives a sidebar's names up and brings them back, drawn on
-// the seam between that sidebar and the rest of the window - where Finder and
-// VS Code put the same control. A toolbar is no place for it: the user can drag
-// one to another edge of the window or float it, and the control that belongs
-// to the column down the left would go with it.
-//
-// It paints itself rather than carrying a picture: a pill of the card tone with
-// the border hairline round it and a chevron drawn with a pen, pointing the way
-// the sidebar will go when it is pressed.
 class SidebarToggle : public QAbstractButton
 {
     Q_OBJECT
 
 public:
     Q_DISABLE_COPY(SidebarToggle)
-    // pSeam is the pane whose trailing edge the pill straddles. pParent has to
-    // be the widget holding both that pane and whatever is beside it, so that
-    // the pill is drawn over the two of them rather than clipped by either.
+    // pSeam is the pane whose trailing edge the pill straddles. pParent must hold
+    // both that pane and what is beside it, or either would clip the pill.
     SidebarToggle(QWidget* pSeam, QWidget* pParent);
 
-    // Which way the chevron points, which is what pressing it will do: left
-    // takes the names away, right brings them back
     void setPointingLeft(const bool pointingLeft);
     [[nodiscard]] bool pointingLeft() const { return mPointingLeft; }
 
-    // Back onto the seam, centred down the pane's height. Asked for by itself
-    // whenever either widget it is measured from moves or resizes, so a caller
-    // only needs it where neither of those happens.
+    // Runs by itself when either widget moves, resizes or shows; a caller only
+    // needs it for any other change.
     void reposition();
 
 protected:

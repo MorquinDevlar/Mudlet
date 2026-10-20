@@ -18,23 +18,16 @@
  ***************************************************************************/
 
 /*
- * The connection dialog's two tabs and its buttons are drawn from the design
- * language: the fields, the marks and the labels on the tabs come from the
- * shared recipes rather than from the platform, and a field the validator has
- * something to say about is marked with a property a rule paints from - not
- * with a palette, which a stylesheet's own background-color would beat anyway.
- *
- * The buttons are the same recipe on both containers - Remove, Copy and New
- * over the games list, and the skip button and the button box under it - with
- * Copy staying a tool button, since its trailing half opens a menu, and
- * Connect drawn as the one invitation on the row.
+ * Guards the connection dialog's design-language styling: fields, buttons, the
+ * notice and the games-list chips. A field the validator objects to is marked
+ * by a property a rule paints from, since a sheet's background beats a palette.
  *
  * Run with: ctest -R ConnectionDialogStyleTest -V
  */
 
-#include "PortableModeTestHelper.h"
-#include "MudletInstanceCoordinator.h"
 #include "MudletApp.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgConnectionProfiles.h"
 #include "mudlet.h"
 #include "uiDesign.h"
@@ -66,19 +59,14 @@ class ConnectionDialogStyleTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mXdgDir;
-    QByteArray mSavedXdg;
+    TestProfile::Session mSession;
 
+    // A saved profile keeps the first-launch tutorial, which hides the whole form, out of the way
     const QString mProfile = qsl("Aardvark-ConnDialogFieldStyle");
-
-    // a saved profile keeps the first-launch tutorial invitation - which hides
-    // the whole connection form - out of the way
-    bool makeProfileFolder(const QString& name) const { return QDir().mkpath(qsl("%1/mudlet/profiles/%2").arg(mXdgDir.path(), name)); }
 
     dlgConnectionProfiles* dialog() const { return mudlet::self()->mpConnectionDialog.data(); }
 
-    // The fields only carry text, and the validator only runs, once a profile
-    // is the one being edited
+    // The fields only carry text, and the validator only runs, once a profile is being edited
     void selectTheTestProfile() const
     {
         auto* pDialog = dialog();
@@ -90,20 +78,12 @@ private:
 
     static QString fieldState(const QLineEdit* pField) { return pField->property("connectionFieldState").toString(); }
 
-    // How far a reading may be from the hairline it should be and still be that
-    // hairline: a rounded edge is antialiased against what is behind it, and a
-    // screen that doubles its pixels draws the one line over two rows
+    // A rounded edge is antialiased against what is behind it, and a screen
+    // that doubles its pixels draws the one line over two rows
     static constexpr int scmHairlineInkSlack = 24;
 
-    // How far a reading is from the design's accent, summed over the channels
-    static int accentDistance(const QColor& sample, const QColor& accent)
-    {
-        return std::abs(sample.red() - accent.red()) + std::abs(sample.green() - accent.green()) + std::abs(sample.blue() - accent.blue());
-    }
-
-    // The closest one logical pixel row in the window comes to the accent: a
-    // screen that doubles its pixels draws that one row over two device rows,
-    // and an antialiased edge splits its ink between them
+    // A screen that doubles its pixels draws one logical row over two device
+    // rows, and an antialiased edge splits its ink between them
     static int nearestToAccent(const QImage& shot, const QPoint& inDialog, const QColor& accent, QColor* pRead)
     {
         const qreal ratio = shot.devicePixelRatio();
@@ -114,7 +94,7 @@ private:
                 continue;
             }
             const QColor sample = shot.pixelColor(inShot);
-            const int distance = accentDistance(sample, accent);
+            const int distance = TestPixels::distance(sample, accent);
             if (distance < nearest) {
                 nearest = distance;
                 *pRead = sample;
@@ -123,12 +103,8 @@ private:
         return nearest;
     }
 
-    // How far the halo reaches past the picture on every side, which is also
-    // what the item's rectangle carries over the 120x30 chip centred in it
     static constexpr int scmHaloRoom = ProfileChipDelegate::scmChipHaloGap + ProfileChipDelegate::scmChipHaloWidth;
 
-    // The first label, field, list or mark on either tab whose face or size is
-    // not the dialog's, named, or nothing when they all match
     static QString tabFontMismatch(const dlgConnectionProfiles* pDialog)
     {
         const QFont expected = pDialog->font();
@@ -152,26 +128,15 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - cannot redirect the config dir for this test");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        QVERIFY(mXdgDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mXdgDir.path()))); // profiles/ = XDG opt-in
-        QVERIFY(makeProfileFolder(mProfile));
-        qputenv("XDG_CONFIG_HOME", mXdgDir.path().toUtf8());
+        QVERIFY2(mSession.startMudlet({mProfile}), qPrintable(mSession.why()));
 
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QVERIFY(MudletApp::getMudletPath(enums::profilesPath).startsWith(mXdgDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-
-        // The macOS theme registers a font of its own for labels and checkboxes,
-        // and offscreen registers none. Built rather than copied from the
-        // application font, or Qt takes it for that font.
+        // The macOS theme registers its own QLabel and QCheckBox fonts, offscreen
+        // none. Built rather than copied from the application font, or Qt takes
+        // it for that font.
         const QFont classFont(QApplication::font().family(), qRound(QApplication::font().pointSizeF()));
         QVERIFY(!classFont.isCopyOf(QApplication::font()));
         QApplication::setFont(classFont, "QLabel");
@@ -187,11 +152,7 @@ private slots:
                 5000));
     }
 
-    void cleanupTestCase()
-    {
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        delete mudlet::self();
-    }
+    void cleanupTestCase() { mSession.stop(); }
 
     void test_theTabsFieldsAreDrawnFromTheDesign()
     {
@@ -203,25 +164,18 @@ private slots:
                  qPrintable(qsl("the Connect-to tab is not drawn on the design's field surface (%1): its sheet is \"%2\"").arg(field, pDialog->tab_connection_info->styleSheet().left(120))));
         QVERIFY2(pDialog->tab_options->styleSheet().contains(field), "the Options tab is not drawn on the design's field surface");
 
-        // The .ui pinned these three at 9pt, which read smaller than the very
-        // same controls on the Options tab beside them
         for (const QLineEdit* pField : {pDialog->profile_name_entry, pDialog->host_name_entry, pDialog->port_entry}) {
             QVERIFY2(pField->font().pointSize() == pDialog->font().pointSize(),
                      qPrintable(qsl("%1 is drawn at %2pt against the dialog's own %3pt")
                                         .arg(pField->objectName(), QString::number(pField->font().pointSize()), QString::number(pDialog->font().pointSize()))));
         }
 
-        // Five digits and what the field recipe leaves either side of them: the
-        // widest port there is has to fit without eliding
         const QFontMetrics fm(pDialog->port_entry->font());
         const int leastNeeded = fm.horizontalAdvance(qsl("65535")) + 2 * (uiDesign::scmInputPaddingHorizontal + uiDesign::scmInputBorderWidth);
         QVERIFY2(pDialog->port_entry->minimumWidth() >= leastNeeded,
                  qPrintable(qsl("the port field is %1px wide, against the %2px five digits need in it").arg(QString::number(pDialog->port_entry->minimumWidth()), QString::number(leastNeeded))));
     }
 
-    // The information box holds the game's description as a field, cut to the
-    // field's corner like the notepad's notes, rather than as the square frame
-    // the platform draws round a plain text edit
     void test_theInformationBoxIsAField()
     {
         auto* pDialog = dialog();
@@ -234,9 +188,8 @@ private slots:
         QVERIFY2(sheet.contains(qsl("QPlainTextEdit")) && sheet.contains(tokens.field.name()),
                  qPrintable(qsl("the information box's sheet does not draw its text edit on the field surface (%1): \"%2\"").arg(tokens.field.name(), sheet.left(160))));
 
-        // Read off a grab: the top edge's middle is a straight run of the
-        // hairline, and the very corner is outside the rounded rectangle, so it
-        // reads whatever lies behind the field rather than the line
+        // The top edge's middle is a straight run of the hairline; the very
+        // corner is outside the rounded rectangle and reads what lies behind it
         QPlainTextEdit* pField = pDialog->mud_description_textedit;
         QVERIFY2(pField->isVisible() && pField->width() > 4 * uiDesign::scmRadiusInput, "the description field is not on show to be read");
         const QImage shot = pDialog->grab().toImage();
@@ -247,19 +200,13 @@ private slots:
         };
         const QColor edge = readAt(QPoint(pField->width() / 2, 0));
         const QColor corner = readAt(QPoint(0, 0));
-        const auto distance = [](const QColor& a, const QColor& b) {
-            return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
-        };
         qInfo().noquote() << qsl("  the description field's top edge reads %1 and its corner pixel %2, against a hairline of %3").arg(edge.name(), corner.name(), tokens.border.name());
-        QVERIFY2(distance(edge, tokens.border) <= scmHairlineInkSlack,
+        QVERIFY2(TestPixels::distance(edge, tokens.border) <= scmHairlineInkSlack,
                  qPrintable(qsl("the description field's top edge reads %1 rather than the design's hairline %2").arg(edge.name(), tokens.border.name())));
-        QVERIFY2(distance(corner, edge) > scmHairlineInkSlack,
+        QVERIFY2(TestPixels::distance(corner, edge) > scmHairlineInkSlack,
                  qPrintable(qsl("the description field's corner pixel reads %1, the same as its edge, so the corner is square rather than cut to the field's radius").arg(corner.name())));
     }
 
-    // Every button on the window is the shared recipe: the three over the games
-    // list and the row under it, with Copy staying a tool button because its
-    // trailing half opens a menu, and Connect the one invitation among them
     void test_theButtonsAreDrawnFromTheDesign()
     {
         auto* pDialog = dialog();
@@ -283,11 +230,9 @@ private slots:
         QVERIFY2(pDialog->profileAdminArea->styleSheet().contains(qsl("QToolButton[%1").arg(QString::fromLatin1(uiDesign::scmProp_menuButton))),
                  "the admin row's sheet draws push buttons only, so the Copy button is left to the platform");
         QCOMPARE(pDialog->copy_profile_toolbutton->popupMode(), QToolButton::MenuButtonPopup);
-        // Both actions are still on the button itself - that is what makes it
-        // the widget they are associated with, which is where the accessible
-        // names are set - even though the menu is what they are chosen from
-        // now. Named rather than counted: setMenu() puts the menu's own action
-        // on the button as well.
+        // The actions stay on the button so it is their associated widget, where
+        // the accessible names are set. Named rather than counted: setMenu() puts
+        // the menu's own action on the button as well.
         QStringList carried;
         for (const QAction* pAction : pDialog->copy_profile_toolbutton->actions()) {
             carried << pAction->objectName();
@@ -295,12 +240,8 @@ private slots:
         QVERIFY2(carried.contains(qsl("copyProfile")) && carried.contains(qsl("copyProfileSettingsOnly")),
                  qPrintable(qsl("the Copy button no longer carries both of its actions, so the accessible names set on their widget have nowhere to land: it holds %1").arg(carried.join(qsl(", ")))));
 
-        // The split is still a split: the style is asked where the half that
-        // opens the menu is, and it has to be a real rectangle at the trailing
-        // end of the button rather than the nothing a sheet that took the
-        // sub-control away would leave. Asked rather than clicked - a popup
-        // menu on macOS runs an event loop of its own that a test cannot get
-        // back out of.
+        // Asked of the style rather than clicked: a popup menu on macOS runs an
+        // event loop of its own that a test cannot get back out of
         QStyleOptionToolButton copyOption;
         copyOption.initFrom(pDialog->copy_profile_toolbutton);
         copyOption.rect = pDialog->copy_profile_toolbutton->rect();
@@ -318,11 +259,8 @@ private slots:
         QVERIFY2(pConnect->isDefault(), "Connect is not the dialog's default button, so Return no longer reaches it");
         QVERIFY2(pDialog->widget_bottom->styleSheet().contains(qsl(":default")), "the button row's sheet says nothing about the default button, so Connect reads as one control among four");
 
-        // The design's hairline round the New button, read off a shot of the
-        // window rather than off the button alone: a platform bevel is a
-        // gradient of its own and lands nowhere near this tone. The middle of
-        // the top edge is a straight run of the line rather than the corner it
-        // is rounded through.
+        // A platform bevel is a gradient that lands nowhere near this tone; the
+        // top edge's middle is a straight run of the line, not its rounded corner
         QPushButton* pNew = pDialog->new_profile_button;
         QVERIFY2(pNew->isVisible() && pNew->width() > 8, "the New button is not on show to be measured");
         const QImage shot = pDialog->grab().toImage();
@@ -337,7 +275,7 @@ private slots:
                 continue;
             }
             const QColor sample = shot.pixelColor(inShot);
-            const int distance = std::abs(sample.red() - border.red()) + std::abs(sample.green() - border.green()) + std::abs(sample.blue() - border.blue());
+            const int distance = TestPixels::distance(sample, border);
             if (distance < nearest) {
                 nearest = distance;
                 read = sample;
@@ -347,10 +285,6 @@ private slots:
         QVERIFY2(nearest <= scmHairlineInkSlack, qPrintable(qsl("the New button's outline reads %1 rather than the design's %2").arg(read.name(), border.name())));
     }
 
-    // Copy is two click areas, and the seam down the leading edge of its
-    // trailing half is what says so before the pointer arrives. The same
-    // recipe draws the editor toolbar's Save Profile button, so a split button
-    // is one control kind in both windows rather than two that happen to agree.
     void test_theCopyButtonShowsItsTwoHalves()
     {
         auto* pDialog = dialog();
@@ -401,13 +335,13 @@ private slots:
             if (!readAs.isValid()) {
                 readAs = sample;
             }
-            const int distance = std::abs(sample.red() - border.red()) + std::abs(sample.green() - border.green()) + std::abs(sample.blue() - border.blue());
+            const int distance = TestPixels::distance(sample, border);
             if (distance <= scmHairlineInkSlack) {
                 ++onTheLine;
             }
         }
         const QColor justInside = shot.pixelColor(seamAt + qMax(3, qRound(3 * ratio)), top + height / 3);
-        const int insideDistance = std::abs(justInside.red() - border.red()) + std::abs(justInside.green() - border.green()) + std::abs(justInside.blue() - border.blue());
+        const int insideDistance = TestPixels::distance(justInside, border);
         qInfo().noquote() << qsl("  the Copy button's menu half starts at x %1; its leading edge reads %2 against the hairline's %3 on %4 of %5 rows, and %6 a few pixels in")
                                      .arg(half.left())
                                      .arg(readAs.name(), border.name())
@@ -433,7 +367,7 @@ private slots:
         pDialog->host_name_entry->setText(qsl("mudlet.org"));
         QCoreApplication::processEvents();
 
-        // the non-digit branch chops the last character off and marks the field
+        // "12a" takes the validator's non-digit branch
         pDialog->port_entry->setText(qsl("12a"));
         QCoreApplication::processEvents();
         QCOMPARE(fieldState(pDialog->port_entry), qsl("error"));
@@ -451,10 +385,8 @@ private slots:
         pDialog->port_entry->setText(qsl("23"));
         QCoreApplication::processEvents();
 
-        // Whitespace rather than an empty field: slot_updateUrl() takes an
-        // empty one as the user still typing and never reaches the validator,
-        // so a wholly empty field is not the state this rule can be seen in.
-        // Trimmed, this is the same nothing to the validator.
+        // Whitespace rather than empty: slot_updateUrl() takes an empty field as
+        // the user still typing and never reaches the validator, which trims this to nothing
         pDialog->host_name_entry->setText(qsl(" "));
         QCoreApplication::processEvents();
         QCOMPARE(fieldState(pDialog->host_name_entry), qsl("error"));
@@ -464,11 +396,8 @@ private slots:
         QVERIFY2(fieldState(pDialog->host_name_entry).isEmpty(), qPrintable(qsl("a server address left the field marked \"%1\"").arg(fieldState(pDialog->host_name_entry))));
     }
 
-    // Copy's two answers hang off a menu of its own rather than off the
-    // temporary one Qt builds out of the button's actions on every press: a
-    // menu that exists between presses is one the style pass can reach, and it
-    // is drawn as the design's menu - the card surface, the hairline and the
-    // corner a combo box's list is opened at.
+    // A menu of its own, not the temporary one Qt builds from the button's
+    // actions on every press: only a menu that exists between presses can be styled
     void test_theCopyMenuIsDrawnFromTheDesign()
     {
         auto* pDialog = dialog();
@@ -487,8 +416,8 @@ private slots:
         QVERIFY2(sheet.contains(tokens.card.name()), qPrintable(qsl("the admin row's sheet never names the card surface (%1) the menu is drawn on").arg(tokens.card.name())));
         QVERIFY2(pMenu->testAttribute(Qt::WA_TranslucentBackground), "the Copy menu's window was never asked to be see-through, so its corner is opaque");
 
-        // Popped up rather than clicked: a menu run through exec() takes an
-        // event loop of its own that a case cannot get back out of
+        // Popped up rather than clicked: a menu run through exec() takes an event
+        // loop of its own that a case cannot get back out of
         pMenu->popup(pDialog->copy_profile_toolbutton->mapToGlobal(QPoint(0, pDialog->copy_profile_toolbutton->height())));
         QVERIFY(QTest::qWaitForWindowExposed(pMenu));
         QCoreApplication::processEvents();
@@ -500,24 +429,18 @@ private slots:
         const QColor corner = QColor::fromRgba(shot.pixel(0, 0));
         const QColor surface = QColor::fromRgba(shot.pixel(qRound(2 * shot.devicePixelRatio()), shot.height() / 2));
         QVERIFY2(corner.alpha() == 0, qPrintable(qsl("the Copy menu's corner is painted %1 rather than cut away, so its radius has a square window behind it").arg(corner.name(QColor::HexArgb))));
-        const int distance = std::abs(surface.red() - tokens.card.red()) + std::abs(surface.green() - tokens.card.green()) + std::abs(surface.blue() - tokens.card.blue());
+        const int distance = TestPixels::distance(surface, tokens.card);
         QVERIFY2(surface.alpha() == 255 && distance <= scmHairlineInkSlack,
                  qPrintable(qsl("the Copy menu is painted %1 rather than the card surface's %2").arg(surface.name(QColor::HexArgb), tokens.card.name())));
     }
 
-    // The notice under the games list is the same control as the script
-    // editor's banner and is drawn from the one recipe: the accent's wash, a
-    // hairline round it, the words at the dialog's own font and a 20px line
-    // glyph beside them - not the 3px box round 64px bitmaps at 16pt the .ui
-    // file still describes.
     void test_theNoticeIsDrawnAsTheEditorsBanner()
     {
         auto* pDialog = dialog();
         QVERIFY2(pDialog, "No connection dialog to test against");
         selectTheTestProfile();
 
-        // the non-digit branch of the validator is what puts the notice up with
-        // its error picture showing
+        // The validator's non-digit branch puts the notice up with its error picture
         pDialog->host_name_entry->setText(qsl("mudlet.org"));
         QCoreApplication::processEvents();
         pDialog->port_entry->setText(qsl("12a"));
@@ -531,8 +454,7 @@ private slots:
         QVERIFY2(sheet.contains(tokens.accentSoft), qPrintable(qsl("the notice is not washed with the accent (%1): its sheet is \"%2\"").arg(tokens.accentSoft, sheet.left(160))));
         QVERIFY2(sheet.contains(tokens.accent.name()), qPrintable(qsl("the notice carries no accent hairline (%1): its sheet is \"%2\"").arg(tokens.accent.name(), sheet.left(160))));
 
-        // 16pt on the frame and 8pt on the words were two sizes nothing else on
-        // this dialog is read at
+        // The .ui sets 16pt on the frame and 8pt on the words
         QCOMPARE(pDialog->notificationArea->font().pointSize(), pDialog->font().pointSize());
         QVERIFY2(pDialog->notificationAreaMessageBox->font().pointSize() == pDialog->font().pointSize(),
                  qPrintable(qsl("the notice's words are set at %1pt against the dialog's own %2pt")
@@ -553,10 +475,8 @@ private slots:
         QVERIFY2(drawnAt == QSize(uiDesign::scmNoticeGlyphSize, uiDesign::scmNoticeGlyphSize),
                  qPrintable(qsl("the notice's picture is drawn %1x%2 rather than at the shared %3px square").arg(drawnAt.width()).arg(drawnAt.height()).arg(uiDesign::scmNoticeGlyphSize)));
 
-        // ...and the hairline itself, read off a shot of the window: a platform
-        // Box frame of lineWidth 3 is the palette's own dark line and lands
-        // nowhere near the accent. The middle of the top edge is a straight run
-        // of the line rather than the corner it is rounded through.
+        // A platform Box frame is the palette's dark line, nowhere near the
+        // accent; the top edge's middle is a straight run, not the rounded corner
         const QImage shot = pDialog->grab().toImage();
         const qreal shotRatio = shot.devicePixelRatio();
         const QPoint topMiddle = pDialog->notificationArea->mapTo(pDialog, QPoint(pDialog->notificationArea->width() / 2, 0));
@@ -569,7 +489,7 @@ private slots:
                 continue;
             }
             const QColor sample = shot.pixelColor(inShot);
-            const int distance = std::abs(sample.red() - accent.red()) + std::abs(sample.green() - accent.green()) + std::abs(sample.blue() - accent.blue());
+            const int distance = TestPixels::distance(sample, accent);
             if (distance < nearest) {
                 nearest = distance;
                 read = sample;
@@ -578,17 +498,12 @@ private slots:
         qInfo().noquote() << qsl("  the notice's top edge reads %1 against an accent hairline of %2, %3 away").arg(read.name(), accent.name()).arg(nearest);
         QVERIFY2(nearest <= scmHairlineInkSlack, qPrintable(qsl("the notice's outline reads %1 rather than the design's accent %2").arg(read.name(), accent.name())));
 
-        // A valid port is the validator's all-clear, which calls
-        // clearNotificationArea() and takes the notice away again
         pDialog->port_entry->setText(qsl("23"));
         QCoreApplication::processEvents();
         QTest::qWait(50ms);
         QVERIFY2(!pDialog->notificationArea->isVisible(), "a port of 23 is valid, and the notice about the invalid one is still up");
     }
 
-    // The pictures in the games list are chips: a word in a box, cut to the
-    // corner every other chip in these windows takes, rather than the square
-    // 120x30 block they used to be
     void test_theGamesListChipsHaveRoundedCorners()
     {
         auto* pDialog = dialog();
@@ -607,8 +522,8 @@ private slots:
 
         const QColor corner = QColor::fromRgba(chip.pixel(0, 0));
         const QColor middle = QColor::fromRgba(chip.pixel(chip.width() / 2, chip.height() / 2));
-        // the pixel ratio the chip was built at is what turns the radius in
-        // logical pixels into the one in the image
+        // The chip's build ratio turns the logical radius into image pixels; the
+        // chip is 120 logical pixels wide
         const qreal ratio = qMax(1.0, chip.width() / static_cast<qreal>(120));
         const int justInside = qRound((uiDesign::scmRadiusChip + 2) * ratio);
         const QColor diagonal = QColor::fromRgba(chip.pixel(justInside, justInside));
@@ -625,9 +540,7 @@ private slots:
                                     .arg(diagonal.name(QColor::HexArgb))
                                     .arg(uiDesign::scmRadiusChip)));
 
-        // ...and not only the generated ones: the games Mudlet ships a banner
-        // for come in on a path of their own, and on the All games tab every one
-        // of them is a chip in the same column
+        // Shipped banners come in on a path of their own; the All games tab shows them all
         auto* pTabs = pDialog->findChild<QTabBar*>(qsl("gamesTabBar"));
         QVERIFY2(pTabs && pTabs->count() == 2, "the games list's two tabs are not there to switch between");
         pTabs->setCurrentIndex(1);
@@ -654,11 +567,6 @@ private slots:
         QVERIFY2(squareOnes.isEmpty(), qPrintable(qsl("%1 shipped banner(s) are still square blocks rather than chips: %2").arg(squareOnes.size()).arg(squareOnes.join(qsl(", ")))));
     }
 
-    // The chip under the pointer carries a halo: a ring of the design's accent
-    // standing off the picture, with the list's own surface showing through the
-    // gap between the two. Only while the pointer is on it, only on a row that
-    // is not the chosen one - that one wears the solid frame below - and only
-    // on the row being pointed at.
     void test_aHoveredChipCarriesTheAccentRing()
     {
         auto* pDialog = dialog();
@@ -666,14 +574,11 @@ private slots:
         auto* pList = pDialog->listWidget_profiles;
         auto* pDelegate = qobject_cast<ProfileChipDelegate*>(pList->itemDelegate());
         QVERIFY2(pDelegate, "the games list carries no chip delegate, so nothing is there to draw the halo");
-        // A view reads what the pointer is over off hover events, which only a
-        // widget carrying this attribute is sent: measured as off on this
-        // viewport by default, so the dialog turns it on and nothing about the
-        // halo works without it
+        // Hover events reach only a widget with WA_Hover, measured off on this
+        // viewport by default; without it the view never learns what is pointed at
         QVERIFY2(pList->viewport()->testAttribute(Qt::WA_Hover), "the games list's viewport asks for no hover events, so no pointer ever reaches the delegate");
 
-        // Every shipped game is on the All games tab, so there is a bright chip
-        // to point at while another row is the chosen one
+        // Every shipped game is on the All games tab, so one chip can be pointed at while another is chosen
         auto* pTabs = pDialog->findChild<QTabBar*>(qsl("gamesTabBar"));
         QVERIFY2(pTabs && pTabs->count() == 2, "the games list's two tabs are not there to switch between");
         pTabs->setCurrentIndex(1);
@@ -681,8 +586,7 @@ private slots:
         QTest::qWait(50ms);
         QVERIFY2(pList->count() > 2, qPrintable(qsl("the All games tab carries %1 rows, which is not enough to hover one and choose another").arg(pList->count())));
 
-        // the chosen one is a different row, so what is read off the hovered
-        // chip is the ring rather than the frame
+        // A different row is chosen, so the hovered chip shows the ring rather than the frame
         pList->setCurrentItem(pList->item(1));
         QCoreApplication::processEvents();
 
@@ -692,8 +596,6 @@ private slots:
         };
         const QRect chip = onShow(0);
         QVERIFY2(!chip.isEmpty(), "the first game's chip is not on show in the list, so there is nothing to point at");
-        // a third row, never pointed at, says the ring follows the pointer
-        // rather than being painted on every chip
         QRect quietChip;
         int quietRow = -1;
         for (int i = 2; i < pList->count(); ++i) {
@@ -705,15 +607,10 @@ private slots:
         }
         QVERIFY2(!quietChip.isEmpty(), "no second chip is on show in the list, so nothing says the ring is only on the row being pointed at");
 
-        // What the delegate really inks with: the accent walked to the quiet
-        // floor against the list, which on the light appearance is not the
-        // platform's pale highlight
+        // haloInk(), not the raw accent: the delegate walks it to the quiet floor against the list
         const QColor accent = pDelegate->haloInk();
-        // The middle of the chip's top edge is a straight run of the ring rather
-        // than the corner it is bent through. The ring stands off the picture -
-        // nothing over the first gap pixels, the accent over the ring's own
-        // width - so one pixel above the picture is the gap, and one pixel past
-        // the gap is the ring itself.
+        // The top edge's middle is a straight run of the ring; 1px above the
+        // picture is the gap and 1px past the gap is the ring
         const auto abovePicture = [&](const QRect& target, const int by) {
             return pList->viewport()->mapTo(pDialog, QPoint(target.center().x(), target.top() - by));
         };
@@ -725,10 +622,9 @@ private slots:
         const QImage beforeShot = pDialog->grab().toImage();
         const int beforeHover = nearestToAccent(beforeShot, ringPoint, accent, &beforeRead);
 
-        // The pointer arrives as a hover event rather than as a mouse move:
-        // QAbstractItemView answers HoverMove with setHoverIndex() and takes
-        // nothing off a move, so QTest::mouseMove() leaves the chip reading its
-        // own fill - measured here before this was written this way.
+        // A hover event rather than a mouse move: QAbstractItemView answers
+        // HoverMove with setHoverIndex() and ignores a plain move, so
+        // QTest::mouseMove() leaves the chip reading its own fill
         const QPoint centre = chip.center();
         QHoverEvent arrive(QEvent::HoverMove, QPointF(centre), pList->viewport()->mapToGlobal(QPointF(centre)), QPointF(-1, -1));
         QApplication::sendEvent(pList->viewport(), &arrive);
@@ -773,8 +669,6 @@ private slots:
                                     .arg(quietRow)
                                     .arg(quietRead.name())));
 
-        // ...and off again with the pointer: the ring is hover only, so the
-        // same pixel goes back to the list's own surface
         QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), pList->viewport()->mapToGlobal(QPoint(-1, -1)), QPointF(centre));
         QApplication::sendEvent(pList->viewport(), &leave);
         QCoreApplication::processEvents();
@@ -791,10 +685,6 @@ private slots:
         QTest::qWait(50ms);
     }
 
-    // The chosen chip wears the halo filled in: one solid band of the accent
-    // from the picture's own edge outward, drawn under the picture so its inner
-    // edge never lands on the picture's pixels. It stands in for the platform's
-    // selection, which is no longer painted at all.
     void test_theChosenChipCarriesTheSolidAccentFrame()
     {
         auto* pDialog = dialog();
@@ -814,22 +704,15 @@ private slots:
         const QRect chip = pDelegate->chipRect(pList, pList->indexFromItem(items.first()));
         QVERIFY2(!chip.isEmpty() && pList->viewport()->rect().contains(chip), "the chosen profile's chip is not on show in the list, so there is nothing to read");
 
-        // What the delegate really inks with: the accent walked to the quiet
-        // floor against the list, which on the light appearance is not the
-        // platform's pale highlight
+        // haloInk(), not the raw accent: the delegate walks it to the quiet floor against the list
         const QColor accent = pDelegate->haloInk();
         const auto offPicture = [&](const int above, const int below) {
             return pList->viewport()->mapTo(pDialog, QPoint(chip.center().x(), above ? chip.top() - above : chip.bottom() + below));
         };
-        // The band fills the gap in as well, so both the pixel the hovered
-        // ring leaves as the list's surface and the one it paints read the
-        // accent here.
         const QPoint bandPoint = offPicture(ProfileChipDelegate::scmChipHaloGap + 1, 0);
         const QPoint gapPoint = offPicture(1, 0);
-        // Under the chip: the band's own width down is still the band, and
-        // past the room the item carries for it nothing is painted at all -
-        // the platform's selection used to fill the row below the picture.
         const QPoint underBandPoint = offPicture(0, ProfileChipDelegate::scmChipHaloWidth);
+        // Past the halo's room is where the platform's selection highlight would fill the row
         const QPoint pastTheHaloPoint = offPicture(0, scmHaloRoom + 3);
 
         QColor bandRead;
@@ -859,9 +742,8 @@ private slots:
                                      .arg(pastRead.name())
                                      .arg(past);
 
-        // The item's rectangle has to hold its own halo: a view repaints one
-        // item's rectangle when the pointer moves on or off it, so a band drawn
-        // outside it is left behind as a fragment.
+        // A view repaints only an item's own rect as the pointer moves on or off
+        // it, so a band drawn outside it is left behind as a fragment
         const QSize needed = pList->iconSize() + QSize(2 * scmHaloRoom, 2 * scmHaloRoom);
         QVERIFY2(row.width() >= needed.width() && row.height() >= needed.height(),
                  qPrintable(qsl("the chosen row is %1x%2, which does not hold the %3x%4 its halo needs, so the band is painted outside the rectangle the view repaints")
@@ -898,23 +780,18 @@ private slots:
         const bool wasDark = MudletApp::darkMode();
         const QString before = pDialog->tab_connection_info->styleSheet();
 
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::light : enums::Appearance::dark);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::light : enums::Appearance::dark);
 
         const QString after = pDialog->tab_connection_info->styleSheet();
         QVERIFY2(after != before, "the appearance moved and the tab's sheet did not, so nothing re-ran the style pass");
         QVERIFY2(after.contains(uiDesign::themeTokens().field.name()), "the tab's sheet was rebuilt without the field surface of the appearance it was rebuilt in");
 
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::dark : enums::Appearance::light);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::dark : enums::Appearance::light);
     }
 
-    // Both tab pages carry a sheet, and setupUi() polishes the Connect-to page
-    // before its sheet is set while the Options page is polished with the
-    // dialog, after: a label or a checkbox polished under a sheet took its class
-    // font's face rather than the dialog's, so the two tabs read in two faces
+    // setupUi() polishes the Connect-to page before its sheet is set and the
+    // Options page after, with the dialog; a label or checkbox polished under a
+    // sheet took its class font's face rather than the dialog's
     void test_bothTabsReadInTheDialogsFont()
     {
         auto* pDialog = dialog();
@@ -947,20 +824,15 @@ private slots:
         mismatch = tabFontMismatch(pDialog);
         QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("with the mark cleared: %1").arg(mismatch)));
 
-        // A new appearance sets the pages' sheets again
+        // A new appearance sets the pages' sheets again, which re-polishes their labels and checkboxes
         const bool wasDark = MudletApp::darkMode();
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::light : enums::Appearance::dark);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::light : enums::Appearance::dark);
         mismatch = tabFontMismatch(pDialog);
-        mudlet::self()->setAppearance(wasDark ? enums::Appearance::dark : enums::Appearance::light);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
+        TestPixels::setAppearanceAndWait(wasDark ? enums::Appearance::dark : enums::Appearance::light);
         QVERIFY2(mismatch.isEmpty(), qPrintable(qsl("in the other appearance: %1").arg(mismatch)));
     }
 
-    // A new interface font reaches both tabs, face and size. A platform hands
-    // its class fonts out anew along with the application font, so those go first.
+    // A platform hands its class fonts out anew with the application font, so those go first
     void test_bothTabsFollowANewApplicationFont()
     {
         auto* pDialog = dialog();

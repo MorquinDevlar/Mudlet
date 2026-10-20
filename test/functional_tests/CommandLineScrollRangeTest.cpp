@@ -28,9 +28,7 @@
  * marginH estimate of what the text takes up is the part that falls short, so
  * anything that drops the measured height it is now taken against regresses this.
  *
- * A box taller than its rows, as one row under the commandLineMinimumHeight floor
- * is, splits the difference above and below them so they sit where the hidden-
- * input box puts its text. The viewport is then exactly as tall as the rows need,
+ * Rows centered in a box taller than they are leave a viewport exactly as tall as the rows,
  * so the centering is held to the same no-range rule.
  *
  * test_scrollRangeOnceThereAreMoreRowsThanFit() is what keeps the rest honest: a
@@ -113,8 +111,6 @@ private:
         qApp->processEvents();
     }
 
-    // From the top of the first row to the foot of the last, in the command line's own
-    // coordinates rather than its viewport's
     static QRectF rowsRect(const TCommandLine* pCommandLine)
     {
         QTextCursor last(pCommandLine->document());
@@ -123,10 +119,8 @@ private:
         return first.united(QRectF(pCommandLine->cursorRect(last))).translated(pCommandLine->viewport()->pos());
     }
 
-    // Positive when the rows sit below the middle of the box
     static qreal offCenter(const TCommandLine* pCommandLine) { return rowsRect(pCommandLine).center().y() - pCommandLine->height() / 2.0; }
 
-    // Its viewport margins, plus whatever frame the command line has
     static int spaceAbove(const TCommandLine* pCommandLine) { return pCommandLine->viewport()->y(); }
     static int spaceBelow(const TCommandLine* pCommandLine) { return pCommandLine->height() - pCommandLine->viewport()->geometry().bottom() - 1; }
 
@@ -144,7 +138,6 @@ private:
                      QString::number(pCommandLine->verticalScrollBar()->maximum()));
     }
 
-    // Empty when the rows sit in the middle of the box with no scroll range
     static QString centeringProblem(const TCommandLine* pCommandLine, const QString& when)
     {
         if (qAbs(offCenter(pCommandLine)) > 1.0) {
@@ -156,7 +149,6 @@ private:
         return QString();
     }
 
-    // One sampled pixel, as a QRgb
     static QRgb pixelAt(QWidget* pWidget, const QPoint& local)
     {
         const QImage shot = pWidget->grab().toImage();
@@ -346,8 +338,8 @@ private slots:
         QVERIFY2(deleted, qPrintable(deleteMsg));
     }
 
-    // At 12pt one row needs less than the 30px floor gives it; the rest went all under
-    // the row, where the hidden-input box laid over the same box centers its text
+    // One 12pt row is shorter than the 30px floor, and the hidden-input box laid over the same
+    // box centers its text, so the slack must not all go under the row
     void test_oneRowSitsInTheMiddleOfABoxTheMinimumHeightHoldsUp()
     {
         TCommandLine* pCommandLine = mpHost->mainConsoleView()->mpCommandLine;
@@ -362,8 +354,7 @@ private slots:
         QVERIFY2(problem.isEmpty(), qPrintable(problem));
     }
 
-    // Rows past the floor take the box with them, and only what adjustHeight()'s estimate
-    // gives over the measured rows is left to split round them
+    // adjustHeight()'s estimate leaves slack over the measured rows, so a grown box still has some to split
     void test_typingPastOneRowGrowsTheBoxAndKeepsTheRowsCentered()
     {
         TCommandLine* pCommandLine = mpHost->mainConsoleView()->mpCommandLine;
@@ -427,8 +418,7 @@ private slots:
         QVERIFY2(problem.isEmpty(), qPrintable(problem));
     }
 
-    // A command line placed by a script keeps the size it was given, and the strips
-    // round its row fill like the viewport even under a sheet that names no background
+    // A script-placed command line keeps the size it was given, and the strips round its row fill like the viewport under a sheet that names no background
     void test_aSubCommandLineCentersItsRowAndFillsTheSlack()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();

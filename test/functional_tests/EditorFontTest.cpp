@@ -18,28 +18,21 @@
  ***************************************************************************/
 
 /*
- * The script editor reads code in a font of its own: the display font for as
- * long as it follows that, else a family and size the profile gave it. What
- * reads it is the code pane, the error console and the pattern fields; the
- * form's labels stay in the interface font either way.
+ * The editor's code font - the display font while it follows that, else its
+ * own - reaches the code pane, error console and pattern fields, never labels.
  *
  * Run with: ctest -R EditorFontTest -V
  */
 
 #include <QFontDatabase>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 #include <utility>
 
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "Host.h"
-#include "MudletInstanceCoordinator.h"
 #include "TConsole.h"
-#include "TelnetServerStub.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
 #include "dlgTriggersMainArea.h"
@@ -57,31 +50,18 @@ class EditorFontTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     QFont mOriginalDisplayFont;
     const QString mProfileName = qsl("EditorFont-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     // Bundled, so on every machine, and not the family a new profile's display font is
     static inline const QString scmOwnFamily = qsl("Ubuntu Mono");
     static constexpr int scmOwnSize = 19;
     QList<int> mApplicationFontIds;
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
     dlgTriggerPatternEdit* patternRow() const { return mpEditor->mTriggerPatternEdit.isEmpty() ? nullptr : mpEditor->mTriggerPatternEdit.first(); }
 
-    // Everything that reads code, named so a failure says which one stayed behind
     QStringList readersNotIn(const QString& family, const int pointSize) const
     {
         const std::pair<const char*, QFont> readers[] = {{"code pane", mpEditor->mpSourceEditorEdbee->config()->font()},
@@ -122,29 +102,13 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
         registerBundledFonts();
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showScriptDialog();
         QTest::qWait(100ms);
@@ -161,13 +125,7 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
         for (const int id : std::as_const(mApplicationFontIds)) {
             QFontDatabase::removeApplicationFont(id);
         }
@@ -187,7 +145,6 @@ private slots:
         verifyReadersIn(mOriginalDisplayFont.family(), mOriginalDisplayFont.pointSize());
     }
 
-    // The editor starts from what is on show when it first leaves the display font
     void test_leavingTheDisplayFontStartsFromIt()
     {
         QVERIFY(!mpHost->editorFontChoice().has_value());

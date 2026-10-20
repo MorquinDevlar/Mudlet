@@ -18,27 +18,9 @@
  ***************************************************************************/
 
 /*
- * The package manager drawn in the design language, and the things about that
- * which can go wrong without anything else noticing.
- *
- * Every sheet goes on one of the two columns rather than on the window, because
- * mudlet assigns a profile's Lua stylesheet to a dialog on show - so a sheet
- * set on the dialog would simply be replaced by it, and the window would come
- * back platform-drawn with nothing failing.
- *
- * The view is chosen from a row of chips now, but the three buttons the .ui
- * file put it on are still there, hidden, and are still what every slot and
- * every other package test presses. The two have to stay in step whichever of
- * them was moved, or the strip says one thing and the list shows another.
- *
- * A row is drawn by PackageItemDelegate on the shared row recipe: the name, the
- * one-line summary under it, the package's own picture or the design's package
- * glyph, and the accent bar down the leading edge of the chosen row - which is
- * read here as pixels, since no other reading of it is possible.
- *
- * Install and Remove moved into the details column and are hidden rather than
- * merely disabled in the view they do not apply to; the notice under the list
- * is the shared one, hidden until the window has something to report.
+ * Guards the package manager's design-language shell: sheets on the columns,
+ * view chips kept in step with the hidden .ui buttons every slot presses, the
+ * row delegate's accent bar and version, and the action buttons per view.
  *
  * Run with: ctest -R PackageManagerShellTest -V
  */
@@ -46,7 +28,6 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
-#include <QFileInfo>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -58,22 +39,17 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSettings>
-#include <QSignalSpy>
 #include <QSplitter>
 #include <QTabBar>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
-#include <memory>
 
 #include "GripSplitter.h"
 #include "Host.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
 #include "PackageItemDelegate.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgPackageManager.h"
 #include "dlgSystemMessageArea.h"
 #include "mudlet.h"
@@ -88,50 +64,22 @@ class PackageManagerShellTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     Host* mpHost = nullptr;
     dlgPackageManager* mpDialog = nullptr;
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     const QString mProfileName = qsl("PackageManagerShell-Test-Profile");
 
-    // The packages this walks. Seeded rather than taken from whatever a fresh
-    // profile preinstalls: what is being read here is how a row is drawn, and a
-    // case that changes its answer when the preinstall list changes is a case
-    // about the wrong thing.
+    // Seeded so the cases do not change with what a fresh profile preinstalls
     const QString mFirstPackage = qsl("aaa-shell-test-package");
     const QString mFirstTitle = qsl("The first package this test lists");
     const QString mSecondPackage = qsl("zzz-shell-test-package");
 
-    // How far a sampled pixel may sit from the colour the tokens mix. A styled
-    // fill is composited over what is under it rather than blitted, and the bar
-    // is three pixels wide with an antialiased corner at each end, so the other
-    // style tests' hairline slack is what is allowed here too.
+    // A styled fill is composited, and the 3px bar has an antialiased corner at
+    // each end, so the other style tests' hairline slack applies
     static constexpr int scmFillTolerance = 24;
 
-    // setupConfig() consults portable.txt before the XDG logic
-    static bool portableMarkerPresent()
-    {
-        return QFileInfo::exists(qsl("%1/portable.txt").arg(QCoreApplication::applicationDirPath())) || QFileInfo::exists(qsl("%1/.config/mudlet/portable.txt").arg(QDir::homePath()));
-    }
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    // The cached repository index the window reads the Explore view out of.
-    // Handed a version, it also lists the first installed package at that
-    // version, which is the only way the Updates view has anything in it: a
-    // package has to be installed *and* listed higher on the repository before
-    // it counts as waiting for an update.
+    // With a version it also lists the first package at that version: Updates
+    // only counts a package installed *and* listed higher on the repository
     bool writeRepositoryIndex(const QString& firstPackageVersion = QString()) const
     {
         QJsonArray packages;
@@ -165,8 +113,6 @@ private:
 
     QTabBar* viewBar() const { return mpDialog->findChild<QTabBar*>(qsl("packagesViewBar")); }
 
-    // The view, read the way the window itself reads it: through the hidden
-    // button the group holds checked
     int checkedView() const
     {
         if (mpDialog->pushButton_explore->isChecked()) {
@@ -187,48 +133,13 @@ private:
                                                                    : (view == NavigationView::Installed ? static_cast<QAbstractButton*>(mpDialog->pushButton_installed)
                                                                                                         : static_cast<QAbstractButton*>(mpDialog->pushButton_updates));
         pButton->click();
-        settle();
+        TestPixels::settle();
     }
-
-    void settle() const
-    {
-        QCoreApplication::processEvents();
-        QTest::qWait(30ms);
-        QCoreApplication::processEvents();
-    }
-
-    // The one path an appearance change takes while a window is open
-    void setAppearance(const enums::Appearance appearance)
-    {
-        mudlet::self()->setAppearance(appearance);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
-        QCoreApplication::processEvents();
-        mpDialog->grab();
-    }
-
-    static bool readsAs(const QColor& read, const QColor& wanted)
-    {
-        return std::abs(read.red() - wanted.red()) <= scmFillTolerance && std::abs(read.green() - wanted.green()) <= scmFillTolerance && std::abs(read.blue() - wanted.blue()) <= scmFillTolerance;
-    }
-
-    static int distance(const QColor& a, const QColor& b) { return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()); }
-
-    // A grab is taken at the screen's own pixel ratio, so a point measured in
-    // the widget's coordinates is not where it lands in the image
-    static QColor sampled(const QImage& shot, const QPoint& at)
-    {
-        const qreal ratio = shot.devicePixelRatio() > 0.0 ? shot.devicePixelRatio() : 1.0;
-        return shot.pixelColor(qBound(0, qRound(at.x() * ratio), shot.width() - 1), qBound(0, qRound(at.y() * ratio), shot.height() - 1));
-    }
-
-    QImage listShot() const { return mpDialog->packageList->viewport()->grab().toImage(); }
 
     QRect rowRect(const int row) const { return mpDialog->packageList->visualItemRect(mpDialog->packageList->item(row)); }
 
-    // A profile is created with packages of Mudlet's own already installed, and
-    // the list is sorted - so which row a name is on is not something this can
-    // count out
+    // A new profile preinstalls Mudlet's own packages and the list is sorted,
+    // so a package's row cannot be counted out
     int rowOf(const QString& packageName) const
     {
         for (int row = 0; row < mpDialog->packageList->count(); ++row) {
@@ -239,12 +150,8 @@ private:
         return -1;
     }
 
-    // How much of a row's trailing edge the version stands in
     static constexpr int scmRowVersionZone = 56;
 
-    // The pixel in the run the version is drawn in that stands nearest the ink
-    // it should be written in, with how far off it is. The run is the last of
-    // the name's line before what the row leaves clear at its trailing edge.
     QPair<QColor, int> versionPixel(const QImage& shot, const int row, const QColor& ink) const
     {
         const QRect rect = rowRect(row);
@@ -252,8 +159,8 @@ private:
         int closest = -1;
         for (int y = rect.top() + 2; y < rect.center().y(); ++y) {
             for (int x = rect.right() - scmRowVersionZone; x < rect.right() - 4; ++x) {
-                const QColor read = sampled(shot, QPoint(x, y));
-                if (const int apart = distance(read, ink); closest < 0 || apart < closest) {
+                const QColor read = TestPixels::sampled(shot, QPoint(x, y));
+                if (const int apart = TestPixels::distance(read, ink); closest < 0 || apart < closest) {
                     closest = apart;
                     nearest = read;
                 }
@@ -264,8 +171,7 @@ private:
 
     PackageItemDelegate* rowDelegate() const { return qobject_cast<PackageItemDelegate*>(mpDialog->packageList->itemDelegate()); }
 
-    // What the delegate draws on a row's first line, asked of the delegate
-    // itself: the option a view hands it, so the name is cut to the same room
+    // Given the option a view hands the delegate, so the name is cut to the same room
     QString nameDrawn(const int row) const
     {
         QStyleOptionViewItem option;
@@ -277,43 +183,19 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        // The glyphs a stylesheet points at are written into the cache
-        // directory, so a run of this test writes nowhere the machine keeps
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        // The words below are read as words rather than as pictures
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
+        // Some assertions match English text
         mudlet::self()->setInterfaceLanguage(qsl("en_US"));
-        mudlet::self()->setStorePasswordsSecurely(false);
 
-        deleteProfileDirectory(mProfileName);
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
-        QSignalSpy connected(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        QVERIFY2(connected.wait(2000), "Could not connect with the host.");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
-        // Two installed packages, the first of them carrying a summary: a row
-        // with one and a row without are drawn differently and both are read
-        // below. Written straight onto the host the way PackageManagerRemovalTest
-        // does, since nothing here installs anything.
+        // One row with a summary and one without, since the two are drawn
+        // differently; written straight onto the host since nothing installs here
         mpHost->mInstalledPackages << mFirstPackage << mSecondPackage;
         mpHost->mPackageInfo.insert(mFirstPackage,
                                     QMap<QString, QString>{{qsl("mpackage"), mFirstPackage},
@@ -323,9 +205,8 @@ private slots:
                                                            {qsl("description"), qsl("# Heading\n\nA package with `code` in its notes.\n")}});
         mpHost->mPackageInfo.insert(mSecondPackage, QMap<QString, QString>{{qsl("mpackage"), mSecondPackage}, {qsl("version"), qsl("0.1")}});
 
-        // A repository index of the window's own, so the Explore view has rows
-        // in it without a byte crossing the network. Neither name is installed,
-        // so nothing here reaches the Installed view or the Updates count.
+        // Explore gets rows without the network; neither name is installed, so
+        // the Installed view and the Updates count are untouched
         QVERIFY(writeRepositoryIndex());
 
         mpDialog = new dlgPackageManager(nullptr, mpHost);
@@ -333,7 +214,7 @@ private slots:
         mpDialog->resize(900, 600);
         mpDialog->show();
         QVERIFY(QTest::qWaitForWindowExposed(mpDialog));
-        settle();
+        TestPixels::settle();
 
         QVERIFY2(mpDialog->packageList->count() >= 2,
                  qPrintable(qsl("SETUP: the Installed view lists %1 packages, so the rows below have nothing to be read on").arg(QString::number(mpDialog->packageList->count()))));
@@ -347,31 +228,14 @@ private slots:
         }
         QCoreApplication::processEvents();
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
         if (mudlet::self()) {
             mudlet::self()->setAppearance(enums::Appearance::systemSetting);
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
     }
 
-    // The three views are a row of chips, and the chosen chip follows the view
-    // whichever of the two the reader moved - the bar itself, or one of the
-    // hidden buttons every slot and every other package test still presses.
-    // Website opens the package's own page on the repository site, which
-    // addresses a package by a slug - lower case, non-alphanumerics folded to
-    // one hyphen - rather than the front page scrolled to a fragment; a help
-    // page the author named wins over both
-    // An install can show a package's toolbars, which are dock
-    // widgets of the main window and bring it forward over this dialog; every
-    // act the window starts ends by asking for the front again
-    // The window opens on the Installed view, and every one of the three things
-    // that say which view it is agrees - the list, the hidden button and the
-    // chip: the first tab a bar is given becomes current and said so, which
-    // pressed Explore before the window had chosen
+    // QTabBar makes its first tab current and emits currentChanged, which
+    // pressed Explore before the window had chosen a view
     void test_theWindowOpensWithTheInstalledChipLit()
     {
         dlgPackageManager fresh(nullptr, mpHost);
@@ -386,9 +250,7 @@ private slots:
         QVERIFY2(fresh.mCurrentView == NavigationView::Installed, "a fresh window's view is not Installed");
     }
 
-    // The name at the head of the details column is cut to the room its row
-    // has, and that room follows the seam - including a seam moved by code,
-    // which announces nothing
+    // Includes a seam moved by setSizes(), which emits no splitterMoved
     void test_theHeadlineFitsTheRoomTheSeamLeavesIt()
     {
         showView(NavigationView::Installed);
@@ -418,6 +280,8 @@ private slots:
         QCoreApplication::processEvents();
     }
 
+    // An install can show a package's toolbars, dock widgets of the main window
+    // that bring it forward over this dialog
     void test_theWindowComesBackToTheFrontAfterItsOwnActs()
     {
         mudlet::self()->show();
@@ -468,7 +332,7 @@ private slots:
                                     .arg(QString::number(pBar->currentIndex()), QString::number(static_cast<int>(NavigationView::Explore)))));
 
         pBar->setCurrentIndex(static_cast<int>(NavigationView::Installed));
-        settle();
+        TestPixels::settle();
         qInfo().noquote() << qsl("  the Installed chip was chosen; the buttons read view %1").arg(QString::number(checkedView()));
         QVERIFY2(checkedView() == static_cast<int>(NavigationView::Installed),
                  qPrintable(qsl("choosing the Installed chip left the hidden buttons on view %1 rather than on %2")
@@ -476,8 +340,6 @@ private slots:
         QVERIFY2(mpDialog->packageList->count() >= 2, "choosing the Installed chip did not bring the installed packages back into the list");
     }
 
-    // The count of waiting updates is on the chip the reader sees, not only on
-    // the button nothing shows any more
     void test_theUpdatesChipCarriesWhateverTheButtonSays()
     {
         QTabBar* pBar = viewBar();
@@ -488,8 +350,6 @@ private slots:
                  qPrintable(qsl("the Updates chip says \"%1\" where the button it stands for says \"%2\"").arg(pBar->tabText(updates), mpDialog->pushButton_updates->text())));
     }
 
-    // Both sheets exist and are set on the columns, never on the dialog, whose
-    // own stylesheet a profile's Lua one is assigned to on every show
     void test_theSheetsAreSetOnTheColumnsRatherThanOnTheWindow()
     {
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
@@ -514,9 +374,6 @@ private slots:
         QVERIFY2(right.contains(qsl("QTextEdit")), qPrintable(qsl("the details column's sheet draws no field, so the notes are platform-drawn: %1").arg(right.left(200))));
     }
 
-    // Install and Remove stand in the details column now, and the one that
-    // cannot apply in the current view is not there at all - a row of buttons
-    // with one that can never be pressed is a row with a hole in it
     void test_theActionButtonsFollowTheView()
     {
         showView(NavigationView::Installed);
@@ -529,7 +386,7 @@ private slots:
 
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
         for (const QPushButton* pButton : {mpDialog->pushButton_website, mpDialog->pushButton_report}) {
             QVERIFY2(!pButton->text().isEmpty(), qPrintable(qsl("%1 is a picture with no word beside it").arg(pButton->objectName())));
             QVERIFY2(!pButton->icon().isNull(), qPrintable(qsl("%1 carries no glyph").arg(pButton->objectName())));
@@ -540,13 +397,11 @@ private slots:
         QCOMPARE(mpDialog->pushButton_installFile->text(), qsl("Install from a file"));
     }
 
-    // A row is two lines and a picture, and the chosen one carries the accent
-    // bar down its leading edge that every other list in the design does
     void test_theRowsAreTheDesignsRows()
     {
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
 
         QListWidgetItem* pRow = mpDialog->packageList->item(0);
         QVERIFY2(pRow, "the Installed view lists nothing at all");
@@ -571,12 +426,10 @@ private slots:
         const QColor bar = shot.pixelColor(row.left() + 1, row.center().y());
         const QColor accent = uiDesign::themeTokens().accent;
         qInfo().noquote() << qsl("  the chosen row's gutter reads %1 against an accent of %2").arg(bar.name(), accent.name());
-        QVERIFY2(readsAs(bar, accent),
+        QVERIFY2(TestPixels::readsAs(bar, accent, scmFillTolerance),
                  qPrintable(qsl("the chosen row's leading gutter reads %1 where the accent is %2 - the bar that says which row is chosen is not being painted").arg(bar.name(), accent.name())));
     }
 
-    // The notice under the list is the shared one, and says nothing until the
-    // window has something to report
     void test_theNoticeIsTheSharedOneAndIsQuietAtRest()
     {
         auto* pNotice = mpDialog->findChild<dlgSystemMessageArea*>(qsl("packagesNotice"));
@@ -586,14 +439,11 @@ private slots:
         QVERIFY2(!mpDialog->label_importStatus->isVisible(), "the label the notice replaced is still on show");
     }
 
-    // The head of the details column: the name a step up the type scale, the
-    // author and version as one quiet caption line, and the picture at the size
-    // the column was drawn for rather than the .ui file's 96px block
     void test_theHeadOfTheDetailsColumnIsTheTypeScale()
     {
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
 
         const QFont nameFont = mpDialog->label_packageName->font();
         qInfo().noquote() << qsl("  the package name is set at %1pt weight %2, against a Title step of %3pt")
@@ -610,17 +460,15 @@ private slots:
         QVERIFY2(mpDialog->label_version->text().contains(qsl("1.2.3")), qPrintable(qsl("the caption line does not name the version: \"%1\"").arg(mpDialog->label_version->text())));
     }
 
-    // The list's right-click menu carries the acts of the view being looked at,
-    // and nothing that could not act on the row it was opened over. Built
-    // through buildPackageContextMenu() rather than shown: exec() runs a menu's
-    // own event loop, which a test cannot come back out of.
+    // Built through buildPackageContextMenu() rather than shown: QMenu::exec()
+    // runs its own event loop, which a test cannot come back out of
     void test_theListsRightClickMenuCarriesTheViewsActs()
     {
         showView(NavigationView::Installed);
         const int row = rowOf(mFirstPackage);
         QVERIFY2(row >= 0, "SETUP: the package this case reads is not listed in the Installed view");
         mpDialog->packageList->setCurrentRow(row);
-        settle();
+        TestPixels::settle();
 
         QMenu* pMenu = mpDialog->buildPackageContextMenu(mpDialog->packageList->item(row));
         QVERIFY2(pMenu, "no menu is built at all over an installed package's row");
@@ -635,7 +483,7 @@ private slots:
 
         showView(NavigationView::Explore);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpDialog->packageList->count() >= 1, "SETUP: the Explore view lists nothing, so there is no row to open a menu over");
         QMenu* pExploreMenu = mpDialog->buildPackageContextMenu(mpDialog->packageList->item(0));
         QVERIFY2(pExploreMenu, "no menu is built over an Explore row");
@@ -645,19 +493,16 @@ private slots:
 
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
     }
 
-    // The version stands beside the name on the headline row rather than on the
-    // caption line under the summary, reads as the bare number, and is written
-    // in the design's ok tone walked until it can be read on the page
     void test_theVersionStandsBesideTheNameInTheOkTone()
     {
         showView(NavigationView::Installed);
         const int row = rowOf(mFirstPackage);
         QVERIFY2(row >= 0, "SETUP: the package this case reads is not listed in the Installed view");
         mpDialog->packageList->setCurrentRow(row);
-        settle();
+        TestPixels::settle();
 
         QLabel* pName = mpDialog->label_packageName;
         QLabel* pVersion = mpDialog->label_version;
@@ -693,17 +538,15 @@ private slots:
         QVERIFY2(right.contains(qsl("#label_version { color: %1").arg(walked.name())),
                  qPrintable(qsl("the details column's sheet does not write the version in %1, the design's ok tone walked to the text floor: %2").arg(walked.name(), right.left(400))));
 
-        // ...and in the Updates view it carries the arrow between the two
-        // versions with no word in front of it. The fixture's repository index
-        // has nothing installed on it, so one is written for this case alone
-        // and taken away again.
+        // The fixture's index lists nothing installed, so one listing an update
+        // is written for this case and taken away again
         QVERIFY2(writeRepositoryIndex(qsl("9.9.9")), "SETUP: the repository index listing an update could not be written");
         QVERIFY2(mpDialog->readPackageRepositoryFile(), "SETUP: the repository index listing an update could not be read back");
         showView(NavigationView::Updates);
         const int updateRow = rowOf(mFirstPackage);
         QVERIFY2(updateRow >= 0, "SETUP: the package listed at a higher version did not reach the Updates view");
         mpDialog->packageList->setCurrentRow(updateRow);
-        settle();
+        TestPixels::settle();
         qInfo().noquote() << qsl("  in the Updates view the version reads \"%1\"").arg(pVersion->text());
         QVERIFY2(pVersion->text() == qsl("1.2.3 → 9.9.9"),
                  qPrintable(qsl("in the Updates view the version reads \"%1\" rather than the installed number, the arrow and the waiting one").arg(pVersion->text())));
@@ -712,19 +555,16 @@ private slots:
         QVERIFY(mpDialog->readPackageRepositoryFile());
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
     }
 
-    // ...and every row says the same thing about the package it stands for:
-    // the version, right-aligned on the name's own line, in that same blue,
-    // with the name still drawn in full beside it
     void test_everyRowCarriesItsVersionAtTheTrailingEdge()
     {
         showView(NavigationView::Installed);
         const int row = rowOf(mFirstPackage);
         QVERIFY2(row >= 0, "SETUP: the package this case reads is not listed in the Installed view");
         mpDialog->packageList->setCurrentRow(row);
-        settle();
+        TestPixels::settle();
 
         QListWidgetItem* pRow = mpDialog->packageList->item(row);
         QVERIFY2(pRow->data(PackageItemDelegate::cPackageVersionRole).toString() == qsl("1.2.3"),
@@ -733,22 +573,19 @@ private slots:
 
         QVERIFY2(rowDelegate(), "the list's delegate is not a PackageItemDelegate, so there is no row-version ink to read against");
         const QColor ink = rowDelegate()->versionInk(true);
-        const QImage shot = listShot();
+        const QImage shot = TestPixels::shot(mpDialog->packageList->viewport());
         const auto [read, apart] = versionPixel(shot, row, ink);
         qInfo().noquote() << qsl("  the chosen row's trailing run reads nearest %1 against the version ink %2, %3 apart").arg(read.name(), ink.name(), QString::number(apart));
-        QVERIFY2(readsAs(read, ink),
+        QVERIFY2(TestPixels::readsAs(read, ink, scmFillTolerance),
                  qPrintable(qsl("nothing in the last %1px of the chosen row's name line reads as %2, the ink the version is written in - the nearest pixel is %3 - so the row draws no version")
                                     .arg(QString::number(scmRowVersionZone), ink.name(), read.name())));
 
-        // ...and the name beside it is not cut to make room: the delegate is
-        // asked what it draws on that line rather than the pixels, since an
-        // ellipsis is three dots no reading of a grab can tell from a full stop
+        // Asked of the delegate rather than read off a grab: in pixels an
+        // ellipsis cannot be told from a full stop
         qInfo().noquote() << qsl("  the row's name line reads \"%1\"").arg(nameDrawn(row));
         QVERIFY2(nameDrawn(row) == mFirstPackage,
                  qPrintable(qsl("the row's name line reads \"%1\" where the package is called \"%2\" - the version took room the name needed").arg(nameDrawn(row), mFirstPackage)));
 
-        // ...and a row that is not the chosen one writes it in the ink walked
-        // against the pane rather than against the chosen row's wash
         const int otherRow = rowOf(mSecondPackage);
         QVERIFY2(otherRow >= 0 && otherRow != row, "SETUP: the second package is not on a row of its own in the Installed view");
         QVERIFY2(mpDialog->packageList->item(otherRow)->data(PackageItemDelegate::cPackageVersionRole).toString() == qsl("0.1"),
@@ -757,12 +594,10 @@ private slots:
         const QColor plainInk = rowDelegate()->versionInk(false);
         const auto [otherRead, otherApart] = versionPixel(shot, otherRow, plainInk);
         qInfo().noquote() << qsl("  the unchosen row's trailing run reads nearest %1 against %2, %3 apart").arg(otherRead.name(), plainInk.name(), QString::number(otherApart));
-        QVERIFY2(readsAs(otherRead, plainInk),
+        QVERIFY2(TestPixels::readsAs(otherRead, plainInk, scmFillTolerance),
                  qPrintable(qsl("the unchosen row's version reads nearest %1 where the row's version ink is %2 - the number is not drawn in the ink a plain row is given")
                                     .arg(otherRead.name(), plainInk.name())));
 
-        // ...and in the Explore view a row stands for a package on the
-        // repository, so what it says is the version waiting there
         QVERIFY2(writeRepositoryIndex(), "SETUP: the repository index could not be written");
         showView(NavigationView::Explore);
         const int exploreRow = rowOf(qsl("explore-only-one"));
@@ -771,7 +606,6 @@ private slots:
                  qPrintable(qsl("an Explore row carries \"%1\" rather than the version the repository lists, 1.0.0")
                                     .arg(mpDialog->packageList->item(exploreRow)->data(PackageItemDelegate::cPackageVersionRole).toString())));
 
-        // ...and in Updates it is the pair the details column says
         QVERIFY2(writeRepositoryIndex(qsl("9.9.9")), "SETUP: the repository index listing an update could not be written");
         QVERIFY2(mpDialog->readPackageRepositoryFile(), "SETUP: the repository index listing an update could not be read back");
         showView(NavigationView::Updates);
@@ -785,11 +619,9 @@ private slots:
         QVERIFY(mpDialog->readPackageRepositoryFile());
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
     }
 
-    // The two columns are parted by the design's grip handle, which the reader
-    // drags - and where they left it is where the next window opens
     void test_theTwoColumnsAreSplitByAHandleThatIsRemembered()
     {
         auto* pSplitter = mpDialog->findChild<uiDesign::GripSplitter*>(qsl("packagesSplitter"));
@@ -801,65 +633,60 @@ private slots:
         QVERIFY2(qobject_cast<uiDesign::GripSplitterHandle*>(pSplitter->handle(1)), "the seam between the columns is a platform-drawn QSplitterHandle rather than the design's grip handle");
         QVERIFY2(!mpDialog->leftPanel->styleSheet().contains(qsl("border-right")), "the list column still draws the hairline seam that the handle is now, so the two are drawn one beside the other");
 
-        // Above the list column's own floor, which the splitter will not let a
-        // drag go under
+        // +40: QSplitter will not let a drag take a pane under its minimum width
         const int wanted = mpDialog->leftPanel->minimumWidth() + 40;
         const QList<int> before = pSplitter->sizes();
         pSplitter->setSizes({wanted, pSplitter->width() - wanted - uiDesign::GripSplitter::scmHandleThickness});
-        settle();
+        TestPixels::settle();
         qInfo().noquote() << qsl("  the seam was moved to %1; the list column measures %2").arg(QString::number(wanted), QString::number(mpDialog->leftPanel->width()));
         QVERIFY2(std::abs(mpDialog->leftPanel->width() - wanted) <= 2,
                  qPrintable(qsl("the seam was set at %1 and the list column measures %2 - the columns are not the splitter's to size")
                                     .arg(QString::number(wanted), QString::number(mpDialog->leftPanel->width()))));
         pSplitter->setSizes(before);
-        settle();
+        TestPixels::settle();
 
-        // ...and the same split through a window's whole life: dragged, closed,
-        // opened again. Windows of this case's own, so that the fixture's one
-        // stays open for the cases after this.
+        // Windows of this case's own, so the fixture's stays open for later cases
         QSettings& settings = *MudletApp::getQSettings();
         settings.remove(qsl("packageManagerSplitterState"));
 
         QPointer<dlgPackageManager> pFirst = new dlgPackageManager(nullptr, mpHost);
         pFirst->show();
         QVERIFY(QTest::qWaitForWindowExposed(pFirst));
-        settle();
+        TestPixels::settle();
         auto* pFirstSplit = pFirst->findChild<uiDesign::GripSplitter*>(qsl("packagesSplitter"));
         QVERIFY(pFirstSplit);
         const int dragged = pFirst->leftPanel->minimumWidth() + 60;
         pFirstSplit->setSizes({dragged, pFirstSplit->width() - dragged - uiDesign::GripSplitter::scmHandleThickness});
-        settle();
+        TestPixels::settle();
         const int chosen = pFirst->leftPanel->width();
         pFirst->close();
-        settle();
+        TestPixels::settle();
         QVERIFY2(!settings.value(qsl("packageManagerSplitterState")).toByteArray().isEmpty(),
                  "closing the window wrote nothing under 'packageManagerSplitterState', so the split the reader chose is gone with it");
 
         QPointer<dlgPackageManager> pSecond = new dlgPackageManager(nullptr, mpHost);
         pSecond->show();
         QVERIFY(QTest::qWaitForWindowExposed(pSecond));
-        settle();
+        TestPixels::settle();
         const int restored = pSecond->leftPanel->width();
         qInfo().noquote() << qsl("  the seam was left at %1 and the next window opened at %2").arg(QString::number(chosen), QString::number(restored));
         QVERIFY2(std::abs(restored - chosen) <= 4,
                  qPrintable(qsl("the seam was left at %1 and the next window opened at %2 - the split is not put back").arg(QString::number(chosen), QString::number(restored))));
         pSecond->close();
-        settle();
+        TestPixels::settle();
     }
 
-    // "Install 1" is a count of something nobody asked to count. One chosen row
-    // is the bare word; more than one says how many, as a sentence.
     void test_theActionButtonsSayWhatTheyDo()
     {
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
         QCOMPARE(mpDialog->packageList->selectedItems().size(), 1);
         QVERIFY2(mpDialog->pushButton_remove->text() == qsl("Remove"),
                  qPrintable(qsl("with one package chosen Remove reads \"%1\" rather than the bare word").arg(mpDialog->pushButton_remove->text())));
 
         mpDialog->packageList->selectAll();
-        settle();
+        TestPixels::settle();
         const int chosen = mpDialog->packageList->selectedItems().size();
         QVERIFY2(chosen >= 2, "SETUP: the Installed view lists fewer than two packages, so there is no plural to read");
         qInfo().noquote() << qsl("  with %1 packages chosen Remove reads \"%2\"").arg(QString::number(chosen), mpDialog->pushButton_remove->text());
@@ -868,11 +695,11 @@ private slots:
 
         showView(NavigationView::Explore);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpDialog->pushButton_installRepo->text() == qsl("Install"),
                  qPrintable(qsl("with one package chosen Install reads \"%1\" rather than the bare word").arg(mpDialog->pushButton_installRepo->text())));
         mpDialog->packageList->selectAll();
-        settle();
+        TestPixels::settle();
         const int many = mpDialog->packageList->selectedItems().size();
         QVERIFY2(many >= 2, "SETUP: the Explore view lists fewer than two packages, so there is no plural to read");
         qInfo().noquote() << qsl("  with %1 packages chosen Install reads \"%2\"").arg(QString::number(many), mpDialog->pushButton_installRepo->text());
@@ -882,26 +709,19 @@ private slots:
 
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
     }
 
-    // The window's floor is the two columns and the handle between them, and
-    // nothing else: the .ui file's 900x600 pin is gone, no label's own text
-    // holds a column open, and the row of buttons in the details column gives
-    // the words of the two buttons that lead out of the window up rather than
-    // holding the window wide. They come back at a wider width than they were
-    // taken away at, so a width on the line does not flicker.
     void test_theWindowIsDraggedDownToTheTwoColumnsFloor()
     {
-        // Listed on the repository at the version it is installed at: the two
-        // buttons that lead out of the window are only offered for a package
-        // the repository knows, and they are what the row gives up. At the same
-        // version, so the package stays out of the Updates view.
+        // Listed at its installed version: Website and Report are only offered
+        // for a package the repository knows, and the same version keeps it out
+        // of the Updates view
         QVERIFY2(writeRepositoryIndex(qsl("1.2.3")), "SETUP: the repository index naming the installed package could not be written");
         QVERIFY2(mpDialog->readPackageRepositoryFile(), "SETUP: the repository index naming the installed package could not be read back");
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(rowOf(mFirstPackage));
-        settle();
+        TestPixels::settle();
         QVERIFY2(!mpDialog->pushButton_website->isHidden(), "SETUP: the chosen package offers no Website button, so the row has nothing to give up");
 
         const QSize floor = mpDialog->minimumSizeHint();
@@ -919,8 +739,6 @@ private slots:
                                     .arg(QString::number(floor.width()))));
         QVERIFY2(floor.height() <= 450, qPrintable(qsl("the window cannot be made shorter than %1px, where nothing in either column asks for more than 450px").arg(QString::number(floor.height()))));
 
-        // At the floor the details column stands at its own minimum, which is
-        // narrower than the row needs with every button worded
         const int narrow = floor.width();
         mpDialog->resize(narrow, 420);
         QCoreApplication::processEvents();
@@ -945,6 +763,8 @@ private slots:
         QVERIFY2(mpDialog->pushButton_website->accessibleName().contains(qsl("Website")),
                  qPrintable(qsl("standing as a glyph alone Website is announced as \"%1\", so a screen reader reads an unnamed button").arg(mpDialog->pushButton_website->accessibleName())));
 
+        // The row's words come back at a wider width than they were taken away at,
+        // so a width on the line does not flicker
         mpDialog->resize(1000, 600);
         QCoreApplication::processEvents();
         QTest::qWait(50ms);
@@ -958,17 +778,16 @@ private slots:
         QVERIFY(mpDialog->readPackageRepositoryFile());
         showView(NavigationView::Installed);
         mpDialog->packageList->setCurrentRow(0);
-        settle();
+        TestPixels::settle();
     }
 
-    // Nothing else restyles this window: it is a QDialog that no other window
-    // owns, so the appearance signal is the whole of what moves it. A pass that
-    // stopped running leaves the sheets of the theme that has been left.
+    // Nothing else restyles this window: no other window owns this QDialog, so
+    // the appearance signal alone moves it
     void test_anAppearanceChangeRebuildsBothSheets()
     {
         QMap<QString, QString> sheets;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
-            setAppearance(appearance.second);
+            TestPixels::setAppearanceAndWait(appearance.second, mpDialog);
             const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
             qInfo().noquote() << qsl("  %1: pane %2, page %3").arg(appearance.first, tokens.pane.name(), tokens.page.name());
             QVERIFY2(mpDialog->leftPanel->styleSheet().contains(tokens.pane.name()),

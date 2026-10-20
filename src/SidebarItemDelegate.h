@@ -28,9 +28,8 @@ class QStyleOptionViewItem;
 
 namespace uiDesign {
 
-// Collapsed, the sidebar shows a category as its icon alone. Emptying the item's
-// text would do that too, but the text is what a screen reader announces the row
-// as - so it is the drawing that leaves it out rather than the data.
+// The rail leaves the name out of the drawing, not the item's text, which is what
+// a screen reader announces the row as.
 class SidebarItemDelegate : public QStyledItemDelegate
 {
 public:

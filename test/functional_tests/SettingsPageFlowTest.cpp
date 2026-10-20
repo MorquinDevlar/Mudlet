@@ -52,6 +52,7 @@
 #include "FlowLayout.h"
 #include "MudletApp.h"
 #include "PairGridLayout.h"
+#include "PixelTestHelper.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
 #include "SettingsTestHelper.h"
@@ -311,9 +312,6 @@ private:
         const QImage card = pCard->grab().toImage();
         const qreal ratio = card.devicePixelRatio();
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const auto near = [](const QColor& one, const QColor& other) {
-            return qAbs(one.red() - other.red()) <= 3 && qAbs(one.green() - other.green()) <= 3 && qAbs(one.blue() - other.blue()) <= 3;
-        };
         const auto pixelAt = [&card, ratio](const QPoint& point) {
             return card.pixelColor((QPointF(point) * ratio).toPoint());
         };
@@ -346,10 +344,10 @@ private:
             const QColor overBlack = over(0);
             const QColor overWhite = over(255);
             const auto onTheBoard = [&](const QPoint& point) {
-                return near(pixelAt(point), overBlack) || near(pixelAt(point), overWhite);
+                return TestPixels::readsAs(pixelAt(point), overBlack, 3) || TestPixels::readsAs(pixelAt(point), overWhite, 3);
             };
             const auto verifyIs = [&](const QPoint& point, const QColor& wanted, const QString& where) {
-                QVERIFY2(near(pixelAt(point), wanted), qPrintable(qsl("%1 in '%2' is %3 rather than %4").arg(where, pAlpha->objectName(), pixelAt(point).name(), wanted.name())));
+                QVERIFY2(TestPixels::readsAs(pixelAt(point), wanted, 3), qPrintable(qsl("%1 in '%2' is %3 rather than %4").arg(where, pAlpha->objectName(), pixelAt(point).name(), wanted.name())));
             };
             const QPoint origin = pAlpha->mapTo(pCard, QPoint(0, 0));
             // Inside the well's hairline, and the swatch inset in that
@@ -366,7 +364,7 @@ private:
             int inkEnd = -1;
             for (int x = inside.right() - 1; x > swatch.right() && inkEnd < 0; --x) {
                 for (int y = inside.top() + inset; y <= inside.bottom() - inset; ++y) {
-                    if (!near(pixelAt(QPoint(x, y)), tokens.field)) {
+                    if (!TestPixels::readsAs(pixelAt(QPoint(x, y)), tokens.field, 3)) {
                         inkEnd = x;
                         break;
                     }
@@ -380,7 +378,7 @@ private:
             int inkStart = -1;
             for (int x = swatch.right() + 2; x < inside.right() && inkStart < 0; ++x) {
                 for (int y = inside.top() + inset; y <= inside.bottom() - inset; ++y) {
-                    if (!near(pixelAt(QPoint(x, y)), tokens.field)) {
+                    if (!TestPixels::readsAs(pixelAt(QPoint(x, y)), tokens.field, 3)) {
                         inkStart = x;
                         break;
                     }
@@ -400,8 +398,8 @@ private:
             bool sawWhite = false;
             for (int y = swatch.top() + 1; y < swatch.bottom(); ++y) {
                 for (int x = swatch.left() + 1; x < swatch.right(); ++x) {
-                    sawBlack |= near(pixelAt(QPoint(x, y)), overBlack);
-                    sawWhite |= near(pixelAt(QPoint(x, y)), overWhite);
+                    sawBlack |= TestPixels::readsAs(pixelAt(QPoint(x, y)), overBlack, 3);
+                    sawWhite |= TestPixels::readsAs(pixelAt(QPoint(x, y)), overWhite, 3);
                 }
             }
             QVERIFY2(sawBlack && sawWhite,

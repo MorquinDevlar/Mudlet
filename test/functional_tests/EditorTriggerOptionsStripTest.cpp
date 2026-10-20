@@ -18,51 +18,9 @@
  ***************************************************************************/
 
 /*
- * A trigger's options are one row of its form - the options strip, led by the
- * word "Options" - between the row its name is typed on and the list of its
- * patterns. They were a 280px column of four cards beside those patterns,
- * folded away by the window being either short or narrow; then two rows, which
- * still wanted a very wide window before they stopped wrapping.
- *
- * The strip is opened by the Options button on the head row, and the editor
- * opens with it closed - so init() opens it, and every case below measures an
- * open strip. What it is opened and closed by is EditorOptionsPanelDefaultTest.
- *
- * What the strip is held to here:
- *
- * - It sits between the head row and the pattern list, and the word leading it
- *   starts where every other form's lead word does.
- * - A narrow form costs the strip a line rather than costing the pattern rows
- *   their width: at 1000px of strip it is two lines and no more, taller than at
- *   1400px, the list grows no horizontal bar, and the form pane follows the
- *   height.
- * - Everything on one line of the strip is read at one height: a check box and
- *   a spin box beside it share a vertical centre rather than the check box
- *   riding at the top of the line the FlowLayout put them both on.
- * - A number box on the strip is the width of the largest number it can hold
- *   and no wider, and that number still fits inside it.
- * - The code pane still keeps its third of the two panes underneath it.
- * - The two matching modes are radio buttons drawn as joined segments, so a
- *   screen reader still says which of the two is chosen; they write into
- *   spinBox_lineMargin, which is where the trigger is saved from.
- * - The one hairline those two share belongs to whichever of them is chosen, so
- *   the accent goes all the way round it; neither segment moves when the choice
- *   changes.
- * - A spin box says it is being used: the chevron under the pointer takes the
- *   accent, and gives it back when the pointer leaves.
- * - With one pattern there is nothing to combine, so the segments and the line
- *   count are greyed out and the caption saying why is on show.
- * - The switches are not gates: choosing a sound file turns the sound on, and
- *   choosing a colour turns the highlight on.
- * - Every control on the strip carries an accessible name and a plain-text
- *   description, since Qt would otherwise read a screen reader the rich text a
- *   tooltip is written in - and the four check boxes whose words were shortened
- *   to fit the strip are still named in full to it.
- * - The tab chain runs the head row, the Options button, the strip left to
- *   right, and then the patterns - and with the strip put away it runs from the
- *   button straight to the first pattern.
- * - The accent a mark takes on focus is the keyboard's: a click turns an option
- *   on without leaving the focus, and so the accent, behind on it.
+ * The trigger options strip between the head row and the patterns: how it wraps, one
+ * vertical centre per line, the segments' shared hairline, screen-reader names, the
+ * tab order, the stepper hover and the check mark.
  *
  * Run with: ctest -R EditorTriggerOptionsStripTest -V
  */
@@ -93,6 +51,7 @@
 #include "HostDialogs.h"
 #include "MudletApp.h"
 #include "MudletInstanceCoordinator.h"
+#include "PixelTestHelper.h"
 #include "PortableModeTestHelper.h"
 #include "ProfileTestHelper.h"
 #include "TTrigger.h"
@@ -124,60 +83,38 @@ private:
     QString mPort;
     const QString mLocalhost = qsl("localhost");
 
-    // The two widths every wrapping case is measured between are the strip's
-    // own, not the window's: the sidebar and the item tree take a fixed several
-    // hundred pixels off the left of the editor before the form sees any of it,
-    // so a window width says nothing about how much the strip has to wrap in.
-    // resizeToStripWidth() is what turns one into the other.
-    //
-    // 1400px is what the whole strip comes to on one line, which is what makes
-    // a single vertical centre a thing there is to measure; 1000px is about
-    // what a maximised editor leaves the form, and is where it wraps once.
+    // Strip widths, not window widths: the sidebar and item tree take a fixed amount off the left.
+    // At 1400px the whole strip fits on one line; 1000px is about what a maximised editor leaves it.
     static constexpr int scmWideStrip = 1400;
     static constexpr int scmNarrowStrip = 1000;
     static constexpr int scmTallEditor = 900;
-    // Short enough that the form asks for more of the two panes than the code
-    // pane's share leaves it, which is the whole of what that case measures
+    // Short enough that the form wants more than the code pane's share leaves it
     static constexpr int scmShortEditor = 500;
-    // The seam is placed by hand often enough to be a pixel or two off what was
-    // asked for
+    // The seam is placed by hand and lands a pixel or two off what was asked for
     static constexpr int scmSeamTolerance = 2;
-    // Mirrors scmEditorSegmentPaddingHorizontal in src/dlgTriggerEditor.cpp,
-    // which is file-local to it, and what the hairline either side of it comes
-    // to. An indicator that came back would add its own width and the gap after
-    // it - some twenty pixels - on top of these.
+    // Mirror the file-local scmEditorSegmentPaddingHorizontal in src/dlgTriggerEditor.cpp and its
+    // hairlines; a radio indicator that came back would add some twenty pixels on top
     static constexpr int scmSegmentPadding = 12;
     static constexpr int scmSegmentSlack = 6;
-    // Mirrors scmEditorOptionsSpinBoxSlack, also file-local to the editor: what
-    // a number box keeps between its last digit and the arrows beside it
+    // Mirrors the editor's file-local scmEditorOptionsSpinBoxSlack
     static constexpr int scmSpinBoxSlack = 2;
-    // Mirrors scmEditorRowControlGap, which the strip's FlowLayout is given as
-    // its vertical spacing - what stands between one wrapped line and the next
+    // Mirrors scmEditorRowControlGap, the strip FlowLayout's vertical spacing
     static constexpr int scmStripLineGap = 8;
-    // A control mapped into the window lands on a whole pixel, so two that are
-    // laid out level can still be read a pixel apart
+    // A centre mapped into the window lands on a whole pixel, so level controls can read a pixel apart
     static constexpr int scmCentreSlack = 1;
-    // What a window sized to leave the strip a given width may be out by, since
-    // what stands to the left of the form is measured rather than named
+    // What stands left of the form is measured, not named, so the strip width can be out by this
     static constexpr int scmStripWidthSlack = 2;
-    // An ink read off a grab is held to nearness rather than to a match, summed
-    // over the three channels. A hairline is drawn flat, so it comes out as the
-    // colour itself and this is only slack; the segment beside it is 379 away.
+    // Ink distance summed over R, G and B. A hairline is drawn flat, so this is only slack; the
+    // segment beside it measured 379 away.
     static constexpr int scmInkSlack = 40;
-    // A chevron 7px across is all edge, so its darkest pixel is a blend rather
-    // than the tint it was drawn in: measured 64 from the accent under the
-    // pointer against 152 at rest, so this sits between the two rather than
-    // near zero
+    // A 7px chevron is all antialiased edge, so its darkest pixel is a blend: measured 64 from the
+    // accent under the pointer and 152 at rest
     static constexpr int scmChevronInkSlack = 100;
-    // ...and what the pointer is worth on top of that, so that a chevron which
-    // never changed cannot pass by sitting near the line
+    // A minimum hover shift, so a chevron that never changed cannot pass by sitting near the line
     static constexpr int scmChevronInkShift = 40;
-    // How far into a segment its own fill is read at: well inside the padding,
-    // so that neither a hairline at the edge nor the word in the middle is what
-    // comes back
+    // Inside the padding, so neither the edge hairline nor the word is sampled
     static constexpr int scmFillDepth = 4;
-    // How far a pixel inside a mark's box has to be from that box's fill before
-    // it counts as part of the mark rather than as the fill's own noise
+    // Below this a pixel is the fill's own noise rather than part of the mark
     static constexpr int scmMarkInkSlack = 40;
 
     void deleteProfileDirectory(const QString& profileName)
@@ -188,18 +125,8 @@ private:
         }
     }
 
-    void settle()
-    {
-        QCoreApplication::processEvents();
-        QTest::qWait(80ms);
-        QCoreApplication::processEvents();
-    }
-
-    // Qt measures a control once and keeps the answer, and a check state
-    // changing does not ask it again - so a segment whose padding did not make
-    // up for the hairline it gave up would only be caught out the next time
-    // something re-laid the form. This is that moment, brought forward: a style
-    // change is what clears the cached hint, and the layout is run again after.
+    // Qt caches a control's size hint and a check-state change does not invalidate it; a
+    // StyleChange does, so padding that fails to make up for a given-up hairline shows now
     void remeasure(const QList<QWidget*>& widgets)
     {
         for (QWidget* pWidget : widgets) {
@@ -207,7 +134,7 @@ private:
             QCoreApplication::sendEvent(pWidget, &styleChange);
             pWidget->updateGeometry();
         }
-        settle();
+        TestPixels::settle();
     }
 
     dlgTriggersMainArea* form() const { return mpEditor->mpTriggersMainArea; }
@@ -221,28 +148,25 @@ private:
     void chooseTrigger(QTreeWidgetItem* pRow)
     {
         mpEditor->slot_showTriggers();
-        settle();
+        TestPixels::settle();
         mpEditor->treeWidget_triggers->setCurrentItem(pRow);
         mpEditor->slot_triggerSelected(pRow);
-        settle();
+        TestPixels::settle();
         mpEditor->hideSystemMessageArea();
-        settle();
+        TestPixels::settle();
     }
 
-    // Settled twice: the width the form is given is answered on the next pass
-    // through the event loop, and the refit that follows moves the seam on the
-    // pass after that
+    // Settled twice: the form's new width arrives on the next event-loop pass and the seam's
+    // refit on the one after
     void resizeTheEditor(const int width, const int height)
     {
         mpEditor->resize(width, height);
-        settle();
-        settle();
+        TestPixels::settle();
+        TestPixels::settle();
     }
 
-    // The window width that leaves the strip the width being measured at.
-    // Measured rather than named: what stands to the left of the form is the
-    // sidebar and the item tree, and a case that hard-coded the sum of them
-    // would quietly start measuring a different width the day either moves.
+    // Measured, not named: a hard-coded width for the sidebar and item tree would silently
+    // measure a different strip once either moves
     void resizeToStripWidth(const int stripWidth, const int height)
     {
         resizeTheEditor(stripWidth + 600, height);
@@ -251,14 +175,11 @@ private:
                  qPrintable(qsl("the strip is %1px wide in a %2px window, where %3px was asked for").arg(optionsRow()->width()).arg(mpEditor->width()).arg(stripWidth)));
     }
 
-    // Every control on the strip that the keyboard can reach
     QList<QWidget*> focusableControlsOnTheStrip() const
     {
         QList<QWidget*> controls;
         for (QWidget* pWidget : optionsRow()->findChildren<QWidget*>()) {
-            // Qt's own parts of a control - a spin box's inner line edit - are
-            // the control as far as a screen reader is concerned, and are named
-            // by the control around them
+            // Qt's inner parts, such as a spin box's line edit, are named by the control around them
             if (pWidget->objectName().startsWith(qsl("qt_"))) {
                 continue;
             }
@@ -269,12 +190,8 @@ private:
         return controls;
     }
 
-    // Where the middle of a control lands on the editor, which is what two
-    // controls on one line of the strip have to agree on
     int verticalCentreOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, pWidget->rect().center()).y(); }
 
-    // The chain the keyboard actually walks, from the command field onwards,
-    // over what is visible and can hold the focus
     QList<QWidget*> tabChainFromTheCommandField() const
     {
         QList<QWidget*> chain;
@@ -293,35 +210,21 @@ private:
 
     static QString describe(const QWidget* pWidget) { return pWidget->objectName().isEmpty() ? QString::fromLatin1(pWidget->metaObject()->className()) : pWidget->objectName(); }
 
-    // How far apart two inks are, summed over the three channels: a hairline
-    // and a chevron are both drawn against a fill of their own, so what is
-    // measured is nearness rather than a match
-    static int distanceBetween(const QColor& one, const QColor& other) { return std::abs(one.red() - other.red()) + std::abs(one.green() - other.green()) + std::abs(one.blue() - other.blue()); }
-
-    // A widget's box in the pixels a grab is made of, which are the widget's
-    // own multiplied by whatever the screen doubles them by
     static QRect inTheGrabsPixels(const QImage& shot, const QRect& box)
     {
         const qreal ratio = shot.devicePixelRatio();
         return QRect(QPoint(qRound(box.left() * ratio), qRound(box.top() * ratio)), QPoint(qRound((box.right() + 1) * ratio) - 1, qRound((box.bottom() + 1) * ratio) - 1)).intersected(shot.rect());
     }
 
-    // The ink at a given depth into one side of a segment, taken from a grab of
-    // the pair and read at the height the segment's middle is at. A depth of 0
-    // is the outermost pixel, which is where a border a pixel wide is drawn; a
-    // few pixels in is well inside the padding, so it is the fill that border
-    // is drawn against and nothing else
+    // Depth 0 is the outermost pixel, where a one-pixel border is drawn; a few pixels in is the fill
     static QColor colourInsideTheEdge(const QImage& shot, const QWidget* pSegment, const bool rightHandSide, const int depth)
     {
         const QRect box = inTheGrabsPixels(shot, pSegment->geometry().adjusted(depth, 0, -depth, 0));
         return shot.pixelColor(rightHandSide ? box.right() : box.left(), box.center().y());
     }
 
-    // Where the style puts the mark on a check box, in the pixels of a grab of
-    // the window around it. Read off the window rather than off the control or
-    // its form: either is grabbed against its own palette where it paints no
-    // background of its own, so the column the form actually sits on is only
-    // there in a grab that holds the column too.
+    // Sampled from a grab of the window: a control or form grabbed alone is painted against its
+    // own palette where it has no background, so the column the form sits on is missing
     static QRect markBoxIn(const QAbstractButton* pButton, const QWidget* pWindow, const QImage& shot)
     {
         QStyleOptionButton option;
@@ -331,15 +234,13 @@ private:
         return inTheGrabsPixels(shot, box);
     }
 
-    // How many pixels well inside that box are not the fill it is drawn on:
-    // none in an empty box, a good few once the tick is in it
     static int markedPixelsIn(const QImage& shot, const QRect& box, const QColor& fill)
     {
         const QRect inside = box.adjusted(box.width() / 4, box.height() / 4, -box.width() / 4, -box.height() / 4);
         int marked = 0;
         for (int y = inside.top(); y <= inside.bottom(); ++y) {
             for (int x = inside.left(); x <= inside.right(); ++x) {
-                if (distanceBetween(shot.pixelColor(x, y), fill) > scmMarkInkSlack) {
+                if (TestPixels::distance(shot.pixelColor(x, y), fill) > scmMarkInkSlack) {
                     ++marked;
                 }
             }
@@ -347,8 +248,6 @@ private:
         return marked;
     }
 
-    // The strongest colour the box is outlined in, read against the form
-    // showing through beside it
     static qreal outlineRatioOf(const QImage& shot, const QRect& box, const QColor& behind)
     {
         QColor outline = behind;
@@ -361,27 +260,13 @@ private:
         return uiDesign::contrastRatio(outline, behind);
     }
 
-    // The one path an appearance change takes while this window is open: the
-    // application style is replaced, and the StyleChange that follows is what
-    // the editor restyles itself on
-    void takeTheEditorTo(const enums::Appearance appearance)
-    {
-        mudlet::self()->setAppearance(appearance);
-        QCoreApplication::processEvents();
-        QTest::qWait(50ms);
-        QCoreApplication::processEvents();
-        mpEditor->grab();
-    }
-
-    // How near the accent the nearest pixel inside a box comes - a chevron
-    // tinted with it reaches it, one tinted with the quiet ink does not
     static int nearestToTheAccentIn(const QImage& shot, const QRect& box, const QColor& accent)
     {
         int nearest = 3 * 255;
         const QRect scanned = inTheGrabsPixels(shot, box);
         for (int y = scanned.top(); y <= scanned.bottom(); ++y) {
             for (int x = scanned.left(); x <= scanned.right(); ++x) {
-                nearest = std::min(nearest, distanceBetween(shot.pixelColor(x, y), accent));
+                nearest = std::min(nearest, TestPixels::distance(shot.pixelColor(x, y), accent));
             }
         }
         return nearest;
@@ -421,11 +306,11 @@ private slots:
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(scmWideStrip + 600, scmTallEditor);
-        settle();
+        TestPixels::settle();
 
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
-        settle();
+        TestPixels::settle();
         mpThreePatternRow = mpEditor->mpCurrentTriggerItem;
         QVERIFY2(mpThreePatternRow != nullptr, "the three-pattern trigger these cases edit could not be made");
         mpEditor->showPatternItems(3);
@@ -433,16 +318,16 @@ private slots:
         mpEditor->mTriggerPatternEdit.at(1)->singleLineTextEdit_pattern->setPlainText(qsl("You'll have to swim to make it through the water in that direction."));
         mpEditor->mTriggerPatternEdit.at(2)->singleLineTextEdit_pattern->setPlainText(qsl("The water is too deep for you to walk that way, you must swim."));
         mpEditor->slot_saveEdits();
-        settle();
+        TestPixels::settle();
 
         mpEditor->addTrigger(false);
-        settle();
+        TestPixels::settle();
         mpOnePatternRow = mpEditor->mpCurrentTriggerItem;
         QVERIFY2(mpOnePatternRow != nullptr, "the one-pattern trigger these cases edit could not be made");
         mpEditor->showPatternItems(1);
         mpEditor->mTriggerPatternEdit.at(0)->singleLineTextEdit_pattern->setPlainText(qsl("You'll have to SWIM"));
         mpEditor->slot_saveEdits();
-        settle();
+        TestPixels::settle();
     }
 
     void cleanupTestCase()
@@ -464,13 +349,11 @@ private slots:
             return;
         }
         resizeTheEditor(scmWideStrip + 600, scmTallEditor);
-        // Every case here measures an open strip, and the editor opens with it
-        // closed
+        // The editor opens with the strip closed
         mpEditor->setTriggerOptionsShown(true);
-        settle();
+        TestPixels::settle();
     }
 
-    // (a) Where the strip is, and what it lines up with
     void test_theStripSitsBetweenTheNameAndThePatterns()
     {
         chooseTrigger(mpThreePatternRow);
@@ -486,9 +369,6 @@ private slots:
         QVERIFY2(headTop < stripTop, "the options strip is not under the row the name is typed on");
         QVERIFY2(stripTop < patternsTop, "the pattern list is not under the options strip");
 
-        // The word leading the strip starts where the Name label does, and the
-        // strip after it starts where the Name field does - which is the whole
-        // of what one lead width buys
         QLabel* pName = form()->label_trigger_name;
         QLabel* pLead = mpEditor->mpLabel_optionsRow;
         QVERIFY2(pLead->property("editorRowLabel").toBool(), qPrintable(qsl("the word \"%1\" is not written in the quiet ink a form's scaffolding takes").arg(pLead->text())));
@@ -500,15 +380,9 @@ private slots:
                                      .arg(leftEdgeOf(form()->lineEdit_trigger_name))
                                      .arg(leftEdgeOf(optionsRow()));
         QCOMPARE(leftEdgeOf(optionsRow()), leftEdgeOf(form()->lineEdit_trigger_name));
-        // ...and the strip is a grouping a screen reader is told about, named
-        // by that same word rather than by a title of its own
         QCOMPARE(optionsRow()->accessibleName(), pLead->text());
     }
 
-    // (b) A narrow editor costs the strip a line, not the pattern rows their
-    // width - and no more than one line at the width an ordinary editor leaves
-    // the form, which is what the shorter words on it are for. This is what
-    // replaces the fold that used to take the options away.
     void test_aNarrowFormWrapsTheStripRatherThanThePatternRows()
     {
         chooseTrigger(mpThreePatternRow);
@@ -545,10 +419,7 @@ private slots:
                  qPrintable(qsl("the strip grew by %1px and the form pane stayed at %2px, so the extra line is being drawn over the patterns").arg(narrowStrip - wideStrip).arg(narrowPane)));
     }
 
-    // (b2) A FlowLayout puts every item at the top of the line it lands on, so
-    // a 20px check box beside a 30px spin box would be read a few pixels above
-    // it. Everything on the strip is one control tall, and each group centres
-    // what is inside it, so one line has one middle.
+    // FlowLayout puts every item at the top of its line, so a short check box rides above a taller spin box
     void test_everythingOnOneLineOfTheStripSharesAVerticalCentre()
     {
         chooseTrigger(mpThreePatternRow);
@@ -569,14 +440,10 @@ private slots:
         }
         qInfo().noquote() << qsl("  a %1px strip is %2px tall and holds: %3").arg(scmWideStrip).arg(optionsRow()->height()).arg(read.join(qsl(", ")));
         QVERIFY2(failures.isEmpty(), qPrintable(failures.join(qsl("\n"))));
-        // ...and one line is what they were all on, so that a centre they agree
-        // on is one middle rather than a coincidence between two lines
+        // One line, so the shared centre is not a coincidence between two lines
         QCOMPARE(optionsRow()->height(), uiDesign::scmInputHeight);
     }
 
-    // (b2) A number box on the strip is as wide as the largest number it can
-    // hold and no wider. Both were a flat 72px, which is room for a couple of
-    // digits neither of them will ever show.
     void test_theNumberBoxesAreOnlyAsWideAsTheirLargestNumber()
     {
         chooseTrigger(mpThreePatternRow);
@@ -617,8 +484,6 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // (c) ...and the code pane still keeps its third of the two panes, in a
-    // window short enough for the form to want more than that
     void test_theCodePaneKeepsItsFloorInAShortWindow()
     {
         chooseTrigger(mpThreePatternRow);
@@ -636,8 +501,6 @@ private slots:
                                      .arg(paneTotal)
                                      .arg(floor);
 
-        // Held at the ceiling rather than sitting under it: a window the form
-        // fits in with room to spare says nothing about what the code pane keeps
         QVERIFY2(std::abs(sizes.at(0) - (paneTotal - floor)) <= scmSeamTolerance,
                  qPrintable(qsl("the form is at %1 of the %2 the two panes have, rather than at the %3 the code pane's share leaves it - this window is not short enough for the case to say anything")
                                     .arg(sizes.at(0))
@@ -645,14 +508,11 @@ private slots:
                                     .arg(paneTotal - floor)));
         QVERIFY2(sizes.at(1) >= floor - scmSeamTolerance,
                  qPrintable(qsl("the form was given %1 of the %2 the two panes have, leaving the code pane %3 against the %4 it keeps").arg(sizes.at(0)).arg(paneTotal).arg(sizes.at(1)).arg(floor)));
-        // ...and that floor is a third of the two panes, written out here rather
-        // than read from codePaneFloor(), which is the thing being held
+        // A third written out, not read from codePaneFloor(), which is what is being held
         QVERIFY2(sizes.at(1) >= paneTotal / 3 - scmSeamTolerance,
                  qPrintable(qsl("the code pane was left %1 of the %2 the two panes have, where a third of them is %3").arg(sizes.at(1)).arg(paneTotal).arg(paneTotal / 3)));
     }
 
-    // (d) The two modes are one control of two segments, and they are still the
-    // radio pair spinBox_lineMargin is written from
     void test_theSegmentsWriteTheMatchingModeIntoTheHiddenSpinBox()
     {
         chooseTrigger(mpThreePatternRow);
@@ -662,22 +522,19 @@ private slots:
         QSpinBox* pWithin = mpEditor->mpSpinBox_matchWithinLines;
 
         pAll->setChecked(true);
-        settle();
+        TestPixels::settle();
         QVERIFY2(!pAny->isChecked(), "both segments are on at once, so they are no longer one exclusive choice");
         QVERIFY2(mpEditor->mpWidget_matchWithinRow->isEnabled(), "the line count is greyed out in the All mode, which is the mode it belongs to");
         pWithin->setValue(4);
-        settle();
+        TestPixels::settle();
         QCOMPARE(form()->spinBox_lineMargin->value(), 4);
 
         pAny->setChecked(true);
-        settle();
+        TestPixels::settle();
         QVERIFY2(!pAll->isChecked(), "choosing Any left All chosen as well");
         QVERIFY2(!mpEditor->mpWidget_matchWithinRow->isEnabled(), "the line count is still available in the Any mode, which carries none");
         QCOMPARE(form()->spinBox_lineMargin->value(), -1);
 
-        // Drawn as a box round the words rather than as a dot beside them: the
-        // indicator is given no size and no gap, so the segment is its own text
-        // and the padding round it and nothing else
         const int textWidth = pAll->fontMetrics().horizontalAdvance(pAll->text());
         const int roundTheText = pAll->width() - textWidth;
         qInfo().noquote() << qsl("  \"%1\" is %2px wide against %3px of text, so %4px is round it").arg(pAll->text()).arg(pAll->width()).arg(textWidth).arg(roundTheText);
@@ -690,8 +547,6 @@ private slots:
                                     .arg(roundTheText)));
     }
 
-    // (e) With one pattern there is nothing to combine, so the choice is greyed
-    // out and the caption at the end of the strip says why
     void test_onceMorePatternsAreThereTheModesBecomeAvailable()
     {
         chooseTrigger(mpOnePatternRow);
@@ -706,43 +561,39 @@ private slots:
         QVERIFY2(mpEditor->mpLabel_matchModeHint->isHidden(), "the caption is still on show on a trigger that has patterns to combine");
     }
 
-    // (f) The switches are not gates over what stands beside them: a choice
-    // made in either turns its own switch on
     void test_aChoiceTurnsItsOwnSwitchOn()
     {
         chooseTrigger(mpThreePatternRow);
         form()->checkBox_soundTrigger->setChecked(false);
         form()->checkBox_triggerColorizer->setChecked(false);
         mpEditor->showTriggerSoundFile(QString());
-        settle();
+        TestPixels::settle();
         QVERIFY2(!form()->toolButton_clearSoundFile->isVisible(), "the cross that forgets the sound file is there with no file to forget");
 
         const QString chosen = qsl("/tmp/EditorTriggerOptionsStripTest/water-splash.wav");
         mpEditor->mpUndoStack->clear();
         mpEditor->acceptTriggerSoundFile(chosen);
-        settle();
+        TestPixels::settle();
         QVERIFY2(form()->checkBox_soundTrigger->isChecked(), "choosing a sound file left the sound switched off, so the file is set and silent");
         QCOMPARE(mpEditor->triggerSoundFilePath(), chosen);
         QVERIFY2(form()->lineEdit_soundFile->text().contains(qsl("water-splash")), qPrintable(qsl("the field reads \"%1\" rather than the file's name").arg(form()->lineEdit_soundFile->text())));
         QVERIFY2(form()->toolButton_clearSoundFile->isVisible(), "the cross that forgets the sound file is away with a file set");
-        // The file and the switch, one entry each and in that order
+        // One undo entry for the file, one for the switch
         qInfo().noquote() << qsl("  choosing a sound file pushed %1 undo entries").arg(mpEditor->mpUndoStack->count());
         QCOMPARE(mpEditor->mpUndoStack->count(), 2);
 
         mpEditor->slot_clearSoundFile();
-        settle();
+        TestPixels::settle();
         QVERIFY2(!form()->toolButton_clearSoundFile->isVisible(), "the cross is still there after the file it forgets was forgotten");
         QVERIFY2(mpEditor->triggerSoundFilePath().isEmpty(), "the field still stands for a file after being cleared");
 
         mpEditor->mpUndoStack->clear();
         mpEditor->turnTriggerHighlightOn();
-        settle();
+        TestPixels::settle();
         QVERIFY2(form()->checkBox_triggerColorizer->isChecked(), "choosing a colour left the highlight switched off, so the colour is set and unused");
         QCOMPARE(mpEditor->mpUndoStack->count(), 1);
     }
 
-    // (g) A screen reader is told what each control is and what it does, in
-    // words rather than in the rich text a tooltip is written in
     void test_everyControlOnTheStripNamesItselfToAScreenReader()
     {
         chooseTrigger(mpThreePatternRow);
@@ -764,9 +615,8 @@ private slots:
         qInfo().noquote() << qsl("  %1 focusable controls on the strip were read").arg(controls.size());
         QVERIFY2(failures.isEmpty(), qPrintable(failures.join(qsl("\n"))));
 
-        // The words on the strip are as short as they can be said in; what a
-        // screen reader is given is the whole of what each one is, since it
-        // reaches a check box with nothing else beside it
+        // The visible words are shortened to fit; a screen reader reaches each control on its own,
+        // so it is given the full name
         const QList<QPair<QWidget*, QString>> saidInFull{{mpEditor->mpRadioButton_matchAny, qsl("Any pattern")},
                                                          {mpEditor->mpRadioButton_matchAll, qsl("All patterns")},
                                                          {form()->checkBox_perlSlashGOption, qsl("Every occurrence in a line")},
@@ -780,7 +630,6 @@ private slots:
         }
     }
 
-    // (h) The keyboard reads the form the way the eye does
     void test_theTabChainRunsTheStripBeforeThePatterns()
     {
         chooseTrigger(mpThreePatternRow);
@@ -838,16 +687,14 @@ private slots:
         }
     }
 
-    // ...and with the strip put away the keyboard walks past it rather than
-    // into controls nobody can see
     void test_aClosedStripTakesItsControlsOutOfTheTabChain()
     {
         chooseTrigger(mpThreePatternRow);
         mpEditor->setTriggerOptionsShown(false);
-        settle();
+        TestPixels::settle();
         auto reopenTheStrip = qScopeGuard([this]() {
             mpEditor->setTriggerOptionsShown(true);
-            settle();
+            TestPixels::settle();
         });
 
         const QList<QWidget*> chain = tabChainFromTheCommandField();
@@ -879,27 +726,23 @@ private slots:
         }
     }
 
-    // (i) A well with no colour of its own still says what it does, in the one
-    // word that fits on it
     void test_aColourlessWellStillReadsKeep()
     {
-        // Chosen first, so that the colours written below are not saved over by
-        // the trigger being left; loaded again without leaving it
+        // Chosen first so leaving the trigger cannot save over the colours set below; reloaded in place
         chooseTrigger(mpThreePatternRow);
         TTrigger* pT = mpHost->getTriggerUnit()->getTrigger(mpThreePatternRow->data(0, Qt::UserRole).toInt());
         QVERIFY2(pT != nullptr, "the trigger these cases edit is gone from the profile");
         pT->setColorizerFgColor(QColorConstants::Transparent);
         pT->setColorizerBgColor(QColorConstants::Transparent);
         mpEditor->slot_triggerSelected(mpThreePatternRow);
-        settle();
+        TestPixels::settle();
         qInfo().noquote() << qsl("  the wells read \"%1\" and \"%2\", and are described as \"%3\" and \"%4\"")
                                      .arg(form()->pushButtonFgColor->text(),
                                           form()->pushButtonBgColor->text(),
                                           form()->pushButtonFgColor->accessibleDescription(),
                                           form()->pushButtonBgColor->accessibleDescription());
-        // The words themselves, not merely that there are some: a well left
-        // saying the last colour it held, or described by its own name, reads
-        // as something it is not
+        // The exact words: a well still naming its last colour, or described by its own name, would
+        // pass a non-empty check
         const QString keep = QCoreApplication::translate("dlgTriggerEditor", "keep");
         const QString keepsTheGamesColour = QCoreApplication::translate("dlgTriggerEditor", "keeps the game's colour");
         QCOMPARE(form()->pushButtonFgColor->text(), keep);
@@ -908,11 +751,6 @@ private slots:
         QCOMPARE(form()->pushButtonBgColor->accessibleDescription(), keepsTheGamesColour);
     }
 
-    // (j) The two segments meet on one hairline, and it belongs to whichever of
-    // them is chosen: the accent runs all the way round the chosen segment
-    // rather than stopping at the seam and being closed by its neighbour's
-    // grey. The segment that gives the edge up takes its width back as padding,
-    // so the pair does not shift under the pointer as the choice changes.
     void test_theChosenSegmentIsOutlinedOnEverySide()
     {
         chooseTrigger(mpThreePatternRow);
@@ -922,18 +760,13 @@ private slots:
         const QColor accent = uiDesign::themeTokens().accent;
 
         pAny->setChecked(true);
-        settle();
+        TestPixels::settle();
         remeasure({pAny, pAll});
         const int anyWidth = pAny->width();
         const int allWidth = pAll->width();
         const int pairWidth = pPair->width();
         QVERIFY2(pAny->geometry().right() + 1 == pAll->geometry().left(), "the two segments no longer meet, so there is no shared hairline to measure");
 
-        // Four inks say the whole of it for one choice: the chosen segment's two
-        // vertical edges, which are the seam and the outer edge it has to be
-        // closed by the same colour on, and the unchosen segment's edge at the
-        // seam against its own fill a few pixels further in - equal to it means
-        // the seam carries one hairline rather than two
         QImage shot = pPair->grab().toImage();
         const QColor anysSeam = colourInsideTheEdge(shot, pAny, true, 0);
         const QColor anysOuterEdge = colourInsideTheEdge(shot, pAny, false, 0);
@@ -941,7 +774,7 @@ private slots:
         const QColor allsFillUnderAny = colourInsideTheEdge(shot, pAll, false, scmFillDepth);
 
         pAll->setChecked(true);
-        settle();
+        TestPixels::settle();
         remeasure({pAny, pAll});
         shot = pPair->grab().toImage();
         const QColor allsSeam = colourInsideTheEdge(shot, pAll, false, 0);
@@ -961,24 +794,23 @@ private slots:
                                           anysEdgeUnderAll.name(),
                                           anysFillUnderAll.name());
 
-        QVERIFY2(distanceBetween(anysSeam, accent) <= scmInkSlack,
+        QVERIFY2(TestPixels::distance(anysSeam, accent) <= scmInkSlack,
                  qPrintable(qsl("with Any chosen its edge at the seam reads %1 against an accent of %2, so its outline is open there").arg(anysSeam.name(), accent.name())));
-        QVERIFY2(distanceBetween(anysOuterEdge, accent) <= scmInkSlack,
+        QVERIFY2(TestPixels::distance(anysOuterEdge, accent) <= scmInkSlack,
                  qPrintable(qsl("with Any chosen its outer edge reads %1 rather than the accent, so the two sides are not one outline").arg(anysOuterEdge.name())));
-        QVERIFY2(distanceBetween(allsEdgeUnderAny, allsFillUnderAny) <= scmInkSlack,
+        QVERIFY2(TestPixels::distance(allsEdgeUnderAny, allsFillUnderAny) <= scmInkSlack,
                  qPrintable(qsl("with Any chosen, All reads %1 at the seam against its own fill of %2 - it is still drawing a hairline of its own, so the seam is two lines")
                                     .arg(allsEdgeUnderAny.name(), allsFillUnderAny.name())));
 
-        QVERIFY2(distanceBetween(allsSeam, accent) <= scmInkSlack,
+        QVERIFY2(TestPixels::distance(allsSeam, accent) <= scmInkSlack,
                  qPrintable(qsl("with All chosen its edge at the seam reads %1 against an accent of %2, so its outline is open there").arg(allsSeam.name(), accent.name())));
-        QVERIFY2(distanceBetween(allsOuterEdge, accent) <= scmInkSlack,
+        QVERIFY2(TestPixels::distance(allsOuterEdge, accent) <= scmInkSlack,
                  qPrintable(qsl("with All chosen its outer edge reads %1 rather than the accent, so the two sides are not one outline").arg(allsOuterEdge.name())));
-        QVERIFY2(distanceBetween(anysEdgeUnderAll, anysFillUnderAll) <= scmInkSlack,
+        QVERIFY2(TestPixels::distance(anysEdgeUnderAll, anysFillUnderAll) <= scmInkSlack,
                  qPrintable(qsl("with All chosen, Any reads %1 at the seam against its own fill of %2 - it kept a hairline there, so the seam is two lines")
                                     .arg(anysEdgeUnderAll.name(), anysFillUnderAll.name())));
 
-        // ...and the hairline changing hands moved nothing: what one segment
-        // gives up in border the other takes back in padding
+        // What one segment gives up in border the other takes back in padding
         qInfo().noquote() << qsl("  the segments are %1px and %2px in a %3px pair with Any chosen, and %4px and %5px in a %6px pair with All chosen")
                                      .arg(anyWidth)
                                      .arg(allWidth)
@@ -991,16 +823,12 @@ private slots:
         QCOMPARE(pPair->width(), pairWidth);
     }
 
-    // (l) The mark a choice on the strip is made with is the design's in both
-    // appearances, rather than the platform's - a grey Fusion square on the
-    // dark theme, a blue rounded macOS box on the light one. The settings
-    // dialog is held to the same measurement, so that a check box reads as the
-    // same control in both windows.
+    // Guards against the platform's marks: a grey Fusion square on dark, a blue rounded macOS box on light
     void test_theStripsCheckBoxCarriesTheOneMark()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
         auto restore = qScopeGuard([this, appearanceBefore]() {
-            takeTheEditorTo(appearanceBefore);
+            TestPixels::setAppearanceAndWait(appearanceBefore, mpEditor);
         });
 
         chooseTrigger(mpThreePatternRow);
@@ -1013,27 +841,24 @@ private slots:
 
         QStringList misses;
         for (const auto& appearance : QList<QPair<QString, enums::Appearance>>{{qsl("dark"), enums::Appearance::dark}, {qsl("light"), enums::Appearance::light}}) {
-            takeTheEditorTo(appearance.second);
-            // Proves the appearance actually moved: a run where it did not
-            // would measure the same theme twice and pass
+            TestPixels::setAppearanceAndWait(appearance.second, mpEditor);
+            // Otherwise a run that never switched would measure one theme twice and pass
             QCOMPARE(uiDesign::themeTokens().darkPage, appearance.second == enums::Appearance::dark);
 
             pBox->setChecked(false);
-            settle();
+            TestPixels::settle();
             const QImage empty = mpEditor->grab().toImage();
             const QRect box = markBoxIn(pBox, mpEditor, empty);
             QVERIFY2(box.width() > 4 && box.height() > 4, qPrintable(qsl("%1: the mark has no rectangle to sample: %2x%3").arg(appearance.first).arg(box.width()).arg(box.height())));
 
-            // Well past the mark's own antialiased edge and short of the
-            // words after it, which is what the gap named in choiceStyleSheet()
-            // leaves room for
+            // Past the mark's antialiased edge and short of its words, in the gap choiceStyleSheet() leaves
             const QColor behind = empty.pixelColor(qMin(box.right() + box.width() / 3, empty.width() - 1), box.center().y());
             const qreal outline = outlineRatioOf(empty, box, behind);
             const QColor fill = empty.pixelColor(box.center());
             const int nothingInIt = markedPixelsIn(empty, box, fill);
 
             pBox->setChecked(true);
-            settle();
+            TestPixels::settle();
             const int aTick = markedPixelsIn(mpEditor->grab().toImage(), box, fill);
 
             qInfo().noquote() << qsl("  %1: the strip's mark is %2px on a fill of %3, outlined at %4:1 against %5, with %6 pixels in it empty and %7 checked")
@@ -1055,8 +880,6 @@ private slots:
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
     }
 
-    // (k) A spin box's steppers say they are being used: the chevron under the
-    // pointer takes the accent, and gives it back when the pointer leaves
     void test_theStepperChevronTakesTheAccentUnderThePointer()
     {
         chooseTrigger(mpThreePatternRow);
@@ -1070,19 +893,18 @@ private slots:
         QVERIFY2(!upButton.isEmpty(), "the spin box draws no stepper at all, so there is no chevron to light up");
         const QColor accent = uiDesign::themeTokens().accent;
 
-        // Somewhere on the box that is not a stepper, which is where the
-        // pointer is taken to put the chevron back
+        // Off the steppers, where the pointer goes to put the chevron back
         const QPoint field(2, pBox->height() / 2);
         QTest::mouseMove(pBox, field);
-        settle();
+        TestPixels::settle();
         const int atRest = nearestToTheAccentIn(pBox->grab().toImage(), upButton, accent);
 
         QTest::mouseMove(pBox, upButton.center());
-        settle();
+        TestPixels::settle();
         const int hovered = nearestToTheAccentIn(pBox->grab().toImage(), upButton, accent);
 
         QTest::mouseMove(pBox, field);
-        settle();
+        TestPixels::settle();
         const int afterwards = nearestToTheAccentIn(pBox->grab().toImage(), upButton, accent);
 
         qInfo().noquote() << qsl("  the up stepper is %1 and its nearest pixel to the accent %2 is %3 away at rest, %4 under the pointer and %5 after it left")
@@ -1098,52 +920,43 @@ private slots:
         QVERIFY2(afterwards > scmChevronInkSlack, qPrintable(qsl("the stepper is still %1 from the accent with the pointer off it, so the chevron never went back").arg(afterwards)));
     }
 
-    // (m) The accent the mark's hairline takes on focus is the keyboard's. A
-    // click that turned an option on and off again used to leave that accent
-    // sitting on it until something else in the window was clicked, because
-    // QAbstractButton asks QStyle::SH_Button_FocusPolicy once, in its
-    // constructor, and keeps what that style answered - which is the style's
-    // decision rather than the design's. The box is put back into the
-    // Qt::StrongFocus a style answering that way leaves it in, and the form
-    // restyled over it, so that this measures the shell rather than which
-    // platform the run is on.
+    // QAbstractButton reads QStyle::SH_Button_FocusPolicy once, in its constructor, so a style
+    // answering Qt::StrongFocus leaves a clicked mark holding the focus accent. The box is put back
+    // to StrongFocus and the form restyled over it, so the run measures the shell, not the platform.
     void test_clickingAnOptionDoesNotLeaveItHoldingTheFocus()
     {
         const auto appearanceBefore = mudlet::self()->mAppearance;
         auto restore = qScopeGuard([this, appearanceBefore]() {
-            takeTheEditorTo(appearanceBefore);
+            TestPixels::setAppearanceAndWait(appearanceBefore, mpEditor);
         });
 
         chooseTrigger(mpThreePatternRow);
         QCheckBox* pBox = form()->checkBox_perlSlashGOption;
         QVERIFY2(pBox->isVisible(), "the check box this case clicks is not on show");
 
-        // An appearance the editor is not already in, because
-        // applyEditorShellStyle() has nothing to redo when the four colours it
-        // mixes everything from have not moved
+        // A different appearance: applyEditorShellStyle() redoes nothing while the four colours it
+        // mixes from stay put
         pBox->setFocusPolicy(Qt::StrongFocus);
-        takeTheEditorTo(uiDesign::themeTokens().darkPage ? enums::Appearance::light : enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(uiDesign::themeTokens().darkPage ? enums::Appearance::light : enums::Appearance::dark, mpEditor);
         QCOMPARE(pBox->focusPolicy(), Qt::TabFocus);
 
         const bool wasChecked = pBox->isChecked();
         auto putTheBoxBack = qScopeGuard([pBox, wasChecked]() {
             pBox->setChecked(wasChecked);
-            // The focus is given to the box below, and no other case here
-            // expects to find it there
+            // The box is focused below, and no other case expects the focus there
             pBox->clearFocus();
         });
 
         QTest::mouseClick(pBox, Qt::LeftButton, Qt::NoModifier, pBox->rect().center());
-        settle();
+        TestPixels::settle();
         QVERIFY2(pBox->isChecked() != wasChecked, "clicking the option left it where it was, so nothing here says the click landed");
-        // The window's own focus child rather than hasFocus(), which answers
-        // false on any run whose window never became the active one - and would
-        // then pass whatever the policy said
+        // focusWidget(), not hasFocus(): hasFocus() is false whenever the window never became active,
+        // and would pass whatever the policy said
         QVERIFY2(mpEditor->focusWidget() != pBox, "a click left the option holding the keyboard focus, so the accent stayed on its mark");
         QVERIFY2(!pBox->hasFocus(), "a click left the option focused");
 
         pBox->setFocus(Qt::TabFocusReason);
-        settle();
+        TestPixels::settle();
         QVERIFY2(mpEditor->focusWidget() == pBox, "the Tab key cannot reach the option, so a keyboard user has nothing to see the accent on");
     }
 };

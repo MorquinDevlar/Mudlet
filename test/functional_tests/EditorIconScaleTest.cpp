@@ -18,26 +18,12 @@
  ***************************************************************************/
 
 /*
- * The editor draws glyphs in two places that sit against each other - the
- * actions toolbar along the top and the sidebar down the left - and they were
- * sized by different rules. The sidebar took the design language's 18px; the
- * toolbar multiplied the "Icon size toolbars" preference by 8, which at that
- * preference's own default of 3 is 24px.
- *
- * Two costs. The pictures did not match, a third again as large on one bar as
- * on the other. And the toolbar's buttons are as wide as their glyph plus their
- * name, so the oversized default pushed the row past the window sooner and took
- * the names off buttons on windows with plenty of room.
- *
- * The preference is not the problem and is not dropped - it is there for anyone
- * who needs a bigger target. What changed is what its default maps to: six
- * pixels a step rather than eight, so the default lands on the sidebar's 18px
- * and the steps above it still scale up, with 4 giving the 24px the default
- * used to draw. Both bars follow it, so the editor has one icon scale.
+ * The actions toolbar and the sidebar sit side by side and draw glyphs at one
+ * scale; the "Icon size toolbars" default lands on the design's 18px, as 24px
+ * took the toolbar's names off on windows with plenty of room.
  */
 
 #include <QListWidget>
-#include <QTemporaryDir>
 #include <QToolBar>
 #include <QToolButton>
 #include <QtTest/QtTest>
@@ -45,11 +31,7 @@
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -62,54 +44,24 @@ class EditorIconScaleTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorIconScale-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
 
-    // What the preference's default has to come out at: the size every other
-    // glyph in the editor and in the settings dialog is drawn at
+    // Same as uiDesign::scmSidebarIconSize, the settings sidebar's glyph size
     static constexpr int scmDesignLanguageGlyphSize = 18;
-    // ...and the value the preference holds until somebody changes it, set in
-    // mudlet::readSettings()
+    // Mirrors the default set in mudlet::readSettings()
     static constexpr int scmDefaultPreference = 3;
-    // What that default used to draw, when the step was eight pixels
+    // Preference 3 x 8px: the baseline the narrower-window case measures against
     static constexpr int scmOldDefaultGlyphSize = 24;
 
-    // The sweep the breakpoint is found by. The step is fine enough to tell two
-    // icon sizes apart on a bar of a dozen buttons.
+    // Fine enough to tell two icon sizes apart on a bar of a dozen buttons
     static constexpr int scmSweepStep = 10;
     static constexpr int scmSweepCeiling = 3000;
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    // Whether every button that acts on the profile - Import, Export, Create
-    // Module, Save Profile - is still carrying its name. That group is the
-    // first the bar takes the names off when it runs out of room, so the width
-    // it gives them up at is the width the bar stopped fitting at.
+    // The profile group is the first the bar takes the names off when it runs
+    // out of room, so it marks the width the bar stops fitting at
     bool profileGroupIsNamed() const
     {
         const auto& group = mpEditor->mEditorToolBarGroups.constFirst();
@@ -122,9 +74,7 @@ private:
         return true;
     }
 
-    // The narrowest window that still writes every name out. Swept upwards from
-    // the narrowest the editor can be dragged to, so the figure is one a user
-    // could actually arrive at.
+    // Swept up from the minimum width, so the figure is one a user could arrive at
     int narrowestWidthWithEveryNameWritten()
     {
         for (int width = mpEditor->minimumWidth(); width <= scmSweepCeiling; width += scmSweepStep) {
@@ -138,10 +88,8 @@ private:
         return -1;
     }
 
-    // mudlet::setToolBarIconSize() drops a value equal to the one it holds, so
-    // asking for the value already in force changes nothing - and a case that
-    // has just sized the toolbar by hand needs the mapping applied again. The
-    // step through a different value is what makes it run.
+    // mudlet::setToolBarIconSize() drops a value equal to the one it holds, so a
+    // step through another value is what makes the mapping run again
     void setPreference(const int value)
     {
         mudlet::self()->setToolBarIconSize(value == 1 ? 2 : 1);
@@ -153,29 +101,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showEditorDialog();
         QTest::qWait(100ms);
@@ -189,17 +120,9 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The mapping itself: what a profile that has never touched the preference
-    // gets is the size the rest of the window is drawn at
     void test_theDefaultPreferenceIsTheDesignLanguagesGlyph()
     {
         setPreference(scmDefaultPreference);
@@ -211,9 +134,6 @@ private slots:
         QCOMPARE(mpEditor->toolBar->iconSize(), QSize(scmDesignLanguageGlyphSize, scmDesignLanguageGlyphSize));
     }
 
-    // One scale for the window, whatever the preference says: the two bars sit
-    // against each other, and glyphs of different sizes on them read as a
-    // mistake at any setting
     void test_bothBarsFollowThePreferenceTogether()
     {
         for (const int value : {1, 2, 3, 4}) {
@@ -223,19 +143,12 @@ private slots:
                              qsl("At preference %1 the toolbar draws %2px and the sidebar %3px")
                                      .arg(QString::number(value), QString::number(mpEditor->toolBar->iconSize().width()), QString::number(mpEditor->mpListWidget_editorSidebar->iconSize().width()))));
         }
-        // ...and the steps above the default still scale up for anyone who
-        // needs a bigger target, 4 landing on the 24px the default used to draw
         setPreference(4);
         QCOMPARE(mpEditor->toolBar->iconSize(), QSize(24, 24));
     }
 
-    // What the rebaselining was for, measured rather than argued. Nothing is
-    // posted into an overflow menu any more - the bar takes the names off its
-    // buttons a group at a time instead - so what a wider glyph costs is read
-    // off the width the first of those groups gives its names up at. The bar it
-    // is measured against is 24px outright - the size the old mapping drew at
-    // the default - rather than a preference value, so the comparison says the
-    // same thing whatever the mapping is.
+    // The baseline is set as 24px outright rather than through a preference
+    // value, so the comparison holds whatever the mapping is
     void test_theDefaultWritesEveryNameOutOnANarrowerWindow()
     {
         setPreference(scmDefaultPreference);
@@ -243,8 +156,6 @@ private slots:
         QTest::qWait(50ms);
         const int before = narrowestWidthWithEveryNameWritten();
 
-        // ...against whatever the preference's default actually maps to, taken
-        // through the preference rather than set here
         setPreference(scmDefaultPreference);
         const int after = narrowestWidthWithEveryNameWritten();
 

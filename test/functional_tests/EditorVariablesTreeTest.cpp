@@ -18,18 +18,8 @@
  ***************************************************************************/
 
 /*
- * The seventh tree of the editor's panel, drawn the way the other six are.
- *
- * It used to be the exception: the view's own indentation and branch arrows, a
- * check box the platform drew, a bitmap from an icon set nothing else in the
- * window still uses, and a name with nothing after it. Beside six trees whose
- * rows are one height and lead with one mark at one size, that reads as a
- * different list that happens to be in the same column.
- *
- * VariableTreeDelegate draws it now: the square that says whether the profile
- * keeps the variable where an item's state dot goes, the mark for what kind of
- * value it holds beside it, and as much of the value itself at the trailing edge
- * as the panel's width leaves room for.
+ * Guards VariableTreeDelegate: the variables tree keeps the six item trees' row
+ * grammar, and its kept square, type mark and value preview behave.
  *
  * Run with: ctest -R EditorVariablesTreeTest -V
  */
@@ -41,27 +31,21 @@
 #include <QPalette>
 #include <QPixmap>
 #include <QStyleOptionViewItem>
-#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
-#include <cstdlib>
 
 #include "EditorTreeRowMetrics.h"
 #include "Host.h"
 #include "HostDialogs.h"
 #include "LuaInterface.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TLuaInterpreter.h"
 #include "TTreeWidget.h"
 #include "TVar.h"
-#include "TelnetServerStub.h"
 #include "VarUnit.h"
 #include "VariableTreeDelegate.h"
-#include "ctelnet.h"
 #include "dlgSourceEditorArea.h"
 #include "dlgTriggerEditor.h"
 #include "dlgVarsMainArea.h"
@@ -73,9 +57,8 @@
 using namespace std::chrono_literals;
 
 namespace {
-// QTreeWidget::indexFromItem() is protected, and a row that is scrolled out of
-// the viewport has no rectangle to ask indexAt() about - so the index is taken
-// from the widget through its own type, with no cast of the object involved.
+// indexFromItem() is protected and an off-screen row has no rect for indexAt();
+// the member pointer reaches it without casting the tree to a type it is not
 struct TreeIndexPeek : QTreeWidget
 {
     static QModelIndex of(const QTreeWidget* pTree, QTreeWidgetItem* pItem)
@@ -91,43 +74,17 @@ class EditorVariablesTreeTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     TTreeWidget* mpVariablesTree = nullptr;
     const QString mProfileName = qsl("EditorVariablesTree-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
-    // The size a mark is drawn at, written out rather than read out of the code
-    // under test: a test that takes the number from what it is checking cannot
-    // fail when that number moves
+    // Written out rather than read from the code under test, so the test fails
+    // when that size moves
     static constexpr int scmMarkSize = 16;
-    // How far a pixel may be from the tone it should be drawn in and still count
-    // as drawn in it: antialiasing blends the edge of every stroke into what is
-    // behind it, and only the middle of one lands on the colour itself
+    // Antialiasing blends a stroke's edge into the background; only its middle
+    // lands on the colour itself
     static constexpr int scmInkTolerance = 24;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     uiDesign::VariableTreeDelegate* delegate() const { return mpEditor->mpVariableTreeDelegate; }
 
@@ -177,7 +134,8 @@ private:
     {
         mpVariablesTree->scrollToItem(pItem);
         QCoreApplication::processEvents();
-        return delegate()->keptHitRect(indexOf(pItem));
+        const QModelIndex index = indexOf(pItem);
+        return delegate()->dotHitRect(delegate()->rowOption(index), index);
     }
 
     void selectVariable(QTreeWidgetItem* pItem)
@@ -190,8 +148,8 @@ private:
 
     QString previewOf(QTreeWidgetItem* pItem) const { return pItem ? pItem->data(0, uiDesign::scmRole_variablePreview).toString() : QString(); }
 
-    // The same walk updateHiddenVariablesCount() makes, so that a case can say
-    // what the reading beside the switch ought to be without reading it
+    // Mirrors updateHiddenVariablesCount(), so a case knows the expected count
+    // without reading the label it checks
     int hiddenGlobals() const
     {
         int hiddenCount = 0;
@@ -206,36 +164,15 @@ private:
         return hiddenCount;
     }
 
-    static QImage drawnAt(const QIcon& icon, const int size) { return icon.pixmap(QSize(size, size)).toImage(); }
-
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -248,9 +185,6 @@ private slots:
         mpVariablesTree = mpEditor->treeWidget_variables;
         QVERIFY2(mpVariablesTree != nullptr, "the editor has no variables tree");
 
-        // One of every reading a row can be in: a value of each kind the mark
-        // beside a name has a glyph for, a table keyed by name, a table keyed by
-        // place, and a table with a member to keep
         QVERIFY2(mpHost->mLuaInterpreter.compileAndExecuteScript(qsl("myString = \"north\"\n"
                                                                      "myNumber = 42\n"
                                                                      "myBoolean = true\n"
@@ -260,8 +194,7 @@ private slots:
                                                                      "myNested = { kept = \"yes\" }\n")),
                  "the variables these cases read could not be made");
 
-        // A trigger of the profile's own, so that a row of one of the six trees
-        // is there to measure a variable's row against
+        // So the triggers tree has a row to measure a variable's row against
         mpEditor->slot_showTriggers();
         QTest::qWait(50ms);
         mpEditor->addTrigger(false);
@@ -283,18 +216,9 @@ private slots:
         mpVariablesTree = nullptr;
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The seventh tree is drawn by a delegate of ours, and its rows are the
-    // height the other six trees' rows are. They used to be as tall as whatever
-    // the platform's check box and a 32px bitmap came to.
     void test_everyRowIsTheHeightAnItemTreesRowIs()
     {
         QVERIFY2(qobject_cast<uiDesign::VariableTreeDelegate*>(mpVariablesTree->itemDelegateForIndex(QModelIndex())) != nullptr,
@@ -328,9 +252,6 @@ private slots:
         QVERIFY2(uneven.isEmpty(), qPrintable(qsl("the variables tree is not on the item trees' row grammar: %1").arg(uneven.join(qsl("; ")))));
     }
 
-    // The square at the head of a row is the switch that says whether the
-    // profile keeps the variable, and a click on it throws that switch - which
-    // is what puts the variable into savedVars and takes it back out
     void test_clickingTheKeptSquareKeepsTheVariable()
     {
         openTheVariablesView();
@@ -350,8 +271,6 @@ private slots:
         QCOMPARE(pString->checkState(0), Qt::Unchecked);
         QVERIFY2(!varUnit()->savedVars.contains(qsl("myString")), "clicking the square a second time did not stop the profile keeping the variable");
 
-        // ...and a click anywhere else on the row picks it without throwing that
-        // switch, which is what the rest of a row is for
         const QRect row = mpVariablesTree->visualItemRect(pString);
         const QPoint onTheName(row.right() - 8, row.center().y());
         QVERIFY2(!keptRectOf(pString).contains(onTheName), "the point this case clicks has to be clear of the square");
@@ -361,8 +280,7 @@ private slots:
         QCOMPARE(pString->checkState(0), Qt::Unchecked);
     }
 
-    // A table's square keeps the whole of it: Qt's tristate cascade ticks every
-    // member, and each of those ticks is what enrols the member
+    // Qt's tristate cascade ticks every member, and each tick is what enrols it
     void test_clickingATablesSquareKeepsItsMembers()
     {
         openTheVariablesView();
@@ -379,15 +297,13 @@ private slots:
         QVERIFY2(varUnit()->savedVars.contains(qsl("myNested")) && varUnit()->savedVars.contains(qsl("myNested.kept")),
                  qPrintable(qsl("keeping the table did not enrol it and its member; what is kept is: %1").arg(QStringList(varUnit()->savedVars.begin(), varUnit()->savedVars.end()).join(qsl(", ")))));
 
-        // ...and put back, so the cases after this one start where this one did
+        // Put back, so the cases after this one start where this one did
         QTest::mouseClick(viewport(), Qt::LeftButton, Qt::NoModifier, keptRectOf(pTable).center());
         QCoreApplication::processEvents();
         QCOMPARE(pTable->checkState(0), Qt::Unchecked);
     }
 
-    // A Lua function is one the profile cannot keep whatever the reader asks, so
-    // its row carries no square at all - and a click where one would be is a
-    // click on the row like any other
+    // The profile cannot save a Lua function
     void test_aFunctionsRowHasNoSquareToClick()
     {
         openTheVariablesView();
@@ -395,7 +311,7 @@ private slots:
         QTreeWidgetItem* pString = variableRow(qsl("myString"));
         QVERIFY(pFunction && pString);
 
-        QVERIFY2(delegate()->keptHitRect(indexOf(pFunction)).isNull(), "a variable the profile cannot keep still reports a square to click");
+        QVERIFY2(delegate()->dotHitRect(delegate()->rowOption(indexOf(pFunction)), indexOf(pFunction)).isNull(), "a variable the profile cannot keep still reports a square to click");
 
         const QRect square = keptRectOf(pString);
         mpVariablesTree->scrollToItem(pFunction);
@@ -410,7 +326,6 @@ private slots:
         QVERIFY2(!varUnit()->savedVars.contains(qsl("myFunction")), "a click where the square would be enrolled a variable the profile cannot keep");
     }
 
-    // What the trailing edge of a row says about the value behind it, per kind
     void test_theTrailingEdgeSaysWhatTheValueIs()
     {
         openTheVariablesView();
@@ -432,7 +347,6 @@ private slots:
         qInfo().noquote() << qsl("  previews: %1").arg(measured.join(qsl(", ")));
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("a row does not say what its value is: %1").arg(wrong.join(qsl("; ")))));
 
-        // ...and it follows the value when the form writes a new one back
         QTreeWidgetItem* pString = variableRow(qsl("myString"));
         selectVariable(pString);
         mpEditor->mpSourceEditorEdbeeDocument->setText(qsl("south"));
@@ -440,16 +354,15 @@ private slots:
         QCoreApplication::processEvents();
         QCOMPARE(previewOf(pString), qsl("\"south\""));
 
-        // put back, so the cases after this one read what the fixture wrote
+        // Put back, so the cases after this one read what the fixture wrote
         selectVariable(pString);
         mpEditor->mpSourceEditorEdbeeDocument->setText(qsl("north"));
         mpEditor->saveVar();
         QCoreApplication::processEvents();
         QCOMPARE(previewOf(pString), qsl("\"north\""));
 
-        // ...and it reaches the row rather than only the data behind it: the
-        // name is short and the preview is drawn at the trailing edge, so ink
-        // in the last third of the row can only be the preview
+        // The name is short and the preview sits at the trailing edge, so muted
+        // ink in the last third of the row can only be the preview
         mpVariablesTree->clearSelection();
         mpVariablesTree->setCurrentItem(headingRow());
         mpVariablesTree->scrollToItem(pString);
@@ -462,8 +375,7 @@ private slots:
         for (int y = row.top(); y <= row.bottom() && y < shot.height(); ++y) {
             for (int x = row.left() + (2 * row.width()) / 3; x <= row.right() && x < shot.width(); ++x) {
                 const QColor pixel = shot.pixelColor(x, y);
-                if (std::abs(pixel.red() - chrome.red()) <= scmInkTolerance && std::abs(pixel.green() - chrome.green()) <= scmInkTolerance
-                    && std::abs(pixel.blue() - chrome.blue()) <= scmInkTolerance) {
+                if (TestPixels::readsAs(pixel, chrome, scmInkTolerance)) {
                     ++inked;
                 }
             }
@@ -472,9 +384,7 @@ private slots:
         QVERIFY2(inked > 0, "nothing is drawn at the trailing edge of the row, so the preview never reaches the panel");
     }
 
-    // A number key is a place in a list rather than a name, and is drawn as one.
-    // The row's own text stays the bare number: the editor reaches the variable
-    // by it.
+    // The row's own text stays the bare number: the editor reaches the variable by it
     void test_anIndexKeyIsDrawnAsAPlaceInAList()
     {
         openTheVariablesView();
@@ -496,7 +406,6 @@ private slots:
                 wrong << qsl("the row's own text is \"%1\" rather than the bare number the editor reaches it by").arg(pMember->text(0));
             }
         }
-        // ...and a table keyed by name is not given brackets it has no place for
         QTreeWidgetItem* pKeyed = variableRow(qsl("myKeyed"));
         QVERIFY(pKeyed && pKeyed->childCount() > 0);
         const QString namedMember = delegate()->displayNameFor(indexOf(pKeyed->child(0)));
@@ -508,9 +417,6 @@ private slots:
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("a key is not drawn for what it is: %1").arg(wrong.join(qsl("; ")))));
     }
 
-    // The mark beside a name says what kind of value the row holds, and each
-    // kind has its own glyph - a table's being the braces the sidebar's
-    // Variables row carries, because a table is braces wherever it is drawn
     void test_eachRowCarriesTheMarkForItsKindOfValue()
     {
         openTheVariablesView();
@@ -529,8 +435,7 @@ private slots:
                 wrong << qsl("%1 is marked with %2 where it should be marked with %3").arg(row.first, drawn, row.second);
             }
         }
-        // ...and each of those is a picture the binary actually carries: a file
-        // left out of the resource list reads back as nothing at all
+        // A file left out of the resource list reads back as a null pixmap
         for (const QString& file : {qsl(":/icons/editor-type-string.svg"),
                                     qsl(":/icons/editor-type-number.svg"),
                                     qsl(":/icons/editor-type-boolean.svg"),
@@ -545,9 +450,6 @@ private slots:
         QVERIFY2(wrong.isEmpty(), qPrintable(qsl("a row is not marked for the kind of value it holds: %1").arg(wrong.join(qsl("; ")))));
     }
 
-    // A hidden variable is one the tree leaves out until the switch above it is
-    // thrown; while it is shown it carries a mark saying so, and the switch says
-    // how many there are to bring in
     void test_aHiddenVariableIsMarkedAndCounted()
     {
         openTheVariablesView();
@@ -570,8 +472,6 @@ private slots:
         QVERIFY2(mpEditor->checkBox_displayAllVariables->accessibleName().contains(QString::number(before + 1)),
                  qPrintable(qsl("the switch is announced as \"%1\", which does not say how many are hidden").arg(mpEditor->checkBox_displayAllVariables->accessibleName())));
 
-        // Thrown on, the tree is read again and the row comes back - carrying the
-        // mark that says why it had gone
         mpEditor->checkBox_displayAllVariables->setChecked(true);
         QCoreApplication::processEvents();
         mpVariablesTree->expandAll();
@@ -580,13 +480,12 @@ private slots:
         QVERIFY2(delegate()->carriesHiddenMark(indexOf(pShown)), "a hidden variable's row carries no mark saying it is hidden");
         QVERIFY2(!delegate()->carriesHiddenMark(indexOf(variableRow(qsl("myNumber")))), "a variable that is not hidden carries the mark that says it is");
 
-        // ...and thrown off again, the row is not in the tree at all
         mpEditor->checkBox_displayAllVariables->setChecked(false);
         QCoreApplication::processEvents();
         mpVariablesTree->expandAll();
         QVERIFY2(variableRow(qsl("myString")) == nullptr, "a hidden variable is still listed with the switch off");
 
-        // ...and put back, since the cases after this one read the same variable
+        // Put back, since the cases after this one read the same variable
         varUnit()->removeHidden(qsl("myString"));
         openTheVariablesView();
         QVERIFY2(variableRow(qsl("myString")) != nullptr, "the variable this case hid was not put back");
@@ -595,9 +494,6 @@ private slots:
                  qPrintable(qsl("the reading beside the switch says \"%1\" with %2 hidden").arg(pCount->text(), QString::number(before))));
     }
 
-    // A variable Lua will not let the profile keep is written in the tone an
-    // unavailable word is written in, and one it will in the tone the rest of
-    // the editor's chrome is
     void test_aVariableThatCannotBeKeptIsDrawnAsUnavailable()
     {
         openTheVariablesView();
@@ -610,9 +506,8 @@ private slots:
         QCOMPARE(functionInk.name(), tokens.disabledText.name());
         QCOMPARE(stringInk.name(), tokens.mutedText.name());
 
-        // ReadabilityAuditTest reads a widget's palette, which says nothing
-        // about an ink a delegate paints with - so the floor that tone is walked
-        // to is checked here, against the surface the panel of trees is painted
+        // ReadabilityAuditTest reads widget palettes and cannot see an ink a
+        // delegate paints with, so this tone's contrast floor is checked here
         const qreal ratio = uiDesign::contrastRatio(tokens.disabledText, tokens.pane);
         qInfo().noquote() << qsl("  the unavailable tone clears %1:1 on the panel").arg(QString::number(ratio, 'f', 2));
         QVERIFY2(ratio >= uiDesign::scmQuietMinimumRatio,
@@ -620,9 +515,6 @@ private slots:
                                     .arg(tokens.disabledText.name(), QString::number(ratio, 'f', 2), QString::number(uiDesign::scmQuietMinimumRatio, 'f', 1))));
     }
 
-    // The row at the top of the tree stands for what the sidebar's Variables row
-    // stands for, so it carries that row's glyph - and nothing the profile could
-    // keep, so it carries no square
     void test_theHeadingRowCarriesTheBracesAndNoSquare()
     {
         openTheVariablesView();
@@ -630,12 +522,11 @@ private slots:
         QVERIFY(pHeading);
         QCOMPARE(pHeading->text(0), qsl("Variables"));
 
-        QVERIFY2(delegate()->keptHitRect(indexOf(pHeading)).isNull(), "the tree's own heading row reports a square the profile could keep it by");
+        QVERIFY2(delegate()->dotHitRect(delegate()->rowOption(indexOf(pHeading)), indexOf(pHeading)).isNull(), "the tree's own heading row reports a square the profile could keep it by");
         QVERIFY2(delegate()->typeGlyphFile(indexOf(pHeading)).isEmpty(), "the tree's own heading row is marked as though it held a Lua value");
 
-        // What the delegate hands the style to draw, rather than what the row
-        // happens to be carrying: the heading is the one row whose own picture
-        // is used, and at the size every mark under it is drawn at
+        // Read from initStyleOption() rather than the item: the heading is the
+        // one row whose own picture the delegate hands the style
         mpVariablesTree->scrollToItem(pHeading);
         QCoreApplication::processEvents();
         QStyleOptionViewItem option = mpVariablesTree->viewItemOption();
@@ -644,8 +535,8 @@ private slots:
         QCOMPARE(option.decorationSize, QSize(scmMarkSize, scmMarkSize));
 
         const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
-        const QImage onTheHeading = drawnAt(option.icon, scmMarkSize);
-        const QImage wanted = drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-variables.svg")), tokens.mutedText)), scmMarkSize);
+        const QImage onTheHeading = TestPixels::drawnAt(option.icon, scmMarkSize);
+        const QImage wanted = TestPixels::drawnAt(QIcon(uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-variables.svg")), tokens.mutedText)), scmMarkSize);
         QVERIFY2(!onTheHeading.isNull(), "the tree's heading row carries no picture at all");
         QVERIFY2(onTheHeading == wanted, "the tree's heading row does not carry the braces its sidebar row carries, inked in the tone the editor's chrome is");
     }

@@ -18,37 +18,21 @@
  ***************************************************************************/
 
 /*
- * The script editor has to open where the user last left it, and stay there
- * when it is toggled away and back. It remembered its size but not its
- * position, and the asymmetry named the culprit: the size was only ever read
- * from settings, while the position was overwritten after every show.
- *
- * The editor is a singleton that is hidden and shown rather than built and
- * destroyed, and the slots that show it re-centred it on the profile's screen
- * each time - mudlet::slot_showEditorDialog() with
- * utils::forceRepositionDialogOnParentScreen(), which centres unconditionally,
- * and mudlet::slot_showTriggerDialog() with utils::positionDialogOnParentScreen(),
- * which centres any dialog that is not currently visible, and the singleton is
- * hidden at that point. Neither touched the size, which is exactly the shape of
- * the bug that was reported.
- *
- * This has to be driven through those slots. A test that constructs the editor
- * itself never runs them, which is how the defect survived the geometry work.
+ * The editor must reopen where it was left, also after a hide and show: the
+ * show slots re-centred the hidden singleton. Driven through those slots, since
+ * a test that constructs the editor itself never runs them.
  */
 
 #include <QGuiApplication>
 #include <QScreen>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -61,82 +45,34 @@ class EditorPlacementPersistenceTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorPlacementPersistence-Test-Profile");
-    QString mPort; // assigned the stub's actual ephemeral port in initTestCase()
-    const QString mLocalhost = qsl("localhost");
 
-    QPoint mSeededPos;  // written to settings before the editor is built
-    QPoint mDraggedPos; // where the test moves it to, standing in for a drag
+    QPoint mSeededPos;
+    QPoint mDraggedPos;
     QSize mSeededSize;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        const QString path = MudletApp::getMudletPath(enums::profileHomePath, profileName);
-        QDir dir(path);
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(1s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     static QString describe(const QPoint& point) { return qsl("(%1,%2)").arg(QString::number(point.x()), QString::number(point.y())); }
 
-    static QString describe(const QSize& size) { return qsl("%1x%2").arg(QString::number(size.width()), QString::number(size.height())); }
-
-    // Every measurement the report asks for goes through here, so a run says
-    // where the window was at each step whether it passes or fails
-    void report(const char* step) const { qInfo().noquote() << qsl("  %1: pos %2 size %3").arg(QString::fromLatin1(step), describe(mpEditor->pos()), describe(mpEditor->size())); }
+    void report(const char* step) const { qInfo().noquote() << qsl("  %1: pos %2 size %3").arg(QString::fromLatin1(step), describe(mpEditor->pos()), TestPixels::describe(mpEditor->size())); }
 
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, "
-                  "so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>("MudletInstanceCoordinator"));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
 
         const QScreen* pScreen = QGuiApplication::primaryScreen();
         QVERIFY(pScreen);
         const QRect availableArea = pScreen->availableGeometry();
 
-        // Both placements sit a little way inside the desktop, so the editor is
-        // reachable at either of them and showEvent() has no reason to move it.
-        // They are far enough apart, and far enough from the centre this used to
-        // snap to, that no rounding can make one look like the other
+        // Inside the desktop, so showEvent() has no reason to move the editor, and
+        // far enough apart and off-centre that no rounding confuses the two
         mSeededPos = availableArea.topLeft() + QPoint(24, 18);
         mDraggedPos = availableArea.topLeft() + QPoint(103, 71);
         mSeededSize = QSize(640, 460).boundedTo(availableArea.size());
@@ -145,25 +81,18 @@ private slots:
         MudletApp::getQSettings()->setValue(qsl("script_editor_pos"), mSeededPos);
         MudletApp::getQSettings()->setValue(qsl("script_editor_size"), mSeededSize);
 
-        startProfile(mProfileName, mLocalhost, mPort);
-        qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), describe(mSeededSize));
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
+        qInfo().noquote() << qsl("  seeded: pos %1 size %2").arg(describe(mSeededPos), TestPixels::describe(mSeededSize));
     }
 
     void cleanupTestCase()
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // Shown the way the application shows it - through the slot the menu item
-    // and the keyboard shortcut are wired to, not by constructing it here
     void test_editorOpensAtTheStoredPosition()
     {
         mudlet::self()->slot_showEditorDialog();
@@ -176,9 +105,7 @@ private slots:
         QVERIFY2(mpEditor->pos() == mSeededPos, qPrintable(qsl("The editor was stored at %1 but opened at %2 - showing it moved it").arg(describe(mSeededPos), describe(mpEditor->pos()))));
     }
 
-    // The reported symptom: toggle the editor away and back, and it is centred
-    // again. The size always survived this, which is why it is asserted too -
-    // the two have to behave the same way
+    // Size is asserted too, so position and size are held to the same behaviour
     void test_hidingAndShowingKeepsThePlacement()
     {
         // The move stands in for a drag: moveEvent() cannot tell the two apart,
@@ -194,12 +121,11 @@ private slots:
         report("after hide and show");
 
         QVERIFY2(mpEditor->pos() == mDraggedPos, qPrintable(qsl("The editor was left at %1 and came back at %2 - it is moved on every show").arg(describe(mDraggedPos), describe(mpEditor->pos()))));
-        QVERIFY2(mpEditor->size() == sizeBefore, qPrintable(qsl("The editor was left at %1 and came back at %2").arg(describe(sizeBefore), describe(mpEditor->size()))));
+        QVERIFY2(mpEditor->size() == sizeBefore, qPrintable(qsl("The editor was left at %1 and came back at %2").arg(TestPixels::describe(sizeBefore), TestPixels::describe(mpEditor->size()))));
     }
 
-    // The other slot that shows the singleton reached the same helper by a
-    // different route: it repositions any dialog that is not visible, and the
-    // editor is hidden when it runs
+    // positionDialogOnParentScreen() repositions any dialog that is not visible,
+    // and the editor is hidden when this slot runs
     void test_theTriggerSlotKeepsThePlacementToo()
     {
         mpEditor->move(mDraggedPos);
@@ -213,8 +139,6 @@ private slots:
         QVERIFY2(mpEditor->pos() == mDraggedPos, qPrintable(qsl("The editor was left at %1 and the trigger slot brought it back at %2").arg(describe(mDraggedPos), describe(mpEditor->pos()))));
     }
 
-    // The round trip across instances: closing writes the placement out, and a
-    // brand new editor reads it back
     void test_thePlacementSurvivesAFreshEditor()
     {
         const QSize sizeBefore = mpEditor->size();
@@ -224,7 +148,7 @@ private slots:
 
         const QPoint storedPos = MudletApp::getQSettings()->value(qsl("script_editor_pos")).toPoint();
         const QSize storedSize = MudletApp::getQSettings()->value(qsl("script_editor_size")).toSize();
-        qInfo().noquote() << qsl("  in QSettings on close: pos %1 size %2").arg(describe(storedPos), describe(storedSize));
+        qInfo().noquote() << qsl("  in QSettings on close: pos %1 size %2").arg(describe(storedPos), TestPixels::describe(storedSize));
         QVERIFY2(storedPos == mDraggedPos, qPrintable(qsl("The editor was at %1 when it closed but stored %2").arg(describe(mDraggedPos), describe(storedPos))));
         QCOMPARE(storedSize, sizeBefore);
 

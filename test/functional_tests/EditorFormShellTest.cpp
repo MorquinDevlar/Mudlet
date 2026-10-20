@@ -18,26 +18,9 @@
  ***************************************************************************/
 
 /*
- * The five forms that are a fixed set of fields, and the seam over them.
- *
- * Three things this holds them to:
- *
- * - The code pane's heading resizes nothing in those five views. Their forms
- *   have no list and no editor in them, so a column dragged taller than the
- *   fields is empty room under them: the column is held to its contents'
- *   height, and a push on the handle leaves it there. The trigger view, whose
- *   form does hold a pattern list, still grows.
- *
- * - Choosing the "Timers" root row leaves the code pane hidden the way the six
- *   other roots do. clearTimerForm() hid its own form twice and the code pane
- *   never, so the root row showed the placeholder notice over a Lua editor
- *   holding the last timer's script.
- *
- * - Every view's first field starts at the same x, and inside a form the field
- *   on a row under the head row starts where the name field above it does. The
- *   Buttons form is walked with them, though its column is not a fixed one: its
- *   rows line up with the rest, and the room a drag gives the column goes to the
- *   stylesheet editor rather than between those rows.
+ * The five fixed-field forms hold their column to their fields' height against the
+ * code pane's handle, the Timers root row hides the code pane as the other roots do,
+ * and every shelled form's fields line up with its name field.
  *
  * Run with: ctest -R EditorFormShellTest -V
  */
@@ -46,7 +29,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
@@ -54,12 +36,7 @@
 #include "GripSplitter.h"
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgActionMainArea.h"
 #include "dlgAliasMainArea.h"
 #include "dlgKeysMainArea.h"
@@ -80,41 +57,14 @@ class EditorFormShellTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorFormShell-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
-    // How hard the handle is pushed at a form column that should not move
     static constexpr int scmPush = 200;
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
-
-    // The one frame every form can be compared in: each field is nested a
-    // different number of layouts deep in its own form
+    // The window's frame, since each field is nested a different number of layouts deep
     int leftEdgeOf(QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).x(); }
 
     int topEdgeOf(const QWidget* pWidget) const { return pWidget->mapTo(mpEditor, QPoint(0, 0)).y(); }
@@ -150,7 +100,6 @@ private:
         QTest::qWait(50ms);
     }
 
-    // The first row of a view's tree, which is the item its form is filled from
     void chooseTheFirstItem(QTreeWidget* pTree)
     {
         QTreeWidgetItem* pBase = pTree->topLevelItem(0);
@@ -186,8 +135,6 @@ private:
         }
     }
 
-    // The field on the row under the head row, which has to start where the
-    // name field above it does
     QWidget* leadFieldOf(const EditorViewType view) const
     {
         switch (view) {
@@ -200,20 +147,16 @@ private:
         case EditorViewType::cmScriptView:
             return mpEditor->mpChipRow_scriptEvents;
         case EditorViewType::cmTimerView:
-            // The interval is a sentence, and the words lead it - so what has
-            // to start where the name does is the row, not the first field in it
+            // The sentence starts with words, so the row rather than its first field aligns with the name
             return mpEditor->mpWidget_timerInterval;
         case EditorViewType::cmActionView:
-            // The rotation row leads the Buttons form, and the picker is the
-            // first thing on it - so the two start at the same x
+            // The rotation picker is the first thing on the row leading the Buttons form
             return mpEditor->mpActionsMainArea->comboBox_action_button_rotation;
         default:
             return nullptr;
         }
     }
 
-    // The form a view puts in the column, which is what the column is holding
-    // whenever an item of that kind is chosen
     QWidget* formAreaOf(const EditorViewType view) const
     {
         switch (view) {
@@ -258,17 +201,13 @@ private:
         }
     }
 
-    // The five whose form is a fixed set of fields, in the order they are
-    // walked below
     static QList<EditorViewType> fixedViews()
     {
         return {EditorViewType::cmAliasView, EditorViewType::cmTimerView, EditorViewType::cmKeysView, EditorViewType::cmScriptView, EditorViewType::cmVarsView};
     }
 
-    // ...and those five with the Buttons form, which is every view shelled over
-    // its .ui grid. It is not one of the fixed five - its stylesheet editor uses
-    // whatever room the column is given - but its name and its rows are laid out
-    // to the same measurements, so the two walks below take it with them.
+    // Buttons is not a fixed form, as its stylesheet editor takes any room the column gets, but
+    // its name and rows are laid out to the same measurements
     static QList<EditorViewType> shelledViews()
     {
         QList<EditorViewType> views = fixedViews();
@@ -309,28 +248,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -339,8 +262,7 @@ private slots:
         mpEditor->resize(1100, 900);
         QTest::qWait(50ms);
 
-        // One item of every kind, so that every form is filled from something a
-        // user would be looking at rather than showing the empty-view notice
+        // One item of every kind, so no form shows the empty-view notice instead
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         mpEditor->slot_showAliases();
@@ -361,18 +283,9 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The handle over the code pane says what it is by what it does: a hovered
-    // band and a drag in the two views whose forms can use the room, neither in
-    // the five that cannot
     void test_theCodeHeadingOnlyDragsWhereTheFormCanUseTheRoom()
     {
         openAndChoose(EditorViewType::cmTriggerView);
@@ -384,23 +297,16 @@ private slots:
         }
     }
 
-    // ...and the column itself is held to the height its fields ask for, so a
-    // push on the handle - or a window resize - cannot leave empty room under
-    // the last of them. Where the item has nothing to edit - a Lua table - the
-    // code pane is away and there is no seam to hold anything to: what the
-    // column has to promise there is the form at its own height, leading the
-    // pane rather than centred in it.
+    // Where the item has nothing to edit (a Lua table) the code pane is away, and the form must
+    // then lead the pane at its own height rather than be centred in it
     void test_aFixedFormColumnStaysAtTheHeightItsFieldsAskFor()
     {
-        // Where a form starts when the column leads the pane, which is the same
-        // y in every one of these views - so it is what a form with no code
-        // pane under it has to be held against
+        // The same y in every fixed view, so a form with no code pane under it is held to it
         int formTopOverACodePane = 0;
         for (const EditorViewType view : fixedViews()) {
             openAndChoose(view);
-            // With no notice over the form the column asks for exactly what its
-            // fields need; the notice's own label wraps, so its minimum is
-            // taller than the line it shows and the two answers diverge
+            // The notice's label wraps, so its minimum is taller than the line it shows and the
+            // column's size hint would stop matching its fields
             mpEditor->hideSystemMessageArea();
             QCoreApplication::processEvents();
             QTest::qWait(50ms);
@@ -438,17 +344,14 @@ private slots:
             QCoreApplication::processEvents();
             QTest::qWait(50ms);
 
-            // What the reader sees, rather than what the splitter has written
-            // down: QSplitter records the size it asked for and the column's own
-            // maximum is what actually holds it there
+            // The widget's height, not sizes(): QSplitter records the size it asked for, and the
+            // column's own maximum is what holds it
             QVERIFY2(mpEditor->mpNonCodeWidgets->height() == wanted,
                      qPrintable(qsl("the %1 form column was pushed to %2 and stayed there - it asks for %3")
                                         .arg(nameOf(view), QString::number(mpEditor->mpNonCodeWidgets->height()), QString::number(wanted))));
         }
     }
 
-    // The trigger form is the other half of the same rule: its pattern list can
-    // use whatever room it is given, so the same push moves it
     void test_theTriggerFormColumnStillTakesAPush()
     {
         openAndChoose(EditorViewType::cmTriggerView);
@@ -465,9 +368,6 @@ private slots:
                  qPrintable(qsl("the trigger form column was pushed from %1 and came back to %2").arg(QString::number(before), QString::number(mpEditor->splitter_right->sizes().at(0)))));
     }
 
-    // Every other root row hides the code pane along with its form; the timers
-    // one hid its form twice instead, leaving the last timer's Lua on show
-    // under the "nothing chosen" notice
     void test_theTimersRootRowHidesTheCodePane()
     {
         openAndChoose(EditorViewType::cmTimerView);
@@ -484,8 +384,6 @@ private slots:
         QVERIFY2(!mpEditor->mpSourceEditorArea->isVisible(), "the code pane is still showing on the timers root row, holding the last timer's script under the placeholder notice");
     }
 
-    // One line down the left of the window: whichever view is open, the name is
-    // typed at the same x
     void test_everyViewsNameFieldStartsAtTheSameX()
     {
         openAndChoose(EditorViewType::cmTriggerView);
@@ -501,8 +399,6 @@ private slots:
         }
     }
 
-    // ...and inside a form, the field on the row under the head row starts
-    // where the name field above it does
     void test_aRowUnderTheHeadRowStartsWhereTheNameDoes()
     {
         for (const EditorViewType view : shelledViews()) {
@@ -520,8 +416,7 @@ private slots:
         }
     }
 
-    // A key group never matches a keystroke - TKey::match() answers no for a
-    // folder - so the row that sets one is not a setting it has
+    // TKey::match() never matches a folder, so a key group has no keystroke to set
     void test_aKeyGroupIsNotOfferedAKeystroke()
     {
         openAndChoose(EditorViewType::cmKeysView);
@@ -536,25 +431,17 @@ private slots:
         QVERIFY2(!mpEditor->mpLabel_keyHint->isVisible(), "a key group is still told how to set a keystroke");
     }
 
-    // The Buttons form was the one that never joined the rest: a group box of
-    // toolbar settings beside a group box of button settings, their words
-    // right-aligned at two x positions of their own and every one of them ending
-    // in a colon. It is rows of one grid now, led at the width every other
-    // form's words are held to - and what a drag on this view's seam gives the
-    // column goes to the stylesheet editor rather than between those rows.
     void test_theButtonsFormIsBuiltLikeTheOtherForms()
     {
         openAndChoose(EditorViewType::cmActionView);
-        // The case before this one left a fixed view's column capped to its
-        // contents; the cap comes off on the layout request this view's entry
-        // posts, which has to arrive before anything here is measured
+        // The previous case left the column capped to a fixed form; the cap comes off on the layout
+        // request this view's entry posts, which has to arrive before anything is measured
         QCoreApplication::processEvents();
         QTest::qWait(50ms);
         auto* pGrid = qobject_cast<QGridLayout*>(mpEditor->mpActionsMainArea->layout());
         QVERIFY2(pGrid != nullptr, "the buttons form is not laid out as a grid, so it was never shelled over its .ui file");
 
-        // Measured off one of the other forms rather than named here, since what
-        // the width comes to is the font the window turns out to be running at
+        // Measured off the alias form, not named: the width depends on the font the window runs at
         const int leadWidth = mpEditor->mpAliasMainArea->label_alias_pattern->minimumWidth();
         QVERIFY2(leadWidth > 0, "the alias form's lead word has no width of its own, so there is nothing to hold the buttons form's to");
 
@@ -565,8 +452,7 @@ private slots:
             int rowSpan = 1;
             int columnSpan = 1;
             pGrid->getItemPosition(i, &row, &column, &rowSpan, &columnSpan);
-            // The head row spans the whole grid; a word leading a row is the
-            // first column of it and nothing else
+            // The head row spans the grid; a row's lead word sits alone in column 0
             if (column != 0 || columnSpan != 1) {
                 continue;
             }

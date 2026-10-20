@@ -110,12 +110,9 @@ private:
     }
 
     // The property a rescued window has to end up with, stated in terms of what
-    // the user gets rather than of the test the rescue itself applies: none of
-    // the window is off the desktop except whatever of it the desktop is too
-    // small to hold. The editor opens at the desktop's own size where that is
-    // smaller than the size it wants (EditorDefaultSizeTest), and an 800x800
-    // offscreen desktop is one of those - so on that desktop a window that is
-    // as far inside it as it can be still has its frame hanging over an edge.
+    // the user gets rather than of the test the rescue itself applies
+    // On an 800x800 offscreen desktop the editor opens at the desktop's size (EditorDefaultSizeTest),
+    // so even a window as far inside as it fits has its frame hanging over an edge
     static bool asFarInsideTheDesktopAsItFits(const QWidget* widget)
     {
         const QRect frame = widget->frameGeometry();
@@ -298,9 +295,8 @@ private slots:
         const QRect screen = QApplication::primaryScreen()->availableGeometry();
         const QSize editorSize = mpEditor->size();
         const QPoint centred(screen.center().x() - editorSize.width() / 2, screen.center().y() - editorSize.height() / 2);
-        // An editor as wide or as tall as the desktop cannot be centred without
-        // hanging off the leading edge, where there is no title bar to grab it
-        // by, so it is pushed flush against that edge instead
+        // Centring an editor as wide or tall as the desktop would hang its title bar off the
+        // leading edge, so it is pushed flush against that edge instead
         QCOMPARE(mpEditor->pos(), QPoint(std::max(screen.left(), centred.x()), std::max(screen.top(), centred.y())));
     }
 

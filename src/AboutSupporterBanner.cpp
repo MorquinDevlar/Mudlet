@@ -28,16 +28,12 @@
 #include <QPainterPath>
 
 namespace {
-// The pennant: how far in from each end the point is cut, how tall each of the
-// two tiers stands, and how wide the whole thing is allowed to grow
 constexpr int scmPointWidth = 24;
 constexpr int scmSwordsHeight = 58;
 constexpr int scmPlaqueHeight = 50;
 constexpr int scmMaximumWidth = 560;
-// The blades sit this far in from each end, at this size
 constexpr int scmGlyphInset = 34;
 constexpr int scmGlyphSize = 22;
-// The name, against the type the rest of the dialog is set in
 constexpr qreal scmSwordsNameScale = 1.45;
 constexpr qreal scmPlaqueNameScale = 1.25;
 } // namespace
@@ -51,9 +47,8 @@ AboutSupporterBanner::AboutSupporterBanner(const QString& name, const bool sword
 {
     setObjectName(qsl("aboutBanner"));
     setAccessibleName(name);
-    // A layout that centres a widget gives it its size hint rather than
-    // stretching it, and a plain QWidget hints at nothing - so the width is
-    // fixed outright, which is also the whole of the size policy it needs
+    // A centring layout gives a widget its size hint rather than stretching it,
+    // and a plain QWidget hints at nothing, so the width is fixed outright
     setFixedHeight(swords ? scmSwordsHeight : scmPlaqueHeight);
     setFixedWidth(scmMaximumWidth);
 }
@@ -63,9 +58,8 @@ void AboutSupporterBanner::applyTokens(const uiDesign::ThemeTokens& tokens)
     mTokens = tokens;
     mGlyph = QPixmap();
     if (mSwords) {
-        // Scaled to the size it is drawn at before it is inked: downsampling a
-        // 128px picture inside paintEvent() is a nearest-neighbour blit, and
-        // one that runs again on every repaint
+        // Scaled before inking: downsampling the 128px raster in paintEvent() is
+        // a nearest-neighbour blit, repeated on every repaint
         const qreal ratio = devicePixelRatioF();
         QPixmap blade = uiDesign::glyphPixmap(qsl(":/icons/about-swords.svg")).scaled(qRound(scmGlyphSize * ratio), qRound(scmGlyphSize * ratio), Qt::KeepAspectRatio, Qt::SmoothTransformation);
         blade.setDevicePixelRatio(ratio);
@@ -108,8 +102,7 @@ void AboutSupporterBanner::paintEvent(QPaintEvent* pEvent)
     int wordsRight = width() - scmGlyphInset;
     if (!mGlyph.isNull()) {
         const int glyphTop = (height() - scmGlyphSize) / 2;
-        // The blade at the leading edge is the trailing one turned about, so
-        // the pair reads as crossed rather than as the same picture twice
+        // Mirrored so the pair reads as crossed, not as the same picture twice
         painter.save();
         painter.translate(scmGlyphInset + scmGlyphSize, glyphTop);
         painter.scale(-1.0, 1.0);

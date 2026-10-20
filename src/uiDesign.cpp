@@ -67,6 +67,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <tuple>
 #include <utility>
@@ -74,161 +75,76 @@
 namespace uiDesign {
 
 namespace {
-// The saturation and the two lightnesses every state colour is mixed at...
 constexpr qreal scmStateSaturation = 0.55;
-// ...bar the red. A blue or an amber at that saturation still reads as
-// itself, while a red there reads as salmon: the eye asks more of a red before
-// it will call it one, so the error hue carries a saturation of its own.
+// A red at scmStateSaturation reads as salmon, so the error hue carries its own
 constexpr qreal scmErrorStateSaturation = 0.85;
 constexpr qreal scmStateLightnessOnDark = 0.58;
 constexpr qreal scmStateLightnessOnLight = 0.36;
-// The hue and saturation of a highlighter pen; only the lightness comes off the
-// page, the way a state colour is mixed
 constexpr qreal scmMarkerHue = 0.13;
 constexpr qreal scmMarkerSaturation = 0.9;
 constexpr qreal scmMarkerLightnessOnDark = 0.34;
 constexpr qreal scmMarkerLightnessOnLight = 0.72;
-// How far a card is lifted off the page it lies on. A dark page takes a fraction
-// of the light one: the same step in absolute lightness reads as a much larger
-// one where there is less light to begin with.
+// The same lightness step reads far larger on a dark page, so it takes a fraction of the light one's lift
 constexpr qreal scmCardLiftOnDark = 0.06;
 constexpr qreal scmCardLiftOnLight = 0.55;
-// ...and what a card has to gain over its page to read as lifted at all, before
-// the page is the one that has to move. macOS answers white to Window and Base
-// alike on its light appearance, and a card lightened off a white page lands
-// back on it.
+// macOS's light appearance answers white for Window and Base alike, and a card lifted off a white page lands back
+// on it, so the page steps down instead
 constexpr int scmMinimumCardLift = 6;
 constexpr qreal scmPageDropUnderCard = 0.05;
-// How far a pane is lifted off the page, said as a fraction of the card's lift
-// rather than of the room above the page: it is the smallest step the depth
-// model has, and measuring it against the card is what keeps it a small one on
-// either theme without a second pair of numbers to keep in step.
+// A fraction of the card's lift rather than of the room above the page, so it stays small on both themes with one
+// number
 constexpr qreal scmPaneLiftTowardsCard = 0.2;
-// ...and how far a separator is taken below the page, towards black. A dark page
-// has room under it for a groove; a light one is near enough to white that the
-// same drop would draw a grey rule across the window rather than a seam between
-// two panes.
+// A light page is near white, where the dark page's drop would draw a grey rule rather than a seam
 constexpr qreal scmSeparatorDropOnDark = 0.36;
 constexpr qreal scmSeparatorDropOnLight = 0.10;
-// How far the words are pulled back towards the page they are written on. A
-// palette answers pure white to WindowText on a dark theme and pure black on a
-// light one, and neither is a colour a page of text is set in: the white glares
-// and the black is heavier than anything else in the window. A sixteenth of the
-// way back leaves a dark theme at the off-white the design was drawn in, and a
-// tenth is all a light one can give up before the smaller type starts to fade.
-// Every muted tone is mixed from this, so the whole text scale moves with it.
+// A palette's pure white or black WindowText glares; a light theme gives up less before small type fades
 constexpr qreal scmTextSoftenOnDark = 0.16;
 constexpr qreal scmTextSoftenOnLight = 0.10;
-// ...and how far a field is lifted back towards the page. QPalette::Base is
-// near-black on a dark theme, which reads as a hole cut in the window rather
-// than as a surface sunk into it. A light theme's Base is white, and lifting
-// white towards a grey page only muddies it - so the lift is the dark theme's
-// alone.
+// A dark theme's near-black Base reads as a hole in the window; lifting a light theme's white Base only muddies it
 constexpr qreal scmFieldLiftOnDark = 0.30;
-// What an unavailable word is written in: a third of the way from the page to
-// the words on it, so it reads as a word switched off rather than as one merely
-// quiet. That fraction alone is not enough on a light theme - it lands about
-// 2.3:1 on the page, which is a word the reader has to hunt for - so it is a
-// starting point rather than the answer, and the mixture is walked on towards
-// the text until it clears the floor an inactive word is held to on every
-// surface such a word is ever set on.
+// Only a starting point: on a light theme it lands near 2.3:1, so themeTokens() walks it on to scmQuietMinimumRatio
 constexpr qreal scmDisabledTextWeight = 0.32;
-// ...and where a quieter weight of the body text starts, before the same walk
-// takes it to the floor body text itself keeps
 constexpr qreal scmMutedTextWeight = 0.70;
-// How far the accent is taken towards the end of the lightness scale its page is
-// not at, before the same walk carries it clear of a wash of itself
 constexpr qreal scmAccentTextLiftOnDark = 0.45;
 constexpr qreal scmAccentTextDropOnLight = 0.2;
-// How far each of those walks moves the tone on every pass
 constexpr qreal scmToneWeightStep = 0.02;
-// How many stops readableOn() tries between the colour it was asked for and the
-// end of the scale it is walking towards
 constexpr int scmReadabilitySteps = 12;
-// How big the arrows drawn in the room a control leaves at its right edge are.
-// The room itself is scmInputDropDownWidth, in the header, because a window
-// laying out a split button of its own has to hold its words clear of it.
 constexpr int scmInputArrowSize = 8;
 constexpr int scmInputStepperArrowSize = 7;
-// What a split button's menu half is washed in while it is held down: twice the
-// accent wash the body of the button takes when it is pressed, since the half is
-// drawn over a body that is already carrying that wash
+// Twice the body's pressed wash, since the half is drawn over a body already carrying it
 constexpr qreal scmSplitHalfPressedWash = 2 * scmSoftWashStrength;
-// How far the name beside the accent bar is held off the item's left edge in
-// all. The bar is a border rather than a gap, so the padding written into the
-// rules is what it leaves of that gutter.
 constexpr int scmSidebarItemGutter = 10;
 constexpr int scmSidebarItemPadding = scmSidebarItemGutter - scmAccentBarWidth;
-// The ring drawn round the pill while the list holds the keyboard. It is taken
-// out of the item rather than added to it, a pixel off either side, so the
-// padding gives both back and the name stays where it was.
 constexpr int scmSidebarFocusRingWidth = 1;
-// How far a choice indicator's outline is taken from the surface it sits on
-// towards the words beside it. The same step either way: the light theme was
-// given less of it while the mark was only a card's, and at that weight the
-// outline came to 2.9:1 against a white card - under the 3:1 the boundary of a
-// control is held to, and less again on the page the editor's forms sit on.
+// The same on both themes: any less on a light one falls under the 3:1 a control's boundary needs on a white card
 constexpr qreal scmChoiceOutlineOnDark = 0.55;
 constexpr qreal scmChoiceOutlineOnLight = 0.55;
-// The corner a check box's box is drawn to. It is a glyph rather than one of
-// the boxes the radius scale is about, which is why it is not on that scale; a
-// radio button takes half its own size instead and comes out a circle.
+// Off the radius scale: the box is a glyph, not a box a window is laid out in
 constexpr int scmChoiceBoxRadius = 3;
-// ...and what is left between that mark and the words after it, which a style
-// would otherwise measure off the indicator it was going to draw itself
 constexpr int scmChoiceLabelSpacing = 6;
-// The box the chevron folding a group of a tree away is drawn in, and the mark
-// inside it. The box is the width of a branch cell - a view's own indentation
-// step - and the mark is smaller than a choice's, since what it is beside is a
-// name rather than a control.
+// A branch cell's width, which is a view's own indentation step
 constexpr int scmTreeBranchBoxSize = 16;
 constexpr int scmTreeBranchGlyphSize = 10;
-// A control the user cannot reach is a piece of the page rather than a place to
-// put something, so its surface is let back down towards the page - and its
-// hairline is mixed off the page rather than off what it is drawn on
 constexpr qreal scmDisabledFieldTowardsPage = 0.6;
 constexpr qreal scmDisabledBorderWeight = 0.10;
-// How far a button's face is lifted off the card it sits on: a button is
-// pressed rather than typed into, so it stands a little proud of the surface
-// that a field is sunk into. A dark page takes the larger step, having less
-// room above the card than a light one has below it.
 constexpr qreal scmButtonFaceLiftOnDark = 0.08;
 constexpr qreal scmButtonFaceLiftOnLight = 0.04;
-// A button is read across rather than typed into, so the words are given more
-// room either side than a field leaves them
 constexpr int scmButtonPaddingHorizontal = 12;
-// ...and what a disclosure button leaves above and below the glyph and the word
-// it carries. More than a field leaves its text: the glyph is drawn at the
-// height of the line beside it, and a field's two pixels leave it touching the
-// frame.
+// More than a field's 2px, which leaves the glyph touching the frame
 constexpr int scmDisclosurePaddingVertical = 5;
-// How far the chevron of a button carrying a menu is held off its right edge
 constexpr int scmButtonMenuIndicatorInset = 6;
-// What a menu leaves round the rows inside its frame, so the first and the last
-// of them stay inside the arc the frame is cut to
+// Keeps the first and last rows inside the frame's rounded corner
 constexpr int scmMenuSurfacePadding = 4;
-// What a row of a menu leaves round its own word. The air above and below it is
-// scmMenuItemPaddingVertical, in the header because a tab takes the same. The
-// room on the leading edge is what the mark or the picture beside that word
-// stands in - the mark's own size and the gap every other choice leaves after
-// one - and the trailing room is what a shortcut is written in.
 constexpr int scmMenuItemPaddingLeading = scmChoiceIndicatorSize + scmChoiceLabelSpacing;
 constexpr int scmMenuItemPaddingTrailing = scmButtonPaddingHorizontal;
-// ...and where in that leading room the mark or the picture stands: centred in
-// it. A sub-control is placed from the row's padding box, which is the very
-// edge the row's highlight is drawn from, so a mark left where it lands sits on
-// the arc of that highlight rather than inside it.
+// A sub-control is placed from the row's padding box, the edge its highlight starts at, so a mark left there sits on
+// the highlight's arc
 constexpr int scmMenuItemMarkInset = (scmMenuItemPaddingLeading - scmChoiceIndicatorSize) / 2;
 
-// What the three steps either side of the body are measured at - see TypeStep.
-// A caption is the same shade smaller that a chip's word is, since a chip is
-// one; a title is a step up a reader sees without reading, and the display size
-// is the one thing on a page allowed to be larger than a title.
 constexpr qreal scmTypeRatio_caption = 0.85;
 constexpr qreal scmTypeRatio_title = 1.15;
 constexpr qreal scmTypeRatio_display = 1.45;
 
-// One channel of a colour, straightened out of the curve a display applies to it
 qreal linearised(const qreal channel)
 {
     return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
@@ -279,12 +195,8 @@ void detachFromLayout(QWidget* pWidget)
     }
 }
 
-// A layout tells the layouts above it that it has changed by *posting* a layout
-// request, and nothing between a change and the measurement that judges it runs
-// an event loop to deliver one. Both halves below are needed: invalidate() drops
-// what a layout worked out about its items, while what it caches about a
-// *widget* - the size hints, in the layout item it made for it - goes only with
-// updateGeometry() on that widget.
+// Layout changes are posted, and no event loop runs before we measure, so flush by hand:
+// invalidate() drops the layout's cache, updateGeometry() the widget's size hints.
 void invalidateLayoutsUpTo(QWidget* pWidget, const QWidget* pTop)
 {
     for (QWidget* pAncestor = pWidget; pAncestor; pAncestor = pAncestor->parentWidget()) {
@@ -390,9 +302,7 @@ void makeChevronRow(QAbstractButton* pButton)
     pButton->setProperty("settingsChevronRow", true);
     pButton->setCursor(Qt::PointingHandCursor);
     pButton->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-    // Here rather than left to the shell's own pass: a row standing for a
-    // search result is made the first time a search finds one, which is long
-    // after the sheet naming its accent on focus was set
+    // Search-result rows are made long after the shell's own focus pass ran
     keepClickFocusOffControls(pButton);
 }
 
@@ -469,8 +379,7 @@ void collectSearchText(const QWidget* pWidget, QStringList& parts)
         parts << visibleTextOf(pWidget);
         return;
     }
-    // ...but not what a font picker lists: those are the fonts installed on this
-    // machine, and they make any card holding one a result for "color" or "mono"
+    // Not a font picker's items: they are the installed fonts, which would make its card match "color" or "mono"
     if (qobject_cast<const QFontComboBox*>(pWidget)) {
         return;
     }
@@ -560,6 +469,7 @@ void resolveFontsUnderStyleSheets(QWidget* pRoot)
     const StyleSheetFontLift lift(pRoot);
     QEvent fontEvent(QEvent::ApplicationFontChange);
     const auto resolve = [&fontEvent](QWidget* pWidget) {
+        // Qt hands its own "qt_" internals the parent's font with its whole resolve mask at polish, which would pin them
         if (pWidget->objectName().startsWith(QLatin1String("qt_"))) {
             pWidget->setFont(QFont());
         } else {
@@ -601,9 +511,7 @@ QString rgba(const QColor& colourWithAlpha)
 void paintAccentBar(QPainter* pPainter, const QRect& row, const QColor& accent, const int cornerRadius)
 {
     pPainter->save();
-    // A rectangular clip lands on whole pixels, so the bar's trailing edge is a
-    // straight line down the row; the arc at each end is the path's, drawn
-    // antialiased so that it lies on the pill's own
+    // A rect clip keeps the trailing edge on whole pixels; the antialiased path gives both ends the pill's own arc
     pPainter->setClipRect(QRect(row.left(), row.top(), scmAccentBarWidth, row.height()), Qt::IntersectClip);
     pPainter->setRenderHint(QPainter::Antialiasing);
     QPainterPath pill;
@@ -627,9 +535,8 @@ QColor readableOn(const QColor& background, const QColor& wanted, const QColor& 
     if (contrastRatio(background, wanted) >= minimumRatio) {
         return wanted;
     }
-    // Away from the surface it lies on rather than towards the text colour: it
-    // is the hue that says which part of a pattern this is, so the hue is the
-    // half worth keeping and the lightness the half to spend
+    // Towards the end of the lightness axis rather than the text colour: the hue says what this is, so only the
+    // lightness is spent
     const QColor limit = background.lightness() < 128 ? QColor(Qt::white) : QColor(Qt::black); // theme-fixed: the ends of the lightness axis walked along below, not colours of a theme
     for (int step = 1; step <= scmReadabilitySteps; ++step) {
         const QColor moved = blend(wanted, limit, static_cast<qreal>(step) / scmReadabilitySteps);
@@ -642,44 +549,29 @@ QColor readableOn(const QColor& background, const QColor& wanted, const QColor& 
 
 ThemeTokens themeTokens()
 {
-    // The application's palette rather than any one widget's: a stylesheet
-    // freezes the palette of what it is set on, so a profile's Lua stylesheet
-    // leaves a window holding the theme it was shown in - and even without one,
-    // the palette change is an event still undelivered while a window is
-    // restyling itself. qApp's palette is swapped synchronously by
-    // mudlet::setAppearance(), so it is already the new one.
+    // The application palette, not a widget's: a stylesheet freezes its widget's palette, and a PaletteChange is still
+    // undelivered while a window restyles. mudlet::setAppearance() swaps qApp's synchronously.
     const QPalette themePalette = QApplication::palette();
     ThemeTokens tokens;
     tokens.accent = themePalette.color(QPalette::Highlight);
-    // The window's own colour, not the colour of an input field: a page mixed
-    // off Base is a page darker than the fields lying on it, which is the one
-    // way round three surfaces cannot be read as depth.
+    // Window, not Base: a page mixed off Base is darker than the fields on it, which cannot read as depth
     tokens.page = themePalette.color(QPalette::Window);
     tokens.darkPage = tokens.page.lightness() < 128;
     tokens.card = blend(tokens.page, QColor(Qt::white), tokens.darkPage ? scmCardLiftOnDark : scmCardLiftOnLight);
-    // Where a palette leaves no room above the page - a white Window under a
-    // white Base - the card keeps the window's colour and the page steps down
-    // instead, so that the pair still reads in the order it means
     if (tokens.card.lightness() - tokens.page.lightness() < scmMinimumCardLift) {
         tokens.card = tokens.page;
         tokens.page = blend(tokens.page, QColor(Qt::black), scmPageDropUnderCard);
     }
-    // Mixed after the page rather than taken straight off the palette, and
-    // after the step above has settled which page it is: the words are pulled
-    // back towards whatever they end up written on
+    // After the step above, which may move the page the words are softened towards
     tokens.text = blend(themePalette.color(QPalette::WindowText), tokens.page, tokens.darkPage ? scmTextSoftenOnDark : scmTextSoftenOnLight);
     tokens.field = tokens.darkPage ? blend(themePalette.color(QPalette::Base), tokens.page, scmFieldLiftOnDark) : themePalette.color(QPalette::Base);
-    // A fifth of the way from the page towards a card: told apart from the page
-    // beside it, and nowhere near reading as a panel laid on top of it
     tokens.pane = blend(tokens.page, tokens.card, scmPaneLiftTowardsCard);
     tokens.separator = blend(tokens.page, QColor(Qt::black), tokens.darkPage ? scmSeparatorDropOnDark : scmSeparatorDropOnLight);
+    // From page and text, the one pair a palette must keep apart: Mudlet's light appearance has Window, Base and Mid
+    // within three levels, so a border mixed from those is invisible
     tokens.border = blend(tokens.page, tokens.text, tokens.darkPage ? 0.22 : 0.18);
     tokens.mutedText = blend(tokens.page, tokens.text, scmMutedTextWeight);
-    // ...and walked on towards the words until it can be read on all three
-    // surfaces. A muted tone is quieter than the body text, not a different
-    // class of thing: it is what a card's description, a chip's word and the
-    // status bar are written in, so it carries the same floor. On a card - the
-    // most lifted of the three - the weight it starts at lands a hair under it.
+    // Muted words are still body text, so they are held to scmTextMinimumRatio on every surface
     for (qreal weight = scmMutedTextWeight; weight < 1.0
                                             && (contrastRatio(tokens.mutedText, tokens.page) < scmTextMinimumRatio || contrastRatio(tokens.mutedText, tokens.pane) < scmTextMinimumRatio
                                                 || contrastRatio(tokens.mutedText, tokens.card) < scmTextMinimumRatio);) {
@@ -687,10 +579,6 @@ ThemeTokens themeTokens()
         tokens.mutedText = blend(tokens.page, tokens.text, weight);
     }
     tokens.disabledText = blend(tokens.page, tokens.text, scmDisabledTextWeight);
-    // Every surface an unavailable word can be set on: the page - a toolbar
-    // button, a label on a form - a card, a pane, and a field it is typed into.
-    // On a light theme those are a grey page and a white well, and the card is
-    // the one furthest from the page on a dark one.
     for (qreal weight = scmDisabledTextWeight;
          weight < 1.0
          && (contrastRatio(tokens.disabledText, tokens.page) < scmQuietMinimumRatio || contrastRatio(tokens.disabledText, tokens.pane) < scmQuietMinimumRatio
@@ -698,13 +586,7 @@ ThemeTokens themeTokens()
         weight = std::min(1.0, weight + scmToneWeightStep);
         tokens.disabledText = blend(tokens.page, tokens.text, weight);
     }
-    // A saturated highlight colour rarely holds its own against either page, so
-    // it is taken towards the end of the lightness scale the page is not at -
-    // and then walked on until it can be read on a wash of that same accent,
-    // which is what it is drawn on wherever it appears: a chosen row in a tree
-    // or a sidebar, a chip that is switched on. A colour that clears the
-    // deepest of those washes clears the lighter ones, and a wash can lie on
-    // any of the three surfaces, so all three are asked.
+    // Drawn on an accent wash wherever it appears, so walked until it reads on the deepest one over each surface
     {
         const QColor limit = tokens.darkPage ? QColor(Qt::white) : QColor(Qt::black); // theme-fixed: the ends of the lightness axis walked along below, not colours of a theme
         const QColor started = blend(tokens.accent, limit, tokens.darkPage ? scmAccentTextLiftOnDark : scmAccentTextDropOnLight);
@@ -738,20 +620,6 @@ QColor stateColor(const qreal hue, const bool darkPage)
     return QColor::fromHslF(hue, saturation, darkPage ? scmStateLightnessOnDark : scmStateLightnessOnLight);
 }
 
-// The one red anything broken is drawn or written in: the note and the dot over
-// the code pane, the mark on a broken item's row, the picture on the editor's
-// error notice, the note refusing a duplicate event name, a shortcut that
-// clashes and a certificate that cannot be trusted in the settings, and the
-// edge round a field the connection dialog will not take. One function rather
-// than the same expression in nine places, so none of them can drift.
-//
-// Walked off the strip the note over the code pane sits on. That is the darkest
-// surface any of them is drawn on, which under a light theme is the hardest to
-// read on and under a dark one the easiest - so the three places whose own
-// surface is lighter than the strip (the events row's note on the page, the
-// shortcut warning on a card, the certificate labels on a warning wash) walk it
-// on from here against that surface. Each of those is a no-op wherever this
-// value already clears the floor, which is everywhere under the light theme.
 QColor errorInk(const ThemeTokens& tokens)
 {
     return readableOn(tokens.separator, stateColor(scmStateHue_error, tokens.darkPage), tokens.text, scmTextMinimumRatio);
@@ -770,12 +638,6 @@ QString scrollBarStyleSheet(const QString& selectorPrefix, const ThemeTokens& to
             .arg(selectorPrefix, groove.name(), blend(groove, tokens.text, 0.22).name(), blend(groove, tokens.text, 0.40).name());
 }
 
-// One row, drawn the one way wherever the design lists things: the editor's
-// seven item trees and the package manager's list of packages. The bar down a
-// chosen row's leading edge is not here - paintAccentBar() in the view's
-// delegate draws that, over the pill these rules fill - but the gutter it
-// stands in is, as a transparent border that is never coloured and that the
-// row's own leading padding gives back.
 QString itemRowStyleSheet(const QString& viewSelector, const ThemeTokens& tokens, const QColor& surface, const int rowGutter)
 {
     const QColor selectedRow = blend(surface, tokens.accent, scmAccentWashStrength);
@@ -789,11 +651,8 @@ QString itemRowStyleSheet(const QString& viewSelector, const ThemeTokens& tokens
 
 QString sidebarStyleSheet(const QString& listName, const QString& separatorName, const QColor& itemColor, const SidebarMetrics& metrics, const ThemeTokens& tokens)
 {
-    // A border-left accent bar is drawn as an arc where the pill's corner
-    // radius is, pinching the bar to nothing at both ends. A gradient is
-    // clipped by the radius instead, so the bar keeps its width and the pill
-    // its rounded corners - at the cost of the bar being a fraction of the
-    // item's width, and a different fraction at each of the two widths.
+    // A border-left accent bar is drawn as an arc at the pill's corner radius, pinching to nothing at both
+    // ends; a gradient is clipped by the radius instead, keeping the bar's width and the rounded corners.
     const auto barStop = [](const int width, const int padding) {
         return static_cast<qreal>(scmAccentBarWidth) / std::max(1, width - 2 * padding);
     };
@@ -812,30 +671,23 @@ QString sidebarStyleSheet(const QString& listName, const QString& separatorName,
     const QString focusedItemPadding = QString::number(scmSidebarItemPadding - 2 * scmSidebarFocusRingWidth);
     const QString railProperty = QLatin1StringView(scmProp_rail);
     const QString focusedProperty = QLatin1StringView(scmProp_focused);
-    // Or the platform style draws its own selection as a square box inside the
-    // rounded pill the rules below draw
+    // Or the platform style draws a square selection inside the rounded pill
     return list
            + qsl(" { background: transparent; border: none; outline: none; show-decoration-selected: 1;"
                  " selection-background-color: transparent; selection-color: %1; }")
                      .arg(tokens.accentText.name())
-           // The transparent left border keeps a chosen row's name from
-           // stepping sideways under its accent bar; outline:none drops a
-           // focus rectangle drawn square inside a round pill
+           // The transparent left border stops a selected item's text shifting under its accent bar;
+           // outline:none drops a square focus rectangle inside the round pill
            + list + qsl("::item { border-radius: 8px; border-left: %1px solid transparent; padding-left: %2px; color: %3; outline: none; }").arg(accentBar, itemPadding, itemColor.name()) + list
            + qsl("::item:hover { background-color: %1; }").arg(tokens.hoverSoft)
            + list
-           // No font-weight here: a chosen row is drawn bold, but a sheet's
-           // font on an item never reaches the painter, which lays the name out
-           // in the option's own font. SidebarItemDelegate sets the weight, and
-           // sidebarRowWidth() below measures every row in it.
+           // No font-weight: a sheet's font on an ::item never reaches the painter, so SidebarItemDelegate sets the bold
            + qsl("::item:selected { color: %1; background: %2; }").arg(tokens.accentText.name(), pillFill(barStop(metrics.expandedWidth, metrics.padding)))
-           // Keyboard focus is otherwise indistinguishable from the selection;
-           // an event filter on the list puts scmProp_focused on
+           // Otherwise keyboard focus looks like selection; an event filter on the list sets scmProp_focused
            + list
            + qsl("[%1=\"true\"]::item:selected { border: %2px solid %3; border-left: %4px solid %3; padding-left: %5px; }")
                      .arg(focusedProperty, focusRing, tokens.accent.name(), accentBar, focusedItemPadding)
-           // On a rail the row is only as wide as its icon, so the padding
-           // goes and the bar is a different fraction
+           // On a rail the item is only as wide as its icon: no padding, and its own bar fraction
            + list + qsl("[%1=\"true\"]::item { padding-left: 0px; }").arg(railProperty) + list
            + qsl("[%1=\"true\"]::item:selected { background: %2; }").arg(railProperty, pillFill(barStop(metrics.railWidth, metrics.railPadding))) + separator
            + qsl(" { border: none; background-color: %1; margin: 8px %2px; }").arg(tokens.border.name(), QString::number(metrics.separatorInset)) + separator
@@ -856,25 +708,17 @@ int sidebarRowWidth(const QListWidget* pList, const QString& name)
     option.fontMetrics = QFontMetrics(nameFont);
     option.text = name;
     option.features |= QStyleOptionViewItem::HasDisplay | QStyleOptionViewItem::HasDecoration;
-    // The list's own icon size rather than the design language's: the editor
-    // offers a preference that moves it, and a bigger glyph takes its extra out
-    // of the row rather than out of the name
+    // The list's icon size, not scmSidebarIconSize: the editor has a preference that changes it
     option.decorationSize = pList->iconSize();
     option.decorationPosition = QStyleOptionViewItem::Left;
     option.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
-    // A picture of the right size and nothing else: it is the space a glyph is
-    // given that is being measured, never the glyph
     QPixmap blank(pList->iconSize());
     blank.fill(Qt::transparent);
     option.icon = QIcon(blank);
-    // Neither the option nor the call names the list, so a stylesheet style
-    // wrapping it hands the question straight to the style underneath - which
-    // is the one whose margins the rows are actually drawn with
+    // No widget, so a stylesheet style defers to the style underneath, whose margins the rows are drawn with
     option.widget = nullptr;
     const int fromTheStyle = qApp->style()->sizeFromContents(QStyle::CT_ItemViewItem, &option, QSize(), nullptr).width();
-    // ...and what the sheet above adds to every row: the accent bar, drawn as a
-    // transparent left border on an unchosen one, and the padding that stands
-    // the glyph off it
+    // What the sheet adds to every row, which no style knows about
     return fromTheStyle + scmAccentBarWidth + scmSidebarItemPadding;
 }
 
@@ -887,8 +731,6 @@ bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& sepa
     const int padding = collapsed ? metrics.railPadding : metrics.padding;
     pPane->setFixedWidth(wanted);
     pPane->layout()->setContentsMargins(padding, metrics.verticalPadding, padding, metrics.verticalPadding);
-    // What the shared delegate leaves the names out by, and the stylesheet
-    // draws the narrower selection pill from
     pList->setProperty(scmProp_rail, collapsed);
     repolish(pList);
     for (auto* pSeparator : pList->findChildren<QFrame*>(separatorName)) {
@@ -899,14 +741,8 @@ bool setSidebarCollapsed(QWidget* pPane, QListWidget* pList, const QString& sepa
     return true;
 }
 
-// A stylesheet can only take a picture from a file or a resource, and neither
-// can be recoloured on the way in - so the arrow a combo box and a spin box are
-// drawn with is cut from the one glyph in the resources, tinted for the theme in
-// force, and left in the cache directory for the sheet to point at. The colour
-// is part of the file's name: a theme change writes a new file rather than
-// changing one a stylesheet has already read and cached by path.
-// Where a glyph a stylesheet has to point at is written. One directory for all
-// of them, made on the way past.
+// A stylesheet takes pictures only from files and cannot recolour them, so tinted glyphs are written here. The
+// colour is part of each file name: Qt caches a sheet's images by path.
 static QString glyphCacheFile(const QString& fileName)
 {
     const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
@@ -920,27 +756,37 @@ static QString glyphCacheFile(const QString& fileName)
     return cacheDir.absoluteFilePath(fileName);
 }
 
-QString gripGlyphFile(const QColor& color, const bool alongTheBar)
+// Written at 1x and, on a high-DPI screen, as an @2x twin beside it: a stylesheet loads its path through QPixmap,
+// which prefers that twin. Answers the 1x path, or nothing where the cache could not be written
+static QString cachedGlyphFile(const QString& stem, const std::function<QPixmap(qreal)>& drawnAt)
 {
-    const int columns = alongTheBar ? scmGripDotsAlong : scmGripDotsAcross;
-    const int rows = alongTheBar ? scmGripDotsAcross : scmGripDotsAlong;
-    const QString filePath = glyphCacheFile(qsl("grip-%1-%2x%3.png").arg(color.name().mid(1), QString::number(columns), QString::number(rows)));
+    const QString filePath = glyphCacheFile(stem + qsl(".png"));
     if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
         return filePath;
     }
 
-    const qreal width = (columns - 1) * scmGripDotPitch + scmGripDotDiameter;
-    const qreal height = (rows - 1) * scmGripDotPitch + scmGripDotDiameter;
-    // Written twice on a screen that doubles its pixels: a stylesheet loads the
-    // path it is given through QPixmap, which looks for the @2x file beside it
-    // first, so the plain one is what the rule names and the larger one is what
-    // a retina screen actually draws
     const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
     QList<qreal> ratios{1.0};
     if (ratio > 1.0) {
         ratios << ratio;
     }
-    for (const qreal drawnAt : std::as_const(ratios)) {
+    for (const qreal at : std::as_const(ratios)) {
+        const QPixmap glyph = drawnAt(at);
+        const QString wanted = at > 1.0 ? glyphCacheFile(qsl("%1@%2x.png").arg(stem, QString::number(qRound(at)))) : filePath;
+        if (glyph.isNull() || !glyph.save(wanted, "PNG")) {
+            return QString();
+        }
+    }
+    return filePath;
+}
+
+QString gripGlyphFile(const QColor& color, const bool alongTheBar)
+{
+    const int columns = alongTheBar ? scmGripDotsAlong : scmGripDotsAcross;
+    const int rows = alongTheBar ? scmGripDotsAcross : scmGripDotsAlong;
+    const qreal width = (columns - 1) * scmGripDotPitch + scmGripDotDiameter;
+    const qreal height = (rows - 1) * scmGripDotPitch + scmGripDotDiameter;
+    return cachedGlyphFile(qsl("grip-%1-%2x%3").arg(color.name().mid(1), QString::number(columns), QString::number(rows)), [&color, columns, rows, width, height](const qreal drawnAt) {
         QPixmap grip(qRound(width * drawnAt), qRound(height * drawnAt));
         grip.fill(Qt::transparent);
         QPainter painter(&grip);
@@ -954,19 +800,11 @@ QString gripGlyphFile(const QColor& color, const bool alongTheBar)
             }
         }
         painter.end();
-        const QString wanted =
-                drawnAt > 1.0 ? glyphCacheFile(qsl("grip-%1-%2x%3@%4x.png").arg(color.name().mid(1), QString::number(columns), QString::number(rows), QString::number(qRound(drawnAt)))) : filePath;
-        if (!grip.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+        return grip;
+    });
 }
 
-// What is left of a glyph once the empty margin around it is taken off. Lucide
-// draws inside a 24 unit box and leaves room on every side, which a glyph 20px
-// or more across can afford; an 8 or 9px control arrow cannot, and spends half
-// its height on the margin rather than on the mark.
+// Lucide's 24-unit box leaves a margin that an 8px control arrow would spend half its height on
 static QPixmap croppedToItsInk(const QPixmap& glyph)
 {
     const QImage image = glyph.toImage().convertToFormat(QImage::Format_ARGB32);
@@ -993,47 +831,21 @@ static QPixmap croppedToItsInk(const QPixmap& glyph)
 
 static QString themedArrowFile(const QColor& color, const bool pointingUp, const int size)
 {
-    // "chevron" rather than the "arrow" these files were first written under:
-    // a cache written by an earlier build holds the stretched shape below
-    const QString filePath = glyphCacheFile(qsl("chevron-%1-%2-%3.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size)));
-    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
-        return filePath;
-    }
-
-    // The same chevron the editor's search history is offered under, so a
-    // control that drops something down says it the way the rest of the window
-    // does. It replaces a full-colour bitmap of a solid triangle.
-    QPixmap source = croppedToItsInk(glyphPixmap(qsl(":/icons/editor-chevron-down.svg")));
-    if (source.isNull()) {
-        return QString();
-    }
-    if (pointingUp) {
-        source = source.transformed(QTransform().rotate(180));
-    }
-    source = tintedGlyph(source, color);
-
-    // Written twice on a screen that doubles its pixels, the way the grip is:
-    // a stylesheet loads the path it is given through QPixmap, which looks for
-    // the @2x file beside it first
-    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
-    QList<qreal> ratios{1.0};
-    if (ratio > 1.0) {
-        ratios << ratio;
-    }
-    for (const qreal drawnAt : std::as_const(ratios)) {
-        const int drawnSize = qRound(size * drawnAt);
-        // Fitted into the square at its own proportions: a chevron is twice
-        // as wide as it is tall, and stretched to fill the square it became a
-        // heavy V that read larger than every control it sat in
-        const QPixmap arrow = source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        const QString wanted =
-                drawnAt > 1.0 ? glyphCacheFile(qsl("chevron-%1-%2-%3@%4x.png").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size), QString::number(qRound(drawnAt))))
-                              : filePath;
-        if (!arrow.save(wanted, "PNG")) {
-            return QString();
+    // Not "arrow": caches written by earlier builds hold a stretched shape under that name
+    const QString stem = qsl("chevron-%1-%2-%3").arg(pointingUp ? qsl("up") : qsl("down"), color.name().mid(1), QString::number(size));
+    return cachedGlyphFile(stem, [&color, pointingUp, size](const qreal drawnAt) {
+        QPixmap source = croppedToItsInk(glyphPixmap(qsl(":/icons/editor-chevron-down.svg")));
+        if (source.isNull()) {
+            return source;
         }
-    }
-    return filePath;
+        if (pointingUp) {
+            source = source.transformed(QTransform().rotate(180));
+        }
+        source = tintedGlyph(source, color);
+        const int drawnSize = qRound(size * drawnAt);
+        // KeepAspectRatio: a chevron is twice as wide as tall, and stretched to a square it reads as a heavy V
+        return source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    });
 }
 
 QPixmap themedGlyphPixmap(const QString& glyphFile, const QColor& color, const int boxSize, const int glyphSize, const qreal devicePixelRatio)
@@ -1051,9 +863,7 @@ QPixmap themedGlyphPixmap(const QString& glyphFile, const QColor& color, const i
     }
     source = tintedGlyph(source, color);
 
-    // Fitted into its square at its own proportions: a dash is a good deal
-    // wider than it is tall, and stretched to fill the square it would read
-    // as a rule across the box
+    // KeepAspectRatio: a dash stretched to a square reads as a rule across the box
     const int drawnSize = qRound(glyphSize * devicePixelRatio);
     const QPixmap mark = source.scaled(drawnSize, drawnSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph = QPixmap(qRound(boxSize * devicePixelRatio), qRound(boxSize * devicePixelRatio));
@@ -1067,69 +877,21 @@ QPixmap themedGlyphPixmap(const QString& glyphFile, const QColor& color, const i
     return glyph;
 }
 
-// The mark a control's indicator shows, left in the cache for a stylesheet to
-// point at the way the chevrons above are - each file drawn by the call above,
-// so the mark a rule points at and the one a painter reaches for are the one
-// picture rather than two that were meant to match.
-//
-// The margin is what makes the size hold. A sub-control scales the picture it
-// is given *down* to its contents and never up, so a mark drawn on its own
-// fills whatever box it lands in - and lands there at whichever of the 1x and
-// 2x files the platform picked, which is not a thing a rule can say. A mark
-// carrying its own margin comes out at the fraction of the box it was drawn at
-// either way.
+// The mark carries its own margin: a sub-control scales its image down to its contents, never up, from whichever
+// of the 1x and 2x files the platform picked, so only a baked-in margin holds the size.
 static QString themedGlyphFile(const QString& glyphFile, const QColor& color, const int boxSize, const int glyphSize)
 {
-    const QString stem = QFileInfo(glyphFile).baseName();
-    const auto cacheName = [&stem, &color, boxSize, glyphSize](const int drawnAt) {
-        const QString suffix = drawnAt > 1 ? qsl("@%1x").arg(QString::number(drawnAt)) : QString();
-        return qsl("%1-%2-%3-%4%5.png").arg(stem, color.name().mid(1), QString::number(boxSize), QString::number(glyphSize), suffix);
-    };
-    const QString filePath = glyphCacheFile(cacheName(1));
-    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
-        return filePath;
-    }
-
-    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
-    QList<qreal> ratios{1.0};
-    if (ratio > 1.0) {
-        ratios << ratio;
-    }
-    for (const qreal drawnAt : std::as_const(ratios)) {
-        const QPixmap glyph = themedGlyphPixmap(glyphFile, color, boxSize, glyphSize, drawnAt);
-        if (glyph.isNull()) {
-            return QString();
-        }
-        const QString wanted = drawnAt > 1.0 ? glyphCacheFile(cacheName(qRound(drawnAt))) : filePath;
-        if (!glyph.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+    const QString stem = qsl("%1-%2-%3-%4").arg(QFileInfo(glyphFile).baseName(), color.name().mid(1), QString::number(boxSize), QString::number(glyphSize));
+    return cachedGlyphFile(stem, [&glyphFile, &color, boxSize, glyphSize](const qreal drawnAt) {
+        return themedGlyphPixmap(glyphFile, color, boxSize, glyphSize, drawnAt);
+    });
 }
 
-// The one mark that is a shape rather than a glyph: the dot inside a chosen
-// radio button. Lucide has no circle small enough to survive being drawn at
-// six pixels, and a filled disc is the whole of the drawing anyway. Centred in
-// a square of the indicator's own size for the same reason the glyphs above
-// are.
+// Painted rather than a Lucide glyph: no Lucide circle survives being drawn at six pixels
 static QString dotGlyphFile(const QColor& color, const int boxSize, const int diameter)
 {
-    const auto cacheName = [&color, boxSize, diameter](const int drawnAt) {
-        const QString suffix = drawnAt > 1 ? qsl("@%1x").arg(QString::number(drawnAt)) : QString();
-        return qsl("dot-%1-%2-%3%4.png").arg(color.name().mid(1), QString::number(boxSize), QString::number(diameter), suffix);
-    };
-    const QString filePath = glyphCacheFile(cacheName(1));
-    if (filePath.isEmpty() || QFileInfo::exists(filePath)) {
-        return filePath;
-    }
-
-    const qreal ratio = qApp ? qApp->devicePixelRatio() : 1.0;
-    QList<qreal> ratios{1.0};
-    if (ratio > 1.0) {
-        ratios << ratio;
-    }
-    for (const qreal drawnAt : std::as_const(ratios)) {
+    const QString stem = qsl("dot-%1-%2-%3").arg(color.name().mid(1), QString::number(boxSize), QString::number(diameter));
+    return cachedGlyphFile(stem, [&color, boxSize, diameter](const qreal drawnAt) {
         QPixmap dot(qRound(boxSize * drawnAt), qRound(boxSize * drawnAt));
         dot.fill(Qt::transparent);
         QPainter painter(&dot);
@@ -1140,16 +902,10 @@ static QString dotGlyphFile(const QColor& color, const int boxSize, const int di
         const qreal inset = (boxSize - diameter) / 2.0;
         painter.drawEllipse(QRectF(inset, inset, diameter, diameter));
         painter.end();
-        const QString wanted = drawnAt > 1.0 ? glyphCacheFile(cacheName(qRound(drawnAt))) : filePath;
-        if (!dot.save(wanted, "PNG")) {
-            return QString();
-        }
-    }
-    return filePath;
+        return dot;
+    });
 }
 
-// Every selector a shared sheet writes names a control and nothing about where
-// it is; a caller with one container to claim under puts them all beneath it
 static QString scopedTo(const QString& selectorPrefix, const QStringList& selectors)
 {
     if (selectorPrefix.isEmpty()) {
@@ -1182,14 +938,9 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
         return scopedTo(selectorPrefix, selectors);
     };
 
-    // Drawing a control's frame from a stylesheet takes the arrows inside it
-    // away with it, and the macOS style then leaves a combo box looking like a
-    // line edit and a spin box with no steppers at all. So the two controls that
-    // carry arrows are only claimed once there is a picture to put the arrows
-    // back with; without one they keep the frame the platform draws them with.
-    // The combo box and the steppers draw at different sizes, and a picture a
-    // stylesheet scales for itself is a picture drawn at neither: each gets a
-    // file cut to the size its rule asks for
+    // A styled frame loses its arrows, and macOS then draws a combo box as a line edit and a spin box without steppers,
+    // so those two are claimed only once the arrow files exist. Each size gets its own file: a picture a stylesheet
+    // scales is drawn at neither.
     const QString downArrow = themedArrowFile(tokens.mutedText, false, scmInputArrowSize);
     const QString upArrow = themedArrowFile(tokens.mutedText, true, scmInputArrowSize);
     const QString stepperDownArrow = themedArrowFile(tokens.mutedText, false, scmInputStepperArrowSize);
@@ -1215,27 +966,12 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
                       .arg(tokens.field.name(), tokens.text.name(), tokens.border.name(), QString::number(scmRadiusInput))
                       .arg(QString::number(scmInputPaddingVertical), QString::number(scmInputPaddingHorizontal), QString::number(scmInputContentHeight))
                       .arg(tokens.accent.name(), tokens.accentText.name(), QString::number(scmInputBorderWidth))
-            // A 1px accent frame rather than a ring drawn outside the control:
-            // where the platform draws one of its own, two rings round the same
-            // box read as a fault
+            // A frame rather than an outer ring: where the platform draws a ring of its own, two read as a fault
             + scoped(focusedTypes) + qsl(" { border: %2px solid %1; }").arg(tokens.accent.name(), QString::number(scmInputBorderWidth)) + scoped(disabledTypes)
             + qsl(" { color: %1; background-color: %2; border: %4px solid %3; }").arg(tokens.disabledText.name(), disabledField.name(), disabledBorder.name(), QString::number(scmInputBorderWidth))
-            // The list a combo box drops down is the field opened up: the same
-            // surface, the same hairline and the same corner as the box it came
-            // out of, since a combo box on a card would otherwise open a list in
-            // the card's own grey, lifted off nothing. The frame the platform
-            // draws round that list is named away first: it is a QFrame of its
-            // own, and its bevel is the one part of a field no rule above
-            // reaches.
-            //
-            // That frame is also a window, and a window is filled before what is
-            // in it is drawn: a corner rounded on the list alone would leave the
-            // window's own square one showing behind it in whatever colour it
-            // took. So the surface belongs to the list and the frame around it
-            // is asked for none - which only opens the corner once the window is
-            // see-through and its brushes are named as nothing, neither of which
-            // a sheet can say. letPopupsTakeTheFieldsCorner() says both. The
-            // list's 2px padding keeps its square viewport inside the arc.
+            // The popup's QFrame bevel is out of reach of the field rules, so it is cleared and the list carries the surface; the
+            // window's square corner is opened by letPopupsTakeTheFieldsCorner(). The 2px padding keeps the viewport inside
+            // the arc.
             + scoped({qsl("QComboBox QFrame")}) + qsl(" { border: none; margin: 0px; padding: 0px; background: transparent; }") + scoped({qsl("QComboBox QAbstractItemView")})
             + qsl(" { background-color: %1; color: %2; border: %6px solid %3; border-radius: %7px; padding: 2px;"
                   " selection-background-color: %4; selection-color: %5; outline: none; }")
@@ -1256,12 +992,6 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
                  + scoped({qsl("QAbstractSpinBox::up-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(stepperUpArrow, QString::number(scmInputStepperArrowSize))
                  + scoped({qsl("QAbstractSpinBox::down-arrow")}) + qsl(" { image: url(\"%1\"); width: %2px; height: %2px; }").arg(stepperDownArrow, QString::number(scmInputStepperArrowSize));
 
-        // A stepper and a drop-down are the two things on a field that are
-        // pressed rather than typed into, so each says it is being used: the
-        // chevron takes the accent under the pointer and holds it while the
-        // button is down, and the stepper's own square lights the hover wash
-        // and then the accent's. A tint the cache could not write leaves the
-        // rule out rather than pointing it at nothing.
         const QString accentArrow = themedArrowFile(tokens.accent, false, scmInputArrowSize);
         const QString accentStepperDownArrow = themedArrowFile(tokens.accent, false, scmInputStepperArrowSize);
         const QString accentStepperUpArrow = themedArrowFile(tokens.accent, true, scmInputStepperArrowSize);
@@ -1282,17 +1012,12 @@ QString inputStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix
 }
 
 namespace {
-// The inks and the pictures one mark is drawn from, mixed once and handed to
-// each of the three controls that carry one
 struct ChoiceMarkInks
 {
     QColor outline;
     QColor disabledBorder;
     QColor disabledFill;
-    // Empty where the cache could not be written, which leaves the rule that
-    // would have pointed at the picture out altogether rather than pointing it
-    // at nothing - the way inputStyleSheet() only claims a combo box once its
-    // arrows exist
+    // Empty where the cache could not be written, which leaves out the rule that would point at it
     QString tick;
     QString dash;
     QString quietTick;
@@ -1305,14 +1030,10 @@ struct ChoiceMarkInks
 static ChoiceMarkInks choiceMarkInks(const ThemeTokens& tokens)
 {
     ChoiceMarkInks inks;
-    // Mixed over the surface the box sits on, while the box itself is filled
-    // like every other control the user sets something with
     inks.outline = blend(tokens.card, tokens.text, tokens.darkPage ? scmChoiceOutlineOnDark : scmChoiceOutlineOnLight);
     inks.disabledBorder = disabledBorderColour(tokens);
     inks.disabledFill = disabledFieldColour(tokens);
-    // Read against the fill it is drawn on rather than against the accent
-    // framing the box: the accent is the hairline, and the mark inside it is
-    // the nearest colour to that accent a reader can still make out on a field
+    // Against the field fill it is drawn on, not the accent hairline round it
     const QColor markInk = readableOn(tokens.field, tokens.accent, tokens.text, scmQuietMinimumRatio);
     inks.tick = themedGlyphFile(qsl(":/icons/control-check.svg"), markInk, scmChoiceIndicatorSize, scmChoiceGlyphSize);
     inks.dash = themedGlyphFile(qsl(":/icons/control-minus.svg"), markInk, scmChoiceIndicatorSize, scmChoiceGlyphSize);
@@ -1323,18 +1044,11 @@ static ChoiceMarkInks choiceMarkInks(const ThemeTokens& tokens)
     return inks;
 }
 
-// One indicator, drawn out in full: the box, what says it is being used, and
-// the picture inside it once the choice is made. The radius is the whole of
-// what says whether it is a box or a circle. "set" is what a made choice is
-// marked with and "part" what a box that is neither on nor off shows, which a
-// radio button has no state for and hands in empty.
+// An empty picture leaves its rule out
 static QString choiceMarkRules(
         const QString& selector, const int radius, const QString& set, const QString& part, const QString& quietSet, const QString& quietPart, const ChoiceMarkInks& inks, const ThemeTokens& tokens)
 {
     QString rules = qsl("%1 { width: %2px; height: %2px; border: %3px solid %4; border-radius: %5px; background-color: %6; }"
-                        // A control being reached for rather than a surface, so
-                        // the hairline goes to the colour the choice will be
-                        // made in before it is made
                         "%1:hover, %1:focus { border: %3px solid %7; }"
                         "%1:pressed { background-color: %8; }")
                             .arg(selector, QString::number(scmChoiceIndicatorSize), QString::number(scmInputBorderWidth), inks.outline.name(), QString::number(radius), tokens.field.name())
@@ -1342,14 +1056,10 @@ static QString choiceMarkRules(
     if (!set.isEmpty()) {
         rules += qsl("%1:checked { border: %2px solid %3; image: url(\"%4\"); }").arg(selector, QString::number(scmInputBorderWidth), tokens.accent.name(), set);
     }
-    // The state a platform paints as a filled grey square, which reads as some
-    // third kind of control rather than as a box holding both answers at once
     if (!part.isEmpty()) {
         rules += qsl("%1:indeterminate { border: %2px solid %3; image: url(\"%4\"); }").arg(selector, QString::number(scmInputBorderWidth), tokens.accent.name(), part);
     }
-    // Last, and so ahead of the two states above at the same specificity: a
-    // choice the user cannot change is still shown, in the tone every other
-    // unavailable thing is written in rather than in the accent
+    // Last, so it wins the specificity tie with :checked and :indeterminate
     rules += qsl("%1:disabled { border: %2px solid %3; background-color: %4; }").arg(selector, QString::number(scmInputBorderWidth), inks.disabledBorder.name(), inks.disabledFill.name());
     if (!quietSet.isEmpty()) {
         rules += qsl("%1:disabled:checked { image: url(\"%2\"); }").arg(selector, quietSet);
@@ -1363,51 +1073,24 @@ static QString choiceMarkRules(
 QString choiceStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
 {
     const ChoiceMarkInks inks = choiceMarkInks(tokens);
-    // Half its own size, which Qt clamps to a circle: what says a choice is one
-    // of a set rather than a switch of its own is the shape of the box it is
-    // made in
+    // Half its size, which Qt clamps to a circle
     const int dotRadius = (scmChoiceIndicatorSize + 1) / 2;
     return choiceMarkRules(scopedTo(selectorPrefix, {qsl("QCheckBox::indicator")}), scmChoiceBoxRadius, inks.tick, inks.dash, inks.quietTick, inks.quietDash, inks, tokens)
            + choiceMarkRules(scopedTo(selectorPrefix, {qsl("QRadioButton::indicator")}), dotRadius, inks.dot, QString(), inks.quietDot, QString(), inks, tokens)
-           // What a style leaves between an indicator and the words after it is
-           // measured off the indicator the style itself would have drawn, so a
-           // mark of another size leaves the two touching on one platform and
-           // well apart on the next. Named here, and the same in both.
-           //
-           // The control's own frame is named as well, as nothing: a rule that
-           // leaves the frame to the platform leaves the layout rectangle to it
-           // too, and the macOS style trims eleven pixels off a check box's for
-           // the bezel it would have drawn - so a layout placed the words of the
-           // next control over the last letters of this one.
+           // A style measures the gap after an indicator off the one it would draw, so it is named here. border: none, or the
+           // macOS style trims 11px off a check box's layout rect for its bezel and the next control covers this one's words.
            + scopedTo(selectorPrefix, {qsl("QCheckBox"), qsl("QRadioButton")})
            + qsl(" { spacing: %1px; border: none; }").arg(QString::number(scmChoiceLabelSpacing))
-           // The platform draws a focus ring round the whole control as well,
-           // which beside the accent the indicator has just taken reads as two
-           // rings round one thing
+           // Or the platform's focus ring doubles the accent the indicator takes
            + scopedTo(selectorPrefix, {qsl("QCheckBox:focus"), qsl("QRadioButton:focus")}) + qsl(" { outline: none; }");
 }
 
-// The very mark the check boxes above carry, written for a view's own indicator
-// instead: a row that is ticked and an option that is ticked are the same act,
-// so they are drawn from the same body rather than from two rules that happen to
-// agree today.
 QString itemCheckMarkStyleSheet(const QString& viewSelector, const ThemeTokens& tokens)
 {
     const ChoiceMarkInks inks = choiceMarkInks(tokens);
     return choiceMarkRules(viewSelector + qsl("::indicator"), scmChoiceBoxRadius, inks.tick, inks.dash, inks.quietTick, inks.quietDash, inks, tokens);
 }
 
-// The branch column of a tree that keeps its own indentation: the design's
-// chevron where a platform would draw its own arrow or a pair of hinge lines,
-// and nothing else at all.
-//
-// The column keeps the surface the view is painted on rather than being washed
-// along with the row. A view draws one branch cell per level of indentation and
-// each of them is a square rectangle, so a wash carried through them comes out
-// as a square block glued to the leading edge of the rounded pill the ::item
-// rules draw - two shapes where one was meant. Held to the surface, the pill is
-// the row and the chevron stands in front of it, which is what the editor's
-// results tree does with this same column.
 QString treeBranchStyleSheet(const QString& viewSelector, const ThemeTokens& tokens, const QColor& surface)
 {
     const QString closed = themedGlyphFile(qsl(":/icons/about-chevron-right.svg"), tokens.mutedText, scmTreeBranchBoxSize, scmTreeBranchGlyphSize);
@@ -1417,20 +1100,12 @@ QString treeBranchStyleSheet(const QString& viewSelector, const ThemeTokens& tok
     }
 
     const QString branch = viewSelector + qsl("::branch");
-    // Every branch cell first: a row with nothing folded inside it gets no
-    // picture at all, which is what takes the platform's hinge lines away.
-    // The chosen and the hovered row are named as the surface rather than left
-    // alone: a tree fills the whole of a chosen row - the indentation included -
-    // with the palette's highlight before a branch is drawn, so a rule that
-    // paints nothing there leaves the platform's own band in front of the pill.
+    // Painted with the surface under :selected and :hover: a tree fills a chosen row's indentation with the palette
+    // highlight before it draws a branch
     return branch + qsl(" { background: transparent; border-image: none; image: none; }") + branch + qsl(":selected, ") + branch + qsl(":hover { background-color: %1; }").arg(surface.name()) + branch
            + qsl(":has-children:closed { image: url(\"%1\"); }").arg(closed) + branch + qsl(":has-children:open { image: url(\"%1\"); }").arg(open);
 }
 
-// Lifted off the card rather than sunk into it: a button is pressed, where a
-// field is typed into. Every recipe drawing a button's face reads it here, so
-// that a button on a form and a button opening a strip of controls are the same
-// surface rather than two that happen to agree.
 static QColor buttonFaceColour(const ThemeTokens& tokens)
 {
     return blend(tokens.card, tokens.text, tokens.darkPage ? scmButtonFaceLiftOnDark : scmButtonFaceLiftOnLight);
@@ -1443,11 +1118,7 @@ QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefi
         return scopedTo(selectorPrefix, selectors);
     };
 
-    // A tool button whose trailing half opens a menu cannot be made a push
-    // button without giving that split up, so it joins the rule instead - but
-    // only one that says it is standing on a form as a button. A window's other
-    // tool buttons are its own business: the editor's forms carry several that
-    // paint themselves.
+    // A split button must stay a QToolButton, so the opted-in ones join the push button rules
     const QString menuButton = qsl("QToolButton[%1=\"true\"]").arg(QString::fromLatin1(scmProp_menuButton));
 
     QString rules =
@@ -1462,22 +1133,13 @@ QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefi
             + scoped({qsl("QPushButton:disabled"), menuButton + qsl(":disabled")})
             + qsl(" { color: %1; border: %3px solid %2; background-color: transparent; }").arg(tokens.disabledText.name(), disabledBorderColour(tokens).name(), QString::number(scmInputBorderWidth));
 
-    // A button carrying a menu drops something down, so it says so with the
-    // chevron every other control that does drops it under. Styling the button
-    // at all takes the platform's own indicator away with it, so the rule is
-    // only claimed once there is a picture to put one back with - and the room
-    // the words are held clear by is what the rule's own width reserves, since
-    // no selector can ask whether a button has a menu.
+    // Styling a button removes the platform's menu indicator, so this is claimed only once the chevron file exists
     const QString menuChevron = themedArrowFile(tokens.mutedText, false, scmInputArrowSize);
     if (!menuChevron.isEmpty()) {
         rules += scoped({qsl("QPushButton::menu-indicator")})
                  + qsl(" { image: url(\"%1\"); subcontrol-origin: padding; subcontrol-position: center right; right: %2px; width: %3px; height: %3px; }")
                            .arg(menuChevron, QString::number(scmButtonMenuIndicatorInset), QString::number(scmInputArrowSize));
-        // ...and the split kind, whose trailing half is a control of its own
-        // rather than an indicator on the face, drawn by the recipe below.
-        // Nothing measures the room for the words for us here, since the label
-        // is laid out in the whole of the contents rectangle - so the padding
-        // leaves the half its width.
+        // The label is laid out across the whole contents rect, so the padding leaves the menu half its width
         rules += scoped({menuButton}) + qsl(" { padding-right: %1px; }").arg(QString::number(scmButtonPaddingHorizontal + scmInputDropDownWidth))
                  + splitButtonMenuHalfStyleSheet(scoped({menuButton}), scmRadiusInput, tokens);
 
@@ -1489,13 +1151,8 @@ QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefi
         }
     }
 
-    // The one button a window is for, last so that it wins the specificity tie
-    // against the resting rules above: the accent's wash behind accentText on an
-    // accent hairline, which is what a chosen thing is drawn as everywhere else.
-    // Its own :hover and :disabled are written out, or the shared ones would tie
-    // with the resting rule here and be settled by the order rather than by what
-    // they mean - and a primary button switched off has to read as unavailable
-    // rather than as the invitation it cannot yet be.
+    // Last, to win the specificity tie with the resting rules; its own :hover and :disabled follow, or the shared ones
+    // would lose to its resting rule on order alone
     const QString primary = scoped({qsl("QPushButton[%1=\"true\"]").arg(QString::fromLatin1(scmProp_primaryButton))});
     rules += primary + qsl(" { background-color: %1; color: %2; border: %3px solid %4; }").arg(tokens.accentSoft, tokens.accentText.name(), QString::number(scmInputBorderWidth), tokens.accent.name())
              + scoped({qsl("QPushButton[%1=\"true\"]:hover").arg(QString::fromLatin1(scmProp_primaryButton))}) + qsl(" { background-color: %1; }").arg(tokens.hoverSoft)
@@ -1505,27 +1162,9 @@ QString buttonStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefi
     return rules;
 }
 
-// Two click areas have to read as two before the pointer arrives, and a sheet on
-// the button has already taken the platform's own separator between them away.
-// So the half is given a segment's worth of drawing: the seam on its leading
-// edge and nothing else at rest, a wash of its own once the button is pointed
-// at, and the design's chevron rather than the filled triangle a style leaves
-// there.
-//
-// The wash is a step ahead of whatever the body takes, because the body's own
-// hover fills the whole button, the half included: where the body lights to
-// hoverSoft the half lights to the accent's wash - the same wash a row of the
-// menu it opens takes under the pointer - and where the body is pressed to that
-// wash the half takes twice it. A half washed in what the body is already
-// washed in is a half that never reads as its own target.
-//
-// Which of the two halves the pointer is over is not what the wash says, and
-// cannot be: QToolButton tracks its hovered sub-control through
-// QStyle::hitTestComplexControl, which QStyleSheetStyle does not answer for
-// CC_ToolButton, so the button reports SC_ToolButton for a point anywhere on it
-// and the :hover here matches whenever the button as a whole is pointed at. The
-// press it hands the menu is right either way - QToolButton::mousePressEvent
-// asks subControlRect(), which the sheet does answer.
+// QStyleSheetStyle does not answer hitTestComplexControl for CC_ToolButton, so :hover matches anywhere on the
+// button; the half's wash is a step ahead of the body's to still read as its own target. Presses are routed through
+// subControlRect(), which the sheet does answer.
 QString splitButtonMenuHalfStyleSheet(const QString& buttonSelector, const int cornerRadius, const ThemeTokens& tokens)
 {
     const QString chevron = themedArrowFile(tokens.mutedText, false, scmInputArrowSize);
@@ -1552,11 +1191,7 @@ QString splitButtonMenuHalfStyleSheet(const QString& buttonSelector, const int c
 
 QString toolBarStyleSheet(const QString& toolBarSelector, const ToolBarSeam seam, const ThemeTokens& tokens)
 {
-    // The bar can be dragged to another edge of the window or floated, and what
-    // says so is the grip at its leading end. Styling the bar at all takes the
-    // platform's own handle with it, which leaves a pair of faint dots barely
-    // on the page - so the same six a pattern row is dragged by are inked to
-    // the palette and pointed at here.
+    // Styling the bar reduces the platform's handle to a pair of faint dots
     const QString gripAcross = gripGlyphFile(tokens.mutedText, false);
     const QString gripAlong = gripGlyphFile(tokens.mutedText, true);
     const QString seamEdge = seam == ToolBarSeam::Bottom ? qsl("bottom") : qsl("top");
@@ -1564,9 +1199,7 @@ QString toolBarStyleSheet(const QString& toolBarSelector, const ToolBarSeam seam
     return toolBarSelector + qsl(" { background-color: %1; border: none; border-%2: 1px solid %3; spacing: 2px; padding: 4px 6px; }").arg(tokens.page.name(), seamEdge, tokens.border.name())
            + toolBarSelector
            + qsl("::separator { background-color: %1; width: 1px; margin: 5px 6px; }").arg(tokens.border.name())
-           // A background rather than an image: a sub-control's image is
-           // stretched to fill it, which turns six small dots into a wash
-           // across the whole handle
+           // background-image, not image: a sub-control's image is stretched to fill it
            + toolBarSelector
            + qsl("::handle { background-image: url(%1); background-repeat: no-repeat; background-position: center; width: %2px; margin: 6px 2px; }")
                      .arg(gripAcross, QString::number(scmToolBarGripExtent))
@@ -1577,15 +1210,10 @@ QString toolBarStyleSheet(const QString& toolBarSelector, const ToolBarSeam seam
            + toolBarSelector
            + qsl(" QToolButton { color: %1; border: 1px solid transparent; border-radius: %2px; padding: %3px %4px; }")
                      .arg(tokens.mutedText.name(), QString::number(scmToolBarButtonRadius), QString::number(scmToolBarButtonPaddingVertical), QString::number(scmToolBarButtonPaddingHorizontal))
-           // The accent rather than the words' full tone: the glyph beside the
-           // word is inked accentText for QIcon::Active, so the two halves of a
-           // hovered button light up as one
+           // accentText, to light with the glyph's QIcon::Active ink
            + toolBarSelector + qsl(" QToolButton:hover { color: %1; background-color: %2; }").arg(tokens.accentText.name(), tokens.hoverSoft) + toolBarSelector
            + qsl(" QToolButton:pressed { background-color: %1; }").arg(tokens.accentSoft)
-           // A checkable action that is on is held down in every way but the
-           // pointer, so it is drawn the way a held button is - and its glyph is
-           // already inked accentText for QIcon::On, so the word beside it has
-           // to light with it
+           // accentText, to light with the glyph's QIcon::On ink
            + toolBarSelector + qsl(" QToolButton:checked { color: %1; background-color: %2; }").arg(tokens.accentText.name(), tokens.accentSoft) + toolBarSelector
            + qsl(" QToolButton:disabled { color: %1; }").arg(tokens.disabledText.name());
 }
@@ -1601,16 +1229,7 @@ QString disclosureButtonStyleSheet(const QString& buttonSelector, const ThemeTok
            + buttonSelector + qsl(":focus { border-color: %1; }").arg(tokens.accent.name());
 }
 
-// What a control drops down when it is not a list of values: the menu under a
-// toolbar button, the options behind a search field, the menu the pointer opens
-// over a code pane. Drawn as the list a combo box drops down is - both are a
-// list opened out of the window it belongs to, so both take the hairline, the
-// corner and the accent under the chosen row - on the card tone rather than the
-// field's, since a menu is a panel lifted off the page where a combo box's list
-// is the field it came out of, opened up.
-//
-// Nothing here names a font. A menu is read in the font of whatever it hangs
-// from, and a size written into these rules would take that away.
+// No font here: a menu is read in the font of whatever it hangs from
 QString menuStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
 {
     const auto scoped = [&selectorPrefix](const QStringList& selectors) {
@@ -1622,61 +1241,33 @@ QString menuStyleSheet(const ThemeTokens& tokens, const QString& selectorPrefix)
             + qsl(" { background-color: %1; color: %2; border: %3px solid %4; border-radius: %5px; padding: %6px; }")
                       .arg(tokens.card.name(), tokens.text.name(), QString::number(scmInputBorderWidth), tokens.border.name(), QString::number(scmRadiusInput))
                       .arg(QString::number(scmMenuSurfacePadding))
-            // The row is a word in a box the way a chip is, so it takes the
-            // chip's corner rather than the field's - it is a good deal shorter
-            // than the menu it sits in, and the menu's own corner repeated
-            // inside itself reads as a second frame
             + scoped({qsl("QMenu::item")})
             + qsl(" { background: transparent; border-radius: %1px; padding: %2px %3px %2px %4px; }")
                       .arg(QString::number(scmRadiusChip), QString::number(scmMenuItemPaddingVertical), QString::number(scmMenuItemPaddingTrailing), QString::number(scmMenuItemPaddingLeading))
-            // What the pointer is on, or what the keyboard has walked to - one
-            // state in a menu, and drawn the way a combo box's list draws its
-            // chosen row
             + scoped({qsl("QMenu::item:selected")}) + qsl(" { background-color: %1; color: %2; }").arg(tokens.accentSoft, tokens.accentText.name()) + scoped({qsl("QMenu::item:disabled")})
             + qsl(" { color: %1; }").arg(tokens.disabledText.name())
-            // A seam between two runs of rows, inset by the room a row leaves
-            // at its leading end rather than run across the whole width: what
-            // it parts is the rows either side of it, not the frame
+            // Inset like the rows rather than full width: it parts the rows either side of it, not the frame
             + scoped({qsl("QMenu::separator")})
             + qsl(" { height: 1px; background-color: %1; margin: %2px %3px; }").arg(tokens.separator.name(), QString::number(scmMenuSurfacePadding), QString::number(scmMenuItemPaddingLeading));
 
-    // A row that is switched on or off carries the one mark every other choice
-    // is made with, written out by the builder the check boxes are drawn from.
-    // The states a menu has no way to enter - a hover, a focus, a press, a third
-    // answer - are simply never matched: what the pointer is on is the row, and
-    // the rule above is where that is said. Radio-style rows would come out a
-    // box rather than a circle, which none of these menus offers.
+    // Exclusive rows would come out as boxes rather than circles; none of these menus has one
     const ChoiceMarkInks inks = choiceMarkInks(tokens);
     rules += choiceMarkRules(scoped({qsl("QMenu::indicator")}), scmChoiceBoxRadius, inks.tick, QString(), inks.quietTick, QString(), inks, tokens)
-             // Where that mark stands, and the picture on a row carrying one
-             // instead: both are placed from the row's leading edge, which is
-             // the edge its highlight is drawn from, so both are moved into the
-             // room the row leaves them. A placement rather than a second way of
-             // drawing either of them.
              + scoped({qsl("QMenu::indicator"), qsl("QMenu::icon")}) + qsl(" { left: %1px; }").arg(QString::number(scmMenuItemMarkInset));
     return rules;
 }
 
-// A row of chips on the page rather than the folder tabs a platform cuts. The
-// three states are the ones every other list of choices in this design carries
-// - quiet, washed under the pointer, filled in the accent while chosen - so a
-// tab is read as the same kind of thing as a sidebar's row and a menu's, and
-// the pane under it is left to whatever the window draws there.
 QString tabBarStyleSheet(const QString& tabWidgetSelector, const ThemeTokens& tokens)
 {
-    // The bar belongs to the tab widget rather than sitting under it, so it is
-    // reached by both selectors: the sub-control for what the widget lays out,
-    // and the descendant for the QTabBar itself.
+    // The bar is both a sub-control of the tab widget (::tab-bar) and a QTabBar descendant, so both selectors are used
     const QString bar = tabWidgetSelector + qsl(" QTabBar");
 
     QString rules = tabWidgetSelector
                     + qsl("::pane { border: none; background: transparent; margin: %1px; }").arg(QString::number(scmTabPaneInset))
-                    // Where the row of chips starts, which is where the pane under it
-                    // does
+                    // On the pane's inset, so the chips and the field below start on the same line
                     + tabWidgetSelector + qsl("::tab-bar { left: %1px; }").arg(QString::number(scmTabStripInset)) + bar
                     + qsl(" { background: transparent; border: none; }")
-                    // The transparent border keeps the word from stepping sideways when
-                    // a chosen tab gains one, the way a toolbar's buttons do
+                    // The transparent border keeps the word still when :focus colours it
                     + bar
                     + qsl("::tab { background: transparent; color: %1; border: %2px solid transparent; border-radius: %3px;"
                           " padding: %4px %5px; margin-right: %6px; }")
@@ -1684,14 +1275,10 @@ QString tabBarStyleSheet(const QString& tabWidgetSelector, const ThemeTokens& to
                               .arg(QString::number(scmTabPaddingHorizontal), QString::number(scmTabGap))
                     + bar + qsl("::tab:hover { background-color: %1; color: %2; }").arg(tokens.hoverSoft, tokens.accentText.name()) + bar
                     + qsl("::tab:selected { background-color: %1; color: %2; }").arg(tokens.accentSoft, tokens.accentText.name())
-                    // Where the keyboard is, said the way every other control in this
-                    // design says it
+                    // Focus as the accent border, the way every other control in the design shows it
                     + bar + qsl("::tab:focus { border-color: %1; }").arg(tokens.accent.name()) + bar + qsl("::tab:disabled { color: %1; }").arg(tokens.disabledText.name());
 
-    // The cross that closes a tab. Drawn from the one x in the resources,
-    // tinted into the cache for the rule to point at - and left out where the
-    // cache could not be written, the way every other rule aimed at a picture
-    // is, so the tab keeps the platform's own cross rather than losing it.
+    // Left out if the cache cannot be written, so the tab keeps the platform's own cross
     const QString quietCross = themedGlyphFile(qsl(":/icons/editor-clear.svg"), tokens.mutedText, scmTabCloseBoxSize, scmTabCloseGlyphSize);
     const QString litCross = themedGlyphFile(qsl(":/icons/editor-clear.svg"), tokens.accentText, scmTabCloseBoxSize, scmTabCloseGlyphSize);
     if (!quietCross.isEmpty()) {
@@ -1704,38 +1291,9 @@ QString tabBarStyleSheet(const QString& tabWidgetSelector, const ThemeTokens& to
 }
 
 namespace {
-// The box a tab's cross is drawn in is the button widget's own size, and
-// nothing a rule says reaches it. Qt's close button asks the style for
-// PM_TabCloseIndicatorWidth in its constructor and resizes itself to the
-// answer; QStyleSheetStyle has no case for that metric, so the ::close-button
-// rule's width and height are never read and the style underneath answers -
-// twenty pixels under Fusion, which is what the dark appearance is drawn on,
-// fourteen under the macOS style. The picture the rule points at is drawn at
-// scmTabCloseBoxSize with a mark scmTabCloseGlyphSize across, and it is painted
-// into whatever rectangle the button ended up with, so on a twenty pixel button
-// an eight pixel mark comes out at eleven - visibly heavier than the same cross
-// on the profile strip.
-//
-// The moment to say otherwise is QEvent::ChildPolished. The button's sizeHint()
-// calls ensurePolished() before it asks the style anything, and that sends the
-// event to the bar - before the hint is answered and before the constructor's
-// resize() runs. A resize is bounded by the widget's minimum and maximum size,
-// so a box fixed here is what the constructor's resize comes out at, and
-// QTabBar::setTabButton() then lays the tabs out from a size that is already
-// the recipe's. The bar's own two scroll buttons are QToolButtons and are left
-// with whatever the platform gave them, the way the sheet leaves their arrows.
-//
-// Where that box stands is the same story a second time. A ::tab rule with a box
-// makes QStyleSheetStyle answer 0 for PM_TabBarTabHSpace, and its
-// SE_TabBarTabRightButton hands QCommonStyle the tab's raw rectangle - only
-// SE_TabBarTabText is given the rule's contents rect - so the cross is placed at
-// tab->rect.right() - width, which is scmTabGap past the drawn chip and a
-// further scmTabPaddingHorizontal + scmInputBorderWidth outside the box the word
-// is laid in. The rule's subcontrol-position decides the side and nothing else.
-// QTabBarPrivate::layoutTab() applies that rectangle with move(), so a
-// QEvent::Move on the button is the one moment after every layout of the bar,
-// and the cross is put back inside the padding there. Moving it sends a second
-// Move, which is why the wanted position is compared before it is asked for.
+// Qt's close button sizes itself in its constructor from PM_TabCloseIndicatorWidth, and QStyleSheetStyle never
+// reads the ::close-button size for it (20px under Fusion, 14 under macOS). ChildPolished arrives before that
+// resize(), so a fixed size set then holds.
 class TabCloseBoxKeeper : public QObject
 {
 public:
@@ -1749,14 +1307,14 @@ public:
         setObjectName(QLatin1StringView(scmName));
     }
 
-    // Both halves of what a cross is owed, for a button the filter met on
-    // ChildPolished and for one that was already on the bar when it was styled
     void keep(QAbstractButton* pButton)
     {
         pButton->setFixedSize(scmTabCloseBoxSize, scmTabCloseBoxSize);
         pButton->installEventFilter(this);
     }
 
+    // With a ::tab box, SE_TabBarTabRightButton places the button on the tab's raw rect, outside the chip.
+    // layoutTab() applies it with move(), so each QEvent::Move puts it back; moving sends another, hence the compare.
     void placeInsideThePadding(QWidget* pButton)
     {
         auto* pTabBar = qobject_cast<QTabBar*>(parent());
@@ -1768,10 +1326,7 @@ public:
                 if (pTabBar->tabButton(i, side) != pButton) {
                     continue;
                 }
-                // The gap that tells two chips apart comes off the trailing
-                // side, so a chip is the tab's rectangle less that gap. The
-                // height is the chip's own, and Qt has already centred the
-                // button on it.
+                // The chip is the tab rect less scmTabGap on its trailing side; Qt has already centred the button vertically
                 const QRect tab = pTabBar->tabRect(i);
                 const int padding = scmInputBorderWidth + scmTabPaddingHorizontal;
                 QRect wanted = pButton->geometry();
@@ -1808,10 +1363,8 @@ void prepareTabStrip(QTabBar* pTabBar)
         return;
     }
 
-    // In document mode the macOS style fills the whole bar with a band of its
-    // own behind the tabs - neither the page the chips lie on nor anything a
-    // rule asked for, and not something background: transparent takes away. It
-    // is drawn as the bar's base, so the bar is asked not to draw one.
+    // The macOS style fills a document-mode bar with a band of its own that background: transparent cannot remove; it
+    // is the bar's base
     pTabBar->setDrawBase(false);
 
     QObject* pFound = pTabBar->findChild<QObject*>(QLatin1StringView(TabCloseBoxKeeper::scmName), Qt::FindDirectChildrenOnly);
@@ -1820,10 +1373,8 @@ void prepareTabStrip(QTabBar* pTabBar)
         pTabBar->installEventFilter(pKeeper);
     }
 
-    // A bar styled after it was filled has crosses the platform already sized
-    // and already placed, which the filter above was not there to catch. The
-    // style change is what makes the bar lay its tabs out again, since it
-    // measures them from the widgets' current size().
+    // Crosses made before the filter was installed are caught here; the StyleChange makes the bar re-lay its tabs from
+    // their new size()
     bool anyCut = false;
     for (int i = 0; i < pTabBar->count(); ++i) {
         for (const QTabBar::ButtonPosition side : {QTabBar::LeftSide, QTabBar::RightSide}) {
@@ -1866,13 +1417,9 @@ void keepClickFocusOffControls(QWidget* pRoot)
 }
 
 namespace {
-// What the frame round a dropped-down list is painted with, said as nothing.
-// The sheet cannot say it: a stylesheet gives a QFrame subclass no styled
-// background, so its rule for the container reaches only that widget's palette
-// - and Qt::WA_WindowPropagation, which the container carries so a popup is
-// drawn in the font and the colours of the box it belongs to, hands it the
-// field's brushes anyway. Only these two roles are named, so the ink the list's
-// words are written in still follows the appearance.
+// A popup window is filled before its rounded frame is drawn, so its square corners show unless it paints nothing.
+// A stylesheet cannot clear a QFrame subclass's background, and Qt::WA_WindowPropagation hands the popup the
+// field's brushes, so Window and Base are cleared; the words' ink still follows the appearance.
 void namePopupSurfaceAsNothing(QWidget* pPopup)
 {
     QPalette unpainted = pPopup->palette();
@@ -1881,10 +1428,8 @@ void namePopupSurfaceAsNothing(QWidget* pPopup)
     pPopup->setPalette(unpainted);
 }
 
-// ...and said again on the way in. An appearance change swaps the application's
-// style, which re-resolves every widget's palette - after the shell has
-// restyled, so the shell's own pass cannot be the last word. A popup is shown
-// before it is painted, which is the last moment that can be.
+// An appearance change re-resolves every palette after the shell has restyled, so the brushes are cleared again on
+// each Show
 class PopupSurfaceKeeper : public QObject
 {
 public:
@@ -1923,9 +1468,7 @@ void letPopupsTakeTheFieldsCorner(QWidget* pRoot)
         if (!pList) {
             return;
         }
-        // The window is the container the list sits in, not the list: the
-        // attribute and the brushes both have to be on whatever the platform
-        // makes a surface for
+        // The container window, not the list: the platform makes its surface for the window
         QWidget* pPopup = pList->window();
         if (!pPopup || pPopup == pComboBox->window()) {
             return;
@@ -1936,10 +1479,6 @@ void letPopupsTakeTheFieldsCorner(QWidget* pRoot)
             pPopup->installEventFilter(new PopupSurfaceKeeper(pPopup));
         }
     };
-    // A menu is its own popup window rather than a list living in one, so the
-    // three things are said on the menu itself. It is the same corner and for
-    // the same reason: menuStyleSheet() rounds a frame that would otherwise be
-    // drawn over the square window Qt fills first.
     const auto openTheMenusCorner = [](QMenu* pMenu) {
         pMenu->setAttribute(Qt::WA_TranslucentBackground);
         namePopupSurfaceAsNothing(pMenu);
@@ -2046,9 +1585,6 @@ void restyleActionGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& to
 
 QString noticeStyleSheet(const QString& frameSelector, const ThemeTokens& tokens)
 {
-    // A notice rather than a strip of highlighter pen: the accent the rest of
-    // the window points with, and the picture beside the words is what says
-    // which of the three readings this one is
     return qsl("%1 { background-color: %2; border: 1px solid %3; border-radius: %5px; }"
                "%1 QLabel { background: transparent; color: %4; }")
             .arg(frameSelector, tokens.accentSoft, tokens.accent.name(), tokens.mutedText.name(), QString::number(scmRadiusPanel));
@@ -2056,17 +1592,8 @@ QString noticeStyleSheet(const QString& frameSelector, const ThemeTokens& tokens
 
 QPixmap noticeGlyph(const NoticeKind kind, const ThemeTokens& tokens, const qreal devicePixelRatio)
 {
-    // Line glyphs rather than the full-colour bitmaps the .ui files ship: a
-    // picture tinted through its alpha channel keeps only the shape that
-    // channel carries, and those bitmaps' alpha is a solid disc or triangle -
-    // so the information notice came out as a filled circle with nothing
-    // readable in it.
-    //
-    // Which of the three it is is the only thing a notice says without words, so
-    // the hue is kept and only the lightness comes off the page - the way the
-    // editor's compile chip is mixed. The error of the three is the one red, so
-    // a refusal on a notice and the note over the code pane are drawn in the
-    // same value.
+    // Line glyphs, not the .ui files' bitmaps: tinting keeps only the alpha channel, and theirs is a solid disc or
+    // triangle
     QString glyphFile;
     QColor glyphColour;
     switch (kind) {
@@ -2103,24 +1630,17 @@ QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens)
 {
     const QString cardProperty = QLatin1StringView(metrics.cardProperty);
     const QString padding = QString::number(metrics.padding);
-    // The title is the card's first line, inside the frame: the top padding is
-    // what leaves room for it, and the same padding sets it in from the left
-    // edge as the controls under it
     QString rules =
             qsl("QGroupBox[%1=\"true\"] { background-color: %2; border: 1px solid %3; border-radius: %4px;"
                 " padding: %5px %6px %6px %6px; font-weight: bold; }"
                 "QGroupBox[%1=\"true\"]::title { subcontrol-origin: padding; subcontrol-position: top left;"
                 " left: %6px; top: %6px; padding: 0px; }"
-                // ...but only the title is bold, not everything the card holds:
                 "QGroupBox[%1=\"true\"] > * { font-weight: normal; }")
                     .arg(cardProperty, tokens.card.name(), tokens.border.name(), QString::number(scmRadiusPanel), QString::number(metrics.padding + metrics.titleHeight + scmCardTitleGap), padding);
     if (metrics.plainProperty) {
-        // A card carrying a single option needs no heading, nor room inside for one
         rules += qsl("QGroupBox[%1=\"true\"] { padding-top: %2px; }").arg(QLatin1StringView(metrics.plainProperty), padding);
     }
     if (metrics.flattenNestedGroupBoxes) {
-        // A group box the .ui file nests inside what is now a card would draw a
-        // second frame; a heading alone divides them
         rules += qsl("QGroupBox[%1=\"true\"] QGroupBox { border: none; background: transparent; margin-top: 20px; padding: 0px 0px 0px 8px; font-weight: bold; }"
                      "QGroupBox[%1=\"true\"] QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 0px; padding: 0px; }")
                          .arg(cardProperty);
@@ -2130,24 +1650,18 @@ QString cardStyleSheet(const CardMetrics& metrics, const ThemeTokens& tokens)
 
 QString cardIndicatorStyleSheet(const char* cardProperty, const ThemeTokens& tokens)
 {
-    // The same mark the check boxes under the card carry, so that turning a
-    // whole card on reads as the same act as turning one option on
     const ChoiceMarkInks inks = choiceMarkInks(tokens);
     return choiceMarkRules(qsl("QGroupBox[%1=\"true\"]::indicator").arg(QLatin1StringView(cardProperty)), scmChoiceBoxRadius, inks.tick, inks.dash, inks.quietTick, inks.quietDash, inks, tokens);
 }
 
-// Where the style puts a card's title, on a throwaway box laid out under the
-// rules the real cards are drawn with
 static QRect measuredCardTitleRect(QWidget* pParent, const QString& indicatorRules, const char* cardProperty, const bool checkable)
 {
     QGroupBox box(pParent);
     box.setProperty(cardProperty, true);
     box.setCheckable(checkable);
-    // Never shown or read, but a box with no title has no label to place
+    // Never shown, but a box with no title has no label to place
     box.setTitle(qsl("Aa"));
-    // Its own rather than the shell's, which is the string being built. The
-    // weight goes with the indicator rules because a card's title is set bold,
-    // and how tall a line of it comes to is one of the answers asked for here.
+    // Not the shell's stylesheet, which is the string being built; bold, as the title's line height is measured
     box.setStyleSheet(indicatorRules + qsl("QGroupBox[%1=\"true\"] { font-weight: bold; }").arg(QString::fromLatin1(cardProperty)));
     QStyleOptionGroupBox option;
     option.initFrom(&box);
@@ -2165,8 +1679,7 @@ static QRect measuredCardTitleRect(QWidget* pParent, const QString& indicatorRul
 
 int measuredCardTitleHeight(QWidget* pParent, const QString& indicatorRules, const char* cardProperty)
 {
-    // The taller of the two: a checkable card's title line is as tall as its
-    // check indicator where the type is smaller than the box
+    // A checkable title is as tall as its indicator when the type is smaller than the box
     return qMax(measuredCardTitleRect(pParent, indicatorRules, cardProperty, true).height(), measuredCardTitleRect(pParent, indicatorRules, cardProperty, false).height());
 }
 
@@ -2290,8 +1803,7 @@ void SettingsSnapshot::take()
         if (!value.isValid()) {
             continue;
         }
-        // The apply this snapshot follows left a half-typed field alone, so what
-        // it was last populated with has to stand until that edit finishes
+        // The preceding apply skipped a half-typed field, so its last populated value stands until the edit finishes
         if (const auto it = previous.constFind(pWidget); beingTypedInto(pWidget) && it != previous.constEnd()) {
             mValues.insert(pWidget, *it);
             continue;
@@ -2308,24 +1820,20 @@ void SettingsSnapshot::take(const QObject* pControl)
 
 bool SettingsSnapshot::dirty(const QObject* pControl) const
 {
-    // The debounce is shared, so the apply about to read this was very likely
-    // started by another control's edit
+    // The debounce is shared, so the apply about to read this was likely started by another control's edit
     if (beingTypedInto(pControl)) {
         return false;
     }
     const auto it = mValues.constFind(pControl);
     if (it == mValues.constEnd()) {
-        // A control that came into being after the last snapshot:
         return true;
     }
     return *it != controlValue(pControl);
 }
 
-// For a setting spread over several controls - the borders, the Discord privacy
-// flags - one of them changing means the write happens. What is written is
-// still composed control by control: an undirty control contributes the value
-// the Host holds now rather than what it shows, which a script may have moved
-// on from (#10165). Members that are separate settings take their own guard.
+// For a setting spread over several controls (borders, Discord privacy flags), any one changing triggers the
+// write, still composed per control: a clean control contributes the Host's current value, not what it
+// shows, which a script may have changed since. Members that are separate settings take their own guard.
 bool SettingsSnapshot::anyDirty(const QList<const QObject*>& controls) const
 {
     for (const auto* pControl : controls) {
@@ -2348,8 +1856,7 @@ bool SettingsSnapshot::shortcutDirty(const QString& key) const
 
 bool SettingsSnapshot::pendingEdits(const QTimer* pApplyTimer, const QLineEdit* pSearchField) const
 {
-    // Whatever the settings say, what the controls hold is the user's until the
-    // apply has run - and the refresh at the end of it re-reads them anyway
+    // Until the apply runs the controls hold the user's values, and its closing refresh re-reads them anyway
     if (pApplyTimer && pApplyTimer->isActive()) {
         return true;
     }
@@ -2357,8 +1864,7 @@ bool SettingsSnapshot::pendingEdits(const QTimer* pApplyTimer, const QLineEdit* 
         if (pWidget == pSearchField || !carriesValue(pWidget)) {
             continue;
         }
-        // dirty() answers false for a field being typed into, which is exactly
-        // the edit that must not be written over here - so it is asked separately
+        // dirty() is false for a field being typed into, exactly the edit that must not be overwritten here
         if (beingTypedInto(pWidget) || dirty(pWidget)) {
             return true;
         }
@@ -2366,8 +1872,7 @@ bool SettingsSnapshot::pendingEdits(const QTimer* pApplyTimer, const QLineEdit* 
     if (shortcutsDirty()) {
         return true;
     }
-    // A shortcut editor holds a capture until editingFinished, so one showing
-    // anything other than what it last committed is an edit in progress
+    // A shortcut editor holds a capture until editingFinished, so differing from its last commit is an edit
     for (auto it = mEditors.cbegin(), end = mEditors.cend(); it != end; ++it) {
         if (it.value() && it.value()->keySequence() != mCurrentShortcuts.value(it.key())) {
             return true;

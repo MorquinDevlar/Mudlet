@@ -171,8 +171,6 @@ private slots:
              "appears on hover is one nobody discovers");
   }
 
-  // It shares the Command row rather than taking a row of its own, and closes
-  // that row after the ID number
   void test_toggleClosesTheCommandRowAfterTheId() {
     auto *area = mpEditor->mpTriggersMainArea;
     auto *command = area->lineEdit_trigger_command;

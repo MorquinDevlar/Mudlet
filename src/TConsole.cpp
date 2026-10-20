@@ -1317,8 +1317,7 @@ void TConsole::changeColors()
         Q_ASSERT_X(false, "TConsole::changeColors()", "invalid TConsole type detected");
     }
     applyFootSeamColour();
-    // The settings dialog and an import restyle the main console alone, and every
-    // other console's foot is mixed from the same profile colours
+    // The settings dialog and an import restyle only the main console, yet every foot mixes these colours
     if (auto pMainConsole = qobject_cast<TMainConsole*>(this); pMainConsole && !mpHost.isNull()) {
         for (const QString& name : mpHost->windowRegistry().subConsoleNames()) {
             if (TConsole* pSubConsole = pMainConsole->subConsoleWidget(name)) {

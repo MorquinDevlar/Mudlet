@@ -38,21 +38,15 @@ dlgSystemMessageArea::dlgSystemMessageArea(QWidget* pParentWidget)
         pNoticeLayout->setContentsMargins(uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical, uiDesign::scmNoticePaddingHorizontal, uiDesign::scmNoticePaddingVertical);
         pNoticeLayout->setSpacing(uiDesign::scmNoticeSpacing);
     }
-    // The .ui file puts the close button over a spacer tall enough for a 64px
-    // picture; what the notice holds now is a line or two of text, and the
-    // spacer only has to keep the button on the first of them
+    // The .ui spacer is sized for a 64px picture; it only has to keep the close button on the first line
     verticalSpacer_closeButton->changeSize(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
 
     slot_applyAppearance();
     connect(mudlet::self(), &mudlet::signal_appearanceChanged, this, &dlgSystemMessageArea::slot_applyAppearance);
 }
 
-// A notice is as tall as its words are at the width it has been given, and no
-// taller. Its wrapping label answers a plain size hint with the height that text
-// would take in a box narrow enough to read comfortably - a guess at a shape,
-// not at this shape - and a layout hands a widget spare room up to that guess.
-// So both hints come from the layout's own height-for-width at the width the
-// notice actually has, which is the one answer true of what is on screen.
+// A wrapping QLabel's own hint is its height at a narrower width of its choosing, so answer the
+// layout's height-for-width at the width the notice really has
 QSize dlgSystemMessageArea::sizeHint() const
 {
     return heightAtOwnWidth(QWidget::sizeHint());
@@ -73,8 +67,7 @@ QSize dlgSystemMessageArea::heightAtOwnWidth(const QSize& fallback) const
     return height > 0 ? QSize(fallback.width(), height) : fallback;
 }
 
-// A different width is a different number of lines, so the height the two hints
-// answer with is no longer the one whatever holds this was laid out against
+// A new width wraps to a different number of lines, which changes both hints
 void dlgSystemMessageArea::resizeEvent(QResizeEvent* pEvent)
 {
     QWidget::resizeEvent(pEvent);
@@ -83,24 +76,16 @@ void dlgSystemMessageArea::resizeEvent(QResizeEvent* pEvent)
     }
 }
 
-// The notice owns its own look. It used to carry two: this one and a second
-// written onto the same frame by the editor's shell style, and a widget with
-// two sheets shows whichever landed last - which on an appearance change was
-// this one, so the design's hairline came back as the old 3px near-black band.
+// Nothing else may set a sheet on this frame: whichever setStyleSheet() lands last wins
 void dlgSystemMessageArea::slot_applyAppearance()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     frame_notificationArea->setStyleSheet(uiDesign::noticeStyleSheet(qsl("QFrame#frame_notificationArea"), tokens));
-    // The picture beside the words, in the shared hand: the .ui file ships a
-    // 64px full-colour bitmap on each of the three labels, and the notice is a
-    // line or two of text with one glyph beside it
+    // Overrides the 64px full-colour bitmap the .ui file sets on each label
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelInformation, uiDesign::NoticeKind::Information, tokens);
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelWarning, uiDesign::NoticeKind::Warning, tokens);
     uiDesign::applyNoticeGlyph(notificationAreaIconLabelError, uiDesign::NoticeKind::Error, tokens);
-    // The words of the notice are named on the label itself rather than left to
-    // the descendant rule above, which does not reach them: the area is hidden
-    // while the window round it is styled and is polished only when a notice
-    // brings it out, and that polish writes the application's own ink into the
-    // label's palette. A sheet the label carries survives it.
+    // On the label itself, not via the frame's descendant rule: the area is hidden while styled, and
+    // the polish when a notice shows it writes the application's ink into the label's palette
     notificationAreaMessageBox->setStyleSheet(qsl("color: %1;").arg(tokens.mutedText.name()));
 }

@@ -137,11 +137,8 @@ private:
         return label->text();
     }
 
-    // Which of the two readings the notice under the form is showing, which is
-    // the language-independent "did it fail" test: displayResultMessage() shows
-    // the error picture beside the words for a failure and the information one
-    // otherwise. It used to be a colour written into the text, which the design
-    // language mixes from the theme now.
+    // displayResultMessage() shows the error glyph for a failure and the information
+    // one otherwise, which is the language-independent "did it fail" test
     bool reportedFailure(dlgPackageExporter* exporter) const
     {
         auto* notice = exporter->findChild<QWidget*>(qsl("exporterNotice"));

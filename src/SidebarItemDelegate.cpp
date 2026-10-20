@@ -37,10 +37,8 @@ SidebarItemDelegate::SidebarItemDelegate(QListWidget* pList)
 void SidebarItemDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const
 {
     QStyledItemDelegate::initStyleOption(pOption, index);
-    // The weight the chosen row is drawn in, and the weight sidebarRowWidth()
-    // measures every row against. It is set here rather than in the sheet
-    // because a font on an ::item never reaches the painter: the display text
-    // is laid out with this option's own font.
+    // Not in the sheet: a stylesheet font on ::item never reaches the painter.
+    // sidebarRowWidth() measures every row in this bold.
     if (pOption->state & QStyle::State_Selected) {
         pOption->font.setBold(true);
         pOption->fontMetrics = QFontMetrics(pOption->font);

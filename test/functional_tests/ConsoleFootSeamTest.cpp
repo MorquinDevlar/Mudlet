@@ -18,55 +18,40 @@
  ***************************************************************************/
 
 /*
- * A console's foot - its command line, and in the main window the search box,
- * the buttons and the latency readout beside it - is parted from the text above
- * by one 1px seam along its top, mixed from the profile's own command-line
- * colours, and by nothing else: the input has no frame of its own, so a border
- * a profile gives it through setCmdLineStyleSheet() is the only one drawn there.
+ * A console's foot is parted from the text above by one 1px seam mixed from the profile's
+ * command-line colours, and the input has no frame of its own, so a border a profile gives it
+ * through setCmdLineStyleSheet() is the only one drawn there.
  *
  * Run with: ctest -R ConsoleFootSeamTest -V
  */
 
-#include <QSignalSpy>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 #include "Host.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TCommandLine.h"
 #include "TMainConsole.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
 #include "GroupedTest.h"
-
-using namespace std::chrono_literals;
 
 class ConsoleFootSeamTest : public QObject
 {
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     Host* mpHost = nullptr;
     const QString mHostname = qsl("ConsoleFootSeam-Test-Host");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
     const QString mMiniConsoleName = qsl("footSeamMiniConsole");
     const QString mColourMiniConsoleName = qsl("footSeamColourMiniConsole");
     QSize mWindowSize;
 
     static QWidget* seamOf(TConsole* pConsole) { return pConsole->findChild<QWidget*>(qsl("consoleFootSeam")); }
 
-    // The strength is the user's choice, written out here rather than read from
-    // the constant so the test says what was asked for
+    // 0.20 written out rather than read from the constant, so the test says what was asked for
     QColor expectedSeamColour() const { return uiDesign::blend(mpHost->mCommandLineBgColor, mpHost->mCommandLineFgColor, 0.20); }
 
     // As a QRgb: a grab holds eight bits a channel, where blend() mixes in floating point
@@ -81,61 +66,32 @@ private:
 
     bool runLua(const QString& script) { return mpHost->mLuaInterpreter.compileAndExecuteScript(script); }
 
-    static void settle() { QTest::qWait(50ms); }
-
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-
-        QDir(MudletApp::getMudletPath(enums::profileHomePath, mHostname)).removeRecursively();
-        mpHost = TestProfile::create(mHostname, mLocalhost, mPort);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-        QSignalSpy connectedSpy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (mpHost->mTelnet.getConnectionState() != QAbstractSocket::ConnectedState && !connectedSpy.wait(8s)) {
-            QFAIL("Could not connect with the host.");
-        }
+        QVERIFY2(mSession.start(mHostname), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         // Nothing is laid out, let alone painted, until the window is up
         mWindowSize = mudlet::self()->size();
         mudlet::self()->resize(1200, 800);
         mudlet::self()->show();
         QVERIFY2(QTest::qWaitForWindowExposed(mudlet::self()), "the main window never came up");
-        settle();
+        TestPixels::settle();
     }
 
     void cleanupTestCase()
     {
-        delete mpServer;
-        mpServer = nullptr;
         mpHost = nullptr;
         if (mudlet::self()) {
             mudlet::self()->hide();
             mudlet::self()->resize(mWindowSize);
-            QDir(MudletApp::getMudletPath(enums::profileHomePath, mHostname)).removeRecursively();
-            delete mudlet::self();
         }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     void test_theMainCommandLineHasNoFrame()
@@ -151,9 +107,8 @@ private slots:
                 qPrintable(qsl("the command line's leading edge is %1, not its background %2, so something is still drawn round it").arg(describe(edge), describe(mpHost->mCommandLineBgColor.rgb()))));
     }
 
-    // The search box, the buttons and the latency readout sit beside the command
-    // line in a splitter, so a seam that stopped at the command line would leave
-    // a third of the foot without it
+    // The search box, buttons and latency readout share a splitter with the command line, so a
+    // seam on the command line alone would miss them
     void test_theSeamSpansTheWholeFootOfTheMainWindow()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();
@@ -175,11 +130,9 @@ private slots:
         QVERIFY2(pSeam->width() > pConsole->layerCommandLine->width(),
                  qPrintable(qsl("the seam is %1 wide, no wider than the command line's %2").arg(pSeam->width()).arg(pConsole->layerCommandLine->width())));
 
-        // Directly over the input and the buttons, with nothing between
         QCOMPARE(pConsole->mpCommandLine->mapTo(pConsole, QPoint()).y(), seamInConsole.y() + 1);
         QCOMPARE(pConsole->mpButtonMainLayer->mapTo(pConsole, QPoint()).y(), seamInConsole.y() + 1);
 
-        // ...and the text stops where the seam starts rather than running under it
         const int textBottom = pConsole->mpMainDisplay->mapTo(pConsole, QPoint(0, pConsole->mpMainDisplay->height())).y();
         QVERIFY2(textBottom <= seamInConsole.y(), qPrintable(qsl("the text area ends at %1, under the seam at %2").arg(textBottom).arg(seamInConsole.y())));
     }
@@ -199,9 +152,8 @@ private slots:
         }
     }
 
-    // No script can set the command-line colours; a profile or package import and
-    // the settings dialog both write the two members and then restyle the main
-    // console alone, which has to carry the change to every other console's foot
+    // No script can set these colours; import and the settings dialog write the two members and
+    // restyle the main console alone, which has to carry the change to every other console's foot
     void test_theSeamFollowsTheProfilesColoursWhenTheyChange()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();
@@ -213,7 +165,7 @@ private slots:
             mpHost->deleteMiniConsole(mColourMiniConsoleName);
         });
         QVERIFY(runLua(qsl("enableCommandLine('%1')").arg(mColourMiniConsoleName)));
-        settle();
+        TestPixels::settle();
         QWidget* pMiniSeam = seamOf(pMiniConsole);
         QVERIFY(pMiniSeam);
         QVERIFY(pMiniSeam->isVisible());
@@ -229,7 +181,7 @@ private slots:
         mpHost->mCommandLineBgColor = QColor(250, 240, 220);
         mpHost->mCommandLineFgColor = QColor(20, 40, 120);
         mpHost->applyMainConsoleColors();
-        settle();
+        TestPixels::settle();
 
         const QColor expected = expectedSeamColour();
         QVERIFY2(expected != before, "the new colours mix to the old seam colour, so nothing is tested");
@@ -242,8 +194,7 @@ private slots:
         QVERIFY2(miniPainted == expected.rgb(), qPrintable(qsl("after the change the miniconsole's seam is painted %1, not %2").arg(describe(miniPainted), describe(expected.rgb()))));
     }
 
-    // A miniconsole's foot is the command line alone, and the seam sits inside it.
-    // The hiding is tested here: Lua refuses to hide the main command line.
+    // Hiding is tested here because Lua refuses to hide the main command line
     void test_aMiniConsoleCommandLineCarriesTheSeamToo()
     {
         TMainConsole* pConsole = mpHost->mainConsoleView();
@@ -253,7 +204,7 @@ private slots:
             mpHost->deleteMiniConsole(mMiniConsoleName);
         });
         QVERIFY(runLua(qsl("enableCommandLine('%1')").arg(mMiniConsoleName)));
-        settle();
+        TestPixels::settle();
         QVERIFY(pMiniConsole->mpCommandLine);
         QCOMPARE(pMiniConsole->mpCommandLine->frameShape(), QFrame::NoFrame);
 
@@ -264,7 +215,7 @@ private slots:
         QCOMPARE(pSeam->mapTo(pMiniConsole, QPoint()).x(), 0);
         QCOMPARE(pSeam->width(), pMiniConsole->width());
         QCOMPARE(pSeam->mapTo(pMiniConsole, QPoint()).y() + 1, pMiniConsole->mpCommandLine->mapTo(pMiniConsole, QPoint()).y());
-        // The seam is the foot's extra pixel, not one taken off the input
+        // The seam adds a pixel to the foot rather than taking one off the input
         QCOMPARE(pMiniConsole->layerCommandLine->height(), pMiniConsole->mpCommandLine->height() + 1);
         const int priorMinimumHeight = mpHost->commandLineMinimumHeight;
         const auto restoreMinimumHeight = qScopeGuard([this, pMiniConsole, priorMinimumHeight]() {
@@ -273,13 +224,13 @@ private slots:
         });
         mpHost->commandLineMinimumHeight = 60;
         pMiniConsole->mpCommandLine->adjustHeight();
-        settle();
+        TestPixels::settle();
         QCOMPARE(pMiniConsole->mpCommandLine->height(), 60);
         QCOMPARE(pMiniConsole->layerCommandLine->height(), 61);
         QCOMPARE(pSeam->palette().color(QPalette::Window), expectedSeamColour());
 
         QVERIFY(runLua(qsl("disableCommandLine('%1')").arg(mMiniConsoleName)));
-        settle();
+        TestPixels::settle();
         QVERIFY2(!pSeam->isVisible(), "the miniconsole's seam stayed on show with its command line disabled");
     }
 
@@ -294,7 +245,7 @@ private slots:
         });
 
         QVERIFY(runLua(qsl("setCmdLineStyleSheet('main', [[QPlainTextEdit { border: 2px solid #ff0000; }]])")));
-        settle();
+        TestPixels::settle();
 
         const QRgb red = qRgb(255, 0, 0);
         const QRgb edge = pixelAt(pConsole, pCommandLine, QPoint(0, pCommandLine->height() / 2));

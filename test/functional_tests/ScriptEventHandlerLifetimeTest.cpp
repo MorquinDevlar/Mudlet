@@ -47,14 +47,9 @@ using namespace std::chrono_literals;
 
 // Run with: ctest -R ScriptEventHandlerLifetimeTest -V
 //
-// One script's events must never land on another, whatever the editor was in
-// the middle of when the user moved between them. That was #9835 in its first
-// form: the "Add User Event" field noted a row of the list beside it, the note
-// outlived the list being torn down, and "+" then renamed a freed row - or a row
-// belonging to the next script. The controls are a row of chips now and there is
-// no note to outlive anything, but the rule those cases were written for is the
-// same one, so they are kept: what a script is registered for follows the
-// script, and a name half typed follows nothing at all.
+// One script's events must never land on another, whatever the editor was in the
+// middle of when the user moved between them (#9835: "+" renamed a freed row, or
+// one of the next script's), and a name half typed follows nothing.
 class ScriptEventHandlerLifetimeTest : public QObject
 {
     Q_OBJECT
@@ -93,15 +88,13 @@ private:
 
     uiDesign::ChipRow* eventRow() const { return mpEditor->mpChipRow_scriptEvents; }
 
-    // The field the row opens to take a name; null while it is closed
+    // Null while closed: the field stays in the row, hidden, between names
     QLineEdit* eventField() const
     {
         QLineEdit* pField = eventRow()->findChild<QLineEdit*>(qsl("editorChipEditor"));
         return pField && !pField->isHidden() ? pField : nullptr;
     }
 
-    // The whole of what a user does to add one: open the field, type, press
-    // Return
     void addEvent(const QString& name)
     {
         eventRow()->beginAdd();
@@ -238,8 +231,6 @@ private slots:
         mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
     }
 
-    // Each script's row is filled from that script, so moving between two of
-    // them cannot leave one showing the other's events - nor save them onto it
     void testSwitchingScriptsKeepsEachScriptsOwnEvents()
     {
         QTreeWidgetItem* pScriptA = addSavedScript(qsl("ScriptA"), {qsl("myTestEvent")});
@@ -264,9 +255,7 @@ private slots:
     }
 
     // One click on a tree entry emits itemSelectionChanged and then itemClicked, so
-    // slot_scriptsSelected() used to run twice - which tore the events down and
-    // built them again under the user. The itemClicked wiring drops same-row
-    // emissions, and the row is left as it was.
+    // slot_scriptsSelected() would run twice; the itemClicked wiring drops same-row emissions
     void testReselectingTheSameScriptLeavesItsEventsAlone()
     {
         QTreeWidgetItem* pScript = addSavedScript(qsl("SoloScript"), {qsl("myTestEvent")});
@@ -275,9 +264,8 @@ private slots:
         QTest::qWait(50ms);
         QCOMPARE(eventRow()->items(), QStringList{qsl("myTestEvent")});
 
-        // The same words on a chip built again are the same words, so the chip
-        // itself is what is held onto: a row torn down and rebuilt hands back a
-        // different widget, and says so on the way
+        // A rebuilt row shows the same words, so the chip widget and itemsChanged
+        // are what tell a rebuild apart
         QWidget* pChipBefore = eventRow()->chipAt(0);
         QVERIFY2(pChipBefore != nullptr, "the row shows no chip for the event the script handles");
         QSignalSpy rebuilds(eventRow(), &uiDesign::ChipRow::itemsChanged);
@@ -296,8 +284,6 @@ private slots:
         removeScripts({pScript});
     }
 
-    // Showing another script shuts the field along with everything else in the
-    // row, so a half-typed name cannot follow the user and land on that one
     void testTypedButUnaddedTextDoesNotFollowToTheNextScript()
     {
         QTreeWidgetItem* pScriptA = addSavedScript(qsl("TypedTextA"), {});
@@ -351,8 +337,6 @@ private slots:
         removeScripts({pScript, pNewScript});
     }
 
-    // F2 on a chip opens the field in its place, and what is typed there
-    // replaces that name rather than adding a second one
     void testRenamingAnEventStillWorks()
     {
         QTreeWidgetItem* pScript = addSavedScript(qsl("RenameScript"), {qsl("firstEvent")});
@@ -378,8 +362,7 @@ private slots:
         removeScripts({pScript});
     }
 
-    // The cross on a chip takes it out of the row, which frees the widget - so
-    // this also holds the leak checker over that path
+    // The cross frees the chip widget, so this also holds the leak checker over that path
     void testDeletingAnEventReleasesIt()
     {
         QTreeWidgetItem* pScript = addSavedScript(qsl("DeleteScript"), {qsl("firstEvent"), qsl("secondEvent")});
@@ -404,8 +387,6 @@ private slots:
         removeScripts({pScript});
     }
 
-    // A search result for an event shows the script it belongs to and points at
-    // the chip carrying it, whichever script was open before
     void testSearchResultPointsAtTheEvent()
     {
         QTreeWidgetItem* pScriptA = addSavedScript(qsl("SearchScript"), {qsl("searchableEvent")});
@@ -426,8 +407,8 @@ private slots:
 
         QCOMPARE(mpEditor->mpCurrentScriptItem, pScriptA);
         QCOMPARE(eventRow()->items(), QStringList{qsl("searchableEvent")});
-        // focusWidget() rather than hasFocus(): the latter also asks whether the
-        // window is the active one, which a test run headlessly cannot promise
+        // focusWidget(), not hasFocus(): hasFocus() also needs the window active,
+        // which a headless run cannot promise
         QCOMPARE(eventRow()->focusWidget(), eventRow()->chipAt(0));
 
         mpEditor->treeWidget_scripts->setCurrentItem(pScriptB);

@@ -71,49 +71,29 @@ const QString jsonNotesFileName{qsl("notes.json")};
 const QString local8BitEncodedNotesFileName{qsl("notes.txt")};
 const QString utf8EncodedNotesFileName{qsl("notes_utf8.txt")};
 
-// How far a match the cursor is not on is taken from the field it lies in
-// towards the marker pen: far enough to be picked out of a page of notes, and
-// short of the full pen, which is what says which of them the cursor is on
+// Visible across a page of notes, yet short of the full pen that marks the cursor's match
 constexpr qreal scmNotepadQuietMatchWash = 0.35;
 
-// Where a note stops looking like a list of things to do. Six lines or fewer is
-// what a sequence of commands looks like - a shopping run, a set of directions -
-// and a note longer than that is a diary. Sending a diary with nothing in front
-// of each line puts prose on the command line, which is what the strip's warning
-// is about, so this is the line between the two.
+// Six lines or fewer reads as a sequence of commands; a longer note sent with no prefix puts prose on the command line
 constexpr int scmNotepadWarnAtLines = 6;
-// The gap QCommonStyle leaves between a tool button's picture and its word
-// when the two sit side by side - hard-coded there, not a style metric
+// QCommonStyle hard-codes this gap between a tool button's icon and its text; no style metric reports it
 constexpr int scmQtToolButtonPictureGap = 4;
 
-// What is left between the dot, the words and the thread of a reading: the
-// bar's own spacing parts one control from the next, and the pieces of one
-// reading are nearer each other than that.
+// Tighter than the bar's own spacing, which parts one control from the next
 constexpr int scmNotepadReadingGap = 5;
 
-// The dot a reading on the strip begins with. The same size the editor's compile
-// note is read by; scmEditorCompileDotDiameter is that window's own constant, so
-// this window carries its own copy of the number rather than reaching for it.
+// Matches scmEditorCompileDotDiameter, which is file-local to dlgTriggerEditor.cpp
 constexpr int scmNotepadReadingDotDiameter = 8;
 
-// The thread of progress under a send: a line rather than a trough, so it says
-// how far along the send is without becoming a control. Its corner is half its
-// own height, which is what makes the ends round rather than cut.
 constexpr int scmNotepadProgressHeight = 4;
 constexpr int scmNotepadProgressWidth = 90;
 
-// A field the strip has warned the reader about. No pseudo-state can say it, so
-// the rule that draws the hairline selects on this.
+// No pseudo-state expresses the warning, so the hairline rule selects on this property
 constexpr char scmProp_notepadFieldState[] = "notepadFieldState";
 
-// The picture the warning is carried by inside that field. The size the editor
-// draws the glyph on its banner at; scmEditorBannerGlyphSize is that window's
-// own constant, so this window carries its own copy of the number rather than
-// reaching for it.
 constexpr int scmNotepadFieldCueSize = 20;
 
-// What a count of lines counts: slot_sendNextLine() skips an empty one, so
-// counting the empties would promise the reader more than the game will see
+// slot_sendNextLine() skips an empty line, so counting it would promise more than the game will see
 static int sendableLineCount(const QStringList& lines)
 {
     int count = 0;
@@ -125,8 +105,7 @@ static int sendableLineCount(const QStringList& lines)
     return count;
 }
 
-// A selection comes back with the paragraph separator QTextCursor works in
-// rather than with newlines, which is what slot_sendSelection() undoes as well
+// QTextCursor::selectedText() separates lines with U+2029 rather than newlines
 static QStringList linesOf(QString text)
 {
     return text.replace(QChar::ParagraphSeparator, QChar::LineFeed).split(QChar::LineFeed);
@@ -137,17 +116,13 @@ dlgNotepad::dlgNotepad(Host* pH)
 {
     setupUi(this);
 
-    // Nothing ever writes to the status bar, and an empty one leaves a strip of
-    // the platform's own drawing across the foot of the window under a toolbar
-    // this window draws itself
+    // Never written to, and an empty one leaves a strip of native drawing under the styled toolbar
     statusbar->hide();
 
     setupSendStrip();
     setupAddTabButton();
 
-    // What no rule can say about the strip: the band the platform fills the bar
-    // with behind the tabs, and the box a tab's cross is sized in. Said before
-    // the notes are restored, so every tab's cross is caught as it is made.
+    // Before restore(), so every tab's close button is caught as it is made
     uiDesign::prepareTabStrip(tabWidget->tabBar());
 
     tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -178,14 +153,8 @@ dlgNotepad::dlgNotepad(Host* pH)
     startTimer(2min);
 }
 
-// The strip at the foot of the window, in the two readings it has: what a send
-// would reach, and what a send is doing. Everything of both is on the bar at
-// once and the visibility of the actions is what says which reading is on show,
-// so nothing is built or torn down as a send starts and ends.
-//
-// The bar makes the button that stands for an action, so the shape it is drawn
-// in, the word beside its glyph and the name a screen reader announces are set
-// on that button rather than on the action behind it.
+// QToolBar makes its own QToolButton for each action, so the text-beside-icon style and
+// the accessible name go on that button rather than on the action
 void dlgNotepad::setupSendStrip()
 {
     //: Button at the foot of the notepad that sends the line the cursor is on to the game
@@ -207,8 +176,6 @@ void dlgNotepad::setupSendStrip()
                             {action_sendAll, qsl(":/icons/notepad-send-all.svg"), QString()},
                             {action_stop, qsl(":/icons/notepad-stop.svg"), QString()}};
 
-    // The seam the .ui file puts after the three send buttons parts them from
-    // the prefix; while a send runs there is neither, so it goes away with them
     for (QAction* pAction : toolBar->actions()) {
         if (pAction->isSeparator()) {
             action_sendControlsSeparator = pAction;
@@ -232,23 +199,15 @@ void dlgNotepad::setupSendStrip()
     lineEdit_prependText->setToolTip(mPrefixFieldToolTip);
     lineEdit_prependText->setClearButtonEnabled(true);
 
-    // The warning's cue, the way the connection dialog carries the eye that
-    // reveals a password: inside the field rather than on the bar, so it takes
-    // no room from the strip and is there to be read at any width. Its picture
-    // is inked in the style pass with everything else the page is mixed from.
+    // Inside the field rather than on the bar, so the cue takes no room and shows at any width
     action_prefixWarning = new QAction(this);
     action_prefixWarning->setObjectName(qsl("notepadPrefixWarning"));
     action_prefixWarning->setVisible(false);
     lineEdit_prependText->addAction(action_prefixWarning, QLineEdit::TrailingPosition);
-    // A line edit asks to be given whatever room there is, which on a bar would
-    // leave nothing for the reading at the trailing end. What it holds is a
-    // command and a name at most, so it takes the width Qt measures for a field
-    // of its font instead - and the slack goes to the spacer below.
+    // QLineEdit's default Expanding policy would take the room the warning needs; the spacer takes the slack
     lineEdit_prependText->setSizePolicy(QSizePolicy::Preferred, lineEdit_prependText->sizePolicy().verticalPolicy());
     action_prependText = toolBar->addWidget(lineEdit_prependText);
 
-    // What stands where the buttons and the field were while a send runs: the
-    // dot, how far along it is, the thread under that, and the one way to stop
     mpLabel_sendingDot = new QLabel(this);
     mpLabel_sendingDot->setObjectName(qsl("notepadSendingDot"));
     mpLabel_sendingDot->setFixedSize(scmNotepadReadingDotDiameter, scmNotepadReadingDotDiameter);
@@ -260,8 +219,7 @@ void dlgNotepad::setupSendStrip()
 
     mpProgressBar_sending = new QProgressBar(this);
     mpProgressBar_sending->setObjectName(qsl("notepadSendingBar"));
-    // The reading beside it is the number; the bar is the shape of how far along
-    // the send is, and a percentage written across it says the same thing twice
+    // The label beside it already gives the count
     mpProgressBar_sending->setTextVisible(false);
     mpProgressBar_sending->setFixedHeight(scmNotepadProgressHeight);
     mpProgressBar_sending->setFixedWidth(scmNotepadProgressWidth);
@@ -269,16 +227,12 @@ void dlgNotepad::setupSendStrip()
 
     toolBar->addAction(action_stop);
 
-    // What holds the warning at the trailing end of the strip, whatever the
-    // strip is carrying at its leading one
     auto* pSpacer = new QWidget(this);
     pSpacer->setObjectName(qsl("notepadStripSpacer"));
     pSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     uiDesign::markAsShellSurface(pSpacer);
     toolBar->addWidget(pSpacer);
 
-    // A dot and the words after it, the way the editor's compile note is read:
-    // one widget, so the pair is shown and hidden as the one reading it is
     mpWidget_noPrefixNote = new QWidget(this);
     mpWidget_noPrefixNote->setObjectName(qsl("notepadNoPrefixNote"));
     uiDesign::markAsShellSurface(mpWidget_noPrefixNote);
@@ -293,13 +247,9 @@ void dlgNotepad::setupSendStrip()
     mpLabel_noPrefixText->setObjectName(qsl("notepadNoPrefixText"));
     pNoteLayout->addWidget(mpLabel_noPrefixText);
     action_noPrefixNote = toolBar->addWidget(mpWidget_noPrefixNote);
-    // A bar with more on it than it has room for posts its tail into a
-    // drop-down, and the warning is the last thing on this one - so which of
-    // the warning's forms fits is measured on every resize instead
     toolBar->installEventFilter(this);
 
-    // Every button on the bar carries a word beside its picture: what each of
-    // them sends is the whole of what tells them apart
+    // Words beside the glyphs: the glyphs alone do not tell the sends apart
     const int glyphSize = qRound(toolBar->fontMetrics().height() * 0.9);
     toolBar->setIconSize(QSize(glyphSize, glyphSize));
     const QList<QPair<QAction*, QString>> announced{//: Accessible name of the notepad's Send line button, announced by a screen reader
@@ -320,19 +270,10 @@ void dlgNotepad::setupSendStrip()
     setSending(false);
 }
 
-// A tool button is given the platform's tool button font - macOS hands out a
-// smaller one than a label gets - so a word or a field set beside those buttons
-// in the window's own size sat larger than them and off their line. The size is
-// carried by the bar's sheet rather than set on each word: a stylesheet's
-// polish resolves a widget's font again from its parent, and took a font set
-// directly straight back off the label on the window's first show. It is read
-// off the application's class font rather than off a button, which only takes
-// that font when it is polished for the first show, after the sheet is built.
-// Not a step of uiDesign::typeSize(): that scale is measured off the
-// application font, and what these words have to line up with is the platform's
-// tool button font, which on macOS is a different number entirely. Rounded to a
-// whole point on the way out, since a fraction in a sheet is a size the parser
-// reads and no metric ever comes to.
+// The platform's tool button font, smaller than a label's on macOS. Read off the application, not a
+// button, which only takes it when polished on first show. Applied through the bar's sheet, since a
+// stylesheet polish re-resolves the font from the parent and drops one set directly.
+// Not a uiDesign::typeSize() step: that scale follows the application font, not the tool button font
 int dlgNotepad::stripWordPointSize() const
 {
     const qreal buttonSize = QApplication::font("QToolButton").pointSizeF();
@@ -352,9 +293,8 @@ void dlgNotepad::setupAddTabButton()
     connect(newTabShortcut, &QShortcut::activated, this, &dlgNotepad::slot_addTabClicked);
 }
 
-// closeTab() keeps the last note, and the context menu offers no close for it,
-// so a cross on a sole tab would promise what it cannot do. Toggling the whole
-// bar rather than one tab's button also gives the chip its width back.
+// closeTab() keeps the last note, so a sole tab carries no cross. Toggling the whole bar rather
+// than one tab's button also gives the tab its width back.
 void dlgNotepad::updateTabClosability()
 {
     tabWidget->setTabsClosable(tabWidget->count() > 1);
@@ -375,8 +315,6 @@ void dlgNotepad::setupFindBar()
     mpFindLineEdit->setClearButtonEnabled(true);
     mpFindLineEdit->installEventFilter(this);
 
-    // The three glyphs are set in the style pass, which is also where a theme
-    // change re-inks them
     mpFindPrevButton = new QToolButton(mpFindBar);
     mpFindPrevButton->setObjectName(qsl("notepadFindPrevious"));
     mpFindPrevButton->setToolTip(tr("Find previous"));
@@ -438,87 +376,44 @@ void dlgNotepad::slot_applyAppearance()
     applyNotepadShellStyle();
 }
 
-// The window in the design language: the page and the strip of tabs on it, the
-// notes drawn as the fields they are typed into, the find bar between them and
-// the bar of actions at the foot.
-//
-// Every sheet goes on a widget rather than on the window, because a profile's
-// Lua stylesheet is assigned to the window itself on every show - so a sheet
-// set here would be replaced by it, and a rule of the profile's is beaten by
-// one of these, which names the container it is scoped to.
+// Sheets go on widgets, not the window: a profile's Lua stylesheet replaces the window's on every show
 void dlgNotepad::applyNotepadShellStyle()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
 
-    // The page under the tabs, the strip of chips across it, the notes as
-    // fields and the find bar's own surface. inputStyleSheet() is scoped to the
-    // central widget rather than left unscoped: the prepend field lives on the
-    // toolbar, which is not under this, and takes the same recipe there.
     const QString centralRules =
             qsl("QWidget#centralwidget { background-color: %1; }").arg(tokens.page.name()) + uiDesign::tabBarStyleSheet(qsl("#tabWidget"), tokens)
             + uiDesign::inputStyleSheet(tokens, qsl("#centralwidget"))
-            // A row of its own between the notes and the bar, so it carries the
-            // seam a bar does - on the edge that parts it from what is above it
             + qsl("QWidget#notepadFindBar { background-color: %1; border-top: %2px solid %3; }").arg(tokens.page.name(), QString::number(uiDesign::scmInputBorderWidth), tokens.border.name())
-            // The four buttons that are a picture and nothing else - the one
-            // that adds a note and the three the find bar is worked from -
-            // drawn the way the editor draws its clear-sound-file button: a
-            // frame round a glyph this small reads as a second control
+            // Borderless: a frame round a glyph this small reads as a second control
             + qsl("QToolButton#notepadAddTab, QWidget#notepadFindBar QToolButton"
                   " { border: none; border-radius: %1px; background: transparent; padding: 2px; }"
                   "QToolButton#notepadAddTab:hover, QWidget#notepadFindBar QToolButton:hover { background-color: %2; }")
                       .arg(QString::number(uiDesign::scmRadiusChip), tokens.hoverSoft);
     centralwidget->setStyleSheet(centralRules);
 
-    // The one state colour the strip reads in: what a send with no prefix in
-    // front of it would do is a warning rather than a fault, and the words are
-    // walked off the page they are written on until they can be read there
     const QColor warningColour = uiDesign::stateColor(uiDesign::scmStateHue_warning, tokens.darkPage);
     const QColor warningInk = uiDesign::readableOn(tokens.page, warningColour, tokens.text, uiDesign::scmTextMinimumRatio);
 
-    // The bar is at the foot of the window, so its seam is on top. The field
-    // that says what goes in front of every line takes the same recipe every
-    // other field in the window does, and the two readings on the strip - how
-    // far along a send is, and what a send with no prefix would come to - are
-    // the only words on it that are not chrome.
-    const QString toolBarRules = uiDesign::toolBarStyleSheet(qsl("QToolBar#toolBar"), uiDesign::ToolBarSeam::Top, tokens)
-                                 + uiDesign::inputStyleSheet(tokens, qsl("QToolBar#toolBar"))
-                                 // The word leading that field is the bar's own scaffolding, so it
-                                 // is written in the tone every other word of chrome is
+    const QString toolBarRules = uiDesign::toolBarStyleSheet(qsl("QToolBar#toolBar"), uiDesign::ToolBarSeam::Top, tokens) + uiDesign::inputStyleSheet(tokens, qsl("QToolBar#toolBar"))
                                  + qsl("QToolBar#toolBar QLabel { color: %1; }").arg(tokens.mutedText.name())
-                                 // ...and set in the size the bar's buttons are, see stripWordPointSize()
                                  + qsl("QToolBar#toolBar QLabel, QToolBar#toolBar QLineEdit { font-size: %1pt; }").arg(QString::number(stripWordPointSize()))
-                                 // Written after the shared rules so it wins the specificity tie
-                                 // against QLineEdit:focus, and in the same border shorthand that
-                                 // rule writes: what the reader was warned about stays said while
-                                 // they are typing the answer to it
+                                 // After the shared rules, in the border shorthand they write, so it wins the
+                                 // specificity tie against QLineEdit:focus
                                  + qsl("QToolBar#toolBar QLineEdit[%1=\"warning\"] { border: %2px solid %3; }")
                                            .arg(QString::fromLatin1(scmProp_notepadFieldState), QString::number(uiDesign::scmInputBorderWidth), warningColour.name())
-                                 // Both readings are named down to the label, or the chrome rule
-                                 // above beats them on the length of its selector. The air either
-                                 // side of the sending words is the label's own: the bar's spacing
-                                 // parts one control from the next, and a dot and a thread are
-                                 // neither.
+                                 // Named down to the label, or the QLabel rule above wins on specificity
                                  + qsl("QToolBar#toolBar QLabel#notepadSendingText { color: %1; padding: 0px %2px; }").arg(tokens.accentText.name(), QString::number(scmNotepadReadingGap))
                                  + qsl("QToolBar#toolBar QLabel#notepadNoPrefixText { color: %1; }").arg(warningInk.name())
-                                 // A thread rather than a trough: the corner is half the bar's own
-                                 // height, which is what rounds its ends instead of cutting them
                                  + qsl("#notepadSendingBar { border: none; background-color: %1; border-radius: %3px; }"
                                        "#notepadSendingBar::chunk { background-color: %2; border-radius: %3px; }")
                                            .arg(tokens.accentSoft, tokens.accent.name(), QString::number(scmNotepadProgressHeight / 2));
     toolBar->setStyleSheet(toolBarRules);
     alignPrefixLeadWord();
 
-    // The dot each reading begins with, drawn where the words after it cannot
-    // be: one is the accent, because a send running is this window doing what
-    // it was asked, and the other is the warning hue
     mpLabel_sendingDot->setStyleSheet(qsl("#notepadSendingDot { background-color: %1; border-radius: %2px; }").arg(tokens.accent.name(), QString::number(scmNotepadReadingDotDiameter / 2)));
     mpLabel_noPrefixDot->setStyleSheet(qsl("#notepadNoPrefixDot { background-color: %1; border-radius: %2px; }").arg(warningColour.name(), QString::number(scmNotepadReadingDotDiameter / 2)));
 
-    // The cue inside the prefix field, in the same hue as the dot and drawn at
-    // the size the editor's banner draws its own warning glyph. It is the whole
-    // of the warning at a width the words cannot be read whole at, so it is
-    // re-inked here with everything else the appearance moves.
     if (action_prefixWarning) {
         const qreal glyphRatio = lineEdit_prependText->devicePixelRatioF();
         QPixmap cue = uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-notice-warning.svg")), warningColour)
@@ -538,17 +433,13 @@ void dlgNotepad::applyNotepadShellStyle()
     uiDesign::letPopupsTakeTheFieldsCorner(centralwidget);
     uiDesign::letPopupsTakeTheFieldsCorner(toolBar);
 
-    // The marker pen on the match the cursor is on, and a wash of it on the
-    // rest, mixed here so that both follow an appearance change - the ones
-    // already drawn are laid down again below
     mCurrentMatchInk = tokens.marker;
     mOtherMatchInk = uiDesign::blend(tokens.field, tokens.marker, scmNotepadQuietMatchWash);
     if (mpFindBar && mpFindBar->isVisible()) {
         highlightAllMatches();
     }
 
-    // What the words of the warning come to is the font's answer, and a theme
-    // change is one of the things that moves it
+    // A theme change can move the font, and with it the room the warning's words need
     fitNoPrefixNote();
 }
 
@@ -562,8 +453,7 @@ dlgNotepad::~dlgNotepad()
 
 int dlgNotepad::addTab(const QString& name, const QString& content)
 {
-    // The shell draws the note through the central widget's sheet; the profile's
-    // sheet is set on the note itself, so its rules win wherever the two collide
+    // The profile's sheet, set on the note itself, beats the central widget's rules where they collide
     auto* textEdit = new QPlainTextEdit(this);
     if (mpHost) {
         textEdit->setFont(mpHost->getDisplayFont());
@@ -583,9 +473,6 @@ int dlgNotepad::addTab(const QString& name, const QString& content)
     connect(textEdit->verticalScrollBar(), &QScrollBar::valueChanged, this, rehighlightIfShown);
     connect(textEdit->verticalScrollBar(), &QScrollBar::rangeChanged, this, rehighlightIfShown);
     textEdit->viewport()->installEventFilter(this);
-    // What the strip says about this note - how far each button reaches, and
-    // whether sending it with no prefix is worth a word - is true of the note as
-    // it is now, so it is taken again whenever the note or the selection moves
     connect(textEdit, &QPlainTextEdit::textChanged, this, &dlgNotepad::updateSendStrip);
     connect(textEdit, &QPlainTextEdit::selectionChanged, this, &dlgNotepad::updateSendStrip);
 
@@ -596,11 +483,7 @@ int dlgNotepad::addTab(const QString& name, const QString& content)
     return index;
 }
 
-// Nothing keeps a copy of a closed note - save() writes the tabs that are left,
-// so the text of one closed by a slip of the finger is gone for good. A note
-// with nothing in it is no loss and goes without a word; for anything else the
-// whole act is put to the reader once, with Cancel as both the default and the
-// escape, so that Return and Escape alike keep the note.
+// save() keeps no copy of a closed note, so one with text is asked about first
 bool dlgNotepad::okToDiscardNotes(const QList<int>& indices)
 {
     int withText = 0;
@@ -639,8 +522,7 @@ bool dlgNotepad::okToDiscardNotes(const QList<int>& indices)
 
     QMessageBox box(this);
     box.setIcon(QMessageBox::Warning);
-    // A sheet on the note's own window on macOS, rather than a box over the
-    // whole application: what is being asked about is this window's
+    // A sheet on this window on macOS rather than a box over the whole application
     box.setWindowModality(Qt::WindowModal);
     box.setText(ask);
     box.setInformativeText(consequence);
@@ -677,9 +559,7 @@ void dlgNotepad::closeTab(int index)
     mNeedToSave = true;
 }
 
-// The whole sweep is one act, so it is asked about once rather than a note at a
-// time - and taken from the back, since removing a tab renumbers the ones after
-// it
+// Removed from the back, since removing a tab renumbers the ones after it
 void dlgNotepad::closeOtherTabs(int keptIndex)
 {
     if (keptIndex < 0 || keptIndex >= tabWidget->count() || tabWidget->count() <= 1) {
@@ -743,8 +623,6 @@ void dlgNotepad::slot_tabContextMenu(const QPoint& pos)
     const int tabIndex = tabWidget->tabBar()->tabAt(pos);
 
     QMenu menu(this);
-    // Built at the moment it is needed, so it takes both halves of the recipe
-    // from here rather than from the window's style pass
     menu.setStyleSheet(uiDesign::menuStyleSheet(uiDesign::themeTokens()));
     uiDesign::letPopupsTakeTheFieldsCorner(&menu);
 
@@ -1021,7 +899,6 @@ void dlgNotepad::slot_stopSending()
     finishSending(true);
 }
 
-// The words on the strip while a send runs, and the thread under them
 void dlgNotepad::updateSendingReading()
 {
     if (!mpLabel_sendingText || !mpProgressBar_sending) {
@@ -1029,8 +906,7 @@ void dlgNotepad::updateSendingReading()
     }
     //: Reading on the notepad's send strip while lines are going to the game. %1 is how many have gone, %2 how many there are in all.
     mpLabel_sendingText->setText(tr("Sending %1 of %2").arg(QString::number(mLinesSent), QString::number(mLinesToSendCount)));
-    // A send of nothing at all still has a bar, and a bar with no range is the
-    // busy indicator Qt draws when it is asked for one
+    // A zero range makes QProgressBar draw its busy indicator
     mpProgressBar_sending->setMaximum(qMax(1, mLinesToSendCount));
     mpProgressBar_sending->setValue(mLinesSent);
 }
@@ -1056,9 +932,7 @@ void dlgNotepad::finishSending(const bool stopped)
     setSending(false);
 }
 
-// Which of the strip's two readings is on show. Every action is on the bar all
-// along, so this is the whole of the change from one to the other - and Stop is
-// hidden rather than merely unavailable, since there is nothing to stop.
+// Stop is hidden rather than disabled: while idle there is nothing to stop
 void dlgNotepad::setSending(const bool sending)
 {
     mSending = sending;
@@ -1092,24 +966,19 @@ void dlgNotepad::setSending(const bool sending)
     updateNoPrefixWarning();
 }
 
-// Both readings the strip carries about the note in front of the reader
 void dlgNotepad::updateSendStrip()
 {
     updateSendReach();
     updateNoPrefixWarning();
 }
 
-// How far each button reaches, on the button itself: a count read before the
-// click is what says whether this is the note that was meant
 void dlgNotepad::updateSendReach()
 {
     auto* pTextEdit = currentTextEdit();
     const int inTheNote = pTextEdit ? sendableLineCount(linesOf(pTextEdit->toPlainText())) : 0;
     const int inTheSelection = pTextEdit ? sendableLineCount(linesOf(pTextEdit->textCursor().selectedText())) : 0;
 
-    // The singular is its own string rather than a plural form: with no
-    // catalogue loaded Qt hands back the source text as written, and this is a
-    // window most people read in English
+    // Singular as its own string: with no catalogue loaded Qt applies no plural form and shows "1 lines"
     //: Button at the foot of the notepad. %n is how many lines of the note would go to the game, one at a time.
     action_sendAll->setText(inTheNote == 1 ? tr("Send all (1 line)") : tr("Send all (%n lines)", "", inTheNote));
     action_sendAll->setEnabled(inTheNote > 0);
@@ -1125,15 +994,7 @@ void dlgNotepad::updateSendReach()
     alignPrefixLeadWord();
 }
 
-// The seam between Send all and the lead word parts two words, and they have to
-// stand the same distance from it. A tool button holds its word a padding in
-// from its edge and then some: QToolButton::sizeHint() asks for two spaces
-// more than the word measures and the stylesheet style adds three pixels on
-// top, and QCommonStyle draws the word left-aligned after the picture - so all
-// of that slack lands after the word, on the seam's side. A label holds its
-// word at its edge. The word is therefore held in by what the button's own
-// geometry says it holds its word in by: the button's width less its frame,
-// its padding, the picture and the gap Qt leaves after it, and the word.
+// A tool button's sizeHint() slack lands after its word, on the seam's side, while a label's word sits at its edge
 void dlgNotepad::alignPrefixLeadWord()
 {
     const auto* pSendAll = qobject_cast<const QToolButton*>(toolBar->widgetForAction(action_sendAll));
@@ -1149,15 +1010,10 @@ void dlgNotepad::alignPrefixLeadWord()
         return;
     }
     label_prependText->setContentsMargins(held);
-    // A wider word is less room for the warning at the strip's end, which was
-    // fitted to the room there was
+    // The margin takes room from the warning, which was fitted to the old width
     fitNoPrefixNote();
 }
 
-// The one thing about a send that is worth saying before it happens: with no
-// prefix, every line of the note is a command to the game. Short notes are left
-// alone - a handful of lines is what a sequence of commands looks like, and
-// saying it there would be saying it about nothing.
 void dlgNotepad::updateNoPrefixWarning()
 {
     if (!mpWidget_noPrefixNote || !action_noPrefixNote) {
@@ -1168,21 +1024,16 @@ void dlgNotepad::updateNoPrefixWarning()
     const int inTheNote = pTextEdit ? sendableLineCount(linesOf(pTextEdit->toPlainText())) : 0;
     const bool warn = !mSending && lineEdit_prependText->text().isEmpty() && inTheNote > scmNotepadWarnAtLines;
 
-    // Whether the warning applies is this; whether the strip has room to say it
-    // in words is the fit's, and it is the fit that takes the reading off the bar
     mNoPrefixWarningApplies = warn;
     if (warn) {
         //: Warning at the foot of the notepad, shown when a long note would be sent with nothing in front of its lines. %n is how many lines the note holds.
         mNoPrefixNoteText = tr("No prefix, so %n lines go to the game as commands", "", inTheNote);
-        // Whatever of it the strip has room for, the whole of it is here
         mpWidget_noPrefixNote->setToolTip(mNoPrefixNoteText);
         fitNoPrefixNote();
     } else {
         action_noPrefixNote->setVisible(false);
     }
 
-    // ...and here, on the cue in the field and on the field itself, which is
-    // where a reader is looking when the answer to the warning is typed
     if (action_prefixWarning) {
         action_prefixWarning->setToolTip(warn ? mNoPrefixNoteText : QString());
         action_prefixWarning->setVisible(warn);
@@ -1196,47 +1047,30 @@ void dlgNotepad::updateNoPrefixWarning()
     }
 }
 
-// The warning is the last thing on the strip, and a bar with more on it than it
-// has room for posts its tail into a drop-down - which would put the one reading
-// that matters at that moment behind a chevron. The strip's own content wants
-// more width than the window opens at, so there is rarely room for the sentence:
-// cutting it left the reader a fragment ending mid-word, which is worse than no
-// words at all. So the words take whichever of three forms the room is enough
-// for - the sentence, the short form, or nothing beside the cue in the field,
-// which says it at any width. Measured against the bar's own hint rather than
-// added up here, so the separators, the spacing and the padding a stylesheet
-// hands out are counted the way Qt counts them.
+// QToolBar moves what does not fit into its extension menu, so the words come whole or not at all
 void dlgNotepad::fitNoPrefixNote()
 {
     if (!mpLabel_noPrefixText || !action_noPrefixNote || !mNoPrefixWarningApplies || mNoPrefixNoteText.isEmpty()) {
         return;
     }
-    // A bar out of room hides what it could not fit, and what is hidden is no
-    // part of what the bar asks for - so the reading is put back before the
-    // measurement, or the room would be measured as if it were not there
+    // QToolBar leaves what it hid out of its sizeHint(), so the reading is shown before measuring
     action_noPrefixNote->setVisible(true);
     mpWidget_noPrefixNote->show();
     mpLabel_noPrefixText->clear();
-    // A layout answers with what it worked out last time until it is told the
-    // question changed, and the words were only just taken off the label
+    // Layouts cache their size hints until invalidated
     uiDesign::invalidateLayoutsUpTo(mpLabel_noPrefixText, toolBar);
     const int roomForTheWords = toolBar->width() - toolBar->sizeHint().width();
 
     //: Short form of the notepad's no-prefix warning, on the strip where there is no room for the whole sentence, which stays on the tooltip
     const QStringList forms{mNoPrefixNoteText, tr("No prefix")};
     for (const QString& words : forms) {
-        // What the label asks for with those words in it, which is the measure
-        // the layout will take of it in a moment
         mpLabel_noPrefixText->setText(words);
         if (mpLabel_noPrefixText->sizeHint().width() <= roomForTheWords) {
             return;
         }
     }
 
-    // Neither form fits. The dot with nothing after it says a colour and no
-    // more, so the whole reading goes and the field's cue carries the warning.
-    // The action is what goes rather than the widget: a bar shows a widget it
-    // has room for again on its next layout, whatever the widget was told.
+    // The action, not the widget: QToolBar shows a widget it has room for again on its next layout
     mpLabel_noPrefixText->clear();
     action_noPrefixNote->setVisible(false);
 }
@@ -1248,8 +1082,7 @@ void dlgNotepad::saveSettings()
     }
 
     mpHost->writeProfileIniData(qsl("Notepad/WindowState"), QString::fromLatin1(saveState().toBase64()));
-    // The send controls have no fold to remember any more, so the key an older
-    // notepad wrote for it is taken out rather than left in every profile
+    // A key older versions wrote, which nothing reads
     mpHost->removeProfileIniData(qsl("Notepad/SendControlsVisible"));
 }
 
@@ -1271,11 +1104,8 @@ void dlgNotepad::closeEvent(QCloseEvent* event)
     QMainWindow::closeEvent(event);
 }
 
-// The signal above is emitted when a reader picks an appearance in the settings.
-// A reader on "follow the system" who changes the system's theme instead moves
-// the application's palette without it, and the only word this window gets of
-// that is the style change Qt sends every widget - which is what the arrow this
-// button used to carry was re-inked from, and is now what the whole shell is.
+// Under "follow the system" a system theme change emits no signal_appearanceChanged; the style or
+// palette change Qt sends is the only notice
 void dlgNotepad::changeEvent(QEvent* event)
 {
     QMainWindow::changeEvent(event);

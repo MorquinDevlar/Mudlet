@@ -24,7 +24,6 @@
 #include <QPalette>
 
 namespace {
-// How much of the field's own text colour a placeholder is written in
 constexpr qreal scmPlaceholderStrength = 0.6;
 } // namespace
 
@@ -99,9 +98,6 @@ void SingleLineTextEdit::setHighlightingEnabled(bool enabled)
 
 void SingleLineTextEdit::setTheme(const QString& themeName)
 {
-    // Only the syntax colouring: the theme used to be painted onto the widget
-    // as well, which put a code pane's dark background behind a pattern on a
-    // light form. What the field is drawn in comes from setFieldColors().
     highlighter->setTheme(themeName);
 }
 
@@ -114,7 +110,7 @@ void SingleLineTextEdit::setFieldColors(const QColor& background, const QColor& 
     QPalette fieldPalette = palette();
     fieldPalette.setColor(QPalette::Base, background);
     fieldPalette.setColor(QPalette::Text, text);
-    // Read against the inside of the control it stands in, not against the form
+    // Read against the inside of the field, not against the form
     QColor placeholderColor = text;
     placeholderColor.setAlphaF(scmPlaceholderStrength);
     fieldPalette.setColor(QPalette::PlaceholderText, placeholderColor);
@@ -122,7 +118,6 @@ void SingleLineTextEdit::setFieldColors(const QColor& background, const QColor& 
     viewport()->setPalette(fieldPalette);
     viewport()->setAutoFillBackground(true);
 
-    // ...and the token colours have to be readable on it
     highlighter->setFieldColors(background, text);
 }
 

@@ -28,7 +28,6 @@
 
 #include <QApplication>
 #include <QHelpEvent>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionViewItem>
@@ -40,47 +39,26 @@
 namespace uiDesign {
 
 namespace {
-// The corner the little square is cut to. A chip's corner on a 9px mark would
-// round it away altogether, so it is half of it - the scale, not a number of
-// its own.
+// A chip's full corner would round a 9px square away altogether
 constexpr qreal scmKeptSquareRadius = scmRadiusChip / 2.0;
-// How much of a string is kept when the row is built. What is drawn is elided to
-// the room the panel leaves anyway; this is what stops a row carrying a
-// megabyte of it around.
+// The drawing elides anyway; this stops a row carrying a megabyte string around
 constexpr int scmPreviewCharacterLimit = 80;
-// Under this much room the preview says nothing worth the space it takes, so it
-// goes rather than being cut to an ellipsis and a letter
 constexpr int scmPreviewMinimumCharacters = 6;
 } // namespace
 
 VariableTreeDelegate::VariableTreeDelegate(TTreeWidget* pTree)
-: QStyledItemDelegate(pTree)
-, mpTree(pTree)
+: EditorTreeRowDelegate(pTree)
 {
-    if (mpTree) {
-        // The room a row's depth holds it in, and the chevron standing in the
-        // last step of it, are drawn here from now on - so the view is asked for
-        // none of its own, and the row is one rectangle the selection pill can
-        // be drawn as a single shape over. The same thing EditorTreeDelegate
-        // does to the other six trees, for the same reason.
-        mIndentStep = mpTree->indentation() > 0 ? mpTree->indentation() : scmTreeFallbackIndentStep;
-        mpTree->setIndentation(0);
-        mpTree->viewport()->installEventFilter(this);
-    }
     restyle();
 }
 
-void VariableTreeDelegate::restyle()
+void VariableTreeDelegate::restyleInks(const ThemeTokens& tokens)
 {
-    const ThemeTokens tokens = themeTokens();
     mChromeInk = tokens.mutedText;
     mSelectedInk = tokens.accentText;
     mDisabledInk = tokens.disabledText;
-    // The same blue a running item's dot is filled with, so that "this one is
-    // kept" and "this one is on" are read as one kind of statement
+    // A running dot's blue, so "kept" and "on" read as one kind of statement
     mKeptFill = stateColor(scmStateHue_ok, tokens.darkPage);
-    mAccentBar = tokens.accent;
-    clearGlyphs();
 }
 
 void VariableTreeDelegate::clearGlyphs() const
@@ -94,25 +72,6 @@ void VariableTreeDelegate::clearGlyphs() const
     for (auto& cached : mKeptGlyphs) {
         cached = QPixmap();
     }
-    for (auto& cached : mChevronGlyphs) {
-        cached = QPixmap();
-    }
-    mDecorations.clear();
-}
-
-qreal VariableTreeDelegate::glyphRatio() const
-{
-    return mpTree ? mpTree->devicePixelRatioF() : 1.0;
-}
-
-void VariableTreeDelegate::syncGlyphRatio() const
-{
-    const qreal ratio = glyphRatio();
-    if (qFuzzyCompare(ratio + 1.0, mGlyphRatio + 1.0)) {
-        return;
-    }
-    mGlyphRatio = ratio;
-    clearGlyphs();
 }
 
 void VariableTreeDelegate::syncPreviewFont() const
@@ -129,8 +88,6 @@ void VariableTreeDelegate::syncPreviewFont() const
     mPreviewMetrics = QFontMetrics(mPreviewFont);
 }
 
-// ------------------------------------------------------------------ the value
-
 QString VariableTreeDelegate::variablePreview(TVar* pVar)
 {
     if (!pVar) {
@@ -139,10 +96,8 @@ QString VariableTreeDelegate::variablePreview(TVar* pVar)
 
     switch (pVar->getValueType()) {
     case LUA_TSTRING: {
-        // The first line of it, with the runs of white space in that line
-        // collapsed: a row is one line tall and a value that is a paragraph
-        // would otherwise be drawn as its first few words plus whatever
-        // indentation the second line happened to start with
+        // A row is one line tall; a paragraph would otherwise show its second
+        // line's indentation
         QString value = pVar->getValue().section(QChar('\n'), 0, 0).simplified();
         if (value.length() > scmPreviewCharacterLimit) {
             value = value.left(scmPreviewCharacterLimit) + QChar(0x2026);
@@ -152,8 +107,7 @@ QString VariableTreeDelegate::variablePreview(TVar* pVar)
     case LUA_TNUMBER:
         [[fallthrough]];
     case LUA_TBOOLEAN:
-        // Both are already the word Lua would print, and neither is translated:
-        // true and false are values rather than descriptions of one
+        // Not translated: true and false are values, not descriptions of one
         return pVar->getValue();
     case LUA_TTABLE: {
         const QList<TVar*> members = pVar->getChildren(false);
@@ -178,7 +132,7 @@ QString VariableTreeDelegate::variablePreview(TVar* pVar)
         //: Shown at the trailing edge of a row in the editor's Variables view where the variable holds a Lua function rather than a value that can be shown.
         return tr("function");
     case LUA_TNIL:
-        // Lua's own names for what is left, which are not translated either
+        // Lua's own type names, not translated either
         return qsl("nil");
     case LUA_TLIGHTUSERDATA:
         [[fallthrough]];
@@ -187,8 +141,7 @@ QString VariableTreeDelegate::variablePreview(TVar* pVar)
     case LUA_TTHREAD:
         return qsl("thread");
     default:
-        // LUA_TNONE: a variable the editor has just made and nobody has given a
-        // value to yet
+        // LUA_TNONE: a variable just made in the editor, with no value yet
         return {};
     }
 }
@@ -204,8 +157,6 @@ void VariableTreeDelegate::setVariableRowData(QTreeWidgetItem* pItem, TVar* pVar
     pItem->setData(0, scmRole_variableHidden, hidden);
 }
 
-// ------------------------------------------------------------------- the row
-
 VariableTreeDelegate::RowState VariableTreeDelegate::stateOf(const QModelIndex& index) const
 {
     RowState state;
@@ -214,7 +165,7 @@ VariableTreeDelegate::RowState VariableTreeDelegate::stateOf(const QModelIndex& 
     }
     const QVariant typeData = index.data(Qt::UserRole);
     if (!typeData.isValid()) {
-        // The tree's own heading row, which stands for nothing Lua holds
+        // The tree's heading row, which stands for nothing Lua holds
         return state;
     }
 
@@ -240,9 +191,8 @@ VariableTreeDelegate::RowState VariableTreeDelegate::stateOf(const QModelIndex& 
         break;
     }
 
-    // What may be kept is read off the row's flags rather than asked of Lua: the
-    // three places a row is built are what strip the flag, and they are the
-    // three places that know why
+    // Read off the flags, not asked of Lua: the places that build a row strip
+    // ItemIsUserCheckable, and they are the ones that know why
     state.unavailable = !(index.flags() & Qt::ItemIsUserCheckable);
     const QVariant keptData = index.data(Qt::CheckStateRole);
     if (state.unavailable || !keptData.isValid()) {
@@ -263,18 +213,14 @@ VariableTreeDelegate::RowState VariableTreeDelegate::stateOf(const QModelIndex& 
     return state;
 }
 
-// A row at the top of the tree is given no chevron: the tree is asked for an
-// undecorated root, and the one row at that depth is its own heading.
-VariableTreeDelegate::ChevronState VariableTreeDelegate::chevronOf(const QModelIndex& index, const int level) const
+bool VariableTreeDelegate::carriesDot(const QModelIndex& index) const
 {
-    if (!mpTree || !index.isValid() || index.column() != 0 || level < 1) {
-        return ChevronState::None;
-    }
-    const QAbstractItemModel* pModel = index.model();
-    if (!pModel || pModel->rowCount(index) < 1) {
-        return ChevronState::None;
-    }
-    return mpTree->isExpanded(index) ? ChevronState::Open : ChevronState::Closed;
+    return stateOf(index).kept != KeptState::None;
+}
+
+void VariableTreeDelegate::dotPressed()
+{
+    emit keptToggleRequested();
 }
 
 QString VariableTreeDelegate::displayNameFor(const QModelIndex& index) const
@@ -288,10 +234,14 @@ QString VariableTreeDelegate::displayNameFor(const QModelIndex& index) const
 
 QString VariableTreeDelegate::typeGlyphFile(const QModelIndex& index) const
 {
-    switch (stateOf(index).type) {
+    return typeGlyphFileFor(stateOf(index).type);
+}
+
+QString VariableTreeDelegate::typeGlyphFileFor(const TypeMark type)
+{
+    switch (type) {
     case TypeMark::Table:
-        // A table is braces wherever it is drawn, so the row takes the glyph the
-        // sidebar's Variables row carries rather than a second picture of one
+        // A table is braces wherever it is drawn, the sidebar's Variables row included
         return qsl(":/icons/editor-variables.svg");
     case TypeMark::String:
         return qsl(":/icons/editor-type-string.svg");
@@ -319,10 +269,7 @@ bool VariableTreeDelegate::carriesHiddenMark(const QModelIndex& index) const
     return index.isValid() && index.column() == 0 && index.data(scmRole_variableHidden).toBool();
 }
 
-// The chosen row is read in the accent whatever else it is, since that is the
-// one colour that holds on the wash it is drawn on; a variable Lua will not let
-// the profile keep is held to the quieter floor, and everything else is the tone
-// the rest of the editor's chrome is in.
+// Selection wins: the accent is the one ink that holds on the selection wash
 int VariableTreeDelegate::inkSlotFor(const RowState& state, const bool selected) const
 {
     if (selected) {
@@ -343,8 +290,6 @@ QColor VariableTreeDelegate::inkForSlot(const int slot) const
     }
 }
 
-// ---------------------------------------------------------------- the glyphs
-
 QPixmap VariableTreeDelegate::keptGlyph(const KeptState kept, const bool selected) const
 {
     QPixmap& glyph = mKeptGlyphs[2 * static_cast<int>(kept) + (selected ? 1 : 0)];
@@ -359,8 +304,7 @@ QPixmap VariableTreeDelegate::keptGlyph(const KeptState kept, const bool selecte
 
     QPainter painter(&glyph);
     painter.setRenderHint(QPainter::Antialiasing, true);
-    // A stroked shape is drawn centred on its path, so the hollow reading is
-    // pulled in by half a pen to end up the size the filled one is
+    // A stroke is centred on its path; half a pen in keeps hollow and filled the same size
     const qreal inset = (kept == KeptState::All) ? 0.0 : scmTreeHollowPenWidth / 2.0;
     const QRectF square(inset, inset, scmTreeDotDiameter - 2.0 * inset, scmTreeDotDiameter - 2.0 * inset);
     if (kept == KeptState::All) {
@@ -369,8 +313,6 @@ QPixmap VariableTreeDelegate::keptGlyph(const KeptState kept, const bool selecte
         painter.drawRoundedRect(square, scmKeptSquareRadius, scmKeptSquareRadius);
     } else {
         if (kept == KeptState::Some) {
-            // Some of this table is kept: the square is filled from its leading
-            // edge to the middle, the way a half-filled box reads
             painter.save();
             painter.setClipRect(QRectF(square.left(), square.top(), square.width() / 2.0, square.height()));
             painter.setPen(Qt::NoPen);
@@ -384,19 +326,8 @@ QPixmap VariableTreeDelegate::keptGlyph(const KeptState kept, const bool selecte
         painter.setBrush(Qt::NoBrush);
         painter.drawRoundedRect(square, scmKeptSquareRadius, scmKeptSquareRadius);
     }
-    // Before the pixmap is handed out: a copy taken while a painter is still
-    // active on the original is a copy of something being written to
+    // A copy taken while a painter is still active is a copy of something mid-write
     painter.end();
-    return glyph;
-}
-
-QPixmap VariableTreeDelegate::chevronGlyph(const ChevronState chevron) const
-{
-    QPixmap& glyph = mChevronGlyphs[static_cast<int>(chevron)];
-    if (!glyph.isNull() || chevron == ChevronState::None) {
-        return glyph;
-    }
-    glyph = treeRowChevronGlyph(chevron == ChevronState::Open, mChromeInk, mGlyphRatio);
     return glyph;
 }
 
@@ -406,30 +337,7 @@ QPixmap VariableTreeDelegate::typeGlyph(const TypeMark type, const QColor& ink, 
     if (!glyph.isNull() || type == TypeMark::None) {
         return glyph;
     }
-    QString file;
-    switch (type) {
-    case TypeMark::Table:
-        file = qsl(":/icons/editor-variables.svg");
-        break;
-    case TypeMark::String:
-        file = qsl(":/icons/editor-type-string.svg");
-        break;
-    case TypeMark::Number:
-        file = qsl(":/icons/editor-type-number.svg");
-        break;
-    case TypeMark::Boolean:
-        file = qsl(":/icons/editor-type-boolean.svg");
-        break;
-    case TypeMark::Function:
-        file = qsl(":/icons/editor-type-function.svg");
-        break;
-    case TypeMark::Other:
-        file = qsl(":/icons/editor-type-other.svg");
-        break;
-    case TypeMark::None:
-        return glyph;
-    }
-    glyph = tintedGlyph(uiDesign::glyphPixmap(file), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * mGlyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    glyph = tintedGlyph(uiDesign::glyphPixmap(typeGlyphFileFor(type)), ink).scaled(QSize(scmTreeMarkSize, scmTreeMarkSize) * mGlyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     glyph.setDevicePixelRatio(mGlyphRatio);
     return glyph;
 }
@@ -454,61 +362,23 @@ VariableTreeDelegate::Decoration VariableTreeDelegate::decorationFor(const RowSt
     if (const auto cached = mDecorations.constFind(key); cached != mDecorations.constEnd()) {
         return cached.value();
     }
-    if (mDecorations.size() >= scmTreeDecorationCacheLimit) {
-        mDecorations.clear();
-    }
-
-    // The room the row's depth holds it in comes first, with the chevron
-    // standing in the last step of it. Then the square that says whether the
-    // variable is kept - whose room is left whether the square is drawn or not,
-    // so an unsaveable row's name lines up with its siblings' - then the mark
-    // that says what kind of value it is.
-    const int lead = level * mIndentStep;
-    const int keptWidth = state.known ? scmTreeDotDiameter : 0;
-    const int markWidth = state.type == TypeMark::None ? 0 : scmTreeMarkSize;
-    const int gap = (keptWidth > 0 && markWidth > 0) ? scmTreeDotGap : 0;
-    const int slotWidth = std::max(lead + keptWidth + gap + markWidth, 1);
-
-    QPixmap composed(qRound(slotWidth * mGlyphRatio), qRound(scmTreeSlotHeight * mGlyphRatio));
-    composed.setDevicePixelRatio(mGlyphRatio);
-    composed.fill(Qt::transparent);
-    QPainter painter(&composed);
-    if (chevron != ChevronState::None) {
-        painter.drawPixmap(QPointF(lead - mIndentStep + (mIndentStep - scmTreeChevronBox) / 2.0, (scmTreeSlotHeight - scmTreeChevronBox) / 2.0), chevronGlyph(chevron));
-    }
-    if (state.kept != KeptState::None) {
-        painter.drawPixmap(QPointF(lead, (scmTreeSlotHeight - scmTreeDotDiameter) / 2.0), keptGlyph(state.kept, selected));
-    }
-    if (markWidth > 0) {
-        painter.drawPixmap(QPointF(lead + keptWidth + gap, (scmTreeSlotHeight - scmTreeMarkSize) / 2.0), typeGlyph(state.type, inkForSlot(inkSlot), inkSlot));
-    }
-    painter.end();
-
-    Decoration decoration;
-    decoration.icon = QIcon(composed);
-    decoration.size = QSize(slotWidth, scmTreeSlotHeight);
-    mDecorations.insert(key, decoration);
-    return decoration;
+    // The square's room is left even where it is not drawn, so an unkeepable row's
+    // name lines up with its siblings'
+    return composeDecoration(key, level, chevron, state.known, keptGlyph(state.kept, selected), typeGlyph(state.type, inkForSlot(inkSlot), inkSlot));
 }
-
-// ---------------------------------------------------------------- the drawing
 
 void VariableTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QModelIndex& index) const
 {
     QStyledItemDelegate::initStyleOption(pOption, index);
 
-    // The square is drawn into the row's decoration from here on, so the view is
-    // asked to reserve no room for a check indicator and the style draws none
+    // The square is drawn in the decoration, so no room is reserved for a check indicator
     pOption->features &= ~QStyleOptionViewItem::HasCheckIndicator;
 
     const RowState state = stateOf(index);
-    const int level = treeRowLevelOf(index);
+    const int level = rowLevelOf(index);
     const ChevronState chevron = chevronOf(index, level);
-    // Nothing to lead the row with, which is what the tree's own heading row is.
-    // It keeps the glyph restyleEditorTreeHeadingIcons() put on it - the same
-    // one the row beside it in the sidebar carries - drawn at the size every
-    // mark under it is drawn at, so the heading is exactly as tall as the rows
-    // it heads.
+    // The heading row keeps the icon restyleEditorTreeHeadingIcons() set, at mark
+    // size so the heading is as tall as the rows it heads
     if (!state.known && level < 1 && chevron == ChevronState::None) {
         pOption->decorationSize = QSize(scmTreeMarkSize, scmTreeMarkSize);
         return;
@@ -520,11 +390,9 @@ void VariableTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const 
     pOption->icon = decoration.icon;
     pOption->features |= QStyleOptionViewItem::HasDecoration;
 
-    // A number key is a place in a list, and is read as one
     pOption->text = displayNameFor(index);
 
-    // The tree's stylesheet names a colour for a chosen row and none for any
-    // other, which leaves the rest for this to ink
+    // The tree's stylesheet inks only the chosen row
     if (!selected) {
         const QColor ink = inkForSlot(inkSlotFor(state, false));
         pOption->palette.setColor(QPalette::Text, ink);
@@ -556,11 +424,6 @@ void VariableTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem&
     pStyle->drawControl(QStyle::CE_ItemViewItem, &opt, pPainter, pWidget);
     pPainter->restore();
 
-    // Over the pill the style has just drawn, as the leading edge of that pill:
-    // full width down the row and cut to the pill's corner at both ends, the way
-    // the sidebar's is. A border-left would follow the radius inward until it
-    // read as a bracket, and a plain rectangle would stand square past the
-    // corners the pill is cut to.
     if (selected) {
         paintAccentBar(pPainter, opt.rect, mAccentBar);
     }
@@ -582,9 +445,7 @@ void VariableTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem&
     pPainter->restore();
 }
 
-// Where the style would put the row's words, and what goes in that room. Asked
-// of the style rather than worked out here: the tree carries a stylesheet, so it
-// is QStyleSheetStyle that decides what a row's padding is.
+// Asked of the style: the tree carries a stylesheet, so QStyleSheetStyle decides a row's padding
 VariableTreeDelegate::RowLayout VariableTreeDelegate::layoutOf(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     syncPreviewFont();
@@ -601,8 +462,6 @@ VariableTreeDelegate::RowLayout VariableTreeDelegate::layoutOf(const QStyleOptio
     const QFontMetrics nameMetrics(option.font);
     const bool hidden = carriesHiddenMark(index);
     const int hiddenRoom = hidden ? scmTreeMarkSize + scmTreeDotGap : 0;
-    // The name is never cut so that the preview can be shown: what is left after
-    // it is what the preview gets, and on a narrow panel that is nothing
     layout.name = nameMetrics.elidedText(option.text, Qt::ElideRight, std::max(0, textRect.width() - hiddenRoom));
     layout.nameWidth = nameMetrics.horizontalAdvance(layout.name);
     if (hidden) {
@@ -618,71 +477,6 @@ VariableTreeDelegate::RowLayout VariableTreeDelegate::layoutOf(const QStyleOptio
     layout.preview = mPreviewMetrics.elidedText(preview, Qt::ElideRight, previewRoom);
     layout.previewRect = QRect(textRect.right() - previewRoom + 1, textRect.top(), previewRoom, textRect.height());
     return layout;
-}
-
-// ----------------------------------------------------------------- the clicks
-
-QRect VariableTreeDelegate::keptHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
-{
-    if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || stateOf(index).kept == KeptState::None) {
-        return {};
-    }
-
-    QStyleOptionViewItem keptOption(option);
-    initStyleOption(&keptOption, index);
-    const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &keptOption, mpTree);
-    if (decorationRect.isEmpty()) {
-        return {};
-    }
-
-    // The decoration leads with the room the row's depth holds it in, and the
-    // square is what follows it - then the row's type mark. The rest of the
-    // row's leading edge is left to start a drag from.
-    const int lead = treeRowLevelOf(index) * mIndentStep;
-    const QRect square(decorationRect.left() + lead, decorationRect.top() + (decorationRect.height() - scmTreeDotDiameter) / 2, scmTreeDotDiameter, scmTreeDotDiameter);
-    return square.adjusted(-scmTreeMarkHitSlack, -scmTreeMarkHitSlack, scmTreeMarkHitSlack, scmTreeMarkHitSlack);
-}
-
-QRect VariableTreeDelegate::chevronHitRect(const QStyleOptionViewItem& option, const QModelIndex& index) const
-{
-    const int level = treeRowLevelOf(index);
-    if (!mpTree || !index.isValid() || index.column() != 0 || option.rect.isEmpty() || chevronOf(index, level) == ChevronState::None) {
-        return {};
-    }
-
-    QStyleOptionViewItem chevronOption(option);
-    initStyleOption(&chevronOption, index);
-    const QRect decorationRect = mpTree->style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &chevronOption, mpTree);
-    if (decorationRect.isEmpty()) {
-        return {};
-    }
-    return QRect(decorationRect.left() + (level - 1) * mIndentStep, option.rect.top(), mIndentStep, option.rect.height());
-}
-
-QStyleOptionViewItem VariableTreeDelegate::rowOption(const QModelIndex& index) const
-{
-    QStyleOptionViewItem option = mpTree->viewItemOption();
-    option.rect = mpTree->visualRect(index);
-    if (index == mpTree->currentIndex()) {
-        option.state |= QStyle::State_HasFocus;
-    }
-    return option;
-}
-
-QRect VariableTreeDelegate::keptHitRect(const QModelIndex& index) const
-{
-    if (!mpTree) {
-        return {};
-    }
-    return keptHitRect(rowOption(index), index);
-}
-
-QRect VariableTreeDelegate::chevronHitRect(const QModelIndex& index) const
-{
-    if (!mpTree) {
-        return {};
-    }
-    return chevronHitRect(rowOption(index), index);
 }
 
 QString VariableTreeDelegate::keptTooltip(const QModelIndex& index) const
@@ -705,14 +499,12 @@ QString VariableTreeDelegate::keptTooltip(const QModelIndex& index) const
 
 bool VariableTreeDelegate::helpEvent(QHelpEvent* pEvent, QAbstractItemView* pView, const QStyleOptionViewItem& option, const QModelIndex& index)
 {
-    // A row that cannot be kept keeps the tooltip saying why, which is on the
-    // row rather than on a square it does not have
     if (!pEvent || pEvent->type() != QEvent::ToolTip) {
         return QStyledItemDelegate::helpEvent(pEvent, pView, option, index);
     }
 
     QString note;
-    if (keptHitRect(option, index).contains(pEvent->pos())) {
+    if (dotHitRect(option, index).contains(pEvent->pos())) {
         note = keptTooltip(index);
     } else {
         QStyleOptionViewItem rowOption(option);
@@ -727,96 +519,6 @@ bool VariableTreeDelegate::helpEvent(QHelpEvent* pEvent, QAbstractItemView* pVie
         return true;
     }
     return QStyledItemDelegate::helpEvent(pEvent, pView, option, index);
-}
-
-bool VariableTreeDelegate::eventFilter(QObject* pWatched, QEvent* pEvent)
-{
-    // Anything else being watched is an editor widget that QStyledItemDelegate
-    // put this filter on itself, and its own handling of those has to stand
-    if (!mpTree || pWatched != mpTree->viewport()) {
-        return QStyledItemDelegate::eventFilter(pWatched, pEvent);
-    }
-
-    switch (pEvent->type()) {
-    case QEvent::MouseButtonPress:
-        // Every press starts a new one of these, and the second press of a
-        // double click is not a press but its own event type
-        mPressAnswered = false;
-        mLastKeptPressIndex = QPersistentModelIndex();
-        break;
-    case QEvent::MouseMove:
-        // The view records what was pressed before it consults a delegate, so a
-        // move handed on here would lift the row the square is on out of the
-        // tree the moment the pointer left it
-        if (mPressAnswered && (static_cast<QMouseEvent*>(pEvent)->buttons() & Qt::LeftButton)) {
-            return true;
-        }
-        break;
-    case QEvent::MouseButtonRelease:
-        // The press did the keeping or the folding, so its release is eaten
-        // wherever it lands: handed on, the view would read it as a click on
-        // whichever row it ended over and load that row into the form
-        if (mPressAnswered) {
-            mPressAnswered = false;
-            return true;
-        }
-        break;
-    default:
-        break;
-    }
-
-    return false;
-}
-
-bool VariableTreeDelegate::editorEvent(QEvent* pEvent, QAbstractItemModel* pModel, const QStyleOptionViewItem& option, const QModelIndex& index)
-{
-    const QEvent::Type eventType = pEvent->type();
-    if (eventType != QEvent::MouseButtonPress && eventType != QEvent::MouseButtonDblClick) {
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-    }
-
-    auto* pMouseEvent = static_cast<QMouseEvent*>(pEvent);
-    if (pMouseEvent->button() != Qt::LeftButton || (pMouseEvent->modifiers() & scmTreeSelectionModifiers)) {
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-    }
-    const QPoint pressedAt = pMouseEvent->position().toPoint();
-    // The chevron is asked first, and the square's couple of pixels of slack are
-    // what the two would otherwise argue over
-    const bool onChevron = chevronHitRect(option, index).contains(pressedAt);
-    const bool onSquare = !onChevron && keptHitRect(option, index).contains(pressedAt);
-
-    if (eventType == QEvent::MouseButtonDblClick) {
-        // The pair's first press has already kept or folded the row, so the
-        // second is eaten whether or not it landed on the same mark: the
-        // platform allows a double click a few pixels of drift, which is most of
-        // the way out of a target the size of the square
-        if (!onChevron && !onSquare && !(mLastKeptPressIndex.isValid() && mLastKeptPressIndex == index)) {
-            return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-        }
-        mPressAnswered = true;
-        return true;
-    }
-
-    if (onChevron) {
-        mpTree->setExpanded(index, !mpTree->isExpanded(index));
-        mPressAnswered = true;
-        return true;
-    }
-
-    if (!onSquare) {
-        return QStyledItemDelegate::editorEvent(pEvent, pModel, option, index);
-    }
-
-    // Which of a table's members may be kept is VarUnit's business and the
-    // editor's to apply, so the row is chosen here and the keeping asked for -
-    // one path, the one a click on the check box used to take
-    if (QTreeWidgetItem* pItem = mpTree->itemFromIndex(index)) {
-        mpTree->setCurrentItem(pItem);
-        emit keptToggleRequested();
-    }
-    mPressAnswered = true;
-    mLastKeptPressIndex = index;
-    return true;
 }
 
 } // namespace uiDesign

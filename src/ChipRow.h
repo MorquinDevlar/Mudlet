@@ -39,29 +39,18 @@ namespace uiDesign {
 
 class FlowLayout;
 class PlaceholderButton;
-// Draws one offered name and the word beside it. Defined in ChipRow.cpp, since
-// nothing outside the row has anything to say to it.
 class SuggestionDelegate;
 struct ThemeTokens;
 
-// One name the field can offer, and the short word set beside it saying where
-// the name is from. The word is whatever the caller wants read; the row only
-// paints it.
 struct Suggestion
 {
     QString name;
     QString note;
 };
 
-// The type a word in a box is set in: the platform's fixed-width face, a shade
-// smaller than the words around it. One recipe rather than one per chip family,
-// so the ID beside an item's name and the events beside a script's read as the
-// same kind of mark. Taken off the widget the chip lies on, because the window's
-// own font is what a percentage in a stylesheet would have been relative to.
+// pOn is the widget the chip lies on, not the chip: see Chip::remeasure()
 QFont chipFont(const QWidget* pOn);
 
-// One name in a box, with the cross that takes it away again. Focusable, so a
-// row of them can be walked and worked without the mouse.
 class Chip : public QFrame
 {
     Q_OBJECT
@@ -73,15 +62,10 @@ public:
     void setName(const QString& name);
     [[nodiscard]] QString name() const { return mName; }
     void setRemoveGlyph(const QIcon& glyph);
-    // The type, the cross and the height a chip comes to, all of which are the
-    // font's business. Public because a chip is measured off the row it lies on
-    // rather than off its own font - see the note on the body - so the row is
-    // what has to ask for this when that font changes.
+    // Public: a chip is measured off its row's font, so the row calls this when that font changes
     void remeasure();
 
 signals:
-    // The user asked to rename this one - by clicking it, or by pressing Enter
-    // or F2 while it had the keyboard
     void editRequested();
     void removeRequested();
 
@@ -96,14 +80,6 @@ private:
     QString mName;
 };
 
-// A set of short names the user adds to and takes from: a script's events
-// today. The names wrap onto as many lines as they need, and the row says so
-// through its size hint, so whatever holds it can follow the height rather than
-// scrolling it.
-//
-// Adding and renaming go through one field, which stands where the thing being
-// typed will be: after the last chip when a name is being added, and in the
-// chip's own place when one is being renamed.
 class ChipRow : public QWidget
 {
     Q_OBJECT
@@ -112,66 +88,38 @@ public:
     Q_DISABLE_COPY(ChipRow)
     explicit ChipRow(QWidget* pParent = nullptr);
 
-    // The names as they stand, in the order they are shown
     [[nodiscard]] QStringList items() const;
-    // Replaces the lot. This is the row being told what to show rather than the
-    // user changing anything, so nothing is emitted and any open field is shut.
+    // Emits nothing and shuts any open field: this is the row being filled, not edited
     void setItems(const QStringList& items);
     [[nodiscard]] int count() const;
-    // The chip showing the name at that index, for a caller that has to point
-    // at one. Null where there is no such index.
     [[nodiscard]] QWidget* chipAt(const int index) const;
-    // Where the chip showing that name stands, or -1 for a name the row is not
-    // showing. setItems() drops empty and repeated names, so a caller holding an
-    // index into what it handed over cannot use it here - the name can.
+    // setItems() drops empty and repeated names, so an index into what was handed over is not one here
     [[nodiscard]] int indexOf(const QString& name) const;
-    // Hands that chip the keyboard. The row does not scroll, so there is
-    // nothing to bring into view.
     void focusItem(const int index);
-    // Opens the field for a name that is not there yet
     void beginAdd();
 
-    // The words the row is worked through, which are the caller's rather than
-    // the component's: a row of events is added to with "Add event" and a row of
-    // required packages with "Add package". A caller that says nothing keeps the
-    // editor's words, since a row of events is where this started.
     void setAddWords(const QString& button, const QString& tooltip, const QString& fieldPrompt);
 
-    // The names offered as one is typed into the field, matched anywhere in the
-    // name without regard to case, each with the word set beside it. Whatever is
-    // already a chip is left out of the offer, since adding it again would only
-    // be refused.
+    // Names already on a chip are left out of the offer, since adding one again would be refused
     void setSuggestions(const QList<Suggestion>& suggestions);
-    // The popup the suggestions are listed in is a window of its own, so the
-    // sheet the form is styled by never reaches it - it is inked here instead
+    // The popup is a window of its own, so the form's stylesheet never reaches it
     void restyleSuggestions(const ThemeTokens& tokens);
 
-    // What one line of chips is tall - the field the row types into stands on
-    // the same line and is never cut down to a chip, so a chip grows to meet it
-    // where the form's sheet makes the field the taller - so that whatever leads
-    // the row can be set level with the first of them
+    // Chips grow to the field's height where the form's sheet makes it the taller.
+    // Public so a label leading the row can be set level with the first line.
     [[nodiscard]] int lineHeight() const;
 
-    // Every colour a chip, the field and the note are drawn in, mixed at the
-    // moment the window is styled. Appended to the sheet of the form the row is
-    // on, so a theme change re-mixes them with everything else.
+    // Appended to the form's sheet, so a theme change re-mixes it with everything else
     [[nodiscard]] static QString styleSheetFor(const ThemeTokens& tokens);
-    // The cross on every chip and the plus on the add button. Kept apart from
-    // the sheet because a stylesheet can only point at a picture on disk, and
-    // these are inked at runtime.
+    // Not in the sheet: a stylesheet can only point at a picture on disk, and these are tinted at runtime
     void restyleGlyphs(const ThemeTokens& tokens);
 
-    // The wrap is what makes the row's height its width's business, and these
-    // are how whatever holds it is told so. QWidget declares all three public.
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] bool hasHeightForWidth() const override;
     [[nodiscard]] int heightForWidth(int width) const override;
 
 signals:
-    // After every add, rename and removal the user made - never after
-    // setItems(), which is the row being filled in rather than edited
     void itemsChanged();
-    // The name typed is already one of the chips, so nothing was added
     void duplicateRefused(const QString& name);
 
 protected:
@@ -181,32 +129,19 @@ protected:
 
 private:
     Chip* makeChip(const QString& name);
-    // The add button and every chip, measured off the row's own font - which is
-    // what a chip's type is a shade smaller than
     void remeasure();
-    // Puts the chips, the field and the add button in the order they are read
-    // in, since a flow layout has no notion of inserting into the middle of one
+    // Re-adds everything in reading order: FlowLayout cannot insert into the middle
     void rebuild();
     void openField(const int index);
-    // keepNote leaves whatever the note is saying standing, for the one caller
-    // that closes the field precisely because a name was refused
     void closeField(const bool keepNote = false);
     void commitField(const bool stillTyping);
     void removeAt(const int index);
     void showNote(const QString& name);
     void hideNote();
-    // Built the first time names are handed over, since a row that is never
-    // offered any has no popup to keep
     void makeCompleter();
-    // Everything on offer bar the chips already showing, which is what the
-    // popup is filled from every time the field opens
     void refreshSuggestionModel();
-    // The popup's type and the width it asks for, both the chip font's business
     void measureSuggestions();
-    // The word beside a name, in the two inks it is read in: a resting row and
-    // the chosen one, which is washed in the accent
     void inkSuggestionNotes();
-    // Trimmed of what surrounds it and of the comma that may have ended it
     [[nodiscard]] static QString cleaned(const QString& name);
 
     FlowLayout* mpFlow = nullptr;
@@ -218,20 +153,16 @@ private:
     QCompleter* mpCompleter = nullptr;
     QStandardItemModel* mpSuggestionModel = nullptr;
     SuggestionDelegate* mpSuggestionDelegate = nullptr;
-    // Every name on offer, in the order they were handed over
     QList<Suggestion> mSuggestions;
-    // The popup's sheet and the notes' two inks, all kept for a restyle that
-    // came before there was a popup to put them on
+    // Kept for a restyle that comes before there is a popup to put them on
     QString mSuggestionSheet;
     QColor mSuggestionNote;
     QColor mSuggestionNoteChosen;
     QIcon mRemoveGlyph;
-    // Which chip the open field stands in the place of; -1 while it is a name
-    // being added rather than one being changed
+    // -1 while the open field adds a name rather than renaming a chip
     int mEditingIndex = -1;
     bool mFieldOpen = false;
-    // Losing focus commits, and committing moves the focus - so the commit is
-    // barred from starting itself a second time on the way out
+    // Losing focus commits and committing moves the focus, so this bars a re-entrant commit
     bool mCommitting = false;
 };
 

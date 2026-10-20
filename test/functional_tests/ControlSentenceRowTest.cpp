@@ -18,20 +18,9 @@
  ***************************************************************************/
 
 /*
- * A control that sits inside a sentence is laid out from the translation, not
- * from the English word order.
- *
- * The editor's "Keep firing for [3] more lines" and "within [5] lines" rows used
- * to be built as label, control, label in that fixed order, from three separate
- * strings. A translator handed "Keep firing for" and "more lines" cannot move
- * the number: languages that read the count first, or last, had no way to say
- * so. uiDesign::buildControlSentenceRow() takes the whole sentence with a %1
- * where the control goes, so the placeholder's position in the translation is
- * what decides the row's order.
- *
- * The cases below are what a translator can actually produce: the placeholder in
- * the middle, at the front, at the end, and - because a dropped %1 is a
- * translation mistake and not a crash - missing entirely.
+ * Guards uiDesign::buildControlSentenceRow(): where a translation puts %1, not the
+ * English word order, decides where the control sits, and a dropped placeholder is
+ * a translation mistake rather than a crash.
  *
  * Run with: ctest -R ControlSentenceRowTest -V
  */
@@ -50,8 +39,6 @@ class ControlSentenceRowTest : public QObject
     Q_OBJECT
 
 private:
-    // What the row reads as, left to right: each label's text in place, and the
-    // control itself as a marker, so a case says the order it expects in one line
     static QStringList readingOf(const QLayout* pLayout, const QWidget* pControl)
     {
         QStringList reading;
@@ -70,8 +57,6 @@ private:
         return reading;
     }
 
-    // ...and the same for a sentence holding several of them, where which
-    // control landed where is the whole of what a case here is about
     static QStringList readingOf(const QLayout* pLayout, const QList<QWidget*>& controls)
     {
         QStringList reading;
@@ -94,7 +79,6 @@ private:
     static QString drift(const QString& sentence, const QStringList& reading) { return qsl("\"%1\" laid out as: %2").arg(sentence, reading.join(qsl(" | "))); }
 
 private slots:
-    // The English order, which is also the one the two editor rows ship with
     void test_aSentenceWithThePlaceholderInTheMiddleReadsLabelControlLabel()
     {
         QWidget host;
@@ -108,8 +92,6 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("Keep firing for"), qsl("[control]"), qsl("more lines")}), qPrintable(drift(sentence, reading)));
     }
 
-    // A language that counts first: nothing precedes the control, so no empty
-    // label is put in front of it either
     void test_aTranslationCanPutTheControlFirst()
     {
         QWidget host;
@@ -123,7 +105,6 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("[control]"), qsl("extra lines are kept firing for")}), qPrintable(drift(sentence, reading)));
     }
 
-    // ...and one that counts last
     void test_aTranslationCanPutTheControlLast()
     {
         QWidget host;
@@ -137,8 +118,6 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("Extra lines to keep firing for:"), qsl("[control]")}), qPrintable(drift(sentence, reading)));
     }
 
-    // A translation that lost its placeholder is a mistake in the .ts file, and
-    // the row it produces still has to read as a sentence with a control after it
     void test_aTranslationWithNoPlaceholderKeepsAllOfItsWords()
     {
         QWidget host;
@@ -152,8 +131,6 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("Keep firing for more lines"), qsl("[control]")}), qPrintable(drift(sentence, reading)));
     }
 
-    // The timer form's interval is four fields in one sentence, and %1 to %4
-    // are what says which of them goes where
     void test_aSentenceCanHoldSeveralControls()
     {
         QWidget host;
@@ -167,8 +144,6 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("Fires every"), qsl("[control 1]"), qsl("h"), qsl("[control 2]"), qsl("min"), qsl("[control 3]"), qsl("s")}), qPrintable(drift(sentence, reading)));
     }
 
-    // A language that counts the other way round moves the placeholders rather
-    // than the fields, and the row follows the translation
     void test_aTranslationCanReorderTheControls()
     {
         QWidget host;
@@ -182,8 +157,6 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("[control 3]"), qsl("s,"), qsl("[control 2]"), qsl("min and"), qsl("[control 1]"), qsl("h between firings")}), qPrintable(drift(sentence, reading)));
     }
 
-    // A translation that dropped one of its placeholders has still to hold
-    // every field it was given, or the interval loses a part of itself
     void test_aTranslationMissingOnePlaceholderKeepsEveryControl()
     {
         QWidget host;
@@ -197,8 +170,7 @@ private slots:
         QVERIFY2(reading == QStringList({qsl("Fires every"), qsl("[control 1]"), qsl("h"), qsl("[control 3]"), qsl("s"), qsl("[control 2]")}), qPrintable(drift(sentence, reading)));
     }
 
-    // A screen reader names the field by the sentence it sits in, since the
-    // labels either side of it are not attached to it as buddies
+    // The labels either side are not the field's buddies, so its accessible name carries the sentence
     void test_theControlIsNamedByTheWholeSentence()
     {
         QWidget host;
@@ -210,8 +182,7 @@ private slots:
         QCOMPARE(pSpinBox->accessibleName(), qsl("Keep firing for more lines"));
     }
 
-    // The Firing card builds its row before there is a widget to build it on, so
-    // the labels have to arrive in the card once the row is added to it
+    // The Firing card builds its row before there is a widget to build it on
     void test_aRowBuiltBeforeItHasAWidgetStillEndsUpInOne()
     {
         QWidget host;

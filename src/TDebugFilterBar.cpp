@@ -172,10 +172,6 @@ TDebugFilterBar::TDebugFilterBar(QWidget* parent)
     mpPausedLabelTimer->setInterval(500ms);
     connect(mpPausedLabelTimer, &QTimer::timeout, this, &TDebugFilterBar::slot_updatePausedCount);
 
-    // Every picture on the bar is a monochrome glyph inked from the palette,
-    // which restyleIcons() redoes whenever the theme moves. Pause carries a
-    // second file for its checked state: the console is paused, and the button
-    // now offers to resume.
     mActionGlyphs = {{mpActionPause, qsl(":/icons/debug-pause.svg"), qsl(":/icons/debug-resume.svg")}, {pActionClear, qsl(":/icons/debug-clear.svg"), QString()}};
     restyleIcons();
 }
@@ -184,8 +180,7 @@ void TDebugFilterBar::restyleIcons()
 {
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     uiDesign::restyleActionGlyphs(mActionGlyphs, tokens);
-    // The category button is a widget on the bar rather than an action, so it is
-    // inked here by hand
+    // A widget, not an action, so restyleActionGlyphs() does not reach it
     mpCategoryButton->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-filter.svg"), tokens));
 }
 

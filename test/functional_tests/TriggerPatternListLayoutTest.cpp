@@ -71,9 +71,8 @@ private:
     const QString mNinthPattern = qsl("qaNinthPattern");
     const QString mColourPatternTrigger = qsl("qaColourNinth");
     const QString mSpacerPatternTrigger = qsl("qaSpacerNinth");
-    // What a long list shows at the sizes these cases use. Not a floor the
-    // editor keeps: the list is given what is left of the form column's share of
-    // the panes, and at these sizes that share holds this many rows.
+    // Not a floor the editor keeps: at the sizes these cases use, the form
+    // column's share of the panes holds this many rows
     static constexpr int scmRowsALongListShows = 5;
     static constexpr int scmSeamTolerance = 2;
 
@@ -183,9 +182,7 @@ private:
         return top >= 0 && top + pRow->height() <= viewport->height();
     }
 
-    // The form column asks for every row and is held to what the code pane's
-    // share leaves it (codePaneFloor()), so a list too long to fit is given that
-    // whole share rather than squeezed under it. Empty when it is.
+    // The form column asks for every row, so a list too long to fit takes all that codePaneFloor() leaves it
     QString formColumnShortOfItsShare() const
     {
         const QList<int> sizes = mpEditor->splitter_right->sizes();
@@ -438,9 +435,7 @@ private slots:
         QCOMPARE(mpEditor->mpScrollArea->verticalScrollBar()->value(), scrollBeforeJump);
     }
 
-    // A three pattern trigger draws its three rows, with the button that adds a
-    // fourth under them rather than a blank row waiting for one. All of it has to
-    // be readable without scrolling.
+    // The button that adds a fourth pattern sits under the three rows and has to be readable without scrolling too
     void test_collapsedAdvancedOptionsShowsAWholeSmallTrigger()
     {
         QVERIFY2(selectTrigger(mThreePatternTrigger), "could not select the three pattern trigger");
@@ -455,8 +450,8 @@ private slots:
         QCOMPARE(mpEditor->mpScrollArea->verticalScrollBar()->maximum(), 0);
     }
 
-    // However many patterns a trigger has, the list is given the form column's
-    // whole share rather than squeezed down to the row and a half that started this
+    // However many patterns a trigger has, the list is never squeezed down to
+    // the row and a half that started this
     void test_aLongPatternListStillShowsSeveralRows()
     {
         QVERIFY2(selectTrigger(mNinePatternTrigger), "could not select the nine pattern trigger");

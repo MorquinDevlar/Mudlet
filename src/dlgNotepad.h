@@ -95,14 +95,9 @@ private:
     QPlainTextEdit* currentTextEdit() const;
     void applyNotepadShellStyle();
     void setupSendStrip();
-    // The size the strip's words and field are set in: that of the bar's
-    // buttons, which on macOS is smaller than a label's own. Whole points, so
-    // that no fraction ever reaches a stylesheet.
     [[nodiscard]] int stripWordPointSize() const;
     void setupAddTabButton();
     void updateTabClosability();
-    // Whether the notes at those indices may go: one with nothing in it is no
-    // loss and goes without a word, anything else is put to the reader first
     [[nodiscard]] bool okToDiscardNotes(const QList<int>& indices);
     void closeOtherTabs(int keptIndex);
     void setupFindBar();
@@ -111,20 +106,11 @@ private:
     void clearSearchHighlights();
     bool migrateOldNotesFile();
     void startSendingLines(const QStringList& lines);
-    // Both readings the strip carries about the note in front of the reader:
-    // how far each send button reaches, and whether sending with no prefix
-    // would put a page of prose on the command line
     void updateSendStrip();
     void updateSendReach();
-    // The word leading the prefix field stands as far from the seam as Send
-    // all's word does on the other side of it
     void alignPrefixLeadWord();
     void updateNoPrefixWarning();
-    // Which of the warning's three forms the strip has room for: the whole
-    // sentence, the short form, or nothing at all beside the cue in the field
     void fitNoPrefixNote();
-    // Which of the strip's two readings is on show: the buttons and the prefix
-    // field, or the progress of a send and the way to stop it
     void setSending(const bool sending);
     void updateSendingReading();
     void finishSending(const bool stopped);
@@ -133,9 +119,6 @@ private:
     QToolButton* mpAddTabButton = nullptr;
     bool mNeedToSave = false;
     bool mRehighlightPending = false;
-    // What the find bar marks its hits with, mixed in the style pass so that
-    // both follow an appearance change: the marker pen on the match the cursor
-    // is on, and a wash of it towards the field on every other one
     QColor mCurrentMatchInk;
     QColor mOtherMatchInk;
     QAction* action_stop = nullptr;
@@ -144,14 +127,8 @@ private:
     QAction* action_prependTextLabel = nullptr;
     QLabel* label_prependText = nullptr;
     QLineEdit* lineEdit_prependText = nullptr;
-    // The warning's cue, carried inside the field at its trailing end: it costs
-    // the bar no room, so it stands at every width the window is dragged to
     QAction* action_prefixWarning = nullptr;
-    // What the field says about itself, put back when the warning goes: while
-    // it applies the field carries the whole sentence instead
     QString mPrefixFieldToolTip;
-    // What the strip shows while a send runs, in place of the buttons and the
-    // field: the bar makes an action for each, which is what shows and hides it
     QAction* action_sendingDot = nullptr;
     QAction* action_sendingText = nullptr;
     QAction* action_sendingBar = nullptr;
@@ -162,21 +139,13 @@ private:
     QWidget* mpWidget_noPrefixNote = nullptr;
     QLabel* mpLabel_noPrefixDot = nullptr;
     QLabel* mpLabel_noPrefixText = nullptr;
-    // The whole sentence, which the label shows where the strip has room for
-    // the whole of it and nowhere else
     QString mNoPrefixNoteText;
-    // Whether the warning applies at all, which is not the same as whether the
-    // strip is showing it: at a width neither form fits in the reading comes
-    // off the bar while this stays true, and a wider window brings it back
+    // Not action_noPrefixNote's visibility, which fitNoPrefixNote() also clears when no form of the words fits
     bool mNoPrefixWarningApplies = false;
-    // The four pictures on the strip, re-inked by the style pass the way every
-    // other window's toolbar glyphs are
     QList<uiDesign::ActionGlyph> mNotepadActionGlyphs;
     QStringList mLinesToSend;
     QTimer* mSendTimer = nullptr;
     int mCurrentLineIndex = 0;
-    // Counted rather than taken from the list's size: an empty line is skipped
-    // on its way out, so it is no part of what the reader was told would go
     int mLinesToSendCount = 0;
     int mLinesSent = 0;
     bool mSending = false;

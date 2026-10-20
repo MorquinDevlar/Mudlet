@@ -18,14 +18,9 @@
  ***************************************************************************/
 
 /*
- * The editor's own shortcuts across a key grab. A grab takes them away so that
- * the keystroke being bound reaches the grab rather than the action it would
- * otherwise fire, and ending the grab - by Escape or by taking a keystroke -
- * has to give every one of them back.
- *
- * It used to give back only the shortcuts a label-keyed table listed, so
- * Ctrl+N to add an item, and the others set directly on their actions, were
- * gone for the rest of the session after the first grab.
+ * Ending a key grab, by Escape or by a captured keystroke, must give back every
+ * shortcut the grab suspended, not only those a label-keyed table listed: Ctrl+N
+ * and the others set on their actions were lost for the session after one grab.
  *
  * Run with: ctest -R EditorKeyGrabShortcutsTest -V
  */
@@ -33,7 +28,6 @@
 #include <QAction>
 #include <QHash>
 #include <QKeySequence>
-#include <QTemporaryDir>
 #include <QToolBar>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -41,13 +35,8 @@
 #include "Host.h"
 #include "HostDialogs.h"
 #include "KeyUnit.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "TKey.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
 #include "dlgKeysMainArea.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
@@ -61,45 +50,17 @@ class EditorKeyGrabShortcutsTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
-    // Every toolbar action's shortcut as it stood before any grab, so that what
-    // a grab gives back can be held against all of them
     QHash<QAction*, QKeySequence> mShortcutsBeforeTheGrab;
     const QString mProfileName = qsl("EditorKeyGrabShortcuts-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     // Add Item and its like carry no text at all, only the icon and the tooltip
     QString actionLabel(const QAction* pAction) const { return pAction->text().isEmpty() ? pAction->toolTip() : pAction->text(); }
 
     void armTheGrab()
     {
-        // The redesign replaced the Grab Key button with the binding field
-        // itself: a click on it is what arms the grab
         QTest::mouseClick(mpEditor->mpKeysMainArea->lineEdit_key_binding, Qt::LeftButton);
         QCoreApplication::processEvents();
     }
@@ -120,34 +81,12 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
-        // QFAIL inside startProfile() only returns from that helper - bail out
-        // here too or the mpHost dereference below crashes and buries the
-        // recorded diagnostic under a segfault
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
@@ -155,16 +94,14 @@ private slots:
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 900);
 
-        // The toolbar and the view switchers, which the redesign moved off a
-        // toolbar of their own - the same set the grab suspends
+        // The same set the grab suspends
         for (QAction* pAction : mpEditor->toolbarActions()) {
             mShortcutsBeforeTheGrab.insert(pAction, pAction->shortcut());
         }
 
         QVERIFY2(mShortcutsBeforeTheGrab.contains(mpEditor->mAddItem), "Add Item is not on the editor's toolbar, so the shortcut this test watches is not among the recorded ones");
         QCOMPARE(mpEditor->mAddItem->shortcut(), QKeySequence(QKeySequence::New));
-        // Ctrl+S used to come from a label-keyed table, which never matched in
-        // a translated UI; it is now set on the action itself
+        // A label-keyed lookup never matched in a translated UI, so Save carries its own
         QCOMPARE(mpEditor->mSaveItem->shortcut(), QKeySequence(QKeySequence::Save));
 
         mpEditor->slot_showKeys();
@@ -178,15 +115,7 @@ private slots:
         mShortcutsBeforeTheGrab.clear();
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        // Null when initTestCase skipped or failed ahead of mudlet::start(), and
-        // getMudletPath() dereferences the instance rather than checking it
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
     void test_escapeGivesEveryShortcutBack()
@@ -218,8 +147,7 @@ private slots:
         QCoreApplication::processEvents();
         QVERIFY2(!mpEditor->mIsGrabKey, "the grab is still armed after a keystroke was taken");
 
-        // The keystroke reaching the key proves it was the capturing branch of
-        // event(), not the Escape one, that ended this grab
+        // Proves the capturing branch of event(), not the Escape one, ended the grab
         TKey* pKey = mpHost->getKeyUnit()->getKey(mpEditor->mpCurrentKeyItem->data(0, Qt::UserRole).toInt());
         QVERIFY2(pKey != nullptr, "the key is not in the key unit");
         QCOMPARE(pKey->getKeyCode(), Qt::Key_F7);

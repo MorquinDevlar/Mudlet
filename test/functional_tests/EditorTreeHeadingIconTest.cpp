@@ -18,22 +18,9 @@
  ***************************************************************************/
 
 /*
- * The row at the top of each of the editor's trees stands for exactly what the
- * row beside it in the sidebar stands for - Triggers, Aliases, Scripts - so the
- * two carry the same picture.
- *
- * They did not. The sidebar was redrawn from the monochrome set the whole window
- * is tinted from, while the heading rows kept the bitmaps the trees were built
- * with a decade ago: a wizard's hat for triggers, a stopwatch for timers, a pair
- * of people for aliases. Sitting a couple of hundred pixels apart, that reads as
- * two different applications.
- *
- * Checked pixel for pixel rather than by file name, for all seven views, because
- * the glyph is tinted at runtime and the tint is half of what makes the pair
- * match: a heading drawn from the right file in the wrong colour is still wrong.
- * The palette is then moved and both are read again - a QIcon on a tree item is
- * re-derived by nothing, so the one thing that could go wrong here is a theme
- * change reaching the sidebar and leaving the headings behind.
+ * Each tree's heading row must carry its sidebar row's glyph in the same tint.
+ * Compared pixel for pixel rather than by file name because the tint is applied
+ * at runtime: the right file in the wrong colour is still wrong.
  *
  * Run with: ctest -R EditorTreeHeadingIconTest -V
  */
@@ -41,7 +28,6 @@
 #include <QImage>
 #include <QListWidget>
 #include <QPalette>
-#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -49,12 +35,8 @@
 #include "EditorCommand.h"
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -67,46 +49,17 @@ class EditorTreeHeadingIconTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorTreeHeadingIcon-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
-    // The size the comparison is made at. Both pictures are held at the
-    // resolution they were drawn at and scaled by whatever draws them, so any
-    // one size settles it - and this is the size the window actually draws
-    // them at, which makes a failure something a reader could have seen.
+    // The size the window draws both at, so a failure is one a user could see
     static constexpr int scmComparisonSize = 18;
 
-    // Which sidebar row a heading is paired with. Kept on the row by
-    // dlgTriggerEditor rather than looked up by position, so a row added to the
-    // list later cannot quietly re-pair the seven.
+    // dlgTriggerEditor's role on a sidebar row; read rather than the row's
+    // position, so a row added to the list cannot re-pair the seven
     static constexpr int scmRole_editorSidebarView = Qt::UserRole + 1;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     QList<QPair<QString, QPair<QTreeWidgetItem*, EditorViewType>>> headings() const
     {
@@ -131,62 +84,22 @@ private:
         return nullptr;
     }
 
-    static QImage drawnAt(const QIcon& icon, const int size) { return icon.pixmap(QSize(size, size)).toImage(); }
-
-    // Somewhere for a difference to be reported from: the colour the glyph is
-    // actually inked in, read off the most opaque pixel of it
-    static QString inkOf(const QImage& glyph)
-    {
-        QColor darkest;
-        int strongest = -1;
-        for (int y = 0; y < glyph.height(); ++y) {
-            for (int x = 0; x < glyph.width(); ++x) {
-                const QColor pixel = glyph.pixelColor(x, y);
-                if (pixel.alpha() > strongest) {
-                    strongest = pixel.alpha();
-                    darkest = pixel;
-                }
-            }
-        }
-        return strongest <= 0 ? qsl("nothing at all") : qsl("%1 at alpha %2").arg(darkest.name(), QString::number(strongest));
-    }
-
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1000, 800);
-        // The variables tree is built the first time it is asked for, and its
-        // heading row is the one of the seven that is made afresh every time
+        // The variables tree and its heading row are built only when first shown
         mpEditor->slot_showVariables();
         QTest::qWait(100ms);
         mpEditor->slot_showTriggers();
@@ -202,31 +115,23 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // The whole point, for all seven: one picture, drawn from one file in one
-    // colour, whichever of the two places it is shown in
     void test_everyHeadingCarriesItsSidebarRowsGlyph()
     {
         QStringList mismatched;
         QStringList measured;
         for (const auto& heading : headings()) {
-            const QImage onTheHeading = drawnAt(heading.second.first->icon(0), scmComparisonSize);
-            const QImage inTheSidebar = drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
-            measured << qsl("%1 %2").arg(heading.first, inkOf(onTheHeading));
+            const QImage onTheHeading = TestPixels::drawnAt(heading.second.first->icon(0), scmComparisonSize);
+            const QImage inTheSidebar = TestPixels::drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
+            measured << qsl("%1 %2").arg(heading.first, TestPixels::inkOf(onTheHeading));
             if (onTheHeading.isNull() || inTheSidebar.isNull()) {
                 mismatched << qsl("%1: one of the two has no picture at all").arg(heading.first);
                 continue;
             }
             if (onTheHeading != inTheSidebar) {
-                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, inkOf(onTheHeading), inkOf(inTheSidebar));
+                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, TestPixels::inkOf(onTheHeading), TestPixels::inkOf(inTheSidebar));
             }
         }
         qInfo().noquote() << qsl("  headings at %1px: %2").arg(QString::number(scmComparisonSize), measured.join(qsl(", ")));
@@ -234,13 +139,12 @@ private slots:
         QVERIFY2(mismatched.isEmpty(), qPrintable(qsl("a tree's heading row does not carry its sidebar row's glyph: %1").arg(mismatched.join(qsl("; ")))));
     }
 
-    // ...and it stays one picture when the theme moves. Nothing re-derives a
-    // QIcon once it has been set on a tree item, so a heading left out of the
-    // restyle would sit in the old theme's ink for the rest of the session.
+    // Nothing re-derives a QIcon once it is set on a tree item, so a heading the
+    // restyle misses keeps the old theme's ink for the rest of the session
     void test_aThemeChangeRetintsTheHeadingsWithTheSidebar()
     {
         const QPalette savedPalette = QApplication::palette();
-        const QImage before = drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
+        const QImage before = TestPixels::drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
 
         QPalette movedPalette(savedPalette);
         movedPalette.setColor(QPalette::Window, savedPalette.color(QPalette::Window).lightness() < 128 ? QColor(0xec, 0xec, 0xec) : QColor(0x2c, 0x2c, 0x2e));
@@ -248,24 +152,24 @@ private slots:
         QApplication::setPalette(movedPalette);
         QTest::qWait(100ms);
 
-        const QImage after = drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
-        qInfo().noquote() << qsl("  the Triggers heading was inked %1 and is now %2").arg(inkOf(before), inkOf(after));
+        const QImage after = TestPixels::drawnAt(mpEditor->mpTriggerBaseItem->icon(0), scmComparisonSize);
+        qInfo().noquote() << qsl("  the Triggers heading was inked %1 and is now %2").arg(TestPixels::inkOf(before), TestPixels::inkOf(after));
 
         QStringList mismatched;
         for (const auto& heading : headings()) {
-            const QImage onTheHeading = drawnAt(heading.second.first->icon(0), scmComparisonSize);
-            const QImage inTheSidebar = drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
+            const QImage onTheHeading = TestPixels::drawnAt(heading.second.first->icon(0), scmComparisonSize);
+            const QImage inTheSidebar = TestPixels::drawnAt(sidebarRowFor(heading.second.second)->icon(), scmComparisonSize);
             if (onTheHeading != inTheSidebar) {
-                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, inkOf(onTheHeading), inkOf(inTheSidebar));
+                mismatched << qsl("%1: the heading is inked %2 and the sidebar row %3").arg(heading.first, TestPixels::inkOf(onTheHeading), TestPixels::inkOf(inTheSidebar));
             }
         }
 
         QApplication::setPalette(savedPalette);
         QTest::qWait(100ms);
 
-        // Read before the pair is compared: a restyle that did nothing at all
-        // would leave the two agreeing and say nothing
-        QVERIFY2(before != after, qPrintable(qsl("the theme moved and the heading's picture did not: it is still inked %1").arg(inkOf(after))));
+        // Checked before the pair: a restyle that did nothing would leave the
+        // two agreeing
+        QVERIFY2(before != after, qPrintable(qsl("the theme moved and the heading's picture did not: it is still inked %1").arg(TestPixels::inkOf(after))));
         QVERIFY2(mismatched.isEmpty(), qPrintable(qsl("a theme change reached the sidebar and left a heading behind: %1").arg(mismatched.join(qsl("; ")))));
     }
 };

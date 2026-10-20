@@ -18,17 +18,9 @@
  ***************************************************************************/
 
 /*
- * Mudlet ships two editor themes now, and they are a light/dark pair only
- * because of what they are called: the preferences already carry a profile from
- * a theme to its counterpart when the application appearance changes, matching
- * on the words "light" and "dark" in the name, and the light theme was renamed
- * from "Mudlet" to "Mudlet Light" so that rule picks it up. No code pairs them.
- *
- * The rename is what has to be paid for. A profile saved by any earlier Mudlet
- * carries the theme as "Mudlet" and the file as "Mudlet.tmTheme", and both forms
- * have to go on resolving - the file because that is what edbee is handed, the
- * name because that is what the theme list is searched for, and a search that
- * misses leaves the preferences showing no theme at all.
+ * The two bundled editor themes pair only by the words "Light" and "Dark" in
+ * their names, and a profile saved as "Mudlet" / "Mudlet.tmTheme" has to keep
+ * resolving, or the preferences show no theme at all.
  *
  * Run with: ctest -R EditorThemePairTest -V
  */
@@ -37,15 +29,12 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 #include "Host.h"
 #include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgProfilePreferences.h"
 #include "mudlet.h"
 
@@ -56,32 +45,15 @@ class EditorThemePairTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    QTemporaryDir mCacheDir;
-    QByteArray mSavedXdgCache;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     Host* mpHost = nullptr;
     dlgProfilePreferences* mpPreferences = nullptr;
     const QString mProfileName = qsl("EditorThemePair-Test");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
 
-    // A theme that answers to nothing in the counterpart rule, standing in for
-    // every downloaded theme that comes on its own
+    // No "light" or "dark" in its name, so the counterpart rule finds it no pair
     const QString mLoneThemeName = qsl("PhaseDProbe");
     const QString mLoneThemeFile = qsl("PhaseDProbe.tmTheme");
 
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    // The list the downloaded themes are read from. One entry, so that the two
-    // bundled themes are joined by a theme with no counterpart to its name.
     void writeEditorThemesFile()
     {
         const QString file = MudletApp::getMudletPath(enums::editorWidgetThemeJsonFile);
@@ -103,20 +75,11 @@ private:
 
     QComboBox* themeBox() const { return mpPreferences->code_editor_theme_selection_combobox; }
 
-    // Through the control, which is what the appearance slot is wired to - the
-    // slot itself is private, and the point of these cases is the path a user
-    // takes to it
+    // Through the control: the appearance slot it is wired to is private, and
+    // this is the path a user takes
     void setAppearance(const enums::Appearance state)
     {
         mpPreferences->comboBox_appearance->setCurrentIndex(state);
-        QCoreApplication::processEvents();
-    }
-
-    // Straight at the application, for the cases that are about what the editor
-    // is handed rather than about the preferences control
-    void setAppearanceDirectly(const enums::Appearance state)
-    {
-        mudlet::self()->setAppearance(state);
         QCoreApplication::processEvents();
     }
 
@@ -132,45 +95,20 @@ private:
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-        QVERIFY(mCacheDir.isValid());
-        mSavedXdgCache = qgetenv("XDG_CACHE_HOME");
-        qputenv("XDG_CACHE_HOME", mCacheDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
+        QVERIFY2(mSession.startMudlet(), qPrintable(mSession.why()));
         writeEditorThemesFile();
-
-        mpHost = TestProfile::create(mProfileName, mLocalhost, mPort);
-        QVERIFY2(mpHost, "No active host after profile creation");
+        QVERIFY2(mSession.openProfile(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
     }
 
     void cleanupTestCase()
     {
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
-        mSavedXdgCache.isNull() ? qunsetenv("XDG_CACHE_HOME") : qputenv("XDG_CACHE_HOME", mSavedXdgCache);
+        mSession.stop();
     }
 
     void cleanup()
@@ -181,10 +119,8 @@ private slots:
         QCoreApplication::processEvents();
     }
 
-    // Both are carried in the resource file rather than downloaded, and the
-    // light one answers to the file name it had before the rename as well - so
-    // a profile whose stored file name has not been brought forward still gets
-    // a theme rather than a path into a cache directory that has no such file
+    // The legacy file name has to resolve too, or a profile whose stored name was
+    // not migrated gets a path into a cache directory that has no such file
     void test_bothBundledThemesResolveToTheResourceFile()
     {
         QCOMPARE(MudletApp::getMudletPath(enums::editorWidgetThemePathFile, MudletApp::scmEditorThemeFileLight), qsl(":/edbee_defaults/Mudlet Light.tmTheme"));
@@ -194,16 +130,13 @@ private slots:
         QVERIFY2(QFile::exists(qsl(":/edbee_defaults/Mudlet Light.tmTheme")), "the light theme is not in the resource file");
         QVERIFY2(QFile::exists(qsl(":/edbee_defaults/Mudlet Dark.tmTheme")), "the dark theme is not in the resource file");
 
-        // A downloaded theme still goes to the cache it was downloaded into
         QVERIFY2(!MudletApp::getMudletPath(enums::editorWidgetThemePathFile, mLoneThemeFile).startsWith(QLatin1Char(':')), "a downloaded theme is being looked for in the resource file");
 
         QVERIFY2(mudlet::loadEdbeeTheme(MudletApp::scmEditorThemeNameDark, MudletApp::scmEditorThemeFileDark), "the dark theme did not load - it is not a theme file edbee can read");
     }
 
-    // What a profile saved by an earlier Mudlet carries. The theme list no
-    // longer offers "Mudlet", so without the migration the preferences would
-    // open on no theme at all - and writing that back would wipe the profile's
-    // choice.
+    // The theme list does not offer "Mudlet", so an unmigrated profile would open
+    // the preferences on no theme, and saving that would wipe its choice
     void test_aProfileSavedBeforeTheRenameOpensOnTheLightTheme()
     {
         QString name = qsl("Mudlet");
@@ -227,9 +160,6 @@ private slots:
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileLight));
     }
 
-    // The pairing, in both directions, through the counterpart rule that was
-    // already there. Nothing names either theme: they pair because one is
-    // called Light and the other Dark.
     void test_theTwoBundledThemesPairOnTheirNames()
     {
         mpHost->mEditorTheme = MudletApp::scmEditorThemeNameLight;
@@ -243,8 +173,7 @@ private slots:
         setAppearance(enums::Appearance::dark);
         QCOMPARE(themeBox()->currentText(), QString(MudletApp::scmEditorThemeNameDark));
         QCOMPARE(themeBox()->currentData().toString(), QString(MudletApp::scmEditorThemeFileDark));
-        // The theme it came from is kept as the light choice, so going back is
-        // a return rather than a guess
+        // Kept as the light choice, so going back is a return rather than a guess
         QCOMPARE(mpHost->mEditorTheme, QString(MudletApp::scmEditorThemeNameLight));
         QCOMPARE(mpHost->mEditorThemeFile, QString(MudletApp::scmEditorThemeFileLight));
 
@@ -254,10 +183,6 @@ private slots:
         QCOMPARE(mpHost->mEditorThemeFileDark, QString(MudletApp::scmEditorThemeFileDark));
     }
 
-    // Nothing is forced. A theme with no counterpart to its name is what the
-    // user asked for in both appearances, and an appearance change leaves it
-    // exactly where it is - which is also what lets someone on dark mode keep
-    // the light theme by choosing it there.
     void test_aThemeWithNoCounterpartIsLeftAlone()
     {
         mpHost->mEditorTheme = mLoneThemeName;
@@ -276,10 +201,7 @@ private slots:
         QCOMPARE(themeBox()->currentText(), mLoneThemeName);
     }
 
-    // A profile can name a theme this machine does not have - downloaded on
-    // another computer, or cleared out of the cache since. edbee would answer
-    // that with a fallback theme of its own; the editor takes the bundled one
-    // for the appearance in force instead.
+    // edbee would answer a missing theme file with a fallback theme of its own
     void test_aThemeThisMachineDoesNotHaveFallsBackToTheBundledOne()
     {
         QVERIFY2(!MudletApp::editorThemeResolves(qsl("Monokai.tmTheme")), "the missing theme this case needs is somehow on this machine");
@@ -289,23 +211,19 @@ private slots:
         mpHost->mEditorThemeDark.clear();
         mpHost->mEditorThemeFileDark.clear();
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameLight));
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileLight));
 
-        // ...and it follows the appearance, which a profile stuck on one dead
-        // name never could
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameDark));
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileDark));
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
     }
 
-    // The whole point of doing it at load rather than as a migration: what the
-    // profile recorded is untouched, so the theme comes back if it is installed
-    // again - and a Mudlet old enough not to know these names reads what it
-    // always read.
+    // Resolved at load rather than migrated, so the theme comes back if it is
+    // installed again and an older Mudlet reads what it always read
     void test_theFallbackDoesNotRewriteWhatTheProfileRecorded()
     {
         mpHost->mEditorTheme = qsl("Monokai");
@@ -313,11 +231,11 @@ private slots:
         mpHost->mEditorThemeDark.clear();
         mpHost->mEditorThemeFileDark.clear();
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameLight));
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameDark));
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
 
         QCOMPARE(mpHost->mEditorTheme, qsl("Monokai"));
         QCOMPARE(mpHost->mEditorThemeFile, qsl("Monokai.tmTheme"));
@@ -325,7 +243,6 @@ private slots:
         QVERIFY2(mpHost->mEditorThemeFileDark.isEmpty(), "the fallback wrote a dark theme file into the profile");
     }
 
-    // ...and a theme that is on this machine is drawn with, whoever wrote it
     void test_aThemeThisMachineDoesHaveIsUsedAsItStands()
     {
         const QString file = MudletApp::getMudletPath(enums::editorWidgetThemePathFile, mLoneThemeFile);
@@ -338,22 +255,17 @@ private slots:
         mpHost->mEditorThemeDark.clear();
         mpHost->mEditorThemeFileDark.clear();
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
         QCOMPARE(mpHost->getEditorThemeFile(), mLoneThemeFile);
 
-        // No counterpart to switch to, and one that resolves is not something to
-        // override: it stays put the way it always did
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QFile::remove(file);
     }
 
-    // The halves are answered for separately: a dark theme that cannot be found
-    // leaves the light one the profile did choose in charge, rather than the
-    // whole profile being moved onto the bundled pair.
     void test_aDarkHalfThatCannotBeFoundDoesNotCostTheLightOne()
     {
         const QString file = MudletApp::getMudletPath(enums::editorWidgetThemePathFile, mLoneThemeFile);
@@ -365,14 +277,14 @@ private slots:
         mpHost->mEditorThemeDark = qsl("Monokai");
         mpHost->mEditorThemeFileDark = qsl("Monokai.tmTheme");
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
 
-        setAppearanceDirectly(enums::Appearance::dark);
+        TestPixels::setAppearanceAndWait(enums::Appearance::dark);
         QCOMPARE(mpHost->getEditorTheme(), QString(MudletApp::scmEditorThemeNameDark));
         QCOMPARE(mpHost->getEditorThemeFile(), QString(MudletApp::scmEditorThemeFileDark));
 
-        setAppearanceDirectly(enums::Appearance::light);
+        TestPixels::setAppearanceAndWait(enums::Appearance::light);
         QCOMPARE(mpHost->getEditorTheme(), mLoneThemeName);
         QFile::remove(file);
     }

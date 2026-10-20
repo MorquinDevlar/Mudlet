@@ -28,13 +28,8 @@
 
 namespace uiDesign {
 
-// One of the six places the About dialog offers to go: a glyph, the name of the
-// place, and the host under it so that the reader can see where a click leads
-// before making it.
-//
-// Painted rather than assembled out of labels inside a frame, because the whole
-// card is the click target: a QLabel over a QPushButton eats the press, and a
-// stylesheet cannot set two lines of a button's text in two different tones.
+// Painted, not built from labels: a QLabel over a QPushButton eats the press, and
+// a stylesheet cannot set two lines of a button's text in two different tones.
 class AboutLinkButton : public QAbstractButton
 {
     Q_OBJECT
@@ -43,15 +38,13 @@ public:
     Q_DISABLE_COPY(AboutLinkButton)
     AboutLinkButton(const QString& glyphFile, const QString& name, const QString& host, const QString& url, QWidget* pParent = nullptr);
 
-    // The colours come from the palette at the moment the shell is styled, and
-    // again whenever the appearance moves
+    // Must be called again on every appearance change
     void applyTokens(const uiDesign::ThemeTokens& tokens);
     QString url() const { return mUrl; }
 
     QSize sizeHint() const override;
-    // Deliberately smaller than the hint: the name and the host are elided to
-    // whatever the card is given, and a minimum as wide as either would make a
-    // long translation scroll the whole page sideways
+    // Smaller than the hint: both lines elide, and a minimum as wide as either
+    // would make a long translation scroll the whole page sideways
     QSize minimumSizeHint() const override;
 
 protected:

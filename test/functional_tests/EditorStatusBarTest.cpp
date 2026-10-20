@@ -18,26 +18,9 @@
  ***************************************************************************/
 
 /*
- * The editor's status bar carries how many items the view holds and when the
- * profile last saved itself. Where the caret is in the code pane is not on it:
- * that is a fact about one pane, and it is read at the end of that pane's own
- * heading - see EditorCodeHeadingTest.
- *
- * It used to go out through showMessage(), the channel a status bar keeps for
- * something it will take away again. A message on that channel hides the bar's
- * plain widgets for as long as it stands and is painted in the space they
- * leave. The caret report was sent with no timeout, so it stood for the life of
- * the window and the counts could never be read again once the code pane had
- * said anything. Worse, the first report arrives before the window is on
- * screen, and QStatusBar::hideOrShow() passes over a widget that is not visible
- * yet - so the counts label was never hidden at all, and the message was
- * painted over the top of it. That is what the reader saw: "Line 1, Column 1,
- * Offset 0" laid over "14 triggers - 12 active" in the bottom left corner.
- *
- * What is left on the bar is the counts on the message side and the last save
- * at the trailing edge, and the message channel is left to the editor's
- * genuinely temporary messages - the ones that borrow the counts label's place
- * for the two or three seconds they are shown and then give it back.
+ * The status bar carries only the item counts and the last save. A caret report sent
+ * by showMessage() with no timeout was painted over the counts: hideOrShow() passes
+ * over widgets not yet visible, and the first report arrives before the window shows.
  *
  * Run with: ctest -R EditorStatusBarTest -V
  */
@@ -47,18 +30,13 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QStatusBar>
-#include <QTemporaryDir>
 #include <QtTest/QtTest>
 #include <chrono>
 
 #include "Host.h"
 #include "HostDialogs.h"
-#include "MudletApp.h"
-#include "MudletInstanceCoordinator.h"
-#include "PortableModeTestHelper.h"
-#include "ProfileTestHelper.h"
-#include "TelnetServerStub.h"
-#include "ctelnet.h"
+#include "PixelTestHelper.h"
+#include "ProfileSessionTestHelper.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
 
@@ -71,56 +49,21 @@ class EditorStatusBarTest : public QObject
     Q_OBJECT
 
 private:
-    QTemporaryDir mConfigDir;
-    QByteArray mSavedXdg;
-    TelnetServerStub* mpServer = nullptr;
+    TestProfile::Session mSession;
     dlgTriggerEditor* mpEditor = nullptr;
     Host* mpHost = nullptr;
     const QString mProfileName = qsl("EditorStatusBar-Test-Profile");
-    QString mPort;
-    const QString mLocalhost = qsl("localhost");
-    // How far apart, summed over the three channels, two inks may be and still
-    // be one ink: antialiasing lands the darkest pixel of a glyph a shade off
+    // Summed over three channels: antialiasing lands a glyph's darkest pixel a shade off
     static constexpr int scmInkTolerance = 24;
-
-    void deleteProfileDirectory(const QString& profileName)
-    {
-        QDir dir(MudletApp::getMudletPath(enums::profileHomePath, profileName));
-        if (dir.exists()) {
-            dir.removeRecursively();
-        }
-    }
-
-    void startProfile(const QString& profileName, const QString& address, const QString& port)
-    {
-        mpHost = TestProfile::create(profileName, address, port);
-        if (!mpHost) {
-            QFAIL("No active host available for the test.");
-        }
-
-        QSignalSpy spy(&(mpHost->mTelnet), &cTelnet::signal_connected);
-        if (!spy.wait(2s)) {
-            QFAIL("Could not connect with the host.");
-        }
-    }
 
     QStatusBar* statusBar() const { return mpEditor->statusBar(); }
 
-    // Where a label sits in the bar, so that two of them can be asked whether
-    // they are in the same place
     static QRect placeInTheBar(const QWidget* pLabel, const QWidget* pBar) { return QRect(pLabel->mapTo(pBar, QPoint(0, 0)), pLabel->size()); }
 
-    static QString describe(const QRect& rect) { return qsl("%1,%2 %3x%4").arg(QString::number(rect.x()), QString::number(rect.y()), QString::number(rect.width()), QString::number(rect.height())); }
-
-    // What a piece of text is painted in, read off a shot of the window: the
-    // pixel in its rectangle furthest from the ground at its corner. A palette
-    // can say one thing and the style paint another, which is why the paint is
-    // what is read.
+    // A palette can say one thing and the style paint another, so the paint is read
     static QColor paintedInk(const QImage& shot, const QRect& rect)
     {
-        // A shot of a window on a screen that doubles its pixels is twice the
-        // size the window measures, so the rectangle has to be taken there
-        // before anything in it can be read
+        // grab() is in device pixels, the rectangle in logical ones
         const qreal shotRatio = shot.devicePixelRatio();
         const QRect inShot =
                 QRect(QPoint(qRound(rect.left() * shotRatio), qRound(rect.top() * shotRatio)), QPoint(qRound(rect.right() * shotRatio), qRound(rect.bottom() * shotRatio))).intersected(shot.rect());
@@ -130,7 +73,7 @@ private:
         for (int y = inShot.top(); y <= inShot.bottom(); ++y) {
             for (int x = inShot.left(); x <= inShot.right(); ++x) {
                 const QColor candidate = shot.pixelColor(x, y);
-                const int distance = qAbs(candidate.red() - ground.red()) + qAbs(candidate.green() - ground.green()) + qAbs(candidate.blue() - ground.blue());
+                const int distance = TestPixels::distance(candidate, ground);
                 if (distance > furthest) {
                     furthest = distance;
                     ink = candidate;
@@ -140,53 +83,29 @@ private:
         return ink;
     }
 
-    static int apart(const QColor& a, const QColor& b) { return qAbs(a.red() - b.red()) + qAbs(a.green() - b.green()) + qAbs(a.blue() - b.blue()); }
-
 private slots:
     void initTestCase()
     {
-        if (portableMarkerPresent()) {
-            QSKIP("portable.txt present - it takes precedence over XDG_CONFIG_HOME, so the config dir cannot be redirected");
+        if (TestProfile::Session::configCannotBeRedirected()) {
+            QSKIP(TestProfile::Session::configCannotBeRedirectedReason());
         }
 
-        QVERIFY(mConfigDir.isValid());
-        QVERIFY(QDir().mkpath(qsl("%1/mudlet/profiles").arg(mConfigDir.path())));
-        mSavedXdg = qgetenv("XDG_CONFIG_HOME");
-        qputenv("XDG_CONFIG_HOME", mConfigDir.path().toUtf8());
-
-        mpServer = new TelnetServerStub(qApp);
-        mpServer->start(mLocalhost, 0);
-        QVERIFY2(mpServer->isListening(), qPrintable(qsl("TelnetServerStub failed to start: %1").arg(mpServer->errorString())));
-        mPort = QString::number(mpServer->serverPort());
-        mudlet::start();
-        mudlet::self()->setupConfig();
-        QCOMPARE(MudletApp::getMudletPath(enums::mainPath), qsl("%1/mudlet").arg(mConfigDir.path()));
-        mudlet::self()->takeOwnershipOfInstanceCoordinator(std::make_unique<MudletInstanceCoordinator>(qsl("MudletInstanceCoordinator")));
-        mudlet::self()->init();
-        mudlet::self()->setStorePasswordsSecurely(false);
-        deleteProfileDirectory(mProfileName);
-
-        startProfile(mProfileName, mLocalhost, mPort);
-        if (QTest::currentTestFailed()) {
-            return;
-        }
+        QVERIFY2(mSession.start(mProfileName), qPrintable(mSession.why()));
+        mpHost = mSession.host();
 
         mudlet::self()->slot_showTriggerDialog();
         QTest::qWait(100ms);
         mpEditor = HostDialogs::of(mpHost).mpEditorDialog;
         QVERIFY2(mpEditor != nullptr, "Editor dialog should be created");
         mpEditor->resize(1100, 800);
-        // Everything below reads which of the bar's widgets are on show, and a
-        // window the compositor has not put up yet has none of them showing -
-        // so the cases say so rather than reading nothing and failing
+        // None of the bar's widgets read as shown until the window is exposed
         QVERIFY2(QTest::qWaitForWindowExposed(mpEditor, 2000), "the editor window was never put on screen, so nothing in its status bar is showing");
         QVERIFY2(statusBar() != nullptr, "The editor window has no status bar");
     }
 
     void init()
     {
-        // A trigger to look at, so the counts have something to count and the
-        // code pane holds a document the caret can be moved about in
+        // Something for the counts to count and a document for the caret to move in
         mpEditor->slot_showTriggers();
         mpEditor->addTrigger(false);
         mpEditor->mpSourceEditorEdbee->textDocument()->setText(qsl("-- somewhere for the caret to be\n"));
@@ -204,17 +123,9 @@ private slots:
     {
         mpEditor = nullptr;
         mpHost = nullptr;
-        delete mpServer;
-        mpServer = nullptr;
-        if (mudlet::self()) {
-            deleteProfileDirectory(mProfileName);
-            delete mudlet::self();
-        }
-        mSavedXdg.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", mSavedXdg);
+        mSession.stop();
     }
 
-    // Nothing the code pane says goes out as a message, and nothing on the bar
-    // reports the caret: both belong to the code pane's own heading now.
     void test_theCaretReadingIsNotAMessageOnTheBar()
     {
         edbee::TextEditorController* pController = mpEditor->mpSourceEditorEdbee->controller();
@@ -232,13 +143,10 @@ private slots:
         QTRY_VERIFY2(pCounts->isVisible(), "the counts label is not on show");
         // Filled behind a 200ms wait, so that a fillout is one walk of the tree
         QTRY_VERIFY2(!pCounts->text().isEmpty(), "the counts label never filled");
-        qInfo().noquote() << qsl("  the counts read \"%1\" at %2, with the bar carrying no message").arg(pCounts->text(), describe(placeInTheBar(pCounts, statusBar())));
+        qInfo().noquote() << qsl("  the counts read \"%1\" at %2, with the bar carrying no message").arg(pCounts->text(), TestPixels::describe(placeInTheBar(pCounts, statusBar())));
     }
 
-    // ...and what the message channel is left for: the editor's own messages,
-    // which take the counts label's place for the seconds they are shown and
-    // then hand it back. The counts label is laid out on the message side
-    // precisely so that this happens, so it is worth having it written down.
+    // The counts sit on the message side on purpose, so a timed message can borrow their place
     void test_timedMessageBorrowsTheCountsThenReturnsThem()
     {
         QLabel* pCounts = mpEditor->mpLabel_statusCounts;
@@ -254,9 +162,6 @@ private slots:
         QTRY_VERIFY2(pCounts->isVisible(), "the counts label never came back once the message had timed out");
     }
 
-    // The bar is written in the sidebar's hand: the same face at the same size
-    // and weight as the names down the left of the window, so the two edges of
-    // the window read as one thing rather than the bar as small print under it
     void test_theBarIsWrittenLikeTheSidebar()
     {
         QListWidget* pSidebar = mpEditor->mpListWidget_editorSidebar;
@@ -279,8 +184,7 @@ private slots:
                      qPrintable(qsl("%1 is not written in the sidebar's hand").arg(pLabel->objectName())));
         }
 
-        // ...and in the sidebar's ink, as painted rather than as the rules say:
-        // a name that is not the chosen one, against the counts
+        // An unchosen sidebar row: the chosen one is painted in the selection's colours
         QTRY_VERIFY2(!mpEditor->mpLabel_statusCounts->text().isEmpty(), "the counts label never filled, so there is no ink to read");
         QVERIFY2(pSidebar->count() > 1 && pSidebar->currentRow() != 1, "the sidebar has no unchosen second row to read the ink from");
         const QImage shot = mpEditor->grab().toImage();
@@ -289,8 +193,8 @@ private slots:
         const QColor nameInk = paintedInk(shot, nameRect);
         const QColor countsInk = paintedInk(shot, countsRect);
         qInfo().noquote() << qsl("  the sidebar's \"%1\" is painted in %2 and the counts in %3, %4 apart")
-                                     .arg(pSidebar->item(1)->text(), nameInk.name(), countsInk.name(), QString::number(apart(nameInk, countsInk)));
-        QVERIFY2(apart(nameInk, countsInk) <= scmInkTolerance, qPrintable(qsl("the bar is written in %1 while the sidebar's names are in %2").arg(countsInk.name(), nameInk.name())));
+                                     .arg(pSidebar->item(1)->text(), nameInk.name(), countsInk.name(), QString::number(TestPixels::distance(nameInk, countsInk)));
+        QVERIFY2(TestPixels::distance(nameInk, countsInk) <= scmInkTolerance, qPrintable(qsl("the bar is written in %1 while the sidebar's names are in %2").arg(countsInk.name(), nameInk.name())));
     }
 };
 

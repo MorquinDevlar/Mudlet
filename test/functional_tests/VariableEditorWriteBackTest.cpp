@@ -977,11 +977,7 @@ private slots:
         mpEditor->repopulateVars();
     }
 
-    // A press on a row's save box is answered by uiDesign::VariableTreeDelegate:
-    // it throws that switch and makes the row the current one, so a rename
-    // pending on the row left is saved on the way rather than lost. The rest of
-    // the press is the delegate's too, wherever the pointer goes - it is neither
-    // a drag of the row nor a click on it, and it throws nothing a second time.
+    // A press on the save box also makes the row current, so a rename pending on the row left is saved rather than lost
     void test_aPressOnARowsSaveBoxIsNotADragOrAClickOnTheRow()
     {
         const bool wasAnimated = mpVariablesTree->isAnimated();
@@ -1024,6 +1020,7 @@ private slots:
         QTest::mouseMove(mpVariablesTree->viewport(), cText);
         QTest::mouseRelease(mpVariablesTree->viewport(), Qt::LeftButton, {}, cText);
 
+        // Released on the row's text: the delegate keeps the whole press, so the box flips once and the row gets no click
         QCOMPARE(pC->checkState(0), Qt::Unchecked);
         QCOMPARE(clickSpy.count(), 0);
         QCOMPARE(mpVariablesTree->selectedItems(), QList<QTreeWidgetItem*>{pC});
@@ -1117,8 +1114,7 @@ private:
         execLua(qsl("setmetatable(_G, {__newindex = function(t, k, v) rawset(t, k, v) if k == '%1' then waitForEvent('neverRaised', 300) end end})").arg(name));
     }
 
-    // A corner of the square uiDesign::VariableTreeDelegate draws a row's save
-    // box as, which answers every press inside it
+    // VariableTreeDelegate answers a press anywhere inside the square it draws the save box as
     QPoint saveBoxCorner(QTreeWidgetItem* pItem)
     {
         mpVariablesTree->scrollToItem(pItem);
@@ -1128,12 +1124,16 @@ private:
             qWarning() << "saveBoxCorner(): the Variables tree is not drawn by its delegate";
             return {};
         }
-        QRect tickArea = pDelegate->keptHitRect(mpVariablesTree->indexFromItem(pItem));
+        const auto keptSquareOf = [this, pDelegate](QTreeWidgetItem* pRow) {
+            const QModelIndex index = mpVariablesTree->indexFromItem(pRow);
+            return pDelegate->dotHitRect(pDelegate->rowOption(index), index);
+        };
+        QRect tickArea = keptSquareOf(pItem);
         // A row the profile cannot keep has no square, so the press goes where
         // a sibling's is drawn
         for (int i = 0; tickArea.isNull() && pItem->parent() && i < pItem->parent()->childCount(); ++i) {
             QTreeWidgetItem* pSibling = pItem->parent()->child(i);
-            const QRect square = pDelegate->keptHitRect(mpVariablesTree->indexFromItem(pSibling));
+            const QRect square = keptSquareOf(pSibling);
             if (!square.isNull()) {
                 const int rowOffset = mpVariablesTree->visualItemRect(pItem).top() - mpVariablesTree->visualItemRect(pSibling).top();
                 tickArea = square.translated(0, rowOffset);
