@@ -400,6 +400,7 @@ private:
     void showCategory(const QString& key, QWidget* pSpotlightTarget = nullptr);
     void spotlight(QWidget* pTarget);
     void applyShellStyle();
+    QPalette shellPalette(bool& themeSurface) const;
     // The menu of profiles a map can be copied to. It hangs off the dialog
     // rather than off the shell, so the shell's sheet never reaches it - and it
     // is rebuilt whenever a host is loaded, which may be before or after the
@@ -465,6 +466,8 @@ private:
     };
 
     QWidget* mpWidget_shell = nullptr;
+    // What applyShellStyle() last drew from, so a StyleChange that alters nothing does not restyle the shell
+    QPalette mShellPalette;
     QWidget* mpWidget_sidebar = nullptr;
     QWidget* mpWidget_titleRow = nullptr;
     QLabel* mpLabel_wordmark = nullptr;
@@ -573,7 +576,7 @@ private:
     // Set once buildShell() has finished moving controls between cards; wrapping one before then is unsafe
     bool mShellReady = false;
     // Which side of the light/dark line the shell's stylesheet was last mixed
-    // for, written by applyShellStyle() from the tokens it used. An appearance
+    // for, written by applyShellStyle() from the application's tokens. An appearance
     // change reaches this dialog either from its own combo box or from the
     // application's signal, and by the time the signal arrives the mode has
     // already moved - so what says whether there is anything to redraw is the

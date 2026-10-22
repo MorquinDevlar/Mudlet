@@ -2773,6 +2773,15 @@ bool dlgProfilePreferences::event(QEvent* pEvent)
     if (pEvent->type() == QEvent::WindowActivate) {
         refreshFromSettings();
     }
+    // Sent when this dialog's stylesheet or the application's is replaced, and by an appearance change, which is
+    // slot_setAppearance()'s: restyled here first, the shell would look drawn for the new mode to it and it would
+    // stop before the rest of what it redraws
+    if (pEvent->type() == QEvent::StyleChange && mpWidget_shell && MudletApp::darkMode() == mShellStyledForDarkPage) {
+        bool themeSurface = false;
+        if (shellPalette(themeSurface) != mShellPalette) {
+            applyShellStyle();
+        }
+    }
     return handled;
 }
 
@@ -3319,6 +3328,35 @@ void dlgProfilePreferences::restyleSidebarIcons(const QColor& normal, const QCol
     }
 }
 
+// The application's palette, not the dialog's: a stylesheet freezes its widget's palette, and the dialog's is
+// still stale when signal_appearanceChanged() arrives. A stylesheet painting plain widgets paints the controls
+// on the cards, so it decides; read off an unparented probe, which starts from qApp's palette.
+QPalette dlgProfilePreferences::shellPalette(bool& themeSurface) const
+{
+    themeSurface = false;
+    if (qApp->styleSheet().isEmpty() && styleSheet().isEmpty()) {
+        return QApplication::palette();
+    }
+    QWidget probe;
+    probe.setStyleSheet(styleSheet());
+    probe.ensurePolished();
+    QPalette palette = probe.palette();
+    const QBrush window = palette.brush(QPalette::Active, QPalette::Window);
+    if (palette.isBrushSet(QPalette::Active, QPalette::Window) && window.style() == Qt::SolidPattern && window.color().alpha() == 255) {
+        palette.setColor(QPalette::Base, window.color());
+        themeSurface = true;
+        return palette;
+    }
+    // A gradient or translucent background is no colour to draw a surface in, and Qt copies it into Base too
+    const QPalette appPalette = QApplication::palette();
+    for (const auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
+        for (const auto role : {QPalette::Window, QPalette::Base}) {
+            palette.setBrush(group, role, appPalette.brush(group, role));
+        }
+    }
+    return palette;
+}
+
 // Kept on the shell widget rather than on the dialog, whose stylesheet
 // mudlet::showOptionsDialog() assigns the profile's Lua one to on every show.
 // Every selector is scoped by objectName, by the card property, or by the stack
@@ -3335,9 +3373,20 @@ void dlgProfilePreferences::applyShellStyle()
     // bar is - so the measurement is dropped before that sheet is built rather
     // than after it has been written from a stale one
     invalidateSidebarWidth();
-    // The shared recipes, mixed from the application palette - see themeTokens()
-    // for why it is that one and not this dialog's own
-    const ThemeTokens tokens = themeTokens();
+    bool themeSurface = false;
+    const QPalette themePalette = shellPalette(themeSurface);
+    mShellPalette = themePalette;
+    // The shared recipes, mixed from the application palette or the theme a
+    // stylesheet paints - see shellPalette() for why it is one of those and not
+    // this dialog's own
+    ThemeTokens tokens = themeTokens(themePalette);
+    // A theme paints every label and control on a page and a card as well, so a
+    // surface of any other tone would box each of them
+    if (themeSurface) {
+        tokens.page = themePalette.color(QPalette::Window);
+        tokens.card = tokens.page;
+        tokens.pane = tokens.page;
+    }
     const QColor fieldColor = tokens.field;
     const QColor textColor = tokens.text;
     const QColor accentColor = tokens.accent;
@@ -3346,6 +3395,8 @@ void dlgProfilePreferences::applyShellStyle()
     const QColor borderColor = tokens.border;
     const QString hoverSoft = tokens.hoverSoft;
     const QString accentSoft = tokens.accentSoft;
+    // The theme paints the labels on a banner too, so a tint would leave each of them in a box
+    const QString bannerFill = themeSurface ? tokens.card.name() : accentSoft;
     const QColor accentText = tokens.accentText;
     const QColor mutedText = tokens.mutedText;
     // How far the pen is taken over what it is drawn on is this dialog's own:
@@ -3436,7 +3487,7 @@ void dlgProfilePreferences::applyShellStyle()
                   "QGroupBox[settingsHero=\"true\"] { background-color: %1; border: 1px solid %8; }"
                   "#settingsHeroHeadline { font-weight: bold; font-size: %10pt; }"
                   "#settingsHeroDetail { color: %5; }")
-                      .arg(accentSoft, borderColor.name(), QString::number(scmRadiusPanel), textColor.name(), mutedText.name(), markerSoft, hoverSoft, accentColor.name())
+                      .arg(bannerFill, borderColor.name(), QString::number(scmRadiusPanel), textColor.name(), mutedText.name(), markerSoft, hoverSoft, accentColor.name())
                       .arg(tokens.disabledText.name())
                       .arg(titleSize)
             // A Tab stop, and the notice's own hairline is already the accent,
@@ -3526,9 +3577,10 @@ void dlgProfilePreferences::applyShellStyle()
     // given the width it wants under the look it has just been handed
     updateSidebarMode();
 
-    // What the sheet above was mixed from, which is what an appearance change
-    // compares itself against rather than a before/after reading of the mode
-    mShellStyledForDarkPage = darkPage;
+    // Which side of the line the application was on when the sheet above was
+    // mixed, which is what an appearance change compares itself against rather
+    // than a before/after reading of the mode - not a theme's own darkPage
+    mShellStyledForDarkPage = themeSurface ? themeTokens().darkPage : darkPage;
     ++mShellStyleApplications;
 }
 

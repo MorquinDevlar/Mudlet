@@ -43,6 +43,7 @@ class QLineEdit;
 class QListWidget;
 class QObject;
 class QPainter;
+class QPalette;
 class QRect;
 class QTabBar;
 class QTimer;
@@ -96,6 +97,9 @@ struct ThemeTokens
 };
 
 ThemeTokens themeTokens();
+// For a window whose colours a theme stylesheet decides: the palette a widget polished with that stylesheet ends up
+// with, read off a fresh one, since a stylesheet freezes the palette of the widget it is set on
+ThemeTokens themeTokens(const QPalette& themePalette);
 
 // The deepest accent wash anything is drawn on: accentText is walked to read on it, so it holds on every lighter one
 inline constexpr qreal scmAccentWashStrength = 0.24;

@@ -233,6 +233,40 @@ private:
                 .arg(surface.name(), QString::number(surface.lightness()), applicationIsLight() ? qsl("light") : qsl("dark"), QApplication::palette().color(QPalette::Base).name());
     }
 
+    // A theme stylesheet that paints every widget, as dark-theme packages do, decides the shell's colours as
+    // it did before the shell drew its own surfaces: otherwise each control the theme paints sits in a dark
+    // box on a light card (#11839)
+    void checkTheShellFollowsTheThemeStyleSheet(const QColor& themeFill = QColor(qsl("#181818")))
+    {
+        const QColor surface = paintedSurface();
+        QVERIFY2(surface == themeFill, qPrintable(qsl("the theme paints every widget %1, yet the shell is %2").arg(themeFill.name(), surface.name())));
+
+        auto* pCard = mpPreferences->findChild<QGroupBox*>(qsl("card_theme"));
+        QVERIFY2(pCard, "the Appearance card this case reads its colours off is not there any more");
+        const QColor cardFill = pixelOf(pCard, QPoint(pCard->width() / 2, pCard->height() - 4));
+        const QColor labelFill = pixelOf(mpPreferences->label_appearance, QPoint(1, 1));
+        QVERIFY2(cardFill == labelFill, qPrintable(qsl("a label is painted %1 on a card painted %2").arg(labelFill.name(), cardFill.name())));
+
+        const QColor ink = mpPreferences->label_appearance->palette().color(mpPreferences->label_appearance->foregroundRole());
+        const qreal ratio = contrastRatio(cardFill, ink);
+        QVERIFY2(ratio >= 4.5, qPrintable(qsl("a card is painted %1 under %2 text, a contrast of %3:1").arg(cardFill.name(), ink.name(), QString::number(ratio, 'f', 2))));
+    }
+
+    // Exact: rules aimed at the cards and the fields paint them red and green, and the shell's recipes have to win
+    void checkTheShellsSurfacesAreTheRecipes(const QColor& card, const QColor& field, const QString& when)
+    {
+        auto* pCard = mpPreferences->findChild<QGroupBox*>(qsl("card_theme"));
+        QVERIFY2(pCard, "the Appearance card this case reads its colours off is not there any more");
+        const QColor cardFill = pixelOf(pCard, QPoint(pCard->width() / 2, pCard->height() - 4));
+        QVERIFY2(cardFill.rgb() == card.rgb(), qPrintable(qsl("%1, a card is painted %2 rather than the card recipe's %3").arg(when, cardFill.name(), card.name())));
+
+        auto* pField = mpPreferences->lineEdit_logFileFolder;
+        QVERIFY2(pField, "the log folder field this case reads is not there any more");
+        // Inside the border and padding, before the text
+        const QColor fieldFill = pixelOf(pField, QPoint(uiDesign::scmInputBorderWidth + 2, pField->height() / 2));
+        QVERIFY2(fieldFill.rgb() == field.rgb(), qPrintable(qsl("%1, a field is painted %2 rather than the field recipe's %3").arg(when, fieldFill.name(), field.name())));
+    }
+
 private slots:
     void initTestCase()
     {
@@ -283,6 +317,7 @@ private slots:
     {
         delete mpPreferences;
         mpPreferences = nullptr;
+        mudlet::self()->setAppStyleSheet(QString());
         mudlet::self()->setAppearance(enums::Appearance::systemSetting);
     }
 
@@ -444,21 +479,113 @@ private slots:
     }
 
     // The shell's surfaces are its own, and a profile's Lua stylesheet is
-    // applied to the whole dialog - so the one must not be able to repaint the
-    // other, before a theme change or after one.
-    void test_aProfileStyleSheetDoesNotTakeOverTheShellsSurfaces()
+    // applied to the whole dialog - so its rules reach the controls on a page
+    // but cannot repaint the cards and fields the shell draws, before a theme
+    // change or after one, nor under a theme that decides the shell's colours.
+    void test_aProfileStyleSheetsRulesDoNotRepaintTheShellsSurfaces()
     {
+        const QString rules = qsl("QGroupBox { background-color: rgb(255, 0, 0); } QLineEdit { background-color: rgb(0, 255, 0); }");
         setAppearance(enums::Appearance::dark);
-        mpPreferences->setStyleSheet(qsl("QWidget { background-color: rgb(255, 0, 0); }"));
+        mpPreferences->setStyleSheet(rules);
         QCoreApplication::processEvents();
-        const QColor beforeTheFlip = paintedSurface();
-        QVERIFY2(!(beforeTheFlip.red() > 200 && beforeTheFlip.green() < 60), qPrintable(qsl("the profile stylesheet painted the shell %1 before any theme change").arg(beforeTheFlip.name())));
+        mpPreferences->grab();
+        checkTheShellsSurfacesAreTheRecipes(uiDesign::themeTokens().card, uiDesign::themeTokens().field, qsl("before any theme change"));
+        if (QTest::currentTestFailed()) {
+            return;
+        }
 
         setAppearance(enums::Appearance::light);
         QVERIFY2(applicationIsLight(), "the application did not go light, so this is not the mid-life flip");
-        const QColor surface = paintedSurface();
-        QVERIFY2(!(surface.red() > 200 && surface.green() < 60), qPrintable(qsl("the profile stylesheet painted the shell %1 after the theme change").arg(surface.name())));
-        QVERIFY2(surface.lightness() >= 128, qPrintable(describe(surface)));
+        checkTheShellsSurfacesAreTheRecipes(uiDesign::themeTokens().card, uiDesign::themeTokens().field, qsl("after the theme change"));
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+
+        // The theme decides the tones, and the rules beside it still do not reach the surfaces
+        const QColor themeFill(qsl("#181818"));
+        mpPreferences->setStyleSheet(qsl("QWidget { background-color: %1; color: #a0a0a0; } %2").arg(themeFill.name(), rules));
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        checkTheShellsSurfacesAreTheRecipes(themeFill, themeFill, qsl("under a theme stylesheet"));
+    }
+
+    void test_aProfileStyleSheetThemeDecidesTheShellsColours()
+    {
+        setAppearance(enums::Appearance::light);
+        mpPreferences->setStyleSheet(qsl("QWidget { background-color: #181818; color: #a0a0a0; }"));
+        QCoreApplication::processEvents();
+        checkTheShellFollowsTheThemeStyleSheet();
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+
+        // A theme change has to leave the theme stylesheet in charge
+        setAppearance(enums::Appearance::dark);
+        checkTheShellFollowsTheThemeStyleSheet();
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+
+        setAppearance(enums::Appearance::light);
+        checkTheShellFollowsTheThemeStyleSheet();
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+
+        // Cleared with no theme change after it, which would restyle the shell anyway
+        mpPreferences->setStyleSheet(QString());
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        QVERIFY2(paintedSurface().lightness() >= 128, qPrintable(describe(paintedSurface())));
+    }
+
+    // The tokens' light treatment comes from the theme's palette, not the application's
+    void test_aLightThemeStyleSheetLightensTheShellOnTheDarkAppearance()
+    {
+        setAppearance(enums::Appearance::dark);
+        const QColor themeFill(qsl("#f0f0f0"));
+        mpPreferences->setStyleSheet(qsl("QWidget { background-color: %1; color: #202020; }").arg(themeFill.name()));
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        QVERIFY2(!applicationIsLight(), "the application did not stay dark, so the theme is not the only thing lightening the shell");
+        checkTheShellFollowsTheThemeStyleSheet(themeFill);
+    }
+
+    // A see-through theme background is no colour to draw cards in
+    void test_aTransparentThemeBackgroundLeavesTheShellItsOwnColours()
+    {
+        setAppearance(enums::Appearance::light);
+        mpPreferences->setStyleSheet(qsl("QWidget { background-color: transparent; }"));
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        QVERIFY2(paintedSurface().lightness() >= 128, qPrintable(describe(paintedSurface())));
+    }
+
+    // ...and nor is a gradient, which Qt copies into Base as well
+    void test_aGradientThemeBackgroundLeavesTheShellItsOwnColours()
+    {
+        setAppearance(enums::Appearance::light);
+        mpPreferences->setStyleSheet(qsl("QWidget { background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #181818, stop: 1 #303030); }"));
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        QVERIFY2(paintedSurface().lightness() >= 128, qPrintable(describe(paintedSurface())));
+    }
+
+    void test_anAppStyleSheetThemeDecidesTheShellsColours()
+    {
+        setAppearance(enums::Appearance::light);
+        mudlet::self()->setAppStyleSheet(qsl("QWidget { background-color: #181818; color: #a0a0a0; }"));
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        checkTheShellFollowsTheThemeStyleSheet();
+        if (QTest::currentTestFailed()) {
+            return;
+        }
+
+        mudlet::self()->setAppStyleSheet(QString());
+        QCoreApplication::processEvents();
+        mpPreferences->grab();
+        QVERIFY2(paintedSurface().lightness() >= 128, qPrintable(describe(paintedSurface())));
     }
 
     // The certificate warnings carry their colours in a stylesheet rather than

@@ -140,6 +140,9 @@ public:
     bool lazyCaptureGlobals() const { return mLazyCaptureGlobals; }
     void set_lua_table(const QString& tableName, QStringList& variableList);
     void setCaptureGroups(const std::list<std::string>&, const std::list<int>&);
+    // After setCaptureGroups(), for captures whose text on screen is no longer as long as what matched
+    void setCaptureGroupLengths(std::vector<int>&& lengths) { mCaptureGroupLengthList = std::move(lengths); }
+    int captureGroupLength(std::size_t index) const;
     void setCaptureNameGroups(const NameGroupMatches&, const NamedMatchesRanges&);
     void setMultiCaptureGroups(const std::list<std::list<std::string>>& captureList, const std::list<std::list<int>>& posList, QVector<NameGroupMatches>& nameMatches);
     void setMultiCaptureGroups(std::list<std::list<std::string>>&& captureList, std::list<std::list<int>>&& posList, QVector<NameGroupMatches>&& nameMatches);
@@ -1058,6 +1061,9 @@ private:
     const int LUA_FUNCTION_MAX_ARGS = 50;
     std::vector<std::string> mCaptureGroupList;
     std::vector<int> mCaptureGroupPosList;
+    // Each capture's width on screen once replace() or an earlier trigger's edit changed it,
+    // -1 where untouched; the capture text stays what the game sent, as "matches" may first be built after it
+    std::vector<int> mCaptureGroupLengthList;
     // clearCaptureGroups() parks emptied storage here so the next fire reuses the strings' buffers
     std::vector<std::string> mSpareCaptureGroupList;
     std::vector<int> mSpareCaptureGroupPosList;
@@ -1124,8 +1130,9 @@ private:
     // afterwards hands the metatable out past the guard, with nothing here to
     // notice. lazyGlobalsUsable() still asks whether the handlers are there
     // before anything is left out, which covers a change made that way before
-    // a line, though not one made while a script is running.
-    lua_CFunction mStockMetatableFunctions[4] = {};
+    // a line, though not one made while a script is running. The fifth slot
+    // is rawget(), which puts a name still left out in place before reading.
+    lua_CFunction mStockMetatableFunctions[5] = {};
     bool mGlobalsMetatableTouched = false;
     // Once nothing is left out the handlers only cost every read of a global
     // that is not there a C call, so the next line takes them off. Not in the
@@ -1141,6 +1148,7 @@ private:
     {
         std::vector<std::string> captureGroupList;
         std::vector<int> captureGroupPosList;
+        std::vector<int> captureGroupLengthList;
         std::list<std::list<std::string>> multiCaptureGroupList;
         std::list<std::list<int>> multiCaptureGroupPosList;
         NameGroupMatches capturedNameGroups;

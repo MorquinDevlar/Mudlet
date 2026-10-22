@@ -783,10 +783,11 @@ void TNullConsoleFrontend::polishLabel(Label& label)
 void TNullConsoleFrontend::restyleLabel(Label& label, const QString& sheet)
 {
     TLabelModel& model = *label.pModel;
-    if (sheet == model.mStyleSheet && !label.restyleDue && !sheet.contains(qsl("url("), Qt::CaseInsensitive)) {
+    if (sheet == model.mStyleSheet && label.repolished && !label.restyleDue && !sheet.contains(qsl("url("), Qt::CaseInsensitive)) {
         return;
     }
     label.restyleDue = false;
+    label.repolished = label.styled && !sheet.isEmpty();
     const QFont before = model.mFont;
     model.mStyleSheet = sheet;
     if (sheet.isEmpty()) {
@@ -1685,7 +1686,8 @@ bool TNullConsoleFrontend::setLabelBackgroundImage(const QString& name, const QS
         }
     }
     const QImage raster(path);
-    if (raster.isNull()) {
+    // TLabel::setBackgroundImage() takes an empty path to mean no image
+    if (raster.isNull() && !path.isEmpty()) {
         return false;
     }
     label.svgSize.reset();
@@ -1693,7 +1695,9 @@ bool TNullConsoleFrontend::setLabelBackgroundImage(const QString& name, const QS
         label.movie->stop();
     }
     clearLabelContents(label);
-    label.pixmapSize = raster.deviceIndependentSize().toSize();
+    if (!raster.isNull()) {
+        label.pixmapSize = raster.deviceIndependentSize().toSize();
+    }
     return true;
 }
 

@@ -551,7 +551,11 @@ ThemeTokens themeTokens()
 {
     // The application palette, not a widget's: a stylesheet freezes its widget's palette, and a PaletteChange is still
     // undelivered while a window restyles. mudlet::setAppearance() swaps qApp's synchronously.
-    const QPalette themePalette = QApplication::palette();
+    return themeTokens(QApplication::palette());
+}
+
+ThemeTokens themeTokens(const QPalette& themePalette)
+{
     ThemeTokens tokens;
     tokens.accent = themePalette.color(QPalette::Highlight);
     // Window, not Base: a page mixed off Base is darker than the fields on it, which cannot read as depth
