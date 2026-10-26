@@ -222,6 +222,7 @@ set(mudlet_app_SRCS
     dlgVarsMainArea.cpp
     EAction.cpp
     EditorAutoCompleteFocusHandler.cpp
+    EditorLineMarginDelegate.cpp
     EditorPlaceholderButton.cpp
     EditorTreeDelegate.cpp
     EditorTreeRowDelegate.cpp
@@ -556,6 +557,7 @@ set(mudlet_app_HDRS
     dlgVarsMainArea.h
     EAction.h
     EditorAutoCompleteFocusHandler.h
+    EditorLineMarginDelegate.h
     EditorPlaceholderButton.h
     EditorTreeDelegate.h
     EditorTreeRowDelegate.h

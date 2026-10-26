@@ -54,6 +54,7 @@
 #include "EditorAddItemCommand.h"
 #include "EditorDeleteItemCommand.h"
 #include "EditorItemXMLHelpers.h"
+#include "EditorLineMarginDelegate.h"
 #include "EditorModifyPropertyCommand.h"
 #include "EditorMoveItemCommand.h"
 #include "EditorPlaceholderButton.h"
@@ -205,7 +206,6 @@ static constexpr int scmEditorSearchResultIndent = 14;
 
 static constexpr int scmEditorCodeHeaderGlyphSize = 13;
 static constexpr int scmEditorCodeHeaderInset = 4;
-static constexpr int scmEditorCompileDotDiameter = 8;
 
 static constexpr int scmEditorColorWellHeight = 22;
 static constexpr int scmEditorColorWellWidth = 40;
@@ -643,6 +643,9 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // And the edbee widget
     mpSourceEditorEdbee = mpSourceEditorArea->edbeeEditorWidget;
+    // Before any text: the margin measures its width once per line count, the room for the dot included
+    mpEditorLineMargin = new uiDesign::EditorLineMarginDelegate();
+    mpSourceEditorEdbee->textMarginComponent()->giveDelegate(mpEditorLineMargin);
     mpSourceEditorEdbee->setAutoScrollMargin(20);
     mpSourceEditorEdbee->setPlaceholderText(tr("-- add your Lua code here"));
     mpSourceEditorEdbeeDocument = mpSourceEditorEdbee->textDocument();
@@ -16233,6 +16236,15 @@ void dlgTriggerEditor::restyleEditorIcons()
         mpLabel_editorCodeHeaderIcon->setPixmap(headerGlyph);
     }
 
+    // The trees' own mark for a broken item, so the row, the heading and the line in the margin read as one
+    if (mpLabel_editorCompileMark) {
+        const qreal glyphRatio = mpLabel_editorCompileMark->devicePixelRatioF();
+        QPixmap mark = uiDesign::tintedGlyph(uiDesign::glyphPixmap(qsl(":/icons/editor-errors.svg")), uiDesign::errorInk(tokens))
+                               .scaled(QSize(scmEditorCodeHeaderGlyphSize, scmEditorCodeHeaderGlyphSize) * glyphRatio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        mark.setDevicePixelRatio(glyphRatio);
+        mpLabel_editorCompileMark->setPixmap(mark);
+    }
+
     createSearchOptionIcon();
     updateSearchHistoryAction();
 
@@ -16343,10 +16355,10 @@ void dlgTriggerEditor::setupEditorCodeHeader()
     auto* pNoteLayout = new QHBoxLayout(mpWidget_editorCompileNote);
     pNoteLayout->setContentsMargins(0, 0, 0, 0);
     pNoteLayout->setSpacing(5);
-    mpLabel_editorCompileDot = new QLabel(mpWidget_editorCompileNote);
-    mpLabel_editorCompileDot->setObjectName(qsl("editorCompileDot"));
-    mpLabel_editorCompileDot->setFixedSize(scmEditorCompileDotDiameter, scmEditorCompileDotDiameter);
-    pNoteLayout->addWidget(mpLabel_editorCompileDot);
+    mpLabel_editorCompileMark = new QLabel(mpWidget_editorCompileNote);
+    mpLabel_editorCompileMark->setObjectName(qsl("editorCompileMark"));
+    mpLabel_editorCompileMark->setFixedSize(scmEditorCodeHeaderGlyphSize, scmEditorCodeHeaderGlyphSize);
+    pNoteLayout->addWidget(mpLabel_editorCompileMark);
     mpLabel_editorCompileMessage = new QLabel(mpWidget_editorCompileNote);
     mpLabel_editorCompileMessage->setObjectName(qsl("editorCompileMessage"));
     // Ignored: a compiler's sentence is as long as it likes, and elideCompileNote() cuts it to the room left
@@ -16385,7 +16397,7 @@ QString dlgTriggerEditor::codeHeaderTitleFor(const EditorViewType view) const
 
 void dlgTriggerEditor::updateEditorCodeHeading()
 {
-    if (!mpWidget_editorCompileNote || !mpLabel_editorCompileDot || !mpLabel_editorCompileMessage) {
+    if (!mpWidget_editorCompileNote || !mpLabel_editorCompileMark || !mpLabel_editorCompileMessage) {
         return;
     }
 
@@ -16408,16 +16420,12 @@ void dlgTriggerEditor::updateEditorCodeHeading()
 
     const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
     const QColor noteInk = uiDesign::errorInk(tokens);
-    const QString dotRule = qsl("#editorCompileDot { background-color: %1; border-radius: %2px; }").arg(noteInk.name(), QString::number(scmEditorCompileDotDiameter / 2));
     // A transparent border at rest, so focus paints it instead of shifting the words by a pixel
     const QString noteRule = qsl("#editorCompileNote { background: transparent; border: 1px solid transparent; border-radius: %1px; }"
                                  "#editorCompileNote:focus { border-color: %2; }"
                                  "#editorCompileMessage { color: %3; }")
                                      .arg(QString::number(uiDesign::scmRadiusChip), tokens.accent.name(), noteInk.name());
     // setStyleSheet() re-polishes the subtree even for identical rules, and every item switch comes here
-    if (mpLabel_editorCompileDot->styleSheet() != dotRule) {
-        mpLabel_editorCompileDot->setStyleSheet(dotRule);
-    }
     if (mpWidget_editorCompileNote->styleSheet() != noteRule) {
         mpWidget_editorCompileNote->setStyleSheet(noteRule);
     }
@@ -16435,6 +16443,9 @@ void dlgTriggerEditor::updateEditorCodeHeading()
     // The strip is transparent to the mouse so a drag anywhere on it resizes; the tooltip goes on the handle instead
     if (QWidget* pHandle = mpWidget_editorCodeHeader ? mpWidget_editorCodeHeader->parentWidget() : nullptr) {
         pHandle->setToolTip(plainMessage);
+    }
+    if (mpEditorLineMargin) {
+        mpEditorLineMargin->setErrorLine(mEditorCompileErrorLine);
     }
 }
 

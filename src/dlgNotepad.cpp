@@ -82,7 +82,6 @@ constexpr int scmQtToolButtonPictureGap = 4;
 // Tighter than the bar's own spacing, which parts one control from the next
 constexpr int scmNotepadReadingGap = 5;
 
-// Matches scmEditorCompileDotDiameter, which is file-local to dlgTriggerEditor.cpp
 constexpr int scmNotepadReadingDotDiameter = 8;
 
 constexpr int scmNotepadProgressHeight = 4;

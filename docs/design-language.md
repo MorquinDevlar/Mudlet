@@ -113,11 +113,21 @@ the note that refuses a duplicate event name - whose colour is walked against
 their own fill by `readableOn()`. Everything that says something is *broken*
 comes from one function rather than from the same expression in nine places:
 `uiDesign::errorInk(tokens)` walks the error hue off the strip's surface, and
-that one red is what the compile note and dot over the code pane, the mark on a
+that one red is what the compile note and its mark over the code pane, the mark on a
 broken item's tree row, the picture on the editor's error notice, the note
 refusing a duplicate event name, a clashing shortcut and an untrusted
 certificate in the settings, and the edge round a field the connection dialog
 will not take are all drawn in.
+
+The line the compiler stopped on is marked among the code pane's line numbers
+as well, by `uiDesign::EditorLineMarginDelegate` on edbee's margin: the trees'
+mark for a broken item just before the number, and the number itself in the
+error hue - the same mark the compile note carries, so the row, the note and the
+line read as one, where a red dot in that place would read as a breakpoint. That margin
+is painted on the edbee theme's background rather than on the strip, so its red
+is the error hue walked by `readableOn()` against the theme's own background
+instead of `errorInk()`. The room for the mark is kept on every line, so the code
+does not move sideways when a save fails.
 
 The strip is the darkest surface any of them sits on, which under a light theme
 makes it the hardest to read on and under a dark one the easiest: measured on

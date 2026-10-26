@@ -94,6 +94,8 @@ class DesignColourLiteralTest : public QObject
                           QStringLiteral("SidebarToggle.h"),
                           QStringLiteral("EditorPlaceholderButton.cpp"),
                           QStringLiteral("EditorPlaceholderButton.h"),
+                          QStringLiteral("EditorLineMarginDelegate.cpp"),
+                          QStringLiteral("EditorLineMarginDelegate.h"),
                           QStringLiteral("dlgAboutDialog.cpp"),
                           QStringLiteral("dlgAboutDialog.h"),
                           QStringLiteral("AboutLinkButton.cpp"),

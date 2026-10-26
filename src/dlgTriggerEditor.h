@@ -114,6 +114,7 @@ class QShortcut;
 namespace uiDesign {
 class ChipRow;
 class SidebarToggle;
+class EditorLineMarginDelegate;
 class EditorTreeDelegate;
 class SearchResultDelegate;
 class VariableTreeDelegate;
@@ -868,7 +869,7 @@ private:
     QPointer<QLabel> mpLabel_editorCodeHeaderTitle;
     QPointer<QLabel> mpLabel_editorCaretPosition;
     QPointer<QWidget> mpWidget_editorCompileNote;
-    QPointer<QLabel> mpLabel_editorCompileDot;
+    QPointer<QLabel> mpLabel_editorCompileMark;
     QPointer<QLabel> mpLabel_editorCompileMessage;
     // Empty means it compiled. Written only through reportCompileError(), which saving and opening the item reach,
     // and nothing about another item or an activation the engine refused does.
@@ -877,6 +878,8 @@ private:
     QString mEditorCompileNoteText;
     // Counted from one as Lua does; zero when the compiler named none
     int mEditorCompileErrorLine = 0;
+    // Owned by the code pane's margin
+    uiDesign::EditorLineMarginDelegate* mpEditorLineMargin = nullptr;
     bool mEditorSaveErrorCaptureOpen = false;
     QString mEditorSaveErrorCaptured;
 

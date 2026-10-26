@@ -27,6 +27,7 @@
 
 #include <QLabel>
 #include <QMouseEvent>
+#include <QScrollBar>
 #include <QSplitterHandle>
 #include <QStatusBar>
 #include <QTreeWidget>
@@ -41,6 +42,7 @@
 #include "dlgSystemMessageArea.h"
 #include "dlgTriggerEditor.h"
 #include "dlgTriggerPatternEdit.h"
+#include "EditorLineMarginDelegate.h"
 #include "mudlet.h"
 #include "uiDesign.h"
 
@@ -66,6 +68,8 @@ private:
     // Lua's error quotes all of an unfinished string, so this sets the note's length too
     static constexpr int scmLongStringLength = 300;
     static constexpr int scmLongLineInEdbee = 1;
+    static constexpr int scmInkTolerance = 24;
+    static constexpr int scmMarkRounding = 3;
     // Past any platform's drag threshold
     static constexpr int scmDragTravel = 60;
     // Each step short of the drag threshold on its own, as a real drag's moves are
@@ -78,7 +82,7 @@ private:
     QLabel* caretReading() const { return mpEditor->findChild<QLabel*>(qsl("editorCodeCaret")); }
     QWidget* compileNote() const { return mpEditor->findChild<QWidget*>(qsl("editorCompileNote")); }
     QLabel* compileMessage() const { return mpEditor->findChild<QLabel*>(qsl("editorCompileMessage")); }
-    QLabel* compileDot() const { return mpEditor->findChild<QLabel*>(qsl("editorCompileDot")); }
+    QLabel* compileMark() const { return mpEditor->findChild<QLabel*>(qsl("editorCompileMark")); }
 
     QString bannerReads() const { return mpEditor->mpSystemMessageArea->notificationAreaMessageBox->text(); }
 
@@ -129,6 +133,32 @@ private:
             mpEditor->mpScriptsBaseItem->setExpanded(true);
         }
         QTest::qWait(50ms);
+    }
+
+    struct MarginInk
+    {
+        int inMark = 0;
+        int inNumber = 0;
+    };
+
+    // Pixels of the error ink in one line's band of the margin, in the mark and past it where the number is
+    MarginInk errorInkInMarginLine(const size_t line) const
+    {
+        edbee::TextMarginComponent* pMargin = mpEditor->mpSourceEditorEdbee->textMarginComponent();
+        edbee::TextRenderer* pRenderer = pMargin->renderer();
+        const QColor ink = mpEditor->mpEditorLineMargin->errorInk();
+        const int top = pRenderer->yPosForLine(line) - mpEditor->mpSourceEditorEdbee->verticalScrollBar()->value();
+        const QImage grab = TestPixels::shot(pMargin);
+        const QRectF mark = mpEditor->mpEditorLineMargin->markRect();
+        MarginInk found;
+        for (int y = top; y < top + pRenderer->lineHeight(); ++y) {
+            for (int x = 0; x < pMargin->width(); ++x) {
+                if (TestPixels::readsAs(TestPixels::sampled(grab, QPoint(x, y)), ink, scmInkTolerance)) {
+                    ++(x <= mark.right() ? found.inMark : found.inNumber);
+                }
+            }
+        }
+        return found;
     }
 
     void typeAndSave(const QString& script)
@@ -642,15 +672,43 @@ private slots:
         QVERIFY2(bannerReads().contains(qsl("part of a package")), qPrintable(qsl("the notice over the form reads \"%1\", not the package notice").arg(bannerReads())));
     }
 
+    // The line the note names is found among the line numbers too, by the trees' error mark and the note's ink
+    void test_theLineTheCompileStoppedOnIsMarkedAmongTheLineNumbers()
+    {
+        edbee::TextMarginComponent* pMargin = mpEditor->mpSourceEditorEdbee->textMarginComponent();
+        QVERIFY2(mpEditor->mpEditorLineMargin != nullptr && pMargin->delegate() == mpEditor->mpEditorLineMargin, "the code pane's line numbers are not drawn by the editor's own margin delegate");
+        typeAndSave(qsl("-- nothing wrong here\n-- nor here\n"));
+        const int cleanWidth = pMargin->width();
+
+        typeAndSave(qsl("local a = 1\nlocal b = 1 +* 2\n"));
+        QTRY_VERIFY2(compileNote()->isVisible(), "a save that did not compile left no note on the heading, so there is no line to mark");
+        QCOMPARE(mpEditor->mpEditorLineMargin->errorLine(), scmBrokenLine);
+        const MarginInk marked = errorInkInMarginLine(scmBrokenLineInEdbee);
+        const MarginInk unmarked = errorInkInMarginLine(0);
+        qInfo().noquote()
+                << qsl("  error ink in the margin: %1 pixels in the mark and %2 in the number on line %3, %4 and %5 on line 1")
+                           .arg(QString::number(marked.inMark), QString::number(marked.inNumber), QString::number(scmBrokenLine), QString::number(unmarked.inMark), QString::number(unmarked.inNumber));
+        QVERIFY2(marked.inMark > 0, "the line the compiler stopped on has no mark beside its number");
+        QVERIFY2(marked.inNumber > 0, "the number of the line the compiler stopped on is not written in the error ink");
+        QVERIFY2(unmarked.inMark == 0 && unmarked.inNumber == 0, "a line the compiler did not stop on is marked as well");
+        QCOMPARE(pMargin->width(), cleanWidth);
+
+        typeAndSave(qsl("local a = 1\nlocal b = 1 + 2\n"));
+        QTRY_VERIFY2(!compileNote()->isVisible(), "a save that compiled left the note on the heading");
+        const MarginInk cleared = errorInkInMarginLine(scmBrokenLineInEdbee);
+        QVERIFY2(cleared.inMark == 0 && cleared.inNumber == 0, "a save that compiled left the line it once stopped on marked");
+        QCOMPARE(pMargin->width(), cleanWidth);
+    }
+
     // The raw state colour is a fill rather than an ink, a different red from the words
-    void test_theNoteAndTheDotAreWrittenInTheErrorInk()
+    void test_theNoteAndTheMarkAreWrittenInTheErrorInk()
     {
         typeAndSave(qsl("local a = 1\nlocal b = 1 +* 2\n"));
 
         QLabel* pMessage = compileMessage();
-        QLabel* pDot = compileDot();
+        QLabel* pMark = compileMark();
         QVERIFY2(pMessage != nullptr, "the compile note has no label named editorCompileMessage in it");
-        QVERIFY2(pDot != nullptr, "the compile note has no label named editorCompileDot in it");
+        QVERIFY2(pMark != nullptr, "the compile note has no label named editorCompileMark in it");
         QTRY_VERIFY2(compileNote() != nullptr && compileNote()->isVisible(), "a save that did not compile left no note on the heading");
 
         // Both appearances: on the one that needs no walk the raw state colour equals the ink
@@ -669,12 +727,23 @@ private slots:
             const QColor red = uiDesign::errorInk(tokens);
             // QStyleSheetStyle::polish() puts a stylesheet's "color:" rule into the palette
             const QColor ink = pMessage->palette().color(pMessage->foregroundRole());
-            measured << qsl("%1: the error ink is %2, the note is written in %3, and the dot's rule reads \"%4\"").arg(appearance.first, red.name(), ink.name(), pDot->styleSheet());
+            const QImage markImage = pMark->pixmap().toImage().convertToFormat(QImage::Format_ARGB32);
+            // Not QColor(), whose alpha reads as opaque
+            QColor markInk = QColor::fromRgba(0);
+            for (int y = 0; y < markImage.height(); ++y) {
+                for (int x = 0; x < markImage.width(); ++x) {
+                    if (markImage.pixelColor(x, y).alpha() > markInk.alpha()) {
+                        markInk = markImage.pixelColor(x, y);
+                    }
+                }
+            }
+            measured << qsl("%1: the error ink is %2, the note is written in %3, and the mark in %4").arg(appearance.first, red.name(), ink.name(), TestPixels::inkOf(markImage));
             if (ink.name() != red.name()) {
                 misses << qsl("%1: the note is written in %2 rather than in the error ink %3").arg(appearance.first, ink.name(), red.name());
             }
-            if (!pDot->styleSheet().contains(red.name(), Qt::CaseInsensitive)) {
-                misses << qsl("%1: the dot is filled with something other than the error ink %2: \"%3\"").arg(appearance.first, red.name(), pDot->styleSheet());
+            // A thin stroke is never fully opaque, and un-premultiplying a pixel short of that rounds a channel by a step
+            if (markInk.alpha() <= 0 || !TestPixels::readsAs(markInk, red, scmMarkRounding)) {
+                misses << qsl("%1: the mark is drawn in %2 rather than in the error ink %3").arg(appearance.first, TestPixels::inkOf(markImage), red.name());
             }
         }
         qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("\n  ")));
