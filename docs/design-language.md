@@ -862,8 +862,9 @@ hidden while a word is still written out:
 
 - The bar's buttons are held in groups (`mEditorToolBarGroups`), and that list
   is the order they give their names up in: the four that act on the profile -
-  Import, Export, Create Module, Save Profile - first, the four that act on the
-  item being edited after. Undo and Redo are pictures from the start.
+  Import, Export, Create Module, Save Profile - first, the five that act on the
+  item being edited after - Add, Add Group, Save, Activate, Delete. Undo and Redo
+  are pictures from the start.
 - A collapsed group is `Qt::ToolButtonIconOnly` per button, through
   `toolBar->widgetForAction()`; the split Save Profile button keeps its menu
   half. That half is drawn by `uiDesign::splitButtonMenuHalfStyleSheet()` - the
@@ -872,9 +873,22 @@ hidden while a word is still written out:
   are one look in both windows. It is the only button on the bar named
   (`editorSaveProfileButton`): the padding that holds its words clear of the
   half would otherwise reach all
-  ten. Every one of the eight leads its tooltip with the words it would
-  otherwise be carrying, which for the item four is the view's wording - "Add
-  Trigger", "Add Alias" - rebuilt by `updateEditorItemActionToolTips()`.
+  eleven. Every one of the nine leads its tooltip with the words it would
+  otherwise be carrying, which for four of the item five is the view's wording -
+  "Add Trigger", "Add Alias" - rebuilt by `updateEditorItemActionToolTips()`.
+- **Activate says what a click does to the chosen row**: "Activate" on a row that
+  is off, "Deactivate" on one that is on, including one on inside a group that is
+  off, since the click flips the row's own switch. `updateEditorActivateAction()`
+  reads the row from `EditorTreeDelegate::stateOf()`, the answer the dot is drawn
+  from, and runs on everything that moves the choice or the state: a tree's
+  current row and its model's `dataChanged`, the undo stack's index, the five
+  `Host::signal_*Toggled` (a hidden editor skips the repaint those ask for), and
+  the view and folder-group changes. It is disabled with no item chosen - a
+  tree's heading, Variables, a folder group. The tree menu carries the same
+  action, so the two never disagree. The button is held to the wider of its two
+  wordings (`scmProp_editorToolBarWordings`, `holdToolBarButtonWidth()`) so
+  Delete, Undo and Redo stay where they are as rows are chosen; as a picture it
+  is not held. `EditorActivateActionTest` holds all of it.
 - What is measured is `toolBar->layout()->sizeHint()` along the bar's
   orientation against the bar's own width or height, so separators, the grip,
   the spacing and a stylesheet's padding are counted the way Qt counts them, a
@@ -885,7 +899,7 @@ hidden while a word is still written out:
   agree on the same pixel and a drag across the breakpoint settles.
 - It runs on the bar's own resize (an event filter, since the bar is the only
   thing the window tells), on the icon size preference, on the view changing
-  (the item four are renamed there), on a language, style or font change, on
+  (four of the item five are renamed there), on a language, style or font change, on
   `applyEditorShellStyle()`, and once the window has first been shown. Measured
   at 39us a call, so a resize drag is answered rather than coalesced.
 - Torn off into a window of its own the bar starts from every name shown, since
@@ -893,11 +907,11 @@ hidden while a word is still written out:
   again.
 
 Measured on the offscreen platform at the default 18px glyph: the profile group
-gives its names up at 1120px of window and the item group at 848px; at the
-largest the preference offers, 24px, at 1184px and 904px.
+gives its names up at 1192px of window and the item group at 920px; at the
+largest the preference offers, 24px, at 1256px and 984px.
 
 **The fold is left in place and is reachable.** A bar with every name given up
-still wants 477px of window at 18px glyphs and 537px at 24px, against a window
+still wants 474px of window at 18px glyphs and 540px at 24px, against a window
 whose own minimum lets it be dragged down to 279px and below - so between those
 figures Qt does fold, on a window far too narrow to edit anything in. A
 scrolling host of our own would only be a second way of hiding the same buttons,

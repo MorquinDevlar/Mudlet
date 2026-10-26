@@ -206,6 +206,7 @@ set(EDITOR_GROUP_TEST_SOURCES
     ControlSentenceRowTest.cpp
     dlgTriggerEditorUndoRedoTest.cpp
     EdbeeReinitTest.cpp
+    EditorActivateActionTest.cpp
     EditorAutoCompleteFocusTest.cpp
     EditorCaretReadingTest.cpp
     EditorChromeTest.cpp

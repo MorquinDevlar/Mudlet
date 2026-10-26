@@ -122,6 +122,7 @@
 
 
 static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*>& actions, const bool shown);
+static void holdToolBarButtonWidth(QToolButton* pButton);
 static void inkEditorOverflowChevron(QToolBar* pToolBar, const QColor& ink);
 
 // Forward declaration for per-property undo helper (defined later in this file)
@@ -143,6 +144,9 @@ static const char* cSoundFilePath = "editorSoundFilePath";
 // Separates the XML packages of individually copied items on the clipboard so
 // that pasting can import and place each one
 static const QString cMultiItemPasteSeparator = qsl("\n<!--MUDLET_MULTI_ITEM_SEPARATOR-->\n");
+
+// Every wording an action's button can carry, so its width is held to the widest and the buttons after it stay put
+static constexpr char scmProp_editorToolBarWordings[] = "editorToolBarWordings";
 
 // The message label's text before link ink was baked into its anchors, so a theme change can re-ink it
 static constexpr char scmProp_editorRichText[] = "editorRichText";
@@ -728,6 +732,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     connect(mpUndoStack, &QUndoStack::canUndoChanged, this, &dlgTriggerEditor::slot_updateUndoRedoButtonStates);
     connect(mpUndoStack, &QUndoStack::canRedoChanged, this, &dlgTriggerEditor::slot_updateUndoRedoButtonStates);
+    connect(mpUndoStack, &QUndoStack::indexChanged, this, &dlgTriggerEditor::updateEditorActivateAction);
 
     connect(mpUndoStack, &QUndoStack::undoTextChanged, this, [this](const QString& text) {
         QString shortcut = mpUndoAction->shortcut().toString(QKeySequence::NativeText);
@@ -1118,6 +1123,14 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
         });
         connect(pModel, &QAbstractItemModel::layoutChanged, this, &dlgTriggerEditor::scheduleFolderTreeRefresh);
         connect(pModel, &QAbstractItemModel::modelReset, this, &dlgTriggerEditor::scheduleFolderTreeRefresh);
+        // Activate is worded for the chosen row, and a save, a dot click or a script can switch that row under it
+        connect(pTree, &QTreeWidget::currentItemChanged, this, &dlgTriggerEditor::updateEditorActivateAction);
+        connect(pModel, &QAbstractItemModel::dataChanged, this, [this, pTree](const QModelIndex& topLeft, const QModelIndex& bottomRight) {
+            const QModelIndex current = pTree->currentIndex();
+            if (current.isValid() && current.parent() == topLeft.parent() && current.row() >= topLeft.row() && current.row() <= bottomRight.row()) {
+                updateEditorActivateAction();
+            }
+        });
         // Adding, deleting, pasting, undoing and searching all pick their item in the type tree, hidden or not
         connect(pTree, &QTreeWidget::currentItemChanged, this, [this, view](QTreeWidgetItem* pCurrent) {
             if (mFolderViewActive && pCurrent && pCurrent->parent()) {
@@ -1214,8 +1227,9 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     showDebugAreaAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
     connect(showDebugAreaAction, &QAction::triggered, this, &dlgTriggerEditor::slot_toggleCentralDebugConsole);
 
-    mpAction_toggleActive = new QAction(tr("Activate"), this);
-    mpAction_toggleActive->setStatusTip(tr("Toggle Active or Non-Active Mode for Triggers, Scripts etc."));
+    // Wording, tips and enabled state follow the chosen row: see updateEditorActivateAction()
+    mpAction_toggleActive = new QAction(this);
+    updateEditorActivateAction();
     connect(mpAction_toggleActive, &QAction::triggered, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
     connect(treeWidget_triggers, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
     connect(treeWidget_aliases, &QTreeWidget::itemActivated, this, &dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag);
@@ -1384,6 +1398,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     toolBar->addAction(mAddItem);
     toolBar->addAction(mAddGroup);
     toolBar->addAction(mSaveItem);
+    toolBar->addAction(mpAction_toggleActive);
     toolBar->addAction(mDeleteItem);
     // Add smart undo/redo toolbar buttons (route based on focus)
     toolBar->addAction(mpUndoAction);
@@ -1403,6 +1418,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     mEditorActionGlyphs = {{mAddItem, qsl(":/icons/editor-add.svg")},
                            {mAddGroup, qsl(":/icons/editor-add-group.svg")},
                            {mSaveItem, qsl(":/icons/editor-save-item.svg")},
+                           {mpAction_toggleActive, qsl(":/icons/editor-activate.svg")},
                            {mDeleteItem, qsl(":/icons/editor-delete.svg")},
                            {mpUndoAction, qsl(":/icons/editor-undo.svg")},
                            {mpRedoAction, qsl(":/icons/editor-redo.svg")},
@@ -1412,7 +1428,6 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
                            {mProfileSaveAction, qsl(":/icons/editor-save-profile.svg")},
                            {mProfileSaveAsAction, qsl(":/icons/editor-save-profile.svg")},
                            // Menu-only, and reached from the trees rather than the toolbar
-                           {mpAction_toggleActive, qsl(":/icons/editor-activate.svg")},
                            {copyAction, qsl(":/icons/editor-copy.svg")},
                            {pasteAction, qsl(":/icons/editor-paste.svg")}};
 
@@ -1427,7 +1442,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
 
     // In the order the groups give up their labels: profile actions first, item actions last
     mEditorToolBarGroups.append(EditorToolBarGroup{{importAction, mpExportAction, mpCreateModuleAction, mProfileSaveAction}, true});
-    mEditorToolBarGroups.append(EditorToolBarGroup{{mAddItem, mAddGroup, mSaveItem, mDeleteItem}, true});
+    mEditorToolBarGroups.append(EditorToolBarGroup{{mAddItem, mAddGroup, mSaveItem, mpAction_toggleActive, mDeleteItem}, true});
     // The fit runs on the bar's own resize, the one event that reports its room changing
     toolBar->installEventFilter(this);
     // Re-orienting the bar puts the style's own arrow back on its overflow button
@@ -1858,6 +1873,12 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     connect(mpHost, &Host::signal_timerToggled, this, &dlgTriggerEditor::refreshTimerIcon);
     connect(mpHost, &Host::signal_keyToggled, this, &dlgTriggerEditor::refreshKeyIcon);
     connect(mpHost, &Host::signal_scriptToggled, this, &dlgTriggerEditor::refreshScriptIcon);
+    // The repaint above waits until the window is shown; the wording of Activate must not
+    connect(mpHost, &Host::signal_triggerToggled, this, &dlgTriggerEditor::updateEditorActivateAction);
+    connect(mpHost, &Host::signal_aliasToggled, this, &dlgTriggerEditor::updateEditorActivateAction);
+    connect(mpHost, &Host::signal_timerToggled, this, &dlgTriggerEditor::updateEditorActivateAction);
+    connect(mpHost, &Host::signal_keyToggled, this, &dlgTriggerEditor::updateEditorActivateAction);
+    connect(mpHost, &Host::signal_scriptToggled, this, &dlgTriggerEditor::updateEditorActivateAction);
     connect(mpHost, &Host::signal_scriptCodeChanged, this, &dlgTriggerEditor::writeScript);
     connect(mpHost, &Host::signal_itemsChangedByScript, this, [this]() {
         mNeedUpdateData = true;
@@ -10871,7 +10892,6 @@ void dlgTriggerEditor::changeView(EditorViewType view)
         mpLabel_editorCodeHeaderTitle->setText(codeHeaderTitleFor(view));
     }
 
-    mpAction_toggleActive->setEnabled(view != EditorViewType::cmVarsView && view != EditorViewType::cmUnknownView);
     mpExportAction->setEnabled(view != EditorViewType::cmVarsView && view != EditorViewType::cmUnknownView);
 
     // texts are duplicated here so that translators can work with the full string
@@ -10961,6 +10981,7 @@ void dlgTriggerEditor::changeView(EditorViewType view)
 
     // Four buttons were just renamed, which changes their tooltips and the bar's length
     updateEditorItemActionToolTips();
+    updateEditorActivateAction();
     fitEditorToolBarToItsLength();
 
     // Update undo/redo button states when changing views
@@ -11788,6 +11809,7 @@ void dlgTriggerEditor::slot_toggleItemOrGroupActiveFlag()
     default:
         qDebug() << "ERROR: dlgTriggerEditor::slot_saveEdits() undefined view";
     }
+    updateEditorActivateAction();
 }
 
 void dlgTriggerEditor::slot_sourceFindMove()
@@ -16490,6 +16512,7 @@ static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*
     for (QAction* pAction : actions) {
         if (auto* pButton = qobject_cast<QToolButton*>(pToolBar->widgetForAction(pAction))) {
             pButton->setToolButtonStyle(shown ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonIconOnly);
+            holdToolBarButtonWidth(pButton);
         }
     }
     // A button Qt folded away is hidden, and a hidden widget's updateGeometry() does not reach its layout, so the
@@ -16497,6 +16520,26 @@ static void setToolBarButtonLabelsShown(QToolBar* pToolBar, const QList<QAction*
     if (QLayout* pLayout = pToolBar->layout()) {
         pLayout->invalidate();
     }
+}
+
+// The delta from the shown wording to the widest, so the style's and the sheet's padding count as Qt counts them
+static void holdToolBarButtonWidth(QToolButton* pButton)
+{
+    const QAction* pAction = pButton->defaultAction();
+    const QStringList wordings = pAction ? pAction->property(scmProp_editorToolBarWordings).toStringList() : QStringList();
+    if (wordings.isEmpty()) {
+        return;
+    }
+    pButton->setMinimumWidth(0);
+    if (pButton->toolButtonStyle() == Qt::ToolButtonIconOnly) {
+        return;
+    }
+    const QFontMetrics metrics(pButton->font());
+    int widest = 0;
+    for (const QString& wording : wordings) {
+        widest = std::max(widest, metrics.size(Qt::TextShowMnemonic, wording).width());
+    }
+    pButton->setMinimumWidth(pButton->sizeHint().width() - metrics.size(Qt::TextShowMnemonic, pButton->text()).width() + widest);
 }
 
 // Qt's overflow button stays: a scrolling host of our own would be a second way of hiding the same buttons. The
@@ -16575,6 +16618,12 @@ void dlgTriggerEditor::fitEditorToolBarToItsLength()
     }
 
     mEditorToolBarFitting = true;
+    // Every way a button's cost changes (font, style, icon size, sheet) ends in this fit
+    for (QAction* pAction : toolBar->actions()) {
+        if (auto* pButton = qobject_cast<QToolButton*>(toolBar->widgetForAction(pAction))) {
+            holdToolBarButtonWidth(pButton);
+        }
+    }
     bool namesGivenUp = false;
     for (EditorToolBarGroup& group : mEditorToolBarGroups) {
         if (toolBarLengthWanted(toolBar) <= available) {
@@ -16617,6 +16666,42 @@ void dlgTriggerEditor::updateEditorItemActionToolTips()
                                        //: Follows a heading that is the button's own wording - "Save Trigger", "Save Alias" and so on
                                        tr("<p>Saving causes any changes to the item to take effect. It will not save to disk, "
                                           "so changes will be lost in case of a computer/program crash (but Save Profile to the right will be secure.)</p>")));
+}
+
+// Says what a click will do to the chosen row, so neither the bar nor the menu offers to switch on what is already on
+void dlgTriggerEditor::updateEditorActivateAction()
+{
+    if (!mpAction_toggleActive) {
+        return;
+    }
+    // Not resolveCurrentView(): this runs while trees are filled, and must not settle the view as a side effect
+    const EditorViewType view = mCurrentView != EditorViewType::cmUnknownView ? mCurrentView : determineViewFromVisibleTree();
+    QTreeWidget* pTree = view == EditorViewType::cmVarsView ? nullptr : treeForView(view);
+    const auto* pDelegate = pTree ? qobject_cast<uiDesign::EditorTreeDelegate*>(pTree->itemDelegate()) : nullptr;
+    const uiDesign::EditorTreeDelegate::ItemState state = pDelegate ? pDelegate->stateOf(pTree->currentIndex()) : uiDesign::EditorTreeDelegate::ItemState();
+    // On but inside a group that is off still counts as on: the click switches the row's own state
+    const bool switchedOn = state.known && state.dot != uiDesign::EditorTreeDelegate::DotState::Off;
+
+    //: Script editor toolbar button and tree right-click menu: switches the chosen trigger, alias, script, timer, key or button on
+    const QString activate = tr("Activate");
+    //: Script editor toolbar button and tree right-click menu: switches the chosen trigger, alias, script, timer, key or button off
+    const QString deactivate = tr("Deactivate");
+    mpAction_toggleActive->setProperty(scmProp_editorToolBarWordings, QStringList{activate, deactivate});
+    mpAction_toggleActive->setText(switchedOn ? deactivate : activate);
+    const QString tip = switchedOn
+                                //: Status tip and tooltip of the script editor's Deactivate button
+                                ? tr("Switch the chosen item off. Nothing inside a group runs while the group is off.")
+                                //: Status tip and tooltip of the script editor's Activate button
+                                : tr("Switch the chosen item on.");
+    mpAction_toggleActive->setStatusTip(tip);
+    mpAction_toggleActive->setToolTip(qsl("<p>%1</p><p>%2</p>").arg(mpAction_toggleActive->text(), tip));
+    mpAction_toggleActive->setEnabled(state.known && mFolderGroupKey.isEmpty());
+
+    if (toolBar) {
+        if (auto* pButton = qobject_cast<QToolButton*>(toolBar->widgetForAction(mpAction_toggleActive))) {
+            holdToolBarButtonWidth(pButton);
+        }
+    }
 }
 
 QString dlgTriggerEditor::patternRowStyleSheet() const
@@ -17067,7 +17152,8 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
     if (e->type() == QEvent::LanguageChange || e->type() == QEvent::StyleChange || e->type() == QEvent::FontChange) {
         invalidateEditorSidebarWidths();
         updateEditorSidebarMode();
-        // The same three move what a toolbar button costs the bar it is on
+        // The same three move what a toolbar button costs the bar it is on; Activate is worded per row, not once
+        updateEditorActivateAction();
         fitEditorToolBarToItsLength();
         // ...and the widest pattern type name, which a row's type column is held to
         mPatternTypeColumnWidth = 0;
@@ -19266,6 +19352,7 @@ void dlgTriggerEditor::openItemFromFolderTree(const EditorViewType view, const i
     pTree->scrollToItem(pItem);
     // Selecting fits the form pane to the item, which is what a view's own entry does too
     selectItemInView(view, pItem);
+    updateEditorActivateAction();
 }
 
 void dlgTriggerEditor::showFolderGroup(QTreeWidgetItem* pNode)
@@ -19293,7 +19380,7 @@ void dlgTriggerEditor::showFolderGroup(QTreeWidgetItem* pNode)
         }
     }
     mSaveItem->setEnabled(false);
-    mpAction_toggleActive->setEnabled(false);
+    updateEditorActivateAction();
     mpExportAction->setEnabled(false);
     mpCreateModuleAction->setEnabled(false);
     slot_updateUndoRedoButtonStates();
@@ -19311,7 +19398,7 @@ void dlgTriggerEditor::hideFolderGroup()
     }
     mSaveItem->setEnabled(true);
     const bool itemView = mCurrentView != EditorViewType::cmVarsView && mCurrentView != EditorViewType::cmUnknownView;
-    mpAction_toggleActive->setEnabled(itemView);
+    updateEditorActivateAction();
     mpExportAction->setEnabled(itemView);
     mpCreateModuleAction->setEnabled(true);
     slot_updateUndoRedoButtonStates();
