@@ -55,7 +55,6 @@ static constexpr qreal scmChipGlyphScale = 0.75;
 static constexpr int scmChipSpacingAcross = 6;
 static constexpr int scmChipSpacingDown = 6;
 static constexpr int scmChipNoteMilliseconds = 2000;
-static constexpr char scmSystemEventPrefix[] = "sys";
 static constexpr int scmSuggestionPaddingVertical = 2;
 static constexpr int scmSuggestionPaddingHorizontal = 6;
 static constexpr int scmSuggestionSlack = 32;
@@ -147,14 +146,25 @@ void Chip::setName(const QString& name)
     mpRemove->setToolTip(utils::richText(tr("Stop listening for %1").arg(name)));
     //: Accessible name of one event in a script's row of events; %1 is the event's name
     setAccessibleName(tr("Event %1").arg(name));
-    setProperty("editorChipSystem", name.startsWith(QLatin1StringView(scmSystemEventPrefix)));
-    repolish(this);
     updateGeometry();
 }
 
 void Chip::setRemoveGlyph(const QIcon& glyph)
 {
     mpRemove->setIcon(glyph);
+}
+
+void Chip::setOrigin(const QString& origin, const bool system)
+{
+    mpLabel->setToolTip(origin.isEmpty() ? QString() : utils::richText(origin));
+    const bool wasSystem = property("editorChipSystem").toBool();
+    setProperty("editorChipSystem", system);
+    if (wasSystem == system) {
+        return;
+    }
+    repolish(this);
+    // The rule reading the property colours the word, and restyling a widget leaves its children as they were
+    repolish(mpLabel);
 }
 
 void Chip::keyPressEvent(QKeyEvent* pEvent)
@@ -414,6 +424,7 @@ Chip* ChipRow::makeChip(const QString& name)
 {
     auto* pChip = new Chip(name, this);
     pChip->setRemoveGlyph(mRemoveGlyph);
+    markOrigin(pChip);
     connect(pChip, &Chip::removeRequested, this, [this, pChip]() {
         removeAt(mChips.indexOf(pChip));
     });
@@ -529,6 +540,7 @@ void ChipRow::commitField(const bool stillTyping)
     mCommitting = true;
     if (pEdited) {
         pEdited->setName(name);
+        markOrigin(pEdited);
         mCommitting = false;
         closeField();
         emit itemsChanged();
@@ -756,9 +768,32 @@ void ChipRow::refreshSuggestionModel()
 void ChipRow::setSuggestions(const QList<Suggestion>& suggestions)
 {
     mSuggestions = suggestions;
+    // The chips can be made before the names they hold are known
+    for (Chip* pChip : mChips) {
+        markOrigin(pChip);
+    }
     makeCompleter();
     refreshSuggestionModel();
     measureSuggestions();
+}
+
+void ChipRow::setUnlistedOrigin(const QString& origin)
+{
+    mUnlistedOrigin = origin;
+    for (Chip* pChip : mChips) {
+        markOrigin(pChip);
+    }
+}
+
+void ChipRow::markOrigin(Chip* pChip) const
+{
+    for (const Suggestion& suggestion : mSuggestions) {
+        if (suggestion.name == pChip->name()) {
+            pChip->setOrigin(suggestion.origin, suggestion.system);
+            return;
+        }
+    }
+    pChip->setOrigin(mUnlistedOrigin, false);
 }
 
 void ChipRow::measureSuggestions()

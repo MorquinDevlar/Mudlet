@@ -37,6 +37,7 @@
 #include "ChipRow.h"
 #include "Host.h"
 #include "HostDialogs.h"
+#include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
 #include "ScriptUnit.h"
 #include "TEvent.h"
@@ -47,6 +48,7 @@
 #include "dlgSourceEditorArea.h"
 #include "dlgTriggerEditor.h"
 #include "mudlet.h"
+#include "uiDesign.h"
 
 #include "GroupedTest.h"
 
@@ -190,6 +192,35 @@ private:
         event.mArgumentList.append(qsl("{}"));
         event.mArgumentTypeList.append(ARGUMENT_TYPE_STRING);
         mpHost->raiseEvent(event);
+    }
+
+    static QString originOn(const QWidget* pChip)
+    {
+        const QLabel* pWord = pChip ? pChip->findChild<QLabel*>(qsl("editorChipLabel")) : nullptr;
+        return pWord ? pWord->toolTip() : QString();
+    }
+
+    // The pixel of the word furthest from the chip's own fill is the ink it is written in
+    static QColor wordInk(QWidget* pChip, const QColor& fill)
+    {
+        const QLabel* pWord = pChip->findChild<QLabel*>(qsl("editorChipLabel"));
+        if (!pWord) {
+            return QColor();
+        }
+        const QImage shot = TestPixels::shot(pChip);
+        const qreal ratio = shot.devicePixelRatio();
+        const QRect word = pWord->geometry();
+        const QRect painted = QRect(QPoint(qRound(word.x() * ratio), qRound(word.y() * ratio)), QSize(qRound(word.width() * ratio), qRound(word.height() * ratio))).intersected(shot.rect());
+        QColor ink = fill;
+        for (int y = painted.top(); y <= painted.bottom(); ++y) {
+            for (int x = painted.left(); x <= painted.right(); ++x) {
+                const QColor pixel = shot.pixelColor(x, y);
+                if (TestPixels::distance(pixel, fill) > TestPixels::distance(ink, fill)) {
+                    ink = pixel;
+                }
+            }
+        }
+        return ink;
     }
 
     // Each case leaves the last one's chips behind
@@ -745,6 +776,96 @@ private slots:
 
         QTest::keyClick(field(), Qt::Key_Escape);
         QCoreApplication::processEvents();
+    }
+
+    // Read off where the editor says a name comes from, not off its spelling:
+    // Mudlet raises mapOpenEvent without the sys prefix, and a script can give an
+    // event of its own one
+    void test_eachChipSaysWhereItsEventComesFrom()
+    {
+        const QString fromMudlet = qsl("Raised by Mudlet");
+        const QString fromTheGame = qsl("Sent by the game");
+        const QString fromAScript = qsl("Raised or listened for by a script in this profile");
+        const QString unseen = qsl("Not seen in this profile yet");
+        struct Expected
+        {
+            QString name;
+            bool quiet;
+            QString origin;
+        };
+        const QList<Expected> expected{{qsl("mapOpenEvent"), true, fromMudlet},
+                                       {qsl("sysMapAreaChanged"), true, fromMudlet},
+                                       {qsl("gmcp.Char.Vitals"), false, fromTheGame},
+                                       {qsl("sysMadeUpByAScript"), false, fromAScript},
+                                       {qsl("ChipToneOwnEvent"), false, fromAScript}};
+        QStringList events;
+        for (const Expected& chip : expected) {
+            events << chip.name;
+        }
+
+        TScript* pScript = mpHost->getScriptUnit()->getScript(mpScriptItem->data(0, Qt::UserRole).toInt());
+        QVERIFY2(pScript != nullptr, "the script under test is not in the script unit");
+        pScript->setEventHandlerList(events);
+        // Emptied first, so the chips the reselect makes know nothing of their names
+        // and only the suggestions handed over after them can set them right
+        row()->setSuggestions({});
+        mpEditor->slot_scriptsSelected(mpScriptItem);
+        QTest::qWait(50ms);
+        QCOMPARE(row()->items(), events);
+
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+        const auto expectChip = [this, &tokens](const Expected& chip) {
+            QWidget* pChip = row()->chipAt(row()->indexOf(chip.name));
+            if (!pChip) {
+                return qsl("there is no chip for %1").arg(chip.name);
+            }
+            const bool quiet = pChip->property("editorChipSystem").toBool();
+            if (quiet != chip.quiet) {
+                return qsl("%1 is marked %2, though Mudlet %3 raise it").arg(chip.name, quiet ? qsl("as Mudlet's own") : qsl("as not Mudlet's"), chip.quiet ? qsl("does") : qsl("does not"));
+            }
+            const QColor ink = wordInk(pChip, tokens.card);
+            const QColor wanted = chip.quiet ? tokens.mutedText : tokens.text;
+            const QColor other = chip.quiet ? tokens.text : tokens.mutedText;
+            qInfo().noquote() << qsl("  %1 is written in %2, against %3 for Mudlet's events and %4 for the rest").arg(chip.name, ink.name(), tokens.mutedText.name(), tokens.text.name());
+            if (TestPixels::distance(ink, wanted) >= TestPixels::distance(ink, other)) {
+                return qsl("%1 is written in %2, nearer %3 than the %4 it is marked for").arg(chip.name, ink.name(), other.name(), wanted.name());
+            }
+            if (!originOn(pChip).contains(chip.origin)) {
+                return qsl("hovering %1 says \"%2\" rather than \"%3\"").arg(chip.name, originOn(pChip), chip.origin);
+            }
+            const QToolButton* pCross = pChip->findChild<QToolButton*>(qsl("editorChipRemove"));
+            if (!pCross || !pCross->toolTip().contains(qsl("Stop listening for %1").arg(chip.name))) {
+                return qsl("the cross on %1 no longer says what it does").arg(chip.name);
+            }
+            if (pChip->accessibleName() != qsl("Event %1").arg(chip.name)) {
+                return qsl("%1 is announced as \"%2\"").arg(chip.name, pChip->accessibleName());
+            }
+            return QString();
+        };
+        for (const Expected& chip : expected) {
+            const QString miss = expectChip(chip);
+            QVERIFY2(miss.isEmpty(), qPrintable(miss));
+        }
+
+        // Typed after the suggestions came, so the chip is made knowing them
+        row()->beginAdd();
+        QCoreApplication::processEvents();
+        typeIntoField(qsl("ChipToneUnseenEvent"));
+        QTest::keyClick(field(), Qt::Key_Escape);
+        QCoreApplication::processEvents();
+        const QString unseenMiss = expectChip({qsl("ChipToneUnseenEvent"), false, unseen});
+        QVERIFY2(unseenMiss.isEmpty(), qPrintable(unseenMiss));
+
+        // A rename keeps the chip, so it is the one thing that has to change its mind
+        QWidget* pRenamed = row()->chipAt(row()->indexOf(qsl("ChipToneUnseenEvent")));
+        QVERIFY2(pRenamed != nullptr, "the typed name did not become a chip");
+        QTest::keyClick(pRenamed, Qt::Key_F2);
+        QCoreApplication::processEvents();
+        QVERIFY2(field() != nullptr, "F2 on a chip did not open it for renaming");
+        typeIntoField(qsl("sysLoadEvent"));
+        QCOMPARE(row()->chipAt(row()->indexOf(qsl("sysLoadEvent"))), pRenamed);
+        const QString renamedMiss = expectChip({qsl("sysLoadEvent"), true, fromMudlet});
+        QVERIFY2(renamedMiss.isEmpty(), qPrintable(renamedMiss));
     }
 };
 

@@ -46,6 +46,10 @@ struct Suggestion
 {
     QString name;
     QString note;
+    // Said when the pointer rests on the word of a chip holding this name
+    QString origin;
+    // The program's own name rather than one the user made, so a chip holding it reads in the chrome tone
+    bool system = false;
 };
 
 // pOn is the widget the chip lies on, not the chip: see Chip::remeasure()
@@ -62,6 +66,7 @@ public:
     void setName(const QString& name);
     [[nodiscard]] QString name() const { return mName; }
     void setRemoveGlyph(const QIcon& glyph);
+    void setOrigin(const QString& origin, const bool system);
     // Public: a chip is measured off its row's font, so the row calls this when that font changes
     void remeasure();
 
@@ -100,8 +105,11 @@ public:
 
     void setAddWords(const QString& button, const QString& tooltip, const QString& fieldPrompt);
 
-    // Names already on a chip are left out of the offer, since adding one again would be refused
+    // Names already on a chip are left out of the offer, since adding one again would be refused.
+    // Every chip takes its tone and the words on its tooltip from the suggestion of its name.
     void setSuggestions(const QList<Suggestion>& suggestions);
+    // Said on a chip whose name no suggestion carries
+    void setUnlistedOrigin(const QString& origin);
     // The popup is a window of its own, so the form's stylesheet never reaches it
     void restyleSuggestions(const ThemeTokens& tokens);
 
@@ -129,6 +137,7 @@ protected:
 
 private:
     Chip* makeChip(const QString& name);
+    void markOrigin(Chip* pChip) const;
     void remeasure();
     // Re-adds everything in reading order: FlowLayout cannot insert into the middle
     void rebuild();
@@ -154,6 +163,7 @@ private:
     QStandardItemModel* mpSuggestionModel = nullptr;
     SuggestionDelegate* mpSuggestionDelegate = nullptr;
     QList<Suggestion> mSuggestions;
+    QString mUnlistedOrigin;
     // Kept for a restyle that comes before there is a popup to put them on
     QString mSuggestionSheet;
     QColor mSuggestionNote;

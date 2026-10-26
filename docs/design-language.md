@@ -1028,8 +1028,11 @@ never moves the Name field. Under it, each row leads with one word.
   beside the field. Chips wrap, and the row reports the wrapped height through
   its size hint and `heightForWidth()`, so the column it is in follows. A
   script's own event names keep the full `text` tone - they are content, like
-  the words in a field - and Mudlet's own `sys*` events read in `mutedText`
-  (`editorChipSystem`). `chipFont()` is the one recipe for a word in a box: the
+  the words in a field - and an event Mudlet raises itself reads in `mutedText`
+  (`editorChipSystem`), whatever it is called (`mapOpenEvent` has no `sys`).
+  The tone and the tooltip on a chip's word come from where the editor's
+  suggestions say its name is from, set again whenever they arrive.
+  `chipFont()` is the one recipe for a word in a box: the
   ID pill, the chips, the hidden-variables count, the value preview in the
   variables tree.
 - **Rows rather than boxes.** The Buttons form's rows are Rotation - with the
@@ -1704,7 +1707,7 @@ The editor's forms add these, which its tests reach it by:
 | `editorOptionRow` | The trigger form's options strip: a group box drawn as nothing, so that a screen reader has a grouping to announce |
 | `editorSegment` | A radio button drawn as one segment of a joined two-part control rather than as a dot beside a word |
 | `editorSegmentSide` | Which end of that pair it is, `first` or `last`, and so which corners it rounds |
-| `editorChipSystem` | A chip holding one of Mudlet's own `sys*` events, read in the quiet ink |
+| `editorChipSystem` | A chip holding an event Mudlet raises itself, read in the quiet ink |
 | `editorListening` | The key binding field while it waits for a keystroke |
 
 ## 4. Search over a widget tree

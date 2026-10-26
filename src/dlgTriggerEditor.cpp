@@ -9311,21 +9311,28 @@ static QList<uiDesign::Suggestion> eventSuggestions(const QList<eventNames::Entr
     suggestions.reserve(known.size());
     for (const eventNames::Entry& entry : known) {
         QString note;
+        QString origin;
         switch (entry.source) {
         case eventNames::Source::Mudlet:
             //: Word beside an event name the script editor offers, saying Mudlet itself raises it
             note = dlgTriggerEditor::tr("Mudlet");
+            //: Tooltip on one event in a script's row of events, saying Mudlet itself raises it
+            origin = dlgTriggerEditor::tr("Raised by Mudlet");
             break;
         case eventNames::Source::Game:
             //: Word beside an event name the script editor offers, saying the game sent it
             note = dlgTriggerEditor::tr("game");
+            //: Tooltip on one event in a script's row of events, saying the game sends it
+            origin = dlgTriggerEditor::tr("Sent by the game");
             break;
         case eventNames::Source::Script:
             //: Word beside an event name the script editor offers, saying a script in this profile raises or listens for it
             note = dlgTriggerEditor::tr("script");
+            //: Tooltip on one event in a script's row of events, saying a script in this profile raises or listens for it
+            origin = dlgTriggerEditor::tr("Raised or listened for by a script in this profile");
             break;
         }
-        suggestions.append({entry.name, note});
+        suggestions.append({entry.name, note, origin, entry.source == eventNames::Source::Mudlet});
     }
     return suggestions;
 }
@@ -15199,6 +15206,8 @@ void dlgTriggerEditor::buildScriptEventRow()
 
     mpChipRow_scriptEvents = new uiDesign::ChipRow(mpScriptsMainArea);
     mpChipRow_scriptEvents->setObjectName(qsl("editorScriptEvents"));
+    //: Tooltip on one event in a script's row of events, when nothing the editor knows of - Mudlet, the game or a script in this profile - raises or listens for it
+    mpChipRow_scriptEvents->setUnlistedOrigin(tr("Not seen in this profile yet"));
     pGrid->addWidget(mpChipRow_scriptEvents, 1, 1, 1, std::max(1, pGrid->columnCount() - 1));
 
     // Top-aligned, level with the first line of chips; alignEditorFormLeadLabels() holds it to one chip's height
