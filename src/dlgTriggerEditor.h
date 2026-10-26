@@ -300,10 +300,9 @@ public:
     bool handleSoundFileFieldEvent(QEvent* pEvent);
     void turnTriggerHighlightOn();
     void describeColourWell(QPushButton* pWell);
-    // Applies where the seam is placed, not where the reader dragged it
-    [[nodiscard]] int codePaneFloor(const int paneTotal) const;
     int formPaneHeightForItsContents(const int paneTotal) const;
     void fitFormPaneToItsContents();
+    void queueFormPaneRefit();
     void applyFormPaneSeamPolicy();
     void holdFormPaneToItsContents();
     [[nodiscard]] int formColumnHeightForItsWidth() const;
@@ -1148,6 +1147,7 @@ private:
     // Per view, the form height the user dragged the splitter to, kept as items change; a view not named snaps to
     // its item. Not stored: a restart has every view snapping again.
     QHash<EditorViewType, int> mDraggedFormPaneHeights;
+    bool mFormPaneRefitQueued = false;
 
     struct EditorState
     {

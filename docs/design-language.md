@@ -1152,28 +1152,32 @@ A save is bracketed by `beginSaveErrorCapture()` / `endSaveErrorCapture()` so
 that the heading is written once when the save is over, which is what lets a
 save that passed clear the note the last failed one left.
 
-What the form is never given, however much it asks for, is the whole of the two
-panes. `codePaneFloor()` keeps the code pane a third of what they have between
-them and never less than `scmEditorSourcePaneFloor` - the number below which the
-pane stops being one anything can be typed into, and all a third comes to in a
-window too short for it to come to more. Every place the seam is placed rather
-than dragged reads it: the cap and the split in `holdFormPaneToItsContents()`,
+The form is given what it asks for: every pattern row and the Add pattern button
+stay in view, and the code pane takes the rest. Only a form that asks for more
+than the two panes have is held back, at the code pane's
+`scmEditorSourcePaneFloor` - the number below which the pane stops being one
+anything can be typed into, and its minimum height - and its pattern list
+scrolls in what is left. Every place the seam is placed rather than dragged
+reads that floor: the cap and the split in `holdFormPaneToItsContents()`,
 `formPaneHeightForItsContents()`, and the dragged height a view is put back to
-in `fitFormPaneToItsContents()`. What the rule is for is a form that asks for
-more than the window has: a trigger with a long list of patterns and an options
-strip wrapped onto several lines took the pane down to the bare floor and left
-six lines of Lua under it. Held to two thirds, the pattern list scrolls in
-what it is given. The reader's own drag is not held to the third: the handle
-goes where they put it, and the third is taken back the next time the seam is
-placed rather than dragged.
+in `fitFormPaneToItsContents()`. No share is kept for the code pane beyond it:
+the third it once kept held a long trigger's last rows and its Add pattern
+button out of sight above a code pane with room to spare.
+
+A new height for the splitter is the other way the seam goes stale: `QSplitter`
+hands the whole change to the code pane, the one pane with a stretch factor, so
+a taller window would leave the pattern list scrolling. The `QEvent::Resize` on
+`splitter_right` therefore defers `fitFormPaneToItsContents()` whenever the
+height has moved, through `queueFormPaneRefit()`, which runs one refit per turn
+of the event loop however many resizes a window drag sends.
 
 The trigger form answers to the width it is given as well as to the height, and
 what changes there is how many lines its options strip has wrapped onto - a
 `FlowLayout` gives each group of controls its own size and runs on to the next
 line rather than squeezing them, so a narrower editor costs the options a line
 instead of costing a pattern row the width it needs. That is a different height
-for the column, so the `QEvent::Resize` on `mpTriggersMainArea` defers
-`fitFormPaneToItsContents()` whenever the width has moved, and the seam follows.
+for the column, so the `QEvent::Resize` on `mpTriggersMainArea` queues the same
+refit whenever the width has moved, and the seam follows.
 There is no loop in it: a refit moves the seam, which is the column's height and
 never the form's width. The height itself reaches the seam because the strip
 answers `heightForWidth()` - a `QGroupBox` over a `FlowLayout` does that on its

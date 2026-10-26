@@ -212,7 +212,7 @@ private:
     }
 
     // Small steps, since only a real drag reaches slot_rightSplitterMoved() and records a height.
-    // Stops short of codePaneFloor(), past which a case measures the clamp; roomForANoticeToCome
+    // Stops short of the code pane's floor, past which a case measures the clamp; roomForANoticeToCome
     // is what a notice raised later takes out of the same pane.
     void dragTheSeamDown(const int roomForANoticeToCome = 0)
     {
@@ -222,7 +222,7 @@ private:
         QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
         const int paneTotal = sizes.at(0) + sizes.at(1);
         // A step spare: the notice measured now and the later one can differ by a pixel of wrapping
-        const int room = paneTotal - mpEditor->codePaneFloor(paneTotal) - sizes.at(0) - roomForANoticeToCome - scmDragStep;
+        const int room = paneTotal - dlgTriggerEditor::scmEditorSourcePaneFloor - sizes.at(0) - roomForANoticeToCome - scmDragStep;
         const int travel = std::min(scmDragTravel, room - room % scmDragStep);
         QVERIFY2(travel >= scmDragStep,
                  qPrintable(qsl("the form pane is at %1 of %2 with %3 to come for a notice, which leaves nothing to drag into before the seam's own cap")

@@ -67,14 +67,16 @@ private:
     const QString mProfileName = qsl("TriggerPatternListLayout-Test");
     const QString mLocalhost = qsl("localhost");
     const QString mThreePatternTrigger = qsl("qaThreePatterns");
-    const QString mNinePatternTrigger = qsl("qaNinePatterns");
-    const QString mNinthPattern = qsl("qaNinthPattern");
+    const QString mLongTrigger = qsl("qaLongPatternList");
+    const QString mLastPattern = qsl("qaLastPattern");
     const QString mColourPatternTrigger = qsl("qaColourNinth");
     const QString mSpacerPatternTrigger = qsl("qaSpacerNinth");
     // Not a floor the editor keeps: at the sizes these cases use, the form
     // column's share of the panes holds this many rows
     static constexpr int scmRowsALongListShows = 5;
     static constexpr int scmSeamTolerance = 2;
+    // The form is given every row it asks for, so the list only scrolls once it is longer than the window
+    static constexpr int scmLongTriggerPatterns = 16;
 
     void deleteProfileDirectory(const QString& profileName)
     {
@@ -94,15 +96,15 @@ private:
 
         QStringList patterns;
         QList<int> kinds;
-        for (int i = 1; i <= 9; ++i) {
-            patterns << (i == 9 ? mNinthPattern : qsl("p%1").arg(i));
+        for (int i = 1; i <= scmLongTriggerPatterns; ++i) {
+            patterns << (i == scmLongTriggerPatterns ? mLastPattern : qsl("p%1").arg(i));
             kinds << REGEX_PERL;
         }
-        auto* pNine = new TTrigger(nullptr, mpHost);
-        pNine->setName(mNinePatternTrigger);
-        pNine->setRegexCodeList(patterns, kinds);
-        pNine->setScript(qsl("echo(\"hi\")\n"));
-        QVERIFY(pNine->registerTrigger());
+        auto* pLong = new TTrigger(nullptr, mpHost);
+        pLong->setName(mLongTrigger);
+        pLong->setRegexCodeList(patterns, kinds);
+        pLong->setScript(qsl("echo(\"hi\")\n"));
+        QVERIFY(pLong->registerTrigger());
 
         patterns.clear();
         kinds.clear();
@@ -182,7 +184,7 @@ private:
         return top >= 0 && top + pRow->height() <= viewport->height();
     }
 
-    // The form column asks for every row, so a list too long to fit takes all that codePaneFloor() leaves it
+    // The form column asks for every row, so a list too long to fit takes all that the code pane's floor leaves it
     QString formColumnShortOfItsShare() const
     {
         const QList<int> sizes = mpEditor->splitter_right->sizes();
@@ -190,7 +192,7 @@ private:
             return qsl("the right hand splitter has lost a pane");
         }
         const int paneTotal = sizes.at(0) + sizes.at(1);
-        const int share = paneTotal - mpEditor->codePaneFloor(paneTotal);
+        const int share = paneTotal - dlgTriggerEditor::scmEditorSourcePaneFloor;
         if (sizes.at(0) < share - scmSeamTolerance) {
             return qsl("the form column is %1 of the %2 the two panes have, short of the %3 the code pane's share leaves it").arg(sizes.at(0)).arg(paneTotal).arg(share);
         }
@@ -276,7 +278,7 @@ private slots:
         // does when a package is installed
         mpEditor->doCleanReset();
         QVERIFY2(QTest::qWaitFor([this]() {
-                     return triggerItem(mThreePatternTrigger) != nullptr && triggerItem(mNinePatternTrigger) != nullptr && triggerItem(mColourPatternTrigger) != nullptr
+                     return triggerItem(mThreePatternTrigger) != nullptr && triggerItem(mLongTrigger) != nullptr && triggerItem(mColourPatternTrigger) != nullptr
                             && triggerItem(mSpacerPatternTrigger) != nullptr;
                  }),
                  "the editor never rebuilt its trees around the triggers this test planted");
@@ -340,15 +342,15 @@ private slots:
             int caret;
         };
         // Matched past each pattern's start, where the caret would not be anyway
-        const QList<Jump> jumps{{mNinthPattern.mid(2), 8, 2}, {qsl("2"), 1, 1}};
+        const QList<Jump> jumps{{mLastPattern.mid(2), scmLongTriggerPatterns - 1, 2}, {qsl("2"), 1, 1}};
         for (const auto& jump : jumps) {
-            QTreeWidgetItem* pResult = patternSearchResult(jump.term, mNinePatternTrigger, jump.row);
-            QVERIFY2(pResult, qPrintable(qsl("searching for \"%1\" found no result for pattern %2 of the nine pattern trigger").arg(jump.term, QString::number(jump.row + 1))));
+            QTreeWidgetItem* pResult = patternSearchResult(jump.term, mLongTrigger, jump.row);
+            QVERIFY2(pResult, qPrintable(qsl("searching for \"%1\" found no result for pattern %2 of the long trigger").arg(jump.term, QString::number(jump.row + 1))));
 
             mpEditor->slot_itemSelectedInSearchResults(pResult);
             auto* pCurrent = mpEditor->treeWidget_triggers->currentItem();
             QVERIFY2(pCurrent, "choosing the search result selected no trigger");
-            QCOMPARE(pCurrent->text(0), mNinePatternTrigger);
+            QCOMPARE(pCurrent->text(0), mLongTrigger);
             auto* pRow = mpEditor->mTriggerPatternEdit.at(jump.row);
             // Until the layout has run the row still reports the place it had
             // before it was shown, which can read as in view
@@ -411,7 +413,7 @@ private slots:
     // The jump to a pattern runs a moment after the result is chosen, and by
     // then another trigger can be showing. Its rows are not the result's, so
     // the jump must leave them alone: "gamma" matches "ma" past the end of
-    // "p3", the nine pattern trigger's third pattern.
+    // "p3", the long trigger's third pattern.
     void test_aPatternSearchResultLeavesATriggerChosenBeforeItsJumpAlone()
     {
         const auto cleanup = qScopeGuard([this]() {
@@ -425,13 +427,13 @@ private slots:
         QTest::failOnWarning(QRegularExpression(qsl("out of range")));
 
         mpEditor->slot_itemSelectedInSearchResults(pResult);
-        auto* pNine = triggerItem(mNinePatternTrigger);
-        mpEditor->treeWidget_triggers->setCurrentItem(pNine);
-        mpEditor->slot_triggerSelected(pNine);
+        auto* pLong = triggerItem(mLongTrigger);
+        mpEditor->treeWidget_triggers->setCurrentItem(pLong);
+        mpEditor->slot_triggerSelected(pLong);
         QWidget* pFocusBeforeJump = QApplication::focusWidget();
         const int scrollBeforeJump = mpEditor->mpScrollArea->verticalScrollBar()->value();
         QVERIFY(runQueuedTimers());
-        QVERIFY2(QApplication::focusWidget() == pFocusBeforeJump, "the jump for a pattern of the three pattern trigger moved focus within the nine pattern trigger");
+        QVERIFY2(QApplication::focusWidget() == pFocusBeforeJump, "the jump for a pattern of the three pattern trigger moved focus within the long trigger");
         QCOMPARE(mpEditor->mpScrollArea->verticalScrollBar()->value(), scrollBeforeJump);
     }
 
@@ -454,7 +456,7 @@ private slots:
     // the row and a half that started this
     void test_aLongPatternListStillShowsSeveralRows()
     {
-        QVERIFY2(selectTrigger(mNinePatternTrigger), "could not select the nine pattern trigger");
+        QVERIFY2(selectTrigger(mLongTrigger), "could not select the long trigger");
 
         const QString shortOfShare = formColumnShortOfItsShare();
         QVERIFY2(shortOfShare.isEmpty(), qPrintable(shortOfShare));
@@ -467,9 +469,9 @@ private slots:
     // that is the row the list opens on - whatever it was scrolled to before
     void test_theListOpensOnPatternOne()
     {
-        QVERIFY2(selectTrigger(mNinePatternTrigger), "could not select the nine pattern trigger");
+        QVERIFY2(selectTrigger(mLongTrigger), "could not select the long trigger");
         auto* pScrollBar = mpEditor->mpScrollArea->verticalScrollBar();
-        QVERIFY2(pScrollBar->maximum() > 0, "the nine pattern trigger should overflow the list, otherwise this test cannot tell a reset scroll position from no scrolling at all");
+        QVERIFY2(pScrollBar->maximum() > 0, "the long trigger should overflow the list, otherwise this test cannot tell a reset scroll position from no scrolling at all");
 
         // Leave it at the bottom - where scrolling to the row after the last
         // pattern used to leave it, and where a user may leave it by hand
@@ -478,7 +480,7 @@ private slots:
         QVERIFY(pScrollBar->value() > 0);
 
         QVERIFY2(selectTrigger(mThreePatternTrigger), "could not select the three pattern trigger");
-        QVERIFY2(selectTrigger(mNinePatternTrigger), "could not re-select the nine pattern trigger");
+        QVERIFY2(selectTrigger(mLongTrigger), "could not re-select the long trigger");
 
         QCOMPARE(pScrollBar->value(), 0);
         QVERIFY2(rowIsFullyVisible(mpEditor->mTriggerPatternEdit.at(0)), "pattern 1 should be fully in view when a trigger is opened");
@@ -493,7 +495,7 @@ private slots:
     // out at rather than the one the pattern types that show a text field get.
     void test_aHorizontalScrollbarDoesNotEatARow()
     {
-        QVERIFY2(selectTrigger(mNinePatternTrigger), "could not select the nine pattern trigger");
+        QVERIFY2(selectTrigger(mLongTrigger), "could not select the long trigger");
         for (int i = 0; i < mpEditor->mVisiblePatternCount; ++i) {
             mpEditor->mTriggerPatternEdit.at(i)->comboBox_patternType->setCurrentIndex(REGEX_COLOR_PATTERN);
         }

@@ -492,7 +492,7 @@ private slots:
         const QList<int> sizes = mpEditor->splitter_right->sizes();
         QVERIFY2(sizes.size() >= 2, "the right hand splitter has lost a pane");
         const int paneTotal = sizes.at(0) + sizes.at(1);
-        const int floor = mpEditor->codePaneFloor(paneTotal);
+        const int floor = dlgTriggerEditor::scmEditorSourcePaneFloor;
         qInfo().noquote() << qsl("  in a %1x%2 window the panes are %3 / %4 of %5, where the code pane keeps %6")
                                      .arg(mpEditor->width())
                                      .arg(scmShortEditor)
@@ -502,15 +502,12 @@ private slots:
                                      .arg(floor);
 
         QVERIFY2(std::abs(sizes.at(0) - (paneTotal - floor)) <= scmSeamTolerance,
-                 qPrintable(qsl("the form is at %1 of the %2 the two panes have, rather than at the %3 the code pane's share leaves it - this window is not short enough for the case to say anything")
+                 qPrintable(qsl("the form is at %1 of the %2 the two panes have, rather than at the %3 the code pane's floor leaves it - this window is not short enough for the case to say anything")
                                     .arg(sizes.at(0))
                                     .arg(paneTotal)
                                     .arg(paneTotal - floor)));
         QVERIFY2(sizes.at(1) >= floor - scmSeamTolerance,
                  qPrintable(qsl("the form was given %1 of the %2 the two panes have, leaving the code pane %3 against the %4 it keeps").arg(sizes.at(0)).arg(paneTotal).arg(sizes.at(1)).arg(floor)));
-        // A third written out, not read from codePaneFloor(), which is what is being held
-        QVERIFY2(sizes.at(1) >= paneTotal / 3 - scmSeamTolerance,
-                 qPrintable(qsl("the code pane was left %1 of the %2 the two panes have, where a third of them is %3").arg(sizes.at(1)).arg(paneTotal).arg(paneTotal / 3)));
     }
 
     void test_theSegmentsWriteTheMatchingModeIntoTheHiddenSpinBox()

@@ -999,6 +999,7 @@ dlgTriggerEditor::dlgTriggerEditor(Host* pH)
     buildEditorFormHeadRows();
 
     connect(splitter_right, &QSplitter::splitterMoved, this, &dlgTriggerEditor::slot_rightSplitterMoved);
+    splitter_right->installEventFilter(this);
     // additional settings
     treeWidget_triggers->setColumnCount(1);
     treeWidget_triggers->setTreeType(TreeType::Trigger);
@@ -11090,7 +11091,7 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
 
     QList<int> sizes = splitter_right->sizes();
     const int paneTotal = sizes.size() < 2 ? 0 : sizes.at(0) + sizes.at(1);
-    const int paneHeight = paneTotal <= 0 ? wanted : std::clamp(wanted, 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
+    const int paneHeight = paneTotal <= 0 ? wanted : std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
     mpNonCodeWidgets->setMaximumHeight(paneHeight);
     if (paneTotal <= 0 || sizes.at(0) == paneHeight) {
         return;
@@ -11100,8 +11101,6 @@ void dlgTriggerEditor::holdFormPaneToItsContents()
     splitter_right->setSizes(sizes);
 }
 
-// Clamped to the hard floor, not codePaneFloor(): a split the reader dragged past
-// the code pane's third stays theirs until the seam is next placed
 void dlgTriggerEditor::moveSeamByNoticeChange(const int noticeChange)
 {
     if (noticeChange == 0 || mpSourceEditorArea->isHidden()) {
@@ -11149,12 +11148,6 @@ QWidget* dlgTriggerEditor::currentFormArea() const
     return mpNonCodeWidgets;
 }
 
-// A long trigger asks for more than any window has; held to two thirds, its pattern list scrolls instead
-int dlgTriggerEditor::codePaneFloor(const int paneTotal) const
-{
-    return std::max(scmEditorSourcePaneFloor, paneTotal / 3);
-}
-
 int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
 {
     // A change inside a widget only invalidates its immediate parent's layout, so
@@ -11167,7 +11160,7 @@ int dlgTriggerEditor::formPaneHeightForItsContents(const int paneTotal) const
     if (mpScrollArea && mpWidget_triggerItems && mpTriggersMainArea->isVisible()) {
         wanted += std::max(0, mpWidget_triggerItems->sizeHint().height() - mpScrollArea->sizeHint().height());
     }
-    return std::clamp(wanted, 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
+    return std::clamp(wanted, 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
 }
 
 void dlgTriggerEditor::fitFormPaneToItsContents()
@@ -11199,7 +11192,7 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     const auto dragged = mDraggedFormPaneHeights.constFind(mCurrentView);
     if (dragged != mDraggedFormPaneHeights.constEnd()) {
         // Stored net of any notice (see slot_rightSplitterMoved()), so the one up now is added back
-        wanted = std::clamp(dragged.value() + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - codePaneFloor(paneTotal)));
+        wanted = std::clamp(dragged.value() + noticeRoomInFormColumn(), 0, std::max(0, paneTotal - scmEditorSourcePaneFloor));
     } else {
         wanted = formPaneHeightForItsContents(paneTotal);
     }
@@ -11209,6 +11202,20 @@ void dlgTriggerEditor::fitFormPaneToItsContents()
     sizes[0] = wanted;
     sizes[1] = paneTotal - wanted;
     splitter_right->setSizes(sizes);
+}
+
+// Deferred: a resize arrives while the right hand splitter is handing its panes their geometry, and the
+// refit moves the seam between those same panes. One per turn, as a window drag sends a resize per frame.
+void dlgTriggerEditor::queueFormPaneRefit()
+{
+    if (mFormPaneRefitQueued) {
+        return;
+    }
+    mFormPaneRefitQueued = true;
+    QTimer::singleShot(0ms, this, [this]() {
+        mFormPaneRefitQueued = false;
+        fitFormPaneToItsContents();
+    });
 }
 
 void dlgTriggerEditor::slot_showTimers()
@@ -13776,11 +13783,16 @@ bool dlgTriggerEditor::eventFilter(QObject* watched, QEvent* event)
     if (watched == mpTriggersMainArea && event->type() == QEvent::Resize) {
         const auto* pResize = static_cast<QResizeEvent*>(event);
         if (pResize->size().width() != pResize->oldSize().width()) {
-            // Deferred: this arrives while the right hand splitter is handing its panes their geometry, and the
-            // refit moves the seam between those same panes
-            QTimer::singleShot(0ms, this, [this]() {
-                fitFormPaneToItsContents();
-            });
+            queueFormPaneRefit();
+        }
+    }
+
+    // QSplitter gives a change in its own height to the code pane alone (the stretch factors), which would keep a
+    // long pattern list scrolling above a code pane with room to spare. No loop: the refit never changes that height.
+    if (watched == splitter_right && event->type() == QEvent::Resize) {
+        const auto* pResize = static_cast<QResizeEvent*>(event);
+        if (pResize->size().height() != pResize->oldSize().height()) {
+            queueFormPaneRefit();
         }
     }
 

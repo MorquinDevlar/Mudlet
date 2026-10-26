@@ -25,6 +25,7 @@
  * Run with: ctest -R EditorSplitterRestoreTest -V
  */
 
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
@@ -62,6 +63,9 @@ private:
     // case ends up measuring the clamp instead of the fit
     static constexpr int scmWindowWidth = 1000;
     static constexpr int scmWindowHeight = 1400;
+    // Short enough that eleven rows scroll at both heights, so each measures the code pane's floor
+    static constexpr int scmShortWindowHeight = 600;
+    static constexpr int scmShortWindowGrowth = 80;
     // Mirrors scmEditorSourcePaneFloor in src/dlgTriggerEditor.cpp, which is
     // file-local to it
     static constexpr int scmSourcePaneFloor = 120;
@@ -359,9 +363,9 @@ private slots:
         chooseTrigger(mpShortTrigger);
         const int panes = panesTotal();
         // Past what the tallest item fills, yet short of where the snap that
-        // reads the height back clamps the code pane to codePaneFloor() - a
-        // deeper drag would measure the clamp instead
-        dragFormPaneTo(std::min({tallestFormNeeds + 80, panes - scmSourcePaneFloor - 40, panes - panes / 3}));
+        // reads the height back clamps the code pane to its floor - a deeper
+        // drag would measure the clamp instead
+        dragFormPaneTo(std::min(tallestFormNeeds + 80, panes - scmSourcePaneFloor - 40));
         const int draggedTo = mpSplitter->sizes().at(0);
         QVERIFY2(mpEditor->mDraggedFormPaneHeights.value(EditorViewType::cmTriggerView) == draggedTo,
                  qPrintable(qsl("a drag on this view's handle left the form at %1px and was not recorded as the view's own height").arg(QString::number(draggedTo))));
@@ -390,6 +394,70 @@ private slots:
         chooseTrigger(mpShortTrigger);
         QVERIFY2(mpSplitter->sizes().at(0) == draggedTo,
                  qPrintable(qsl("the trigger view came back at %1px rather than the %2px it was dragged to").arg(QString::number(mpSplitter->sizes().at(0)), QString::number(draggedTo))));
+    }
+
+    // Regression: the code pane kept a third of the panes, so a window with room for all eleven rows over
+    // a code pane under a third opened with the last rows and the Add pattern button scrolled out of sight
+    void test_aLongTriggerShowsEveryRowWhileTheCodePaneHasRoomToGive()
+    {
+        const auto restoreTheWindow = qScopeGuard([this]() {
+            mpEditor->resize(scmWindowWidth, scmWindowHeight);
+            QTest::qWait(50ms);
+        });
+        enterTheTriggerView();
+        chooseTrigger(mpTallTrigger);
+        const QList<int> roomy = mpSplitter->sizes();
+        const int formNeeds = roomy.at(0);
+        QVERIFY2(!patternsScrolling(), "the eleven rows scroll in the tall window, so there is no height of theirs to fit a shorter one to");
+        // A quarter of the form's height left for the code pane, well under a third of the panes
+        const int codeLeft = std::max(scmSourcePaneFloor + 10, formNeeds / 4);
+        mpEditor->resize(scmWindowWidth, scmWindowHeight - (roomy.at(1) - codeLeft));
+        QTest::qWait(50ms);
+        chooseTrigger(mpShortTrigger);
+        chooseTrigger(mpTallTrigger);
+
+        const QList<int> sizes = mpSplitter->sizes();
+        const int panes = sizes.at(0) + sizes.at(1);
+        QWidget* pAddPattern = mpEditor->mpButton_addPattern;
+        const int addPatternBottom = pAddPattern->mapTo(mpPatterns->viewport(), QPoint(0, pAddPattern->height())).y();
+        qInfo().noquote() << qsl("  eleven rows need %1px; in the shorter window the panes are %2, and the Add pattern button ends at %3 of the %4px list")
+                                     .arg(QString::number(formNeeds), describe(sizes), QString::number(addPatternBottom), QString::number(mpPatterns->viewport()->height()));
+        QVERIFY2(formNeeds > panes - panes / 3,
+                 qPrintable(qsl("eleven rows need %1px, no more than two thirds of the %2px the panes have, so this case says nothing about the code pane giving up its third")
+                                    .arg(QString::number(formNeeds), QString::number(panes))));
+        QVERIFY2(sizes.at(0) == formNeeds,
+                 qPrintable(qsl("the form needs %1px and was given %2px of the %3px the panes have").arg(QString::number(formNeeds), QString::number(sizes.at(0)), QString::number(panes))));
+        QVERIFY2(!patternsScrolling(), "the eleven rows scroll although the code pane had the room to give them");
+        QVERIFY2(addPatternBottom <= mpPatterns->viewport()->height(), "the Add pattern button is cut off at the bottom of the pattern list");
+    }
+
+    // Regression: QSplitter gives a change in its height to the code pane alone, so a window made taller
+    // kept the eleven rows scrolling above a code pane with room to spare
+    void test_aNewWindowHeightIsSharedOutAgain()
+    {
+        const auto restoreTheWindow = qScopeGuard([this]() {
+            mpEditor->resize(scmWindowWidth, scmWindowHeight);
+            QTest::qWait(50ms);
+        });
+        enterTheTriggerView();
+        mpEditor->resize(scmWindowWidth, scmShortWindowHeight);
+        QTest::qWait(50ms);
+        chooseTrigger(mpTallTrigger);
+        const QList<int> chosen = mpSplitter->sizes();
+        QVERIFY2(patternsScrolling(), "the eleven rows fit the short window, so the form was fitted rather than held to its share and this case says nothing");
+
+        for (const int height : {scmShortWindowHeight + scmShortWindowGrowth, scmShortWindowHeight}) {
+            mpEditor->resize(scmWindowWidth, height);
+            QTest::qWait(50ms);
+            const QList<int> sizes = mpSplitter->sizes();
+            const int share = formWants();
+            qInfo().noquote() << qsl("  chosen at %1, a %2px tall window left the panes at %3 where the form's share is %4px")
+                                         .arg(describe(chosen), QString::number(height), describe(sizes), QString::number(share));
+            QVERIFY2(sizes.at(0) == share,
+                     qPrintable(qsl("in a %1px tall window the form is at %2px of the %3px the panes have, where its share is %4px")
+                                        .arg(QString::number(height), QString::number(sizes.at(0)), QString::number(sizes.at(0) + sizes.at(1)), QString::number(share))));
+        }
+        QVERIFY2(mpSplitter->sizes().at(1) == chosen.at(1), "the window is back at the height the trigger was chosen in, and the code pane is not back where it was");
     }
 
     // Eleven rows, not three: a one-row trigger's options caption already leaves
