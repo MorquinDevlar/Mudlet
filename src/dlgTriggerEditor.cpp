@@ -7481,13 +7481,7 @@ void dlgTriggerEditor::saveScript()
     }
 
     if (pT->state()) {
-        if (auto error = pT->getLoadingError(); error) {
-            showWarning(tr("While loading the profile, this script had an error that has since been fixed, "
-                           "possibly by another script. The error was:%2%3")
-                                .arg(qsl("<br>"), error.value()));
-        } else {
-            clearEditorNotification();
-        }
+        clearEditorNotification();
 
         if (pT->checkIfNew()) {
             if (pT->isFolder()) {
@@ -8665,9 +8659,8 @@ void dlgTriggerEditor::slot_triggerSelected(QTreeWidgetItem* pItem)
 
         if (!pT->state()) {
             reportCompileError(pT->getError());
-        } else {
-            showPackageWarning(pT->packageName(pT), pItem);
         }
+        showPackageWarning(pT->packageName(pT), pItem);
     } else {
         clearTriggerForm();
         // Re-enable updates since restoreEditorState won't be called
@@ -8729,9 +8722,8 @@ void dlgTriggerEditor::slot_aliasSelected(QTreeWidgetItem* pItem)
 
         if (!pT->state()) {
             reportCompileError(pT->getError());
-        } else {
-            showPackageWarning(pT->packageName(pT), pItem);
         }
+        showPackageWarning(pT->packageName(pT), pItem);
 
     } else {
         // No details to show - as will be the case if the top item (ID = 0) is
@@ -8794,12 +8786,11 @@ void dlgTriggerEditor::slot_keySelected(QTreeWidgetItem* pItem)
 
         if (!pT->state()) {
             reportCompileError(pT->getError());
-        } else {
-            showPackageWarning(pT->packageName(pT), pItem);
-            // A warning given while the editor was closed is replaced when it opens, so a script-made binding
-            // is only warned about here. Not announced, or arrowing through the keys would be talked over.
-            showKeyTakenWarning(pItem, takenKeyWarning(pT), false);
         }
+        showPackageWarning(pT->packageName(pT), pItem);
+        // A warning given while the editor was closed is replaced when it opens, so a script-made binding
+        // is only warned about here. Not announced, or arrowing through the keys would be talked over.
+        showKeyTakenWarning(pItem, takenKeyWarning(pT), false);
     } else {
         clearKeyForm();
         // Re-enable updates since restoreEditorState won't be called
@@ -9258,9 +9249,8 @@ void dlgTriggerEditor::slot_actionSelected(QTreeWidgetItem* pItem)
 
         if (!pT->state()) {
             reportCompileError(pT->getError());
-        } else {
-            showPackageWarning(pT->packageName(pT), pItem);
         }
+        showPackageWarning(pT->packageName(pT), pItem);
     } else {
         // On root of treewidget_actions: - show help message instead
         clearActionForm();
@@ -9382,15 +9372,11 @@ void dlgTriggerEditor::slot_scriptsSelected(QTreeWidgetItem* pItem)
 
         mpScriptsMainArea->lineEdit_script_name->setText(name);
         mpScriptsMainArea->label_idNumber->setText(QString::number(ID));
-        if (auto error = pT->getLoadingError(); error) {
-            showWarning(tr("While loading the profile, this script had an error that has since been fixed, "
-                           "possibly by another script. The error was:%2%3")
-                                .arg(qsl("<br>"), error.value()));
-        } else if (!pT->state()) {
+        // A body that failed as the profile loaded is still failing: only a compile that succeeds clears it
+        if (!pT->state()) {
             reportCompileError(pT->getError());
-        } else {
-            showPackageWarning(pT->packageName(pT), pItem);
         }
+        showPackageWarning(pT->packageName(pT), pItem);
 
     } else {
         // No details to show - as will be the case if the top item (ID = 0) is
@@ -9460,9 +9446,8 @@ void dlgTriggerEditor::slot_timerSelected(QTreeWidgetItem* pItem)
 
         if (!pT->state()) {
             reportCompileError(pT->getError());
-        } else {
-            showPackageWarning(pT->packageName(pT), pItem);
         }
+        showPackageWarning(pT->packageName(pT), pItem);
     } else {
         clearTimerForm();
         // Re-enable updates since restoreEditorState won't be called
@@ -15948,18 +15933,6 @@ void dlgTriggerEditor::setEditorShowBidi(const bool state)
 void dlgTriggerEditor::hideSystemMessageArea()
 {
     mpSystemMessageArea->hide();
-
-    if (mCurrentView != EditorViewType::cmScriptView) {
-        return;
-    }
-
-    QTreeWidgetItem* pItem = treeWidget_scripts->currentItem();
-    if (pItem) {
-        TScript* pT = mpHost->getScriptUnit()->getScript(pItem->data(0, Qt::UserRole).toInt());
-        if (pT && pT->getLoadingError()) {
-            pT->clearLoadingError();
-        }
-    }
 }
 
 // Mirrors dlgProfilePreferences::buildSidebar(), so that the two windows read as one design
@@ -17099,25 +17072,6 @@ void dlgTriggerEditor::changeEvent(QEvent* e)
     // the appearance can be switched between light and dark while the editor is open
     if ((e->type() == QEvent::StyleChange || e->type() == QEvent::PaletteChange) && mpTriggersMainArea) {
         applyEditorShellStyle();
-    }
-
-    if (e->type() == QEvent::ActivationChange && this->isActiveWindow()) {
-        if (mCurrentView == EditorViewType::cmScriptView) {
-            auto scriptTreeWidgetItem = treeWidget_scripts->currentItem();
-            if (!scriptTreeWidgetItem) {
-                return;
-            }
-
-            TScript* script = mpHost->getScriptUnit()->getScript(scriptTreeWidgetItem->data(0, Qt::UserRole).toInt());
-            if (!script) {
-                return;
-            }
-            if (auto error = script->getLoadingError(); error) {
-                showWarning(tr("While loading the profile, this script had an error that has since been fixed, "
-                               "possibly by another script. The error was:%2%3")
-                                    .arg(qsl("<br>"), error.value()));
-            }
-        }
     }
 }
 

@@ -114,6 +114,23 @@ private:
         return words.join(QLatin1Char('/'));
     }
 
+    // Rebuilt as fillout_form() does, for a script made after the tree. Signals held:
+    // clear() reports a selection change while destroying rows, and the editor loads it
+    void rebuildScriptRows()
+    {
+        {
+            const QSignalBlocker quiet(mpEditor->treeWidget_scripts);
+            mpEditor->treeWidget_scripts->clear();
+            mpEditor->mpCurrentScriptItem = nullptr;
+            mpEditor->mpScriptsBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(qsl("Scripts")));
+            mpEditor->treeWidget_scripts->insertTopLevelItem(0, mpEditor->mpScriptsBaseItem);
+            mpEditor->mpSystemMessageArea->hide();
+            mpEditor->populateScripts();
+            mpEditor->mpScriptsBaseItem->setExpanded(true);
+        }
+        QTest::qWait(50ms);
+    }
+
     void typeAndSave(const QString& script)
     {
         mpEditor->mpSourceEditorEdbee->textDocument()->setText(script);
@@ -535,20 +552,7 @@ private slots:
 
         mpEditor->slot_showScripts();
         QTest::qWait(50ms);
-
-        // Rebuilt as fillout_form() does, since the tree predates the script. Signals held:
-        // clear() reports a selection change while destroying rows, and the editor loads it
-        {
-            const QSignalBlocker quiet(mpEditor->treeWidget_scripts);
-            mpEditor->treeWidget_scripts->clear();
-            mpEditor->mpCurrentScriptItem = nullptr;
-            mpEditor->mpScriptsBaseItem = new QTreeWidgetItem(static_cast<QTreeWidgetItem*>(nullptr), QStringList(qsl("Scripts")));
-            mpEditor->treeWidget_scripts->insertTopLevelItem(0, mpEditor->mpScriptsBaseItem);
-            mpEditor->mpSystemMessageArea->hide();
-            mpEditor->populateScripts();
-            mpEditor->mpScriptsBaseItem->setExpanded(true);
-        }
-        QTest::qWait(50ms);
+        rebuildScriptRows();
 
         QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(),
                  qPrintable(qsl("building the rows raised the notice over the form for a broken item nobody had opened, reading \"%1\"").arg(bannerReads())));
@@ -562,6 +566,80 @@ private slots:
         QTRY_VERIFY2(pNote->isVisible(), "opening an item that has never compiled left the heading saying nothing about it");
         QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(),
                  qPrintable(qsl("opening a broken item raised the notice over the form as well as the note on the heading, reading \"%1\"").arg(bannerReads())));
+    }
+
+    // Regression: a body that failed as the profile loaded opened under a notice calling the error
+    // fixed, and closing that notice forgot the error, so the item read as clean until opened again
+    void test_aScriptThatFailedAsTheProfileLoadedOpensWithItsNote()
+    {
+        auto* pBroken = new TScript(qsl("A script that failed as the profile loaded"), mpHost);
+        pBroken->setScript(qsl("broken broken or {}\n"));
+        // What ScriptUnit::compileAll(true) keeps of the same failure while a profile loads
+        pBroken->setLoadingError(pBroken->getError());
+        pBroken->registerScript();
+        QVERIFY2(!pBroken->state() && pBroken->getLoadingError(), "the script this case meant to leave failed as the profile loaded compiles after all");
+        auto* pClean = new TScript(qsl("A script beside it that compiles"), mpHost);
+        pClean->setScript(qsl("-- nothing wrong here\n"));
+        pClean->registerScript();
+
+        mpEditor->slot_showScripts();
+        QTest::qWait(50ms);
+        rebuildScriptRows();
+        QTreeWidgetItem* pBrokenRow = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, pBroken->getID());
+        QTreeWidgetItem* pCleanRow = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, pClean->getID());
+        QVERIFY2(pBrokenRow != nullptr && pCleanRow != nullptr, "the two scripts have no rows in the Scripts tree");
+
+        QWidget* pNote = compileNote();
+        QLabel* pMessage = compileMessage();
+        QVERIFY2(pNote != nullptr && pMessage != nullptr, "the code pane's heading has no compile note on it");
+        mpEditor->slot_scriptsSelected(pBrokenRow);
+        QTRY_VERIFY2(pNote->isVisible(), "opening a script that failed as the profile loaded left the heading saying nothing about it");
+        QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(), qPrintable(qsl("opening it raised the notice over the form as well, reading \"%1\"").arg(bannerReads())));
+        const QString saidOnOpening = pMessage->text();
+
+        mpEditor->showWarning(qsl("A notice about something else"));
+        QVERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "the notice this case closes never came up");
+        mpEditor->mpSystemMessageArea->messageAreaCloseButton->click();
+        QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(), "the notice's close button left it up");
+        QVERIFY2(pNote->isVisible(), "closing a notice about something else took the note off the heading");
+
+        mpEditor->slot_scriptsSelected(pCleanRow);
+        QTRY_VERIFY2(!pNote->isVisible(), qPrintable(qsl("the note followed the reader onto a script that compiles, reading \"%1\"").arg(pMessage->text())));
+        mpEditor->slot_scriptsSelected(pBrokenRow);
+        QTRY_VERIFY2(pNote->isVisible(), "after a notice was closed, opening the script again left the heading saying nothing about it");
+        QCOMPARE(pMessage->text(), saidOnOpening);
+        QVERIFY2(!mpEditor->mpSystemMessageArea->isVisible(), qPrintable(qsl("opening it again raised the notice over the form, reading \"%1\"").arg(bannerReads())));
+    }
+
+    // Regression: the package notice was given only to an item that compiled, from when the error shared its place
+    void test_aBrokenItemInAPackageOpensWithTheNoteAndThePackageNotice()
+    {
+        auto* pPackage = new TScript(qsl("A package with a broken script"), mpHost);
+        pPackage->setIsFolder(true);
+        pPackage->mPackageName = qsl("EditorCodeHeadingBrokenPackage");
+        pPackage->registerScript();
+        auto* pBroken = new TScript(pPackage, mpHost);
+        pBroken->setName(qsl("The package's broken script"));
+        pBroken->setScript(qsl("broken broken or {}\n"));
+        pBroken->registerScript();
+        QVERIFY2(!pBroken->state(), "the script this case meant to leave broken compiles after all");
+        QVERIFY2(!pBroken->packageName(pBroken).isEmpty(), "the broken script is not read as part of a package, so no package notice is due");
+
+        mpEditor->slot_showScripts();
+        QTest::qWait(50ms);
+        rebuildScriptRows();
+        QTreeWidgetItem* pPackageRow = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, pPackage->getID());
+        QVERIFY2(pPackageRow != nullptr, "the package has no row in the Scripts tree");
+        pPackageRow->setExpanded(true);
+        QTreeWidgetItem* pBrokenRow = TestPixels::rowFor(pPackageRow, pBroken->getID());
+        QVERIFY2(pBrokenRow != nullptr, "the broken script has no row under its package");
+        mpEditor->slot_scriptsSelected(pBrokenRow);
+
+        QWidget* pNote = compileNote();
+        QVERIFY2(pNote != nullptr, "the code pane's heading has no widget named editorCompileNote on it");
+        QTRY_VERIFY2(pNote->isVisible(), "opening a broken script in a package left the heading saying nothing about it");
+        QTRY_VERIFY2(mpEditor->mpSystemMessageArea->isVisible(), "opening a broken script in a package raised no notice that it belongs to one");
+        QVERIFY2(bannerReads().contains(qsl("part of a package")), qPrintable(qsl("the notice over the form reads \"%1\", not the package notice").arg(bannerReads())));
     }
 
     // The raw state colour is a fill rather than an ink, a different red from the words
