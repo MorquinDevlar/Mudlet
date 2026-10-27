@@ -66,6 +66,10 @@ public:
     [[nodiscard]] ItemState stateOf(const QModelIndex& index) const;
     // Rows anywhere under index whose own switch is off; a closed group says how many at its edge
     [[nodiscard]] int switchedOffInside(const QModelIndex& index) const;
+    // What hovering the row's dot says, and nothing for a row without a switch
+    [[nodiscard]] QString dotToolTip(const QModelIndex& index) const;
+
+    bool helpEvent(QHelpEvent* pEvent, QAbstractItemView* pView, const QStyleOptionViewItem& option, const QModelIndex& index) override;
 
 signals:
     // No argument: the row is made the tree's current one first, and the slot reads that

@@ -166,7 +166,10 @@ how many rows anywhere inside it are struck ("2 off",
 `EditorTreeDelegate::switchedOffInside()`), the name eliding short of it; an open
 group says nothing, its rows show it. A change to a row inside a closed group
 repaints the tree, or the count on screen would stay as it was. The Folders view
-leaves the count out, since its trailing edge is the item's type.
+leaves the count out, since its trailing edge is the item's type. Hovering a
+dot says which of the three states it is in and what a click will do, naming the
+group that is off for a row on inside it (`EditorTreeDelegate::dotToolTip()`,
+shown from `helpEvent()` over the dot's hit rectangle only).
 `EditorTreeErrorMarkTest` holds all of it.
 
 A `color:` rule cannot reach a view's rows - a stylesheet only gets at them

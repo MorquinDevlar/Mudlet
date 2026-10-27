@@ -29,10 +29,13 @@
 #include "TTrigger.h"
 #include "uiDesign.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
+#include <QHelpEvent>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionViewItem>
+#include <QToolTip>
 
 namespace uiDesign {
 
@@ -336,6 +339,76 @@ int EditorTreeDelegate::switchedOffInside(const QModelIndex& index) const
         count += switchedOffInside(child);
     }
     return count;
+}
+
+QString EditorTreeDelegate::dotToolTip(const QModelIndex& index) const
+{
+    const ItemState state = stateOf(index);
+    if (!state.known) {
+        return {};
+    }
+    const bool broken = state.mark == RowMark::Error;
+    const bool group = state.mark == RowMark::Folder || state.mark == RowMark::Package || state.mark == RowMark::NewFolder || (index.model() && index.model()->hasChildren(index));
+    QString tip;
+    switch (state.dot) {
+    case DotState::Running:
+        tip = group
+                      //: Tooltip on the dot of a running group in the script editor's trees
+                      ? tr("Running. Click to switch it off, and everything inside it with it.")
+                      //: Tooltip on the dot of a running item in the script editor's trees
+                      : tr("Running. Click to switch it off.");
+        break;
+    case DotState::Off:
+        if (broken) {
+            //: Tooltip on the dot of a switched-off item in the script editor's trees whose code has an error
+            tip = tr("Switched off, and its code has an error. Click to switch it on.");
+        } else {
+            tip = group
+                          //: Tooltip on the dot of a switched-off group in the script editor's trees
+                          ? tr("Switched off, so nothing inside it runs. Click to switch it on.")
+                          //: Tooltip on the dot of a switched-off item in the script editor's trees
+                          : tr("Switched off. Click to switch it on.");
+        }
+        break;
+    case DotState::WantedOn: {
+        if (broken) {
+            //: Tooltip on the dot of an item in the script editor's trees that is switched on but whose code has an error
+            tip = tr("Switched on, but its code has an error, so it is not running. Click to switch it off.");
+            break;
+        }
+        QString offGroup;
+        for (QModelIndex parent = index.parent(); parent.isValid() && offGroup.isEmpty(); parent = parent.parent()) {
+            const ItemState parentState = stateOf(parent);
+            if (parentState.known && parentState.dot == DotState::Off) {
+                offGroup = parent.data(Qt::DisplayRole).toString();
+            }
+        }
+        tip = offGroup.isEmpty()
+                      //: Tooltip on the dot of an item in the script editor's trees that is switched on inside a group that is off
+                      ? tr("Switched on, but not running: a group it is in is switched off. Click to switch it off.")
+                      //: Tooltip on the dot of an item in the script editor's trees that is switched on inside a group that is off; %1 is that group's name
+                      : tr("Switched on, but not running: the group \"%1\" is switched off. Click to switch it off.").arg(offGroup.toHtmlEscaped());
+        break;
+    }
+    }
+    // Rich text either way, so a name that looks like markup is shown as written
+    return qsl("<p>%1</p>").arg(tip);
+}
+
+bool EditorTreeDelegate::helpEvent(QHelpEvent* pEvent, QAbstractItemView* pView, const QStyleOptionViewItem& option, const QModelIndex& index)
+{
+    if (pEvent && pView && pEvent->type() == QEvent::ToolTip) {
+        const QRect dot = dotHitRect(option, index);
+        if (dot.contains(pEvent->pos())) {
+            const QString tip = dotToolTip(index);
+            if (!tip.isEmpty()) {
+                // The dot's rectangle, so the tip goes as the pointer moves on to the name
+                QToolTip::showText(pEvent->globalPos(), tip, pView->viewport(), dot);
+                return true;
+            }
+        }
+    }
+    return QStyledItemDelegate::helpEvent(pEvent, pView, option, index);
 }
 
 void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const

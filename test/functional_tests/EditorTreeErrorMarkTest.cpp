@@ -26,9 +26,11 @@
  * Run with: ctest -R EditorTreeErrorMarkTest -V
  */
 
+#include <QHelpEvent>
 #include <QImage>
 #include <QPaintEvent>
 #include <QStyleOptionViewItem>
+#include <QToolTip>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
 #include <chrono>
@@ -605,6 +607,64 @@ private slots:
         pTree->viewport()->removeEventFilter(&counter);
         QCOMPARE(pDelegate->switchedOffInside(groupIndex), 3);
         QVERIFY2(counter.paints > 0, "A script switched off inside the closed group never repainted the group, so the count on screen stays at 2");
+    }
+
+    void test_hoveringADotSaysWhatStateItIsInAndWhatAClickDoes()
+    {
+        TTreeWidget* pTree = mpEditor->treeWidget_scripts;
+        pTree->expandAll();
+        QTest::qWait(50ms);
+        auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(pTree->itemDelegateForIndex(QModelIndex()));
+        QVERIFY(pDelegate);
+        const auto indexOf = [this, pTree](const int id) {
+            return pTree->indexAt(pTree->visualItemRect(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, id)).center());
+        };
+
+        const QList<QPair<int, QString>> expected{{mWorkingScriptId, qsl("<p>Running. Click to switch it off.</p>")},
+                                                  {mScriptFolderId, qsl("<p>Running. Click to switch it off, and everything inside it with it.</p>")},
+                                                  {mSwitchedOffScriptId, qsl("<p>Switched off. Click to switch it on.</p>")},
+                                                  {mBrokenScriptId, qsl("<p>Switched off, and its code has an error. Click to switch it on.</p>")},
+                                                  {mQuietFolderId, qsl("<p>Switched off, so nothing inside it runs. Click to switch it on.</p>")},
+                                                  {mWantedOnScriptId, qsl("<p>Switched on, but not running: the group \"A group that is switched off\" is switched off. Click to switch it off.</p>")}};
+        QStringList misses;
+        for (const auto& [id, tip] : expected) {
+            const QString said = pDelegate->dotToolTip(indexOf(id));
+            if (said != tip) {
+                misses << qsl("%1 says \"%2\", not \"%3\"").arg(indexOf(id).data().toString(), said, tip);
+            }
+        }
+        QVERIFY2(misses.isEmpty(), qPrintable(misses.join(qsl("\n"))));
+
+        // Through the view, as a hover does: on the dot the tip shows, on the name it goes. A hidden tip keeps
+        // its text until its fade ends, so whether it is up is what is read
+        QTreeWidgetItem* pWantedOn = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mWantedOnScriptId);
+        const QRect dot = dotSquareOf(pTree, pWantedOn);
+        QVERIFY(!dot.isEmpty());
+        QToolTip::hideText();
+        QVERIFY(QTest::qWaitFor(
+                []() {
+                    return !QToolTip::isVisible();
+                },
+                2s));
+        QHelpEvent onTheDot(QEvent::ToolTip, dot.center(), pTree->viewport()->mapToGlobal(dot.center()));
+        QCoreApplication::sendEvent(pTree->viewport(), &onTheDot);
+        QVERIFY2(QTest::qWaitFor(
+                         []() {
+                             return QToolTip::isVisible();
+                         },
+                         2s),
+                 "hovering the dot shows no tooltip");
+        QCOMPARE(QToolTip::text(), pDelegate->dotToolTip(indexOf(mWantedOnScriptId)));
+
+        const QPoint onTheNameAt(pTree->visualItemRect(pWantedOn).center().x(), dot.center().y());
+        QHelpEvent onTheName(QEvent::ToolTip, onTheNameAt, pTree->viewport()->mapToGlobal(onTheNameAt));
+        QCoreApplication::sendEvent(pTree->viewport(), &onTheName);
+        QVERIFY2(QTest::qWaitFor(
+                         []() {
+                             return !QToolTip::isVisible();
+                         },
+                         2s),
+                 "the dot's tooltip stays up while the name is hovered");
     }
 
     void test_aWantedOnDotIsARingRoundAPoint()
