@@ -88,6 +88,9 @@ struct ThemeTokens
     QColor separator;
     QColor mutedText;
     QColor disabledText;
+    // A toolbar button that cannot be used: dimmer than disabledText, which has to read on a card, so a bar's
+    // unavailable buttons are told from its available ones at a glance
+    QColor disabledBarText;
     QColor accentText;
     QColor marker;
     QColor hoverWash;
@@ -273,6 +276,8 @@ qreal contrastRatio(const QColor& first, const QColor& second);
 inline constexpr qreal scmTextMinimumRatio = 4.5;
 // WCAG's lower floor, for an unavailable word or a placeholder
 inline constexpr qreal scmQuietMinimumRatio = 3.0;
+// WCAG asks nothing of an inactive control; about where macOS draws one, at a quarter of the label's opacity
+inline constexpr qreal scmDisabledBarMinimumRatio = 2.0;
 
 // fallback when the lightness walk runs out before minimumRatio
 QColor readableOn(const QColor& background, const QColor& wanted, const QColor& fallback, const qreal minimumRatio);
@@ -395,6 +400,8 @@ struct ActionGlyph
 };
 
 void restyleActionGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens);
+// For actions on a toolbar: unavailable, the glyph takes disabledBarText as the bar's words do
+void restyleToolBarGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens);
 
 struct CardMetrics
 {

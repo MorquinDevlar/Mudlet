@@ -104,6 +104,7 @@ constexpr qreal scmTextSoftenOnLight = 0.10;
 constexpr qreal scmFieldLiftOnDark = 0.30;
 // Only a starting point: on a light theme it lands near 2.3:1, so themeTokens() walks it on to scmQuietMinimumRatio
 constexpr qreal scmDisabledTextWeight = 0.32;
+constexpr qreal scmDisabledBarTextWeight = 0.20;
 constexpr qreal scmMutedTextWeight = 0.70;
 constexpr qreal scmAccentTextLiftOnDark = 0.45;
 constexpr qreal scmAccentTextDropOnLight = 0.2;
@@ -589,6 +590,12 @@ ThemeTokens themeTokens(const QPalette& themePalette)
              || contrastRatio(tokens.disabledText, tokens.card) < scmQuietMinimumRatio || contrastRatio(tokens.disabledText, tokens.field) < scmQuietMinimumRatio);) {
         weight = std::min(1.0, weight + scmToneWeightStep);
         tokens.disabledText = blend(tokens.page, tokens.text, weight);
+    }
+    // Only the page: every bar is drawn on it, where disabledText is held up by the card it must also read on
+    tokens.disabledBarText = blend(tokens.page, tokens.text, scmDisabledBarTextWeight);
+    for (qreal weight = scmDisabledBarTextWeight; weight < 1.0 && contrastRatio(tokens.disabledBarText, tokens.page) < scmDisabledBarMinimumRatio;) {
+        weight = std::min(1.0, weight + scmToneWeightStep);
+        tokens.disabledBarText = blend(tokens.page, tokens.text, weight);
     }
     // Drawn on an accent wash wherever it appears, so walked until it reads on the deepest one over each surface
     {
@@ -1219,7 +1226,7 @@ QString toolBarStyleSheet(const QString& toolBarSelector, const ToolBarSeam seam
            + qsl(" QToolButton:pressed { background-color: %1; }").arg(tokens.accentSoft)
            // accentText, to light with the glyph's QIcon::On ink
            + toolBarSelector + qsl(" QToolButton:checked { color: %1; background-color: %2; }").arg(tokens.accentText.name(), tokens.accentSoft) + toolBarSelector
-           + qsl(" QToolButton:disabled { color: %1; }").arg(tokens.disabledText.name());
+           + qsl(" QToolButton:disabled { color: %1; }").arg(tokens.disabledBarText.name());
 }
 
 QString disclosureButtonStyleSheet(const QString& buttonSelector, const ThemeTokens& tokens)
@@ -1552,7 +1559,8 @@ QPixmap tintedGlyph(const QPixmap& source, const QColor& color)
     return glyph;
 }
 
-QIcon tintedIcon(const QString& glyphOff, const QString& glyphOn, const ThemeTokens& tokens)
+namespace {
+QIcon tintedIconDisabledIn(const QString& glyphOff, const QString& glyphOn, const ThemeTokens& tokens, const QColor& disabledInk)
 {
     const QPixmap sourceOff = glyphPixmap(glyphOff);
     const QPixmap sourceOn = glyphOn == glyphOff ? sourceOff : glyphPixmap(glyphOn);
@@ -1566,10 +1574,25 @@ QIcon tintedIcon(const QString& glyphOff, const QString& glyphOn, const ThemeTok
     icon.addPixmap(accentOn, QIcon::Normal, QIcon::On);
     icon.addPixmap(accentOn, QIcon::Active, QIcon::On);
     icon.addPixmap(accentOn, QIcon::Selected, QIcon::On);
-    const QPixmap disabledOff = tintedGlyph(sourceOff, tokens.disabledText);
+    const QPixmap disabledOff = tintedGlyph(sourceOff, disabledInk);
     icon.addPixmap(disabledOff, QIcon::Disabled, QIcon::Off);
-    icon.addPixmap(glyphOn == glyphOff ? disabledOff : tintedGlyph(sourceOn, tokens.disabledText), QIcon::Disabled, QIcon::On);
+    icon.addPixmap(glyphOn == glyphOff ? disabledOff : tintedGlyph(sourceOn, disabledInk), QIcon::Disabled, QIcon::On);
     return icon;
+}
+
+void restyleGlyphsDisabledIn(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens, const QColor& disabledInk)
+{
+    for (const ActionGlyph& glyph : glyphs) {
+        if (glyph.pAction) {
+            glyph.pAction->setIcon(tintedIconDisabledIn(glyph.glyphOff, glyph.glyphOn.isEmpty() ? glyph.glyphOff : glyph.glyphOn, tokens, disabledInk));
+        }
+    }
+}
+} // namespace
+
+QIcon tintedIcon(const QString& glyphOff, const QString& glyphOn, const ThemeTokens& tokens)
+{
+    return tintedIconDisabledIn(glyphOff, glyphOn, tokens, tokens.disabledText);
 }
 
 QIcon tintedIcon(const QString& glyph, const ThemeTokens& tokens)
@@ -1579,12 +1602,12 @@ QIcon tintedIcon(const QString& glyph, const ThemeTokens& tokens)
 
 void restyleActionGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens)
 {
-    for (const ActionGlyph& glyph : glyphs) {
-        if (!glyph.pAction) {
-            continue;
-        }
-        glyph.pAction->setIcon(glyph.glyphOn.isEmpty() ? tintedIcon(glyph.glyphOff, tokens) : tintedIcon(glyph.glyphOff, glyph.glyphOn, tokens));
-    }
+    restyleGlyphsDisabledIn(glyphs, tokens, tokens.disabledText);
+}
+
+void restyleToolBarGlyphs(const QList<ActionGlyph>& glyphs, const ThemeTokens& tokens)
+{
+    restyleGlyphsDisabledIn(glyphs, tokens, tokens.disabledBarText);
 }
 
 QString noticeStyleSheet(const QString& frameSelector, const ThemeTokens& tokens)

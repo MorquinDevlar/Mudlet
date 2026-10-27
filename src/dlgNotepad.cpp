@@ -421,7 +421,7 @@ void dlgNotepad::applyNotepadShellStyle()
         action_prefixWarning->setIcon(QIcon(cue));
     }
 
-    uiDesign::restyleActionGlyphs(mNotepadActionGlyphs, tokens);
+    uiDesign::restyleToolBarGlyphs(mNotepadActionGlyphs, tokens);
     mpAddTabButton->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-add.svg"), tokens));
     mpFindPrevButton->setIcon(uiDesign::tintedIcon(qsl(":/icons/notepad-chevron-up.svg"), tokens));
     mpFindNextButton->setIcon(uiDesign::tintedIcon(qsl(":/icons/editor-chevron-down.svg"), tokens));

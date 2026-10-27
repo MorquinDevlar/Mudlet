@@ -16219,6 +16219,9 @@ void dlgTriggerEditor::restyleEditorIcons()
         QIcon icon(uiDesign::tintedGlyph(source, quietColor));
         // Active, not Selected: a tool button asks for Active under the pointer and never for Selected
         icon.addPixmap(uiDesign::tintedGlyph(source, accentText), QIcon::Active);
+        // Left to Qt, a grey glyph's generated Disabled picture is all but the Normal one
+        const bool onTheBar = toolBar && toolBar->widgetForAction(glyph.first);
+        icon.addPixmap(uiDesign::tintedGlyph(source, onTheBar ? tokens.disabledBarText : tokens.disabledText), QIcon::Disabled);
         glyph.first->setIcon(icon);
     }
 

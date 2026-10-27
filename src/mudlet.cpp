@@ -4968,7 +4968,7 @@ static QString splitToolBarButtonRules(const QString& barSelector, const uiDesig
 // Colour only: QToolBar scales the 128px glyphs itself, so an icon size change need not call this
 void mudlet::restyleToolBarIcons()
 {
-    uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
+    uiDesign::restyleToolBarGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
     restyleMainToolBar();
 }
 

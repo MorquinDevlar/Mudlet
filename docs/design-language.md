@@ -93,6 +93,17 @@ three: 5.6:1, 5.4:1 and 4.7:1 on dark, 6.2:1, 6.3:1 and 6.7:1 on light.
 `disabledText` is walked the same way to the 3:1 an inactive word is held to,
 over the three surfaces and the field as well.
 
+A toolbar button is the exception. `disabledText` has to read on a card, which
+on dark lifts it to #8d8d8d beside the bar's #afafaf, 1.5:1 apart: an
+unavailable button looked like an available one. `disabledBarText` is walked
+against the page alone, where every bar is drawn, and only to
+`scmDisabledBarMinimumRatio` (2:1, about where macOS draws an inactive control):
+#656565 on dark and #aaaaaa on light, 2.7:1 and 3.1:1 from the buttons beside
+it. `toolBarStyleSheet()` writes the word in it and `restyleToolBarGlyphs()`
+the glyph, on the editor's, the main window's, a detached window's and the
+notepad's bar. WCAG asks nothing of an inactive control, and
+`ReadabilityAuditTest` already passes disabled buttons by.
+
 #### One ink for the editor's chrome
 
 In the script editor, `mutedText` is not one tone among several - it is *the*

@@ -3216,7 +3216,7 @@ void TDetachedWindow::slot_muteGame()
 
 void TDetachedWindow::restyleToolBarIcons()
 {
-    uiDesign::restyleActionGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
+    uiDesign::restyleToolBarGlyphs(mToolBarGlyphs, uiDesign::themeTokens());
 
     if (mpToolBar) {
         // Unlike the main bar, no profile stylesheet is assigned here to compose after

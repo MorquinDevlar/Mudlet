@@ -35,6 +35,7 @@
 #include "TLuaInterpreter.h"
 #include "TScript.h"
 #include "dlgTriggerEditor.h"
+#include "uiDesign.h"
 #include "mudlet.h"
 
 #include "GroupedTest.h"
@@ -224,6 +225,63 @@ private slots:
         QCoreApplication::processEvents();
 
         QCOMPARE(pictureMinimum, 0);
+    }
+
+    // disabledText has to read on a card too, which on dark leaves it 1.5:1 from the bar's own words
+    void test_unavailableItIsPlainlyDimmerThanTheButtonsBesideIt()
+    {
+        const QPalette savedPalette = QApplication::palette();
+        QPalette darkPalette(savedPalette);
+        darkPalette.setColor(QPalette::Window, QColor(0x35, 0x35, 0x35));
+        darkPalette.setColor(QPalette::WindowText, QColor(Qt::white));
+        darkPalette.setColor(QPalette::Base, QColor(0x19, 0x19, 0x19));
+        QPalette lightPalette(savedPalette);
+        lightPalette.setColor(QPalette::Window, QColor(0xec, 0xec, 0xec));
+        lightPalette.setColor(QPalette::WindowText, QColor(Qt::black));
+        lightPalette.setColor(QPalette::Base, QColor(Qt::white));
+
+        QStringList misses;
+        for (const QPalette& palette : {darkPalette, lightPalette}) {
+            const uiDesign::ThemeTokens tokens = uiDesign::themeTokens(palette);
+            const QString theme = tokens.darkPage ? qsl("dark") : qsl("light");
+            const qreal onThePage = uiDesign::contrastRatio(tokens.disabledBarText, tokens.page);
+            const qreal fromTheWords = uiDesign::contrastRatio(tokens.disabledBarText, tokens.mutedText);
+            qInfo().noquote() << qsl("  %1: an unavailable bar button is %2, %3:1 on the page and %4:1 from the %5 of the buttons beside it")
+                                         .arg(theme, tokens.disabledBarText.name(), QString::number(onThePage, 'f', 2), QString::number(fromTheWords, 'f', 2), tokens.mutedText.name());
+            if (onThePage < uiDesign::scmDisabledBarMinimumRatio) {
+                misses << qsl("%1: %2 reads %3:1 on the page, under the floor").arg(theme, tokens.disabledBarText.name(), QString::number(onThePage, 'f', 2));
+            }
+            if (fromTheWords < 2.0) {
+                misses << qsl("%1: %2 is %3:1 from the available buttons' %4, too close to tell at a glance")
+                                  .arg(theme, tokens.disabledBarText.name(), QString::number(fromTheWords, 'f', 2), tokens.mutedText.name());
+            }
+        }
+        QVERIFY2(misses.isEmpty(), qPrintable(misses.join(qsl("\n"))));
+
+        tree()->setCurrentItem(mpEditor->mpScriptsBaseItem);
+        QCoreApplication::processEvents();
+        QVERIFY(!action()->isEnabled());
+        const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+
+        const QColor word = button()->palette().color(QPalette::Disabled, button()->foregroundRole());
+        QVERIFY2(word.rgb() == tokens.disabledBarText.rgb(), qPrintable(qsl("the unavailable button's word is %1, not the bar's %2").arg(word.name(), tokens.disabledBarText.name())));
+
+        // A 1.5px stroke has no fully covered pixel at this size; the most covered one carries the ink unpremultiplied
+        const QImage glyph = action()->icon().pixmap(button()->iconSize(), QIcon::Disabled).toImage().convertToFormat(QImage::Format_ARGB32);
+        QRgb densest = 0;
+        for (int y = 0; y < glyph.height(); ++y) {
+            for (int x = 0; x < glyph.width(); ++x) {
+                if (qAlpha(glyph.pixel(x, y)) > qAlpha(densest)) {
+                    densest = glyph.pixel(x, y);
+                }
+            }
+        }
+        QVERIFY2(qAlpha(densest) > 128, "the unavailable glyph has nothing drawn to read");
+        const QColor ink(densest);
+        const auto near = [](const QColor& a, const QColor& b) {
+            return std::abs(a.red() - b.red()) <= 2 && std::abs(a.green() - b.green()) <= 2 && std::abs(a.blue() - b.blue()) <= 2;
+        };
+        QVERIFY2(near(ink, tokens.disabledBarText), qPrintable(qsl("the unavailable button's glyph is %1, not the bar's %2").arg(ink.name(), tokens.disabledBarText.name())));
     }
 
     void test_nothingToSwitchLeavesItUnavailable()
