@@ -64,6 +64,8 @@ public:
 
     // Public for tests, which assert against the state rather than against the drawn pictures
     [[nodiscard]] ItemState stateOf(const QModelIndex& index) const;
+    // Rows anywhere under index whose own switch is off; a closed group says how many at its edge
+    [[nodiscard]] int switchedOffInside(const QModelIndex& index) const;
 
 signals:
     // No argument: the row is made the tree's current one first, and the slot reads that
@@ -82,6 +84,7 @@ private:
     static constexpr int scmDotStateCount = 3;
 
     void paintTypeLabel(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const;
+    void paintRowWithOffCount(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index, const int offInside) const;
     [[nodiscard]] QPixmap dotGlyph(const DotState state, const bool broken) const;
     [[nodiscard]] QPixmap markGlyph(const RowMark mark, const bool selected) const;
     [[nodiscard]] Decoration decorationFor(const ItemState& state, const int level, const ChevronState chevron, const bool selected) const;
@@ -90,6 +93,7 @@ private:
     QPointer<Host> mpHost;
     QColor mRunningDot;
     QColor mQuietDot;
+    QColor mNotRunningText;
     QColor mMarkInk;
     QColor mErrorMarkInk;
     QColor mSelectedMarkInk;

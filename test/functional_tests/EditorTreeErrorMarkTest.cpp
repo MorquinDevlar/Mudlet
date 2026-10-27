@@ -19,13 +19,15 @@
 
 /*
  * A broken item's mark and dot are inked uiDesign::errorInk() rather than mutedText,
- * and the WantedOn dot reads by shape as well as ink. Read off a grab in both
+ * the WantedOn dot reads by shape as well as ink, and a row that is not running is
+ * dimmed, struck through when its own switch is off. Read off a grab in both
  * appearances: a red that cannot be read on the rows' surface is no better than grey.
  *
  * Run with: ctest -R EditorTreeErrorMarkTest -V
  */
 
 #include <QImage>
+#include <QPaintEvent>
 #include <QStyleOptionViewItem>
 #include <QTreeWidget>
 #include <QtTest/QtTest>
@@ -37,6 +39,7 @@
 #include "HostDialogs.h"
 #include "PixelTestHelper.h"
 #include "ProfileSessionTestHelper.h"
+#include "ScriptUnit.h"
 #include "TScript.h"
 #include "TTreeWidget.h"
 #include "dlgTriggerEditor.h"
@@ -46,6 +49,31 @@
 #include "GroupedTest.h"
 
 using namespace std::chrono_literals;
+
+namespace {
+// A grab paints the tree afresh, so only the paint events the view itself is sent say whether a row was repainted
+class RowPaintCounter : public QObject
+{
+public:
+    explicit RowPaintCounter(const QRect& row)
+    : mRow(row)
+    {
+    }
+    int paints = 0;
+
+protected:
+    bool eventFilter(QObject* pWatched, QEvent* pEvent) override
+    {
+        if (pEvent->type() == QEvent::Paint && static_cast<QPaintEvent*>(pEvent)->region().intersects(mRow)) {
+            ++paints;
+        }
+        return QObject::eventFilter(pWatched, pEvent);
+    }
+
+private:
+    QRect mRow;
+};
+} // namespace
 
 class EditorTreeErrorMarkTest : public QObject
 {
@@ -62,6 +90,7 @@ private:
     int mScriptFolderId = 0;
     int mQuietFolderId = 0;
     int mWantedOnScriptId = 0;
+    int mSwitchedOffScriptId = 0;
 
     // Summed over three channels: a glyph composed onto the row at the screen's
     // ratio has its most opaque pixel near the ink rather than exactly it
@@ -81,6 +110,13 @@ private:
         pWorking->setIsActive(true);
         pWorking->registerScript();
         mWorkingScriptId = pWorking->getID();
+
+        auto* pSwitchedOff = new TScript(pFolder, mpHost);
+        pSwitchedOff->setName(qsl("A script switched off"));
+        pSwitchedOff->setScript(qsl("-- nothing to do\n"));
+        pSwitchedOff->setIsActive(false);
+        pSwitchedOff->registerScript();
+        mSwitchedOffScriptId = pSwitchedOff->getID();
 
         auto* pBroken = new TScript(pFolder, mpHost);
         pBroken->setName(qsl("A broken script"));
@@ -403,6 +439,172 @@ private slots:
         }
         qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("\n  ")));
         QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
+    }
+
+    // What the delegate hands the style to draw the name with, for each state
+    QStyleOptionViewItem nameOptionOf(const int id) const
+    {
+        TTreeWidget* pTree = mpEditor->treeWidget_scripts;
+        auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(pTree->itemDelegateForIndex(QModelIndex()));
+        const QRect rowRect = pTree->visualItemRect(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, id));
+        QStyleOptionViewItem option = pTree->viewItemOption();
+        option.rect = rowRect;
+        if (pDelegate && !rowRect.isEmpty()) {
+            pDelegate->initStyleOption(&option, pTree->indexAt(rowRect.center()));
+        }
+        return option;
+    }
+
+    // The widest run of ink along any one line of the name's box, as a share of the name's width: a strike
+    // crosses the whole name, where no line through the letters alone comes near
+    qreal longestInkRunAcrossTheName(const int id) const
+    {
+        TTreeWidget* pTree = mpEditor->treeWidget_scripts;
+        const QStyleOptionViewItem option = nameOptionOf(id);
+        const QRect textRect = pTree->style()->subElementRect(QStyle::SE_ItemViewItemText, &option, pTree);
+        const int nameWidth = QFontMetrics(option.font).horizontalAdvance(option.text);
+        if (textRect.isEmpty() || nameWidth <= 0) {
+            return 0.0;
+        }
+        const QImage shot = pTree->viewport()->grab().toImage();
+        const qreal ratio = shot.devicePixelRatio();
+        const QColor surface = pixelAt(shot, QPointF(textRect.right() - 2, textRect.center().y()), ratio);
+        int longest = 0;
+        for (int y = qRound(textRect.top() * ratio); y <= qRound(textRect.bottom() * ratio); ++y) {
+            int run = 0;
+            for (int x = qRound(textRect.left() * ratio); x <= qRound((textRect.left() + nameWidth + 4) * ratio); ++x) {
+                if (!shot.rect().contains(QPoint(x, y))) {
+                    break;
+                }
+                run = TestPixels::distance(shot.pixelColor(QPoint(x, y)), surface) > scmInkSlack ? run + 1 : 0;
+                longest = std::max(longest, run);
+            }
+        }
+        return longest / (nameWidth * ratio);
+    }
+
+    void test_aRowThatIsNotRunningIsDimmedAndASwitchedOffOneStruckThrough()
+    {
+        const auto appearanceBefore = mudlet::self()->mAppearance;
+        auto restore = qScopeGuard([appearanceBefore]() {
+            mudlet::self()->setAppearance(appearanceBefore);
+        });
+        mpEditor->treeWidget_scripts->setCurrentItem(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mWorkingScriptId));
+
+        struct Row
+        {
+            QString what;
+            int id;
+            bool dimmed;
+            bool struck;
+        };
+        const QList<Row> rows{{qsl("a running script"), mWorkingScriptId, false, false},
+                              {qsl("a script switched off"), mSwitchedOffScriptId, true, true},
+                              {qsl("a group switched off"), mQuietFolderId, true, true},
+                              {qsl("a script on inside a group that is off"), mWantedOnScriptId, true, false}};
+        QStringList misses;
+        QStringList measured;
+        for (const auto& appearance : appearances()) {
+            TestPixels::setAppearanceAndWait(appearance.second);
+            const uiDesign::ThemeTokens tokens = uiDesign::themeTokens();
+            for (const Row& row : rows) {
+                const QStyleOptionViewItem option = nameOptionOf(row.id);
+                const QColor ink = option.palette.color(QPalette::Text);
+                const qreal run = longestInkRunAcrossTheName(row.id);
+                measured << qsl("%1, %2: name in %3, %4struck, longest ink run %5 of the name")
+                                    .arg(appearance.first, row.what, ink.name(), option.font.strikeOut() ? QString() : qsl("not "), QString::number(run, 'f', 2));
+                if ((ink.rgb() == tokens.disabledText.rgb()) != row.dimmed) {
+                    misses << qsl("%1: %2 has its name in %3, where it should %4 the dimmed %5")
+                                      .arg(appearance.first, row.what, ink.name(), row.dimmed ? qsl("be") : qsl("not be"), tokens.disabledText.name());
+                }
+                if (option.font.strikeOut() != row.struck) {
+                    misses << qsl("%1: %2 is %3struck through").arg(appearance.first, row.what, option.font.strikeOut() ? QString() : qsl("not "));
+                }
+                // A strike runs the length of the name; the letters alone leave gaps
+                if ((run > 0.9) != row.struck) {
+                    misses << qsl("%1: the grab of %2 has a longest run of ink %3 of the name's width, which says it is %4struck through")
+                                      .arg(appearance.first, row.what, QString::number(run, 'f', 2), run > 0.9 ? QString() : qsl("not "));
+                }
+            }
+        }
+        qInfo().noquote() << qsl("  %1").arg(measured.join(qsl("\n  ")));
+        QVERIFY2(misses.isEmpty(), qPrintable(qsl("\n  %1").arg(misses.join(qsl("\n  ")))));
+    }
+
+    // The row's text box past the end of its name, where a closed group's count is drawn
+    QImage trailingEdgeOf(const int id) const
+    {
+        TTreeWidget* pTree = mpEditor->treeWidget_scripts;
+        const QStyleOptionViewItem option = nameOptionOf(id);
+        const QRect textRect = pTree->style()->subElementRect(QStyle::SE_ItemViewItemText, &option, pTree);
+        const int nameEnd = textRect.left() + QFontMetrics(option.font).horizontalAdvance(option.text) + 8;
+        const QImage shot = pTree->viewport()->grab().toImage();
+        const qreal ratio = shot.devicePixelRatio();
+        const QRect edge(qRound(nameEnd * ratio), qRound(textRect.top() * ratio), qRound((textRect.right() - nameEnd) * ratio), qRound(textRect.height() * ratio));
+        return shot.copy(edge);
+    }
+
+    int inkedPixelsIn(const QImage& stretch) const
+    {
+        const QColor surface = stretch.pixelColor(0, 0);
+        int inked = 0;
+        for (int y = 0; y < stretch.height(); ++y) {
+            for (int x = 0; x < stretch.width(); ++x) {
+                inked += TestPixels::distance(stretch.pixelColor(x, y), surface) > scmInkSlack ? 1 : 0;
+            }
+        }
+        return inked;
+    }
+
+    void test_aClosedGroupSaysHowManyInsideItAreSwitchedOff()
+    {
+        TTreeWidget* pTree = mpEditor->treeWidget_scripts;
+        auto* pDelegate = qobject_cast<uiDesign::EditorTreeDelegate*>(pTree->itemDelegateForIndex(QModelIndex()));
+        QTreeWidgetItem* pGroup = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mScriptFolderId);
+        QTreeWidgetItem* pQuietGroup = TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mQuietFolderId);
+        QVERIFY(pDelegate && pGroup && pQuietGroup);
+        // A count is drawn right-aligned, so even a short stretch after the name holds its last letters
+        QVERIFY2(trailingEdgeOf(mQuietFolderId).width() > 10, "The tree is too narrow to leave room after the names for a count");
+        auto restore = qScopeGuard([pTree]() {
+            pTree->expandAll();
+            QTest::qWait(50ms);
+        });
+        pTree->setCurrentItem(TestPixels::rowFor(mpEditor->mpScriptsBaseItem, mWantedOnScriptId));
+
+        // The switched-off script and the broken one, which was never switched on; the quiet group's own
+        // child is on, so the group says nothing although it is off itself
+        const QModelIndex groupIndex = pTree->indexAt(pTree->visualItemRect(pGroup).center());
+        QCOMPARE(pDelegate->switchedOffInside(groupIndex), 2);
+        QCOMPARE(pDelegate->switchedOffInside(pTree->indexAt(pTree->visualItemRect(pQuietGroup).center())), 0);
+
+        pGroup->setExpanded(true);
+        QTest::qWait(50ms);
+        const int openInk = inkedPixelsIn(trailingEdgeOf(mScriptFolderId));
+        pGroup->setExpanded(false);
+        pQuietGroup->setExpanded(false);
+        QTest::qWait(50ms);
+        const int closedInk = inkedPixelsIn(trailingEdgeOf(mScriptFolderId));
+        const int quietInk = inkedPixelsIn(trailingEdgeOf(mQuietFolderId));
+        qInfo().noquote() << qsl("  inked pixels at the group's right edge: %1 open, %2 closed; %3 on the closed quiet group").arg(openInk).arg(closedInk).arg(quietInk);
+        QVERIFY2(openInk == 0, "An open group draws something at its right edge, where its rows already show what is off");
+        QVERIFY2(closedInk > 20, "A closed group holding two switched-off scripts says nothing at its right edge");
+        QVERIFY2(quietInk == 0, "A closed group with nothing switched off inside it draws something at its right edge");
+
+        // From a script, as a package would: the row is hidden in the closed group, so nothing but the
+        // delegate's own hook repaints the group's count
+        TScript* pWorking = mpHost->getScriptUnit()->getScript(mWorkingScriptId);
+        QVERIFY(pWorking);
+        auto switchBackOn = qScopeGuard([this, pWorking]() {
+            mpHost->getScriptUnit()->enableScript(pWorking->getName());
+            QTest::qWait(50ms);
+        });
+        RowPaintCounter counter(pTree->visualItemRect(pGroup));
+        pTree->viewport()->installEventFilter(&counter);
+        mpHost->getScriptUnit()->disableScript(pWorking->getName());
+        QTest::qWait(100ms);
+        pTree->viewport()->removeEventFilter(&counter);
+        QCOMPARE(pDelegate->switchedOffInside(groupIndex), 3);
+        QVERIFY2(counter.paints > 0, "A script switched off inside the closed group never repainted the group, so the count on screen stays at 2");
     }
 
     void test_aWantedOnDotIsARingRoundAPoint()

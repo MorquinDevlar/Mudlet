@@ -29,6 +29,7 @@
 #include "TTrigger.h"
 #include "uiDesign.h"
 
+#include <QApplication>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionViewItem>
@@ -46,12 +47,22 @@ EditorTreeDelegate::EditorTreeDelegate(TTreeWidget* pTree, const TreeType treeTy
 , mpHost(pHost)
 {
     restyle();
+    // A row inside a closed group is not on screen, so its change would leave the group's count stale
+    if (pTree && treeType != TreeType::None) {
+        connect(pTree->model(), &QAbstractItemModel::dataChanged, this, [this](const QModelIndex& topLeft) {
+            if (topLeft.parent().isValid() && mpTree) {
+                mpTree->viewport()->update();
+            }
+        });
+    }
 }
 
 void EditorTreeDelegate::restyleInks(const ThemeTokens& tokens)
 {
     mRunningDot = stateColor(scmStateHue_ok, tokens.darkPage);
     mQuietDot = tokens.mutedText;
+    // The dot alone is too small to find a switched-off row by in a long list
+    mNotRunningText = tokens.disabledText;
     mMarkInk = tokens.mutedText;
     mErrorMarkInk = errorInk(tokens);
     // Must match the colour the trees' stylesheet writes a chosen row's name in
@@ -300,14 +311,43 @@ void EditorTreeDelegate::initStyleOption(QStyleOptionViewItem* pOption, const QM
 
     // Effective only because the trees' stylesheet names no colour for an unselected row
     if (state.known && state.dot != DotState::Running && !(pOption->state & QStyle::State_Selected)) {
-        pOption->palette.setColor(QPalette::Text, mQuietDot);
-        pOption->palette.setColor(QPalette::WindowText, mQuietDot);
+        pOption->palette.setColor(QPalette::Text, mNotRunningText);
+        pOption->palette.setColor(QPalette::WindowText, mNotRunningText);
     }
+    // Only the row's own switch: one on inside a group that is off has nothing wrong with it to find
+    if (state.known && state.dot == DotState::Off) {
+        pOption->font.setStrikeOut(true);
+    }
+}
+
+int EditorTreeDelegate::switchedOffInside(const QModelIndex& index) const
+{
+    const QAbstractItemModel* pModel = index.model();
+    if (!pModel) {
+        return 0;
+    }
+    int count = 0;
+    for (int row = 0, rows = pModel->rowCount(index); row < rows; ++row) {
+        const QModelIndex child = pModel->index(row, 0, index);
+        const ItemState state = stateOf(child);
+        if (state.known && state.dot == DotState::Off) {
+            ++count;
+        }
+        count += switchedOffInside(child);
+    }
+    return count;
 }
 
 void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
-    QStyledItemDelegate::paint(pPainter, option, index);
+    // The Folders view's trailing edge is the item's type
+    const bool closedGroup = mTreeType != TreeType::None && index.column() == 0 && mpTree && index.model() && index.model()->hasChildren(index) && !mpTree->isExpanded(index);
+    const int offInside = closedGroup ? switchedOffInside(index) : 0;
+    if (offInside > 0) {
+        paintRowWithOffCount(pPainter, option, index, offInside);
+    } else {
+        QStyledItemDelegate::paint(pPainter, option, index);
+    }
 
     if (index.column() != 0 || option.rect.isEmpty()) {
         return;
@@ -321,6 +361,41 @@ void EditorTreeDelegate::paint(QPainter* pPainter, const QStyleOptionViewItem& o
 
     // Painted rather than a border-left, which the pill's corner radius bends into a bracket
     paintAccentBar(pPainter, option.rect, mAccentBar);
+}
+
+// QStyledItemDelegate::paint() with the name elided short of the count, so a long name never runs under it
+void EditorTreeDelegate::paintRowWithOffCount(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index, const int offInside) const
+{
+    QStyleOptionViewItem rowOption(option);
+    initStyleOption(&rowOption, index);
+    const QWidget* pWidget = rowOption.widget ? rowOption.widget : mpTree;
+    QStyle* pStyle = pWidget ? pWidget->style() : QApplication::style();
+
+    //: Script editor tree, at the right edge of a closed group: how many items inside it are switched off
+    const QString count = tr("%n off", nullptr, offInside);
+    QFont countFont = rowOption.font;
+    countFont.setStrikeOut(false);
+    countFont.setPointSize(typeSize(TypeStep::Caption));
+    const QFontMetrics countMetrics(countFont);
+    const QFontMetrics nameMetrics(rowOption.font);
+    // QCommonStyle draws a row's words inside the text rectangle less this much on either side
+    const int textMargin = pStyle->pixelMetric(QStyle::PM_FocusFrameHMargin, &rowOption, pWidget) + 1;
+    const QRect textRect = pStyle->subElementRect(QStyle::SE_ItemViewItemText, &rowOption, pWidget).adjusted(textMargin, 0, -textMargin, 0);
+    const int nameRoom = textRect.width() - countMetrics.horizontalAdvance(count) - scmTypeLabelGap;
+    const bool countFits = nameRoom >= scmTypeLabelMinimumCharacters * nameMetrics.horizontalAdvance(QLatin1Char('0'));
+    if (countFits) {
+        rowOption.text = nameMetrics.elidedText(rowOption.text, rowOption.textElideMode, nameRoom);
+    }
+    pStyle->drawControl(QStyle::CE_ItemViewItem, &rowOption, pPainter, pWidget);
+    if (!countFits) {
+        return;
+    }
+    pPainter->save();
+    pPainter->setClipRect(rowOption.rect);
+    pPainter->setFont(countFont);
+    pPainter->setPen((rowOption.state & QStyle::State_Selected) ? mSelectedMarkInk : mNotRunningText);
+    pPainter->drawText(textRect, Qt::AlignRight | Qt::AlignVCenter, count);
+    pPainter->restore();
 }
 
 void EditorTreeDelegate::paintTypeLabel(QPainter* pPainter, const QStyleOptionViewItem& option, const QModelIndex& index) const
@@ -343,7 +418,10 @@ void EditorTreeDelegate::paintTypeLabel(QPainter* pPainter, const QStyleOptionVi
     }
     pPainter->save();
     pPainter->setClipRect(labelOption.rect);
-    pPainter->setFont(labelOption.font);
+    // The type is not what is switched off
+    QFont labelFont = labelOption.font;
+    labelFont.setStrikeOut(false);
+    pPainter->setFont(labelFont);
     pPainter->setPen((labelOption.state & QStyle::State_Selected) ? mSelectedMarkInk : mMarkInk);
     pPainter->drawText(QRect(textRect.right() - room + 1, textRect.top(), room, textRect.height()), Qt::AlignRight | Qt::AlignVCenter, metrics.elidedText(label, Qt::ElideRight, room));
     pPainter->restore();

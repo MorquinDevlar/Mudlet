@@ -154,10 +154,20 @@ is shown, not chrome: a script's own event names on their chips keep the full
 `text` tone the way the words in a field do, while Mudlet's own `sys*` events on
 the same row are quiet.
 
-One consequence is deliberate: a tree row that is switched off and one that is
-running are now the same tone, since `EditorTreeDelegate` already quietened the
-off rows to `mutedText`. The **dot** at the row's leading edge says whether the
-item is on, not the weight of its name.
+The **dot** at the row's leading edge says whether the item is on, but nine
+pixels at the far left is not enough to find the one switched-off script in a
+long list by. So a row that is not running has its name in `disabledText`, and
+one whose own switch is off is struck through as well - the line is a shape, so
+it holds in greyscale and for a colour-blind reader, and it is what browser
+devtools draw through a CSS rule that is switched off. A row that is on inside a
+group that is off is dimmed but not struck: its own switch is fine, and the
+strike marks the row a click would fix. A closed group says at its trailing edge
+how many rows anywhere inside it are struck ("2 off",
+`EditorTreeDelegate::switchedOffInside()`), the name eliding short of it; an open
+group says nothing, its rows show it. A change to a row inside a closed group
+repaints the tree, or the count on screen would stay as it was. The Folders view
+leaves the count out, since its trailing edge is the item's type.
+`EditorTreeErrorMarkTest` holds all of it.
 
 A `color:` rule cannot reach a view's rows - a stylesheet only gets at them
 through `::item`, and a `::item` rule reaches the widget's palette for some
