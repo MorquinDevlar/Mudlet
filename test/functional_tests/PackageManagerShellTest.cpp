@@ -309,12 +309,17 @@ private slots:
         QCOMPARE(mpDialog->packageWebsiteUrl(qsl("AchaeaChatTabs")), qsl("https://packages.mudlet.org/packages/achaeachattabs"));
         QCOMPARE(mpDialog->packageWebsiteUrl(qsl("  odd -- name! ")), qsl("https://packages.mudlet.org/packages/odd-name"));
 
+        // Its own help URL is taken only for the repository's package, the same name by the same author
+        QVERIFY2(writeRepositoryIndex(qsl("1.2.3")), "SETUP: the repository index naming the installed package could not be written");
+        QVERIFY2(mpDialog->readPackageRepositoryFile(), "SETUP: the repository index naming the installed package could not be read back");
         QMap<QString, QString> withHelp = mpHost->mPackageInfo.value(mFirstPackage);
         withHelp.insert(qsl("helpURL"), qsl("https://example.org/help"));
         mpHost->mPackageInfo.insert(mFirstPackage, withHelp);
         QCOMPARE(mpDialog->packageWebsiteUrl(mFirstPackage), qsl("https://example.org/help"));
         withHelp.remove(qsl("helpURL"));
         mpHost->mPackageInfo.insert(mFirstPackage, withHelp);
+        QVERIFY(writeRepositoryIndex());
+        QVERIFY(mpDialog->readPackageRepositoryFile());
     }
 
     void test_theViewIsARowOfChipsThatStaysInStepWithTheButtons()

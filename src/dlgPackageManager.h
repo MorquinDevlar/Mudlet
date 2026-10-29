@@ -55,6 +55,7 @@ class dlgPackageManager : public QDialog, public Ui::package_manager
     Q_OBJECT
 
     friend class PackageManagerShellTest;
+    friend class PackageManagerRepositoryLinksTest;
 
 public:
     Q_DISABLE_COPY(dlgPackageManager)
@@ -100,6 +101,7 @@ private:
     // Empty when either version is missing, rather than a dangling arrow
     QString updateRowVersion(const QString& packageName) const;
     static void setRowVersion(QListWidgetItem* pItem, const QString& version);
+    bool matchesRepositoryPackage(const QString& packageName) const;
     QString packageHelpUrl(const QString& packageName) const;
     QString packageWebsiteUrl(const QString& packageName) const;
     void comeBackToFront();

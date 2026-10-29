@@ -139,6 +139,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorColumnFontTest;
     friend class EditorDefaultSizeTest;
     friend class EditorEventChipRowTest;
+    friend class EditorEmptySelectionTest;
     friend class EditorFolderViewTest;
     friend class EditorFormShellTest;
     friend class EditorIconScaleTest;
@@ -148,6 +149,7 @@ class dlgTriggerEditor : public QMainWindow, private Ui::trigger_editor
     friend class EditorNoticeGlyphTest;
     friend class EditorNoticeSeamTest;
     friend class EditorOptionsPanelDefaultTest;
+    friend class EditorReshowTest;
     friend class EditorSearchTest;
     friend class EditorSplitterRestoreTest;
     friend class EditorStatusBarTest;
@@ -769,6 +771,8 @@ private:
     bool containsSearchMatch(const QString& haystack, const QString& needle) const;
     void clearEditorNotification();
     void runScheduledCleanReset();
+    void resetTrees();
+    void buildDeferredTrees(const bool asAtLoad);
     void autoSave();
     void setupPatternControls(const int type, dlgTriggerPatternEdit* pItem);
     void createPatternItem(int index);
@@ -1090,8 +1094,11 @@ private:
 
     // keeps track of the dialog reset being queued
     bool mCleanResetQueued = false;
+    // A reset that arrived before the editor was ever shown, run on first show unless a view switch populated the trees first
+    bool mCleanResetDeferred = false;
     // Trigger IDs whose tree row is stale; refreshed in one tree walk on the
-    // next event-loop turn rather than one O(tree) lookup per Lua toggle.
+    // next event-loop turn, or when the editor is next shown, rather than one
+    // O(tree) lookup per Lua toggle.
     QSet<int> mPendingTriggerIconRefresh;
     bool mTriggerIconRefreshQueued = false;
     void flushPendingTriggerIconRefresh();
