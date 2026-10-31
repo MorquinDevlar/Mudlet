@@ -41,7 +41,9 @@
 #include "TConsoleModel.h"
 #include "TDebug.h"
 #include "TEvent.h"
+#if defined(INCLUDE_SPAWN)
 #include "TForkedProcess.h"
+#endif
 #include "TGameDetails.h"
 #include "TKey.h"
 #include "TMap.h"
@@ -815,11 +817,8 @@ void TLuaInterpreter::slot_pathChanged(const QString& path)
 }
 
 // No documentation available in wiki - internal function
-void TLuaInterpreter::slot_deleteSender(int exitCode, QProcess::ExitStatus exitStatus)
+void TLuaInterpreter::slot_deleteSender()
 {
-    Q_UNUSED(exitCode)
-    Q_UNUSED(exitStatus)
-
     objectsToDelete.append(sender());
 }
 
@@ -839,7 +838,9 @@ void TLuaInterpreter::slot_purge()
 void TLuaInterpreter::stopSpawnedProcesses()
 {
     slot_purge();
+#if defined(INCLUDE_SPAWN)
     qDeleteAll(findChildren<TForkedProcess*>(Qt::FindDirectChildrenOnly));
+#endif
 }
 
 // No documentation available in wiki - internal function
@@ -1042,6 +1043,11 @@ int TLuaInterpreter::getWindowsCodepage(lua_State* L)
 // Documentation: https://wiki.mudlet.org/w/Manual:Lua_Functions#spawn
 int TLuaInterpreter::spawn(lua_State* L)
 {
+#if !defined(INCLUDE_SPAWN)
+    // Raised, as a process that fails to start is
+    lua_pushstring(L, "spawn: starting processes is not available in this build of Mudlet");
+    return lua_error(L);
+#else
     Host& host = getHostFromLua(L);
     TLuaInterpreter* interpreter = host.getLuaInterpreter();
     if (interpreter->mClosingGlobalLua) {
@@ -1050,6 +1056,7 @@ int TLuaInterpreter::spawn(lua_State* L)
         return 2;
     }
     return TForkedProcess::startProcess(interpreter, L);
+#endif
 }
 
 // Documentation: https://wiki.mudlet.org/w/Manual:Lua_Functions#loadReplay
@@ -9710,11 +9717,13 @@ int TLuaInterpreter::setConfig(lua_State* L)
 #if defined(INCLUDE_3DMAPPER)
         if (key == qsl("show3dMapView")) {
             const bool show = getVerifiedBool(L, __func__, 2, "value");
+            if (auto* mapper = host.mapViewFrontend()) {
+                if (auto [shown, refusal] = mapper->show3DView(show); !shown) {
+                    return warnArgumentValue(L, __func__, refusal);
+                }
+            }
             // getConfig reads this back while the mapper is hidden, whichever frontend shows it
             host.mShow3DView = show;
-            if (auto* mapper = host.mpMap->mapViewFrontend()) {
-                mapper->show3DView(show);
-            }
             return success();
         }
 #endif
@@ -10027,6 +10036,42 @@ int TLuaInterpreter::setConfig(lua_State* L)
         host.mEditorAutoComplete = getVerifiedBool(L, __func__, 2, "value");
         return success();
     }
+    // A family or size asked for is one of the editor's own, so the editor stops following the display
+    // font - unless it is the one in use already, so that a getConfig() table handed back changes nothing
+    if (key == qsl("editorFont")) {
+        const QString fontName = getVerifiedString(L, __func__, 2, "value");
+        if (fontName.trimmed().isEmpty()) {
+            return warnArgumentValue(L, __func__, "editorFont must not be empty");
+        }
+        const auto resolved = host.resolveFontFamily(fontName);
+        if (!resolved.available) {
+            return warnArgumentValue(L, __func__, qsl("font '%1' is not available").arg(fontName));
+        }
+        if (host.getEditorFont().family().compare(resolved.family, Qt::CaseInsensitive) != 0) {
+            QFont font = host.editorFontBase();
+            font.setFamily(resolved.family);
+            host.setEditorFont(font);
+            host.setEditorFontFollowsDisplay(false);
+        }
+        return success();
+    }
+    if (key == qsl("editorFontSize")) {
+        const int size = getVerifiedInt(L, __func__, 2, "value");
+        if (size < 1 || size > Host::scmMaxFontSize) {
+            return warnArgumentValue(L, __func__, qsl("editorFontSize %1 is out of range, it must be between 1 and %2").arg(QString::number(size), QString::number(Host::scmMaxFontSize)));
+        }
+        if (host.getEditorFont().pointSize() != size) {
+            QFont font = host.editorFontBase();
+            font.setPointSize(size);
+            host.setEditorFont(font);
+            host.setEditorFontFollowsDisplay(false);
+        }
+        return success();
+    }
+    if (key == qsl("editorFontFollowsDisplay")) {
+        host.setEditorFontFollowsDisplay(getVerifiedBool(L, __func__, 2, "value"));
+        return success();
+    }
     if (key == qsl("mapperPanelVisible")) {
         host.setMapperPanelVisible(getVerifiedBool(L, __func__, 2, "value"));
         return success();
@@ -10295,8 +10340,8 @@ int TLuaInterpreter::getConfig(lua_State* L)
             {qsl("show3dMapView"),
              [&]() {
 #if defined(INCLUDE_3DMAPPER)
-                 // A mapper hidden by closeMapWidget() shows no 3D view, but reopens in the stored mode
-                 if (auto* mapper = host.mpMap ? host.mpMap->mapViewFrontend() : nullptr; mapper && mapper->onScreen()) {
+                 // A mapper hidden by closeMapWidget() shows no 3D view, but reopens in the stored mode; the null view never has one
+                 if (auto* mapper = host.mpMap ? host.mapViewFrontend() : nullptr; mapper && (mapper->onScreen() || !host.hasConsoleView())) {
                      lua_pushboolean(L, mapper->showing3DView());
                      return;
                  }
@@ -10336,6 +10381,18 @@ int TLuaInterpreter::getConfig(lua_State* L)
             {qsl("editorAutoComplete"),
              [&]() {
                  lua_pushboolean(L, host.mEditorAutoComplete);
+             }},
+            {qsl("editorFont"),
+             [&]() {
+                 lua_pushstring(L, host.getEditorFont().family().toUtf8().constData());
+             }},
+            {qsl("editorFontSize"),
+             [&]() {
+                 lua_pushinteger(L, host.getEditorFont().pointSize());
+             }},
+            {qsl("editorFontFollowsDisplay"),
+             [&]() {
+                 lua_pushboolean(L, host.editorFontFollowsDisplay());
              }},
             {qsl("enableGMCP"),
              [&]() {

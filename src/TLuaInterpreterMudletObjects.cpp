@@ -42,7 +42,6 @@
 #include "TConsoleModel.h"
 #include "TDebug.h"
 #include "TEvent.h"
-#include "TForkedProcess.h"
 #include "TKey.h"
 #include "TMap.h"
 #include "TMapLabel.h"
@@ -3332,7 +3331,7 @@ int TLuaInterpreter::closeProfile(lua_State* L)
         return 2;
     }
 
-    if (!TAppFrontend::instance()->requestProfileTabClose(profileName)) {
+    if (!TAppFrontend::instance()->requestProfileClose(profileName)) {
         return 0;
     }
     lua_pushboolean(L, true);
