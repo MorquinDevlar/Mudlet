@@ -1288,7 +1288,6 @@ private slots:
     {
         if (auto* self = mudlet::self()) {
             if (auto* host = self->getActiveHost()) {
-                QTest::qWait(50ms);
                 host->waitForProfileSave();
             }
         }

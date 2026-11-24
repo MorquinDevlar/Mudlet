@@ -75,16 +75,16 @@ inline QPushButton* connectButton(dlgConnectionProfiles* dialog)
     return nullptr;
 }
 
-// Waits for 'field' to take focus, types into it, then tabs on to the next one.
-// Typing into the focused widget rather than straight into 'field' keeps the
-// dialog seeing exactly the interaction a user would produce, selection state
-// included.
-inline bool typeFieldAndAdvance(QWidget* field, const QString& text, const std::chrono::milliseconds timeout)
+// Waits for 'field' to take focus, enters the text, then tabs on to the next one.
+// The text goes in at once, as a paste does and replacing the selection as one
+// does: the dialog lays itself out again on every change to a field, and typing
+// would have it do so once per character.
+inline bool typeFieldAndAdvance(QLineEdit* field, const QString& text, const std::chrono::milliseconds timeout)
 {
     if (!field || !waitForFocus(field, timeout)) {
         return false;
     }
-    QTest::keyClicks(field, text);
+    field->insert(text);
     QTest::keyClick(field, Qt::Key_Tab);
     return true;
 }
@@ -144,7 +144,7 @@ inline Host* create(const QString& profileName,
         qWarning() << "TestProfile::create() - the port field never took focus";
         return nullptr;
     }
-    QTest::keyClicks(dialog->port_entry, port);
+    dialog->port_entry->insert(port);
 
     // Every field is filled, but the port is validated asynchronously and the
     // Connect button stays disabled until that has run - a Return arriving
